@@ -12,11 +12,11 @@ Security posture:
 - Payloads are bounded to prevent metadata bloat.
 """
 
-
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
 
 ACL_PROVENANCE_SCHEMA = "mimirq.document_acl_provenance.v1"
@@ -30,7 +30,9 @@ def _now_utc_iso() -> str:
 
 
 def _normalize_mode(v: object, *, default: str = "inherit") -> str:
-    mode = str(v or "").strip().lower()
+    if v is None:
+        return default
+    mode = str(v).strip().lower()
     return mode or default
 
 
@@ -45,7 +47,7 @@ def _normalize_external_ids(
 
     out: list[str] = []
     seen: set[str] = set()
-    for raw in external_ids or []:
+    for raw in external_ids if external_ids is not None else []:
         if not isinstance(raw, (str, int, float)):
             continue
         s = str(raw).strip()
@@ -66,8 +68,10 @@ def _normalize_group_ids(group_ids: Iterable[object] | None, *, max_items: int) 
     max_items = max(0, int(max_items or 0))
     out: list[str] = []
     seen: set[str] = set()
-    for raw in group_ids or []:
-        s = str(raw or "").strip()
+    for raw in group_ids if group_ids is not None else []:
+        if raw is None:
+            continue
+        s = str(raw).strip()
         if not s:
             continue
         if len(s) > 80:
@@ -105,9 +109,11 @@ def build_document_acl_provenance(
     - `mapped_group_ids` are stored as strings (tenant group UUIDs).
     """
 
-    effective_mode = _normalize_mode((effective_access or {}).get("mode"), default="inherit")
-    partial_member_list = (effective_access or {}).get("partial_member_list")
-    partial_group_list = (effective_access or {}).get("partial_group_list")
+    effective_mode = _normalize_mode(
+        (effective_access if effective_access is not None else {}).get("mode"), default="inherit"
+    )
+    partial_member_list = (effective_access if effective_access is not None else {}).get("partial_member_list")
+    partial_group_list = (effective_access if effective_access is not None else {}).get("partial_group_list")
 
     member_count = 0
     if isinstance(partial_member_list, list):
@@ -128,12 +134,12 @@ def build_document_acl_provenance(
         "applied_at": _now_utc_iso(),
         "applied_by": {
             "kind": "connector",
-            "connector_id": str(connector_id or "").strip(),
-            "run_id": (str(connector_run_id or "").strip() or None),
+            "connector_id": connector_id,
+            "run_id": connector_run_id,
         },
         "effective_access": {
             "mode": effective_mode,
-            "partial_member_count": int(member_count),
+            "partial_member_count": member_count,
             "partial_group_ids": effective_group_ids,
         },
         "source_acl": {
@@ -141,10 +147,10 @@ def build_document_acl_provenance(
             "fallback_mode": _normalize_mode(source_acl_fallback_mode, default="partial_members"),
             "fallback_used": bool(fallback_used),
             "mapping_strategy": "tenant_groups.external_id",
-            "principal_count": int(len(principals_norm)),
+            "principal_count": len(principals_norm),
             "principal_hash_alg": "sha256",
             "principal_hashes": principal_hashes,
-            "mapped_group_count": int(len(mapped_groups_norm)),
+            "mapped_group_count": len(mapped_groups_norm),
             "mapped_group_ids": mapped_groups_norm,
         },
     }
@@ -160,14 +166,14 @@ def build_document_acl_provenance(
     return record
 
 
-def apply_document_acl_provenance(doc, *, provenance: dict[str, Any]) -> None:  # noqa: ANN001
+def apply_document_acl_provenance(doc: DBDocument, *, provenance: dict[str, Any]) -> None:
     """
     Best-effort: patch `documents.metadata.acl_provenance` on an ORM document.
 
     Caller is responsible for committing.
     """
     try:
-        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+        meta0 = dict(doc.doc_metadata or {})
         meta0["acl_provenance"] = dict(provenance or {})
         doc.doc_metadata = meta0
     except Exception:
@@ -176,4 +182,3 @@ def apply_document_acl_provenance(doc, *, provenance: dict[str, Any]) -> None:  
 
 
 __all__ = ["ACL_PROVENANCE_SCHEMA", "apply_document_acl_provenance", "build_document_acl_provenance"]
-

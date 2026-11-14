@@ -84,7 +84,7 @@ def _override_get_db():  # noqa: ANN202
 
 def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_path):  # noqa: ANN001
     import app.api.v1.parsing as parsing_module
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     doc_id = uuid.uuid4()
@@ -94,8 +94,8 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
     dummy_doc = _DummyDoc(doc_id=doc_id, tenant_id=tenant_id, pdf_path=pdf_path)
 
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_a, **_k: dummy_doc, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "_assert_path_under_tenant_root", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda *_a, **_k: False, raising=True)
 

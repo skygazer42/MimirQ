@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.errors import ConfigError
+from app.rag.core.logging import get_logger
 from app.rag.kg.api.routes_support.common import (
     KG_EXTRACTION_ALREADY_QUEUED_DETAIL,
     KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL,
@@ -30,7 +31,9 @@ from app.rag.kg.extraction_job_options import (
 from app.rag.kg.pipeline import extract_events
 from app.rag.kg.schemas import KGExtractResponse
 from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
+
+logger = get_logger(__name__)
 
 
 def _get_extraction_document(db: Session, *, tenant_id: UUID, document_id: UUID, account_id: str) -> DBDocument:
@@ -38,8 +41,8 @@ def _get_extraction_document(db: Session, *, tenant_id: UUID, document_id: UUID,
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     return document
 
 
@@ -57,7 +60,7 @@ def _document_chunks_for_extraction(db: Session, *, tenant_id: UUID, document_id
 
 def _selected_extraction_pipeline_hash(document: DBDocument, options: KGExtractionOptions) -> str | None:
     explicit = options.pipeline_hash.strip() if isinstance(options.pipeline_hash, str) else ""
-    return explicit or _doc_pipeline_hash(getattr(document, "doc_metadata", None) or {})
+    return explicit or _doc_pipeline_hash(document.doc_metadata or {})
 
 
 def _scope_chunks_to_pipeline(
@@ -76,7 +79,7 @@ def _scope_chunks_to_pipeline(
 
 
 def _default_prompt_template_id() -> UUID | None:
-    raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+    raw_tid = settings.KG_EXTRACT_PROMPT_TEMPLATE_ID.strip()
     if not raw_tid:
         return None
     with contextlib.suppress(Exception):
@@ -85,7 +88,7 @@ def _default_prompt_template_id() -> UUID | None:
 
 
 def _document_kg_python_plugin(document: DBDocument) -> tuple[str | None, dict[str, Any]]:
-    meta = getattr(document, "doc_metadata", None)
+    meta = document.doc_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
     effective = meta_dict.get("pipeline_effective") if isinstance(meta_dict.get("pipeline_effective"), dict) else {}
     explicit = str(effective.get("kg_python_plugin") or "").strip()
@@ -105,14 +108,14 @@ def _effective_kg_extraction_options(
         pipeline_hash=_selected_extraction_pipeline_hash(document, options),
         prompt_template_id=options.prompt_template_id or _default_prompt_template_id(),
         prompt_template_key=(
-            (options.prompt_template_key or "").strip()
-            or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip()
-            or None
+            (settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY.strip() or None)
+            if options.prompt_template_key is None
+            else options.prompt_template_key
         ),
         prompt_ab_experiment_key=(
-            (options.prompt_ab_experiment_key or "").strip()
-            or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip()
-            or None
+            (settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY.strip() or None)
+            if options.prompt_ab_experiment_key is None
+            else options.prompt_ab_experiment_key
         ),
         kg_python_plugin=kg_python_plugin,
         kg_python_params=kg_python_params,
@@ -174,7 +177,7 @@ def _audit_kg_extraction(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action=action,
                 resource_type="document",
                 resource_id=str(document_id),
@@ -183,8 +186,13 @@ def _audit_kg_extraction(
         )
         db.commit()
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        logger.warning(
+            "KG extraction completed but audit logging failed: action=%s document_id=%s",
+            action,
+            document_id,
+            exc_info=True,
+        )
 
 
 async def _enqueue_kg_extraction_response(
@@ -198,32 +206,27 @@ async def _enqueue_kg_extraction_response(
     response: Response,
     effective: KGExtractionEffectiveOptions,
 ) -> KGExtractResponse:
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not bool(settings.TASK_QUEUE_ENABLED):
         raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
     try:
         from app.tasks.queue import enqueue_kg_extraction
 
-        raw_pipeline_hash = effective.pipeline_hash or (document.doc_metadata or {}).get("pipeline_hash") or None
-        pipeline_hash_for_job = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
-        pipeline_job_label = pipeline_hash_for_job or "unversioned"
+        pipeline_hash_for_job = effective.pipeline_hash
+        pipeline_job_label = "unversioned" if pipeline_hash_for_job is None else pipeline_hash_for_job
         frozen_extract_relations = (
             effective.extract_relations
             if isinstance(effective.extract_relations, bool)
-            else bool(getattr(settings, "KG_RELATION_ENABLED", False))
+            else bool(settings.KG_RELATION_ENABLED)
         )
         frozen_extract_skills = (
-            effective.extract_skills
-            if isinstance(effective.extract_skills, bool)
-            else bool(getattr(settings, "KG_SKILL_ENABLED", False))
+            effective.extract_skills if isinstance(effective.extract_skills, bool) else bool(settings.KG_SKILL_ENABLED)
         )
         effective_options = build_kg_extraction_job_options(
             pipeline_hash=pipeline_hash_for_job,
             prompt_template_id=effective.prompt_template_id,
             prompt_template_key=effective.prompt_template_key,
             prompt_ab_experiment_key=effective.prompt_ab_experiment_key,
-            extraction_backend=(
-                effective.extraction_backend or (getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip() or None
-            ),
+            extraction_backend=(effective.extraction_backend or settings.KG_EXTRACTION_BACKEND.strip() or None),
             kg_python_plugin=effective.kg_python_plugin,
             kg_python_params=effective.kg_python_params,
             replace_existing=effective.replace_existing,

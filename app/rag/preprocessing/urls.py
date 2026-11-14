@@ -7,7 +7,6 @@ without changing the URL path/host.
 This is opt-in because rewriting URLs can be surprising in some domains.
 """
 
-
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -42,7 +41,7 @@ class UrlNormalizeResult:
 
 
 def _is_tracking_key(key: str) -> bool:
-    k = (key or "").strip()
+    k = (key).strip()
     if not k:
         return False
     k_cf = k.casefold()
@@ -52,19 +51,19 @@ def _is_tracking_key(key: str) -> bool:
 
 
 def canonicalize_url(url: str, *, strip_tracking: bool = True) -> str:
-    raw = (url or "").strip()
+    raw = (url).strip()
     if not raw:
         return raw
 
     try:
         parts = urlsplit(raw)
-    except Exception:
+    except ValueError:
         return raw
 
     if parts.scheme not in {"http", "https"}:
         return raw
 
-    query = parts.query or ""
+    query = parts.query
     if strip_tracking and query:
         kept = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if not _is_tracking_key(k)]
         query = urlencode(kept, doseq=True)
@@ -73,7 +72,7 @@ def canonicalize_url(url: str, *, strip_tracking: bool = True) -> str:
 
 
 def normalize_urls(text: str, *, strip_tracking: bool = True) -> UrlNormalizeResult:
-    original = text or ""
+    original = text
     if not original:
         return UrlNormalizeResult(text="", urls_changed=0, changed=False)
 
@@ -97,7 +96,7 @@ def normalize_urls(text: str, *, strip_tracking: bool = True) -> UrlNormalizeRes
 
     # Markdown links: [text](url)
     def _md_repl(m: re.Match[str]) -> str:
-        url = m.group("url") or ""
+        url = m.group("url")
         # Only rewrite the url part; keep surrounding parens.
         return f"{m.group(1)}{_rewrite_url(url)}{m.group(3)}"
 
@@ -105,11 +104,11 @@ def normalize_urls(text: str, *, strip_tracking: bool = True) -> UrlNormalizeRes
 
     # Plain URLs.
     def _plain_repl(m: re.Match[str]) -> str:
-        return _rewrite_url(m.group("url") or "")
+        return _rewrite_url(m.group("url"))
 
     out = _PLAIN_URL_RE.sub(_plain_repl, out)
 
-    return UrlNormalizeResult(text=out, urls_changed=int(changed), changed=(out != original))
+    return UrlNormalizeResult(text=out, urls_changed=changed, changed=(out != original))
 
 
 __all__ = [

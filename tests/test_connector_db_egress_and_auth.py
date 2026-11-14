@@ -69,11 +69,9 @@ def _build_validation_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _build_runs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors as connectors_facade
     import app.api.v1.connectors_runs as runs_api
 
     tenant_id = uuid.uuid4()
-    assert runs_api.connectors_module is connectors_facade
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
@@ -90,11 +88,9 @@ def _build_runs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _build_configs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors as connectors_facade
     import app.api.v1.connectors_configs as configs_api
 
     tenant_id = uuid.uuid4()
-    assert configs_api.connectors_module is connectors_facade
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
@@ -140,7 +136,7 @@ def test_db_validate_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) 
     client = _build_validation_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        validation_api.DatasetService,
+        validation_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
@@ -157,7 +153,7 @@ def test_db_validate_rejects_private_destinations_before_connectivity_check(monk
     client = _build_validation_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        validation_api.DatasetService,
+        validation_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="owner"),
         raising=True,
@@ -192,19 +188,19 @@ def test_db_validate_rejects_private_destinations_before_connectivity_check(monk
 
 
 def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.connectors_runs as runs_api
+    import app.services.connector_run_operations as run_operations
     import app.services.rbac_service as rbac_service
 
     client = _build_runs_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        runs_api,
+        run_operations,
         "_validate_connector_run_enabled",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        rbac_service.DatasetService,
+        rbac_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
@@ -221,18 +217,18 @@ def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPat
 def test_db_run_creation_reports_blocked_destination_as_client_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_runs as runs_api
+    import app.services.connector_run_operations as run_operations
 
     client = _build_runs_client(monkeypatch=monkeypatch)
-    monkeypatch.setattr(runs_api, "_validate_connector_run_enabled", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(runs_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(run_operations, "_validate_connector_run_enabled", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(run_operations, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        runs_api.connectors_module,
-        "_resolve_writable_dataset",
+        run_operations.dataset_service,
+        "resolve_writable_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=uuid.uuid4()),
     )
     monkeypatch.setattr(
-        runs_api,
+        run_operations,
         "_validate_and_encrypt_run_config",
         lambda *_args, **_kwargs: (SimpleNamespace(host="127.0.0.1"), {}),
     )
@@ -247,19 +243,19 @@ def test_db_run_creation_reports_blocked_destination_as_client_error(
 
 
 def test_db_saved_config_run_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.connectors_configs as configs_api
+    import app.services.connector_config_operations as config_operations
     import app.services.rbac_service as rbac_service
 
     client = _build_configs_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        config_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
     )
     monkeypatch.setattr(
-        rbac_service.DatasetService,
+        rbac_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,

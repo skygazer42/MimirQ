@@ -1,20 +1,18 @@
-
 import asyncio
 import contextlib
 import json
 from dataclasses import dataclass, replace
-from typing import Any, AsyncIterator, Awaitable, Callable, cast
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 from app.core.stream_events import StreamEmitter, bind_stream_emitter, reset_stream_emitter
 from app.rag.core.logging import get_logger
-from app.services.chat_execution_runtime import ChatExecutionContext
-from app.services.chat_runtime import (
-    ChatStreamPersistInput,
+from app.services.chat_cache_runtime import (
     annotate_chat_cache_metrics,
-    apply_chat_runtime_metrics_context,
     store_chat_response_cache_if_needed,
 )
-from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+from app.services.chat_execution_runtime import ChatExecutionContext
+from app.services.chat_runtime import apply_chat_runtime_metrics_context
+from app.services.chat_stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 
 logger = get_logger(__name__)
 
@@ -45,10 +43,10 @@ def _apply_metrics_context(
     *,
     dataset_id_used: Any,
     rag_config_template_meta: dict[str, Any] | None,
-    metrics_data: Any,
+    metrics_data: dict[str, Any],
 ) -> dict[str, Any]:
     return apply_chat_runtime_metrics_context(
-        metrics_data if isinstance(metrics_data, dict) else {},
+        metrics_data,
         dataset_id_used=dataset_id_used,
         dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
         dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
@@ -113,7 +111,7 @@ def _handle_stream_event(
             event["data"]["metrics"] = dict(state.metrics_data)
     elif event_type == "token":
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
-        state.response_parts.append(str((data or {}).get("content") or ""))
+        state.response_parts.append(data["content"])
     event["request_id"] = str(request_id)
     return event
 
@@ -150,15 +148,12 @@ def _finalize_stream_session(
         db=db,
         persist_in_background=options.persist_in_background,
         spawn_background_task=options.spawn_background_task,
-        options=cast(
-            ChatStreamPersistInput,
-            replace(
-                options.persist_options,
-                content=full_response,
-                citations=state.citations_data,
-                metrics=metrics_data,
-                structured_data=state.structured_data,
-            ),
+        options=replace(
+            options.persist_options,
+            content=full_response,
+            citations=state.citations_data,
+            metrics=metrics_data,
+            structured_data=state.structured_data,
         ),
     )
 

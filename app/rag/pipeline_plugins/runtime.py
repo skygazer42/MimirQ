@@ -142,11 +142,11 @@ def _apply_registered_plugin_contracts(
         raise PythonPipelinePluginError(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise PythonPipelinePluginError(f"failed to validate plugin contract: {exc}") from exc
-    if not validation.get("ok"):
-        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+    if not validation["ok"]:
+        errors = validation["errors"]
         first = errors[0] if errors else {}
-        field = first.get("field") if isinstance(first, dict) else None
-        reason = first.get("reason") if isinstance(first, dict) else None
+        field = first.get("field")
+        reason = first.get("reason")
         raise PythonPipelinePluginError(
             f"plugin metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
         )
@@ -184,11 +184,11 @@ def _apply_registered_kg_plugin_contracts(
         raise PythonPipelinePluginError(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise PythonPipelinePluginError(f"failed to validate plugin KG contract: {exc}") from exc
-    if not validation.get("ok"):
-        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+    if not validation["ok"]:
+        errors = validation["errors"]
         first = errors[0] if errors else {}
-        field = first.get("field") if isinstance(first, dict) else None
-        reason = first.get("reason") if isinstance(first, dict) else None
+        field = first.get("field")
+        reason = first.get("reason")
         raise PythonPipelinePluginError(
             f"plugin KG metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
         )
@@ -213,9 +213,7 @@ def _invoke_plugin(
         params=params,
         context=context,
     )
-    if kwargs:
-        return func(**kwargs)
-    return func(*positional) if positional else func()
+    return func(*positional, **kwargs)
 
 
 def _plugin_call_arguments(
@@ -237,15 +235,24 @@ def _plugin_call_arguments(
     }
     kwargs: dict[str, Any] = {}
     positional: list[Any] = []
-    for name, param in signature.parameters.items():
-        if name in named_values:
-            kwargs[name] = named_values[name]
-        elif param.kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            if not positional and param.default is inspect.Parameter.empty:
+    for index, (name, param) in enumerate(signature.parameters.items()):
+        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+            if name in named_values:
+                positional.append(named_values[name])
+            elif param.default is not inspect.Parameter.empty:
+                positional.append(param.default)
+            elif index == 0:
                 positional.append(documents)
+            else:
+                break
+        elif name in named_values:
+            kwargs[name] = named_values[name]
+        elif (
+            index == 0
+            and param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            and param.default is inspect.Parameter.empty
+        ):
+            positional.append(documents)
     return positional, kwargs
 
 
@@ -257,7 +264,7 @@ def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> D
     if isinstance(item, Document):
         meta = dict(item.metadata or {})
         meta.setdefault(f"{stage}_python_plugin", plugin_ref)
-        return Document(page_content=item.page_content or "", metadata=meta, id=getattr(item, "id", None))
+        return Document(page_content=item.page_content, metadata=meta, id=getattr(item, "id", None))
 
     if isinstance(item, str):
         return Document(page_content=item, metadata={f"{stage}_python_plugin": plugin_ref})
@@ -268,10 +275,14 @@ def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> D
             content = item.get("content")
         if content is None:
             content = item.get("text")
+        if content is None:
+            raise PythonPipelinePluginError(
+                f"python plugin document at index {index} must provide page_content, content or text"
+            )
         meta = _coerce_metadata(item.get("metadata"))
         meta.setdefault(f"{stage}_python_plugin", plugin_ref)
         doc_id = item.get("id")
-        return Document(page_content=str(content or ""), metadata=meta, id=doc_id)
+        return Document(page_content=str(content), metadata=meta, id=doc_id)
 
     raise PythonPipelinePluginError(f"python plugin returned unsupported item at index {index}: {type(item).__name__}")
 
@@ -290,7 +301,7 @@ def _coerce_documents(result: Any, *, stage: str, plugin_ref: str) -> list[Docum
     out: list[Document] = []
     for idx, item in enumerate(result):
         doc = _coerce_document(item, stage=stage, plugin_ref=plugin_ref, index=idx)
-        if (doc.page_content or "").strip():
+        if (doc.page_content).strip():
             out.append(doc)
     return out
 
@@ -298,7 +309,9 @@ def _coerce_documents(result: Any, *, stage: str, plugin_ref: str) -> list[Docum
 def _coerce_uuid(value: Any) -> UUID | None:
     if isinstance(value, UUID):
         return value
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     try:
@@ -333,20 +346,29 @@ def _coerce_event_entity(item: Any, *, event_index: int, entity_index: int) -> E
         raise PythonPipelinePluginError(
             f"kg plugin returned unsupported entity at event {event_index}, index {entity_index}: {type(item).__name__}"
         )
-    name = str(item.get("name") or "").strip()
+    raw_name = item.get("name")
+    name = str(raw_name).strip() if raw_name is not None else None
     if not name:
         return None
     normalized = str(item.get("normalized_name") or item.get("normalized") or name).strip() or name
     ent_type = str(item.get("type") or "unknown").strip() or "unknown"
+    optional_text: dict[str, str | None] = {}
+    for key in ("description", "role", "evidence_quote", "evidence_source"):
+        value = item.get(key)
+        if value is not None and not isinstance(value, str):
+            raise PythonPipelinePluginError(
+                f"kg plugin entity {key} must be a string or null at event {event_index}, index {entity_index}"
+            )
+        optional_text[key] = value.strip() if value is not None else None
     return EventEntityInput(
         name=name,
         normalized_name=normalized,
         type=ent_type,
-        description=(str(item.get("description") or "").strip() or None),
+        description=optional_text["description"],
         vector=_coerce_vector(item.get("vector")),
-        role=(str(item.get("role") or "").strip() or None),
-        evidence_quote=(str(item.get("evidence_quote") or "").strip() or None),
-        evidence_source=(str(item.get("evidence_source") or "").strip() or None),
+        role=optional_text["role"],
+        evidence_quote=optional_text["evidence_quote"],
+        evidence_source=optional_text["evidence_source"],
         evidence_start_char=_coerce_int(item.get("evidence_start_char")),
         evidence_end_char=_coerce_int(item.get("evidence_end_char")),
     )
@@ -381,11 +403,12 @@ def _iter_kg_result(result: Any) -> list[Any]:
 
 
 def _kg_event_text_fields(item: dict[str, Any]) -> tuple[str, str, str]:
-    title = str(item.get("title") or "").strip()
-    summary = str(item.get("summary") or "").strip()
-    content = str(item.get("content") or "").strip()
+    raw_title, raw_summary, raw_content = item.get("title"), item.get("summary"), item.get("content")
+    title = str(raw_title).strip() if raw_title is not None else None
+    summary = str(raw_summary).strip() if raw_summary is not None else None
+    content = str(raw_content).strip() if raw_content is not None else None
     if not title:
-        title = (summary[:80] if summary else content[:80]).strip() or "KG Event"
+        title = (summary[:80] if summary else content[:80] if content else "KG Event").strip() or "KG Event"
     if not summary:
         summary = (content[:240] if content else title).strip() or title
     return title, summary, content or summary or title
@@ -456,7 +479,7 @@ def _coerce_kg_event(
     documents: list[Document],
     plugin_ref: str,
     index: int,
-) -> IndexRecord | None:
+) -> IndexRecord:
     if isinstance(item, IndexRecord):
         if item.kind != IndexKind.EVENT:
             raise PythonPipelinePluginError(f"kg plugin returned non-event IndexRecord at index {index}")
@@ -503,12 +526,11 @@ def _coerce_kg_events(result: Any, *, documents: list[Document], plugin_ref: str
     events: list[IndexRecord] = []
     for idx, item in enumerate(_iter_kg_result(result)):
         event = _coerce_kg_event(item, documents=documents, plugin_ref=plugin_ref, index=idx)
-        if event is not None:
-            try:
-                validate_no_reserved_platform_metadata_views(event.metadata, field_label="kg plugin metadata")
-            except PipelinePluginContractError as exc:
-                raise PythonPipelinePluginError(str(exc)) from exc
-            events.append(event)
+        try:
+            validate_no_reserved_platform_metadata_views(event.metadata, field_label="kg plugin metadata")
+        except PipelinePluginContractError as exc:
+            raise PythonPipelinePluginError(str(exc)) from exc
+        events.append(event)
     return events
 
 
@@ -552,11 +574,8 @@ def apply_chunk_python_plugin(
     result = _invoke_plugin(func, documents=input_documents, params=dict(params or {}), context=ctx)
     chunks = _coerce_documents(result, stage="chunk", plugin_ref=plugin_ref)
     for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta.setdefault("chunk_strategy", "python_plugin")
-        meta.setdefault("chunk_python_plugin", plugin_ref)
-        meta.setdefault("chunk_index", idx)
-        chunk.metadata = meta
+        chunk.metadata.setdefault("chunk_strategy", "python_plugin")
+        chunk.metadata.setdefault("chunk_index", idx)
     return _apply_registered_plugin_contracts(chunks, plugin_ref=plugin_ref, stage="chunk", context=ctx)
 
 

@@ -9,7 +9,7 @@ from app.core.redis_client import LazyRedisClient
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
     kwargs={"decode_responses": False},
-    enabled=lambda: bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False)),
+    enabled=lambda: settings.SAML_REPLAY_REDIS_ENABLED,
     skip_empty_url=True,
     strip_url=True,
 )
@@ -21,29 +21,27 @@ _memory_seen_until: dict[str, float] = {}
 
 def _claim_in_memory(key: str, ttl_sec: int) -> None:
     now = time.monotonic()
-    cutoff = now
     with _memory_lock:
-        expired = [seen_key for seen_key, seen_until in _memory_seen_until.items() if seen_until <= cutoff]
+        expired = [seen_key for seen_key, seen_until in _memory_seen_until.items() if seen_until <= now]
         for seen_key in expired:
-            _memory_seen_until.pop(seen_key, None)
+            del _memory_seen_until[seen_key]
 
-        seen_until = _memory_seen_until.get(key)
-        if seen_until is not None and seen_until > now:
+        if key in _memory_seen_until:
             raise HTTPException(status_code=409, detail="SAML assertion replayed")
 
-        _memory_seen_until[key] = now + float(ttl_sec)
+        _memory_seen_until[key] = now + ttl_sec
 
 
 def ensure_saml_assertion_not_replayed(assertion_id: str, *, minimum_ttl_sec: int = 0) -> None:
-    aid = str(assertion_id or "").strip()
+    aid = assertion_id.strip()
     if not aid:
         raise HTTPException(status_code=401, detail="Missing SAML replay identifier")
 
-    configured_ttl_sec = max(1, int(getattr(settings, "SAML_REPLAY_TTL_SEC", 300) or 300))
-    ttl_sec = max(configured_ttl_sec, max(0, int(minimum_ttl_sec or 0)))
+    configured_ttl_sec = max(1, settings.SAML_REPLAY_TTL_SEC or 300)
+    ttl_sec = max(configured_ttl_sec, minimum_ttl_sec)
     key = f"saml:assertion:{aid}"
 
-    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    redis_enabled = settings.SAML_REPLAY_REDIS_ENABLED
     if not redis_enabled:
         _claim_in_memory(key, ttl_sec)
         return

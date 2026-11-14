@@ -6,14 +6,14 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
+from app.api.schemas.identity import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
     kwargs={"decode_responses": False},
-    enabled=lambda: bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False)),
+    enabled=lambda: settings.SAML_REPLAY_REDIS_ENABLED,
     skip_empty_url=True,
     strip_url=True,
 )
@@ -44,10 +44,10 @@ class SamlBridgeSession(BaseModel):
 def saml_bridge_session_from_exchange(response: SamlExchangeResponse) -> SamlBridgeSession:
     return SamlBridgeSession(
         access_token=response.token.access_token,
-        expires_in=int(response.token.expires_in),
-        token_type=str(response.token.token_type or "bearer"),
+        expires_in=response.token.expires_in,
+        token_type=response.token.token_type or "bearer",
         user=response.user.model_dump(mode="json"),
-        return_to=str(response.return_to or "/") or "/",
+        return_to=response.return_to or "/",
     )
 
 
@@ -56,16 +56,16 @@ def saml_bridge_session_to_exchange(session: SamlBridgeSession) -> SamlExchangeR
         user=UserPublic.model_validate(session.user),
         token=TokenResponse(
             access_token=session.access_token,
-            expires_in=int(session.expires_in),
-            token_type=str(session.token_type or "bearer"),
+            expires_in=session.expires_in,
+            token_type=session.token_type or "bearer",
         ),
-        return_to=str(session.return_to or "/") or "/",
+        return_to=session.return_to or "/",
     )
 
 
 def _ttl_sec_for(session: SamlBridgeSession) -> int:
-    expires_in = max(1, int(session.expires_in or 0))
-    return max(1, min(_BRIDGE_TTL_SEC, expires_in))
+    expires_in = max(1, session.expires_in)
+    return min(_BRIDGE_TTL_SEC, expires_in)
 
 
 def _bridge_key(code: str) -> str:
@@ -77,8 +77,8 @@ def _issue_in_memory(code: str, payload: bytes, ttl_sec: int) -> None:
     with _memory_lock:
         expired = [key for key, (expires_at, _payload) in _memory_bridges.items() if expires_at <= now]
         for key in expired:
-            _memory_bridges.pop(key, None)
-        _memory_bridges[_bridge_key(code)] = (now + float(ttl_sec), payload)
+            del _memory_bridges[key]
+        _memory_bridges[_bridge_key(code)] = (now + ttl_sec, payload)
 
 
 def _consume_in_memory(code: str) -> bytes | None:
@@ -87,20 +87,17 @@ def _consume_in_memory(code: str) -> bytes | None:
     with _memory_lock:
         expired = [expired_key for expired_key, (expires_at, _payload) in _memory_bridges.items() if expires_at <= now]
         for expired_key in expired:
-            _memory_bridges.pop(expired_key, None)
+            del _memory_bridges[expired_key]
         stored = _memory_bridges.pop(key, None)
     if stored is None:
         return None
-    expires_at, payload = stored
-    if expires_at <= now:
-        return None
-    return payload
+    return stored[1]
 
 
 def issue_saml_bridge_session(session: SamlBridgeSession) -> str:
     payload = session.model_dump_json().encode("utf-8")
     ttl_sec = _ttl_sec_for(session)
-    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    redis_enabled = settings.SAML_REPLAY_REDIS_ENABLED
 
     for _ in range(4):
         code = secrets.token_urlsafe(24)
@@ -123,11 +120,11 @@ def issue_saml_bridge_session(session: SamlBridgeSession) -> str:
 
 
 def consume_saml_bridge_session(code: str) -> SamlBridgeSession:
-    normalized = str(code or "").strip()
+    normalized = code.strip()
     if not normalized:
         raise HTTPException(status_code=401, detail="Invalid SAML bridge session")
 
-    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    redis_enabled = settings.SAML_REPLAY_REDIS_ENABLED
     if not redis_enabled:
         payload = _consume_in_memory(normalized)
     else:

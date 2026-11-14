@@ -12,13 +12,12 @@ Buckets (v3):
 - table_heavy: spreadsheet-like content (often better served by structured indexing)
 """
 
-
 from collections.abc import Iterable
 
 
 def risk_buckets_for_file(*, file_type: str, findings: Iterable[str] | None) -> list[str]:
-    ft = str(file_type or "").strip().lower()
-    fset = {str(x or "").strip().lower() for x in (findings or []) if str(x or "").strip()}
+    ft = file_type.strip().lower()
+    fset = {x.strip().lower() for x in (findings or []) if x.strip()}
 
     buckets: set[str] = set()
 
@@ -46,4 +45,3 @@ def risk_buckets_for_file(*, file_type: str, findings: Iterable[str] | None) -> 
 
 
 __all__ = ["risk_buckets_for_file"]
-

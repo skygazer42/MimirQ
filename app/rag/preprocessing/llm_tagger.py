@@ -1,8 +1,8 @@
-
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.llm.prompts.tagger_prompts import AUTO_TAGGER_RESPONSE_SCHEMA, AUTO_TAGGER_SYSTEM_PROMPT
@@ -47,7 +47,7 @@ class LLMTaggingResult(BaseModel):
 
 
 def build_tagger_context(text: str, *, max_chars: int = 3000) -> str:
-    clean = str(text or "").strip()
+    clean = text.strip()
     max_chars_i = max(200, int(max_chars or 3000))
     if len(clean) <= max_chars_i:
         return clean
@@ -70,17 +70,20 @@ def _iter_text_values(value: Any) -> list[str]:
         return out
     if isinstance(value, dict):
         for key in ("value", "text", "name", "label"):
-            text = str(value.get(key) or "").strip()
+            candidate = value.get(key)
+            if candidate is None:
+                continue
+            text = str(candidate).strip()
             if text:
                 return [text]
-    text = str(value or "").strip()
+    text = str(value).strip()
     return [text] if text else []
 
 
 def _coerce_confidence(value: Any, default: float = 0.85) -> float:
     try:
         score = float(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         score = default
     return min(1.0, max(0.0, score))
 
@@ -92,7 +95,7 @@ def _append_document_tag(
     value: str,
     confidence: float = 0.85,
 ) -> None:
-    normalized = str(value or "").strip(" \t\r\n，,。.;；:：")
+    normalized = value.strip(" \t\r\n，,。.;；:：")
     if not normalized:
         return
     key = (tag_type, normalized.casefold())
@@ -146,7 +149,10 @@ def _normalize_span_annotations(raw: dict[str, Any], *, max_items: int) -> list[
     for item in annotations:
         if not isinstance(item, dict):
             continue
-        text = str(item.get("text") or "").strip()
+        raw_text = item.get("text")
+        if raw_text is None:
+            continue
+        text = str(raw_text).strip()
         if not text:
             continue
         raw_type = str(item.get("type") or "custom").strip().lower()
@@ -173,14 +179,16 @@ def _normalize_span_annotations(raw: dict[str, Any], *, max_items: int) -> list[
 async def extract_llm_tags(
     *,
     text: str,
-    llm_client: Any | None = None,
+    llm_client: BaseLLMClient | None = None,
     model: str | None = None,
     max_chars: int = 3000,
     max_items: int = 16,
 ) -> LLMTaggingResult:
     context = build_tagger_context(text, max_chars=max_chars)
     model_config = {"model": model} if model else None
-    llm = llm_client or await create_llm_client(scenario="governance_auto_tagging", model_config=model_config)
+    llm = llm_client
+    if llm is None:
+        llm = await create_llm_client(scenario="governance_auto_tagging", model_config=model_config)
     raw = await llm.chat_with_schema(
         [
             LLMMessage(role=LLMRole.SYSTEM, content=AUTO_TAGGER_SYSTEM_PROMPT),
@@ -191,9 +199,9 @@ async def extract_llm_tags(
         max_tokens=1200,
     )
     if not isinstance(raw, dict):
-        raw = {}
+        raise TypeError("LLM auto-tagging response must be an object")
 
-    summary = str(raw.get("summary") or "").strip() or None
+    summary = raw.get("summary")
     document_tags = _normalize_document_tags(raw, max_items=max(1, int(max_items or 16)))
     span_annotations = _normalize_span_annotations(raw, max_items=max(1, int(max_items or 16)))
     return LLMTaggingResult(

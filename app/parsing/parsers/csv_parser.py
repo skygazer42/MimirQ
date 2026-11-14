@@ -6,7 +6,6 @@ when MarkItDown is unavailable or fails. We preserve CSV structure as
 key-value rows, which works well for downstream chunking and retrieval.
 """
 
-
 import csv
 import io
 from pathlib import Path
@@ -17,15 +16,13 @@ from app.parsing.utils.text import read_text_file
 
 
 def _safe_cell(value: str, *, max_chars: int = 2000) -> str:
-    text = (value or "").replace("\r", " ").replace("\n", " ").strip()
+    text = (value).replace("\r", " ").replace("\n", " ").strip()
     if max_chars > 0 and len(text) > max_chars:
         return text[: max_chars - 1] + "…"
     return text
 
 
 def _sniff_csv_format(sample: str) -> tuple[csv.Dialect, str, bool]:
-    delimiter = ","
-    dialect: csv.Dialect = csv.excel
     try:
         sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
         dialect = sniffed
@@ -55,14 +52,12 @@ def _read_csv_rows(
     if first is None:
         return [], []
 
-    header = [c.strip() or f"col{i+1}" for i, c in enumerate(first)]
+    header = [c.strip() or f"col{i + 1}" for i, c in enumerate(first)]
     rows: list[list[str]] = []
     if not has_header:
         rows.append(first)
 
     for row in reader:
-        if row is None:
-            continue
         rows.append(row)
         if max_rows is not None and len(rows) >= max_rows:
             break
@@ -89,7 +84,7 @@ def _render_csv_content(
     for idx, row in enumerate(rows, start=1):
         pairs = []
         for j, val in enumerate(row):
-            key = header[j] if j < len(header) else f"col{j+1}"
+            key = header[j] if j < len(header) else f"col{j + 1}"
             pairs.append(f"{key}={_safe_cell(val, max_chars=max_cell_chars)}")
         out.write(f"row {idx}: " + " | ".join(pairs) + "\n")
 
@@ -105,7 +100,7 @@ class CsvParser:
 
     def parse(self, file_path: Path) -> list[Document]:
         decoded = read_text_file(file_path)
-        raw = decoded.text or ""
+        raw = decoded.text
         sample = raw[:8192]
         dialect, delimiter, has_header = _sniff_csv_format(sample)
         header, rows = _read_csv_rows(
@@ -128,7 +123,7 @@ class CsvParser:
             "file_type": "csv",
             "csv_delimiter": delimiter,
             "csv_has_header": bool(has_header),
-            "csv_rows_emitted": int(row_count),
+            "csv_rows_emitted": row_count,
             "encoding": decoded.encoding,
             "encoding_confidence": decoded.confidence,
             "encoding_had_bom": decoded.had_bom,

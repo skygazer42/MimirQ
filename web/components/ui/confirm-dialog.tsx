@@ -6,13 +6,13 @@
  * - keyboard/focus behavior (Radix)
  * - reduced-motion support
  */
-"use client"
+'use client'
 
-import * as React from "react"
-import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
+import * as React from 'react'
+import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 import { useTranslations } from 'next-intl'
 
-import { buttonVariants, type ButtonProps } from "@/components/ui/button"
+import { buttonVariants, type ButtonProps } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from '@/components/ui/alert-dialog'
 import { cn, detachPromise } from '@/lib/utils'
 
 type ConfirmDialogProps = {
@@ -30,7 +30,7 @@ type ConfirmDialogProps = {
   description?: React.ReactNode
   confirmLabel?: string
   cancelLabel?: string
-  confirmVariant?: ButtonProps["variant"]
+  confirmVariant?: ButtonProps['variant']
   confirmDisabled?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -43,7 +43,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   cancelLabel,
-  confirmVariant = "destructive",
+  confirmVariant = 'destructive',
   confirmDisabled = false,
   open,
   onOpenChange,
@@ -68,7 +68,7 @@ export function ConfirmDialog({
             type="button"
             disabled={confirmDisabled}
             onClick={() => detachPromise(onConfirm())}
-            className={cn(buttonVariants({ variant: confirmVariant, size: "sm" }), "transition-colors duration-150")}
+            className={cn(buttonVariants({ variant: confirmVariant, size: 'sm' }), 'transition-colors duration-150')}
           >
             {resolvedConfirmLabel}
           </AlertDialogPrimitive.Action>

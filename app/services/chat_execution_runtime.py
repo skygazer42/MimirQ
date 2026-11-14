@@ -2,17 +2,21 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
+from app.api.schemas.conversations import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.http import httpx_trust_env
 from app.rag.retrieval.source_labels import derive_document_title, maybe_build_source_identification_answer
+
+if TYPE_CHECKING:
+    from app.rag.engine import RAGEngine
 
 
 @dataclass(frozen=True)
@@ -28,14 +32,14 @@ class ChatExecutionContext:
     db: Session
     tenant_id: UUID
     account_id: str
-    request: Any
+    request: ChatRequest
     conversation_id: UUID | None
     request_id: str
     doc_ids_to_use: list[UUID]
     history_for_llm: list[dict[str, Any]]
     scope_dataset_id: UUID | None
     dataset_id_used: UUID | None
-    effective_rag_config: Any
+    effective_rag_config: ChatRAGConfig
     effective_prompt_template_id: UUID | None
     effective_prompt_template_key: str | None
     effective_prompt_ab_experiment_key: str | None
@@ -75,10 +79,10 @@ def is_model_provider_unavailable_error(exc: BaseException) -> bool:
 
 
 def _model_provider_circuit_key() -> str:
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
-    api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
-    mock_enabled = bool(getattr(settings, "LLM_MOCK_ENABLED", False))
+    api_key = settings.LLM_API_KEY.strip()
+    model = settings.LLM_MODEL.strip()
+    api_base = settings.LLM_API_BASE.strip()
+    mock_enabled = bool(settings.LLM_MOCK_ENABLED)
     digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     return "|".join((api_base, model, digest, str(mock_enabled)))
 
@@ -102,7 +106,7 @@ def mark_model_provider_unavailable(*, ttl_sec: float = _MODEL_PROVIDER_UNAVAILA
 
 def is_model_provider_unavailable_circuit_open() -> bool:
     _ensure_model_provider_circuit_key()
-    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+    if bool(settings.LLM_MOCK_ENABLED):
         return False
     return time.monotonic() < _MODEL_PROVIDER_UNAVAILABLE_UNTIL
 
@@ -118,7 +122,7 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
 
     _ensure_model_provider_circuit_key()
     now = time.monotonic()
-    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+    if bool(settings.LLM_MOCK_ENABLED):
         _MODEL_PROVIDER_AVAILABLE_UNTIL = now + _MODEL_PROVIDER_AVAILABLE_TTL_SEC
         return True, None
     if now < _MODEL_PROVIDER_UNAVAILABLE_UNTIL:
@@ -126,9 +130,9 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
     if now < _MODEL_PROVIDER_AVAILABLE_UNTIL:
         return True, None
 
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
-    api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+    api_key = settings.LLM_API_KEY.strip()
+    model = settings.LLM_MODEL.strip()
+    api_base = settings.LLM_API_BASE.strip()
     if not api_key or not model or not api_base:
         mark_model_provider_unavailable()
         return False, "LLM_API_KEY/LLM_API_BASE/LLM_MODEL is not configured"
@@ -176,8 +180,8 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
         return True, None
 
 
-def _clean_snippet(value: Any, *, max_chars: int = 320) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
+def _clean_snippet(value: str, *, max_chars: int = 320) -> str:
+    text = re.sub(r"\s+", " ", value).strip()
     if len(text) <= max_chars:
         return text
     return text[: max(0, max_chars - 1)].rstrip() + "..."
@@ -220,7 +224,7 @@ _EXTRACTIVE_STOPWORDS = {
 def _question_terms(question: str) -> set[str]:
     terms = {
         token
-        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", str(question or "").lower())
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", question.lower())
         if token not in _EXTRACTIVE_STOPWORDS and len(token) >= 3
     }
     return terms
@@ -260,8 +264,8 @@ def _best_snippet_candidate(*, candidates: list[str], terms: set[str], max_chars
     return best_segment
 
 
-def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 320) -> str:
-    raw = str(content or "")
+def _select_relevant_snippet(*, question: str, content: str, max_chars: int = 320) -> str:
+    raw = content
     if not raw.strip():
         return ""
 
@@ -294,16 +298,7 @@ def _citation_document_name(citation: dict[str, Any], *, index: int) -> str:
 
 
 def _citation_content(citation: dict[str, Any]) -> str:
-    meta = _citation_metadata(citation)
-    return str(
-        citation.get("chunk_content")
-        or citation.get("content")
-        or citation.get("text")
-        or meta.get("chunk_content")
-        or meta.get("content")
-        or meta.get("text")
-        or ""
-    )
+    return citation["chunk_content"]
 
 
 def _extractive_source_answer_from_citations(*, question: str, citations: list[dict[str, Any]]) -> str | None:
@@ -379,11 +374,11 @@ def _append_unique_evidence_row(
     seen: set[tuple[str, str]],
     max_items: int,
     doc_name: Any,
-    content: Any,
+    content: str,
     row: dict[str, Any],
 ) -> bool:
-    key = (str(doc_name), str(content))
-    if key in seen or not str(content).strip():
+    key = (str(doc_name), content)
+    if key in seen or not content.strip():
         return False
     seen.add(key)
     rows.append(row)
@@ -393,7 +388,7 @@ def _append_unique_evidence_row(
 def _doc_evidence_row(doc: Any) -> tuple[Any, Any, dict[str, Any]]:
     meta = getattr(doc, "metadata", None) or {}
     doc_name = meta.get("document_name") or meta.get("filename") or meta.get("source") or "文档"
-    content = getattr(doc, "page_content", None) or ""
+    content = doc.page_content
     return doc_name, content, {"document_name": doc_name, "chunk_content": content}
 
 
@@ -408,13 +403,7 @@ def _citation_evidence_row(citation: dict[str, Any]) -> tuple[Any, Any, dict[str
         or meta.get("source")
         or "引用"
     )
-    content = (
-        citation.get("chunk_content")
-        or citation.get("content")
-        or citation.get("text")
-        or meta.get("chunk_content")
-        or ""
-    )
+    content = citation["chunk_content"]
     return doc_name, content, dict(citation)
 
 
@@ -438,10 +427,14 @@ def build_extractive_fallback_answer(
 
     question_text = _clean_snippet(question, max_chars=180)
     evidence_lines = "\n".join(usable)
-    direct_answer = str(direct_answer_override or "").strip() or _extractive_direct_answer(
-        question=question,
-        citations=citations[: max(1, max_items)],
-    )
+    direct_answer = direct_answer_override
+    if direct_answer is not None:
+        direct_answer = direct_answer.strip()
+    if not direct_answer:
+        direct_answer = _extractive_direct_answer(
+            question=question,
+            citations=citations[: max(1, max_items)],
+        )
     direct_answer_section = f"\n\n结论：{direct_answer}" if direct_answer else ""
     prefix = (
         "以下为基于已检索引用生成的抽取式可审计摘要。"
@@ -532,44 +525,41 @@ def _source_identification_answer_from_citations(
     if doc_id is None:
         return None
 
-    try:
-        from app.models.document import Document as DBDocument
-        from app.models.document import DocumentChunk
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
 
-        q = db.query(DBDocument).filter(DBDocument.id == doc_id)
-        if tenant_id is not None:
-            q = q.filter(DBDocument.tenant_id == tenant_id)
-        document = q.first()
-        if document is None:
-            return None
-
-        cq = db.query(DocumentChunk.content).filter(
-            DocumentChunk.document_id == doc_id,
-            DocumentChunk.chunk_index == 0,
-        )
-        if tenant_id is not None:
-            cq = cq.filter(DocumentChunk.tenant_id == tenant_id)
-        first_chunk_content = cq.scalar()
-
-        filename = str(getattr(document, "filename", "") or "").strip()
-        doc_meta = getattr(document, "doc_metadata", None)
-        doc_meta = doc_meta if isinstance(doc_meta, dict) else {}
-        title = derive_document_title(
-            filename=filename,
-            doc_metadata=doc_meta,
-            first_chunk_content=first_chunk_content,
-        )
-        source_doc = Document(
-            page_content="",
-            metadata={
-                "document_title": title,
-                "filename": filename,
-                "source": filename or str(first.get("document_name") or ""),
-            },
-        )
-        return maybe_build_source_identification_answer(question=question, docs=[source_doc])
-    except Exception:
+    q = db.query(DBDocument).filter(DBDocument.id == doc_id)
+    if tenant_id is not None:
+        q = q.filter(DBDocument.tenant_id == tenant_id)
+    document = q.first()
+    if document is None:
         return None
+
+    cq = db.query(DocumentChunk.content).filter(
+        DocumentChunk.document_id == doc_id,
+        DocumentChunk.chunk_index == 0,
+    )
+    if tenant_id is not None:
+        cq = cq.filter(DocumentChunk.tenant_id == tenant_id)
+    first_chunk_content = cq.scalar()
+
+    filename = document.filename.strip()
+    doc_meta = document.doc_metadata
+    doc_meta = doc_meta if isinstance(doc_meta, dict) else {}
+    title = derive_document_title(
+        filename=filename,
+        doc_metadata=doc_meta,
+        first_chunk_content=first_chunk_content,
+    )
+    source_doc = Document(
+        page_content="",
+        metadata={
+            "document_title": title,
+            "filename": filename,
+            "source": filename or first["document_name"],
+        },
+    )
+    return maybe_build_source_identification_answer(question=question, docs=[source_doc])
 
 
 def execute_extractive_fallback_once(
@@ -577,12 +567,12 @@ def execute_extractive_fallback_once(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     doc_ids_to_use: list[UUID],
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     original_error: BaseException | None = None,
     reason: str = "model_provider_unavailable",
 ) -> ExecutedGraphChatOnceResult:
@@ -591,10 +581,10 @@ def execute_extractive_fallback_once(
     from app.rag.retrieval.orchestrator import run_retrieval
 
     explicit_mode = reason == "explicit_extractive_answer_mode"
-    requested_top_k = max(1, min(int(getattr(effective_rag_config, "top_k", 6) or 6), 100))
+    requested_top_k = max(1, min(int(effective_rag_config.top_k or 6), 100))
     top_k = requested_top_k if explicit_mode else max(1, min(requested_top_k, 6))
     answer_evidence_max_items = max(4, min(top_k, 20)) if explicit_mode else 4
-    retrieval_mode = str(getattr(effective_rag_config, "retrieval_mode", "hybrid") or "hybrid")
+    retrieval_mode = str(effective_rag_config.retrieval_mode or "hybrid")
     state = build_rag_state(
         question=request.message,
         history=history_for_llm,
@@ -603,94 +593,60 @@ def execute_extractive_fallback_once(
         account_id=account_id,
         dataset_id=dataset_id_used or scope_dataset_id,
         top_k=top_k,
-        score_threshold=getattr(effective_rag_config, "score_threshold", 0.0),
+        score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=retrieval_mode,
-        retrieval_profile=(getattr(effective_rag_config, "retrieval_profile", None) if explicit_mode else None),
-        retrieval_contract_mode=(
-            getattr(effective_rag_config, "retrieval_contract_mode", None) if explicit_mode else None
-        ),
-        must_recall=(getattr(effective_rag_config, "must_recall", None) if explicit_mode else None),
+        retrieval_profile=(effective_rag_config.retrieval_profile if explicit_mode else None),
+        retrieval_contract_mode=(effective_rag_config.retrieval_contract_mode if explicit_mode else None),
+        must_recall=(effective_rag_config.must_recall if explicit_mode else None),
         must_recall_expected_source_keys=(
-            getattr(effective_rag_config, "must_recall_expected_source_keys", None) if explicit_mode else None
+            effective_rag_config.must_recall_expected_source_keys if explicit_mode else None
         ),
         must_recall_required_anchor_fields=(
-            getattr(effective_rag_config, "must_recall_required_anchor_fields", None) if explicit_mode else None
+            effective_rag_config.must_recall_required_anchor_fields if explicit_mode else None
         ),
-        intent_router=(getattr(effective_rag_config, "intent_router", None) if explicit_mode else None),
-        intent_router_policy=(getattr(effective_rag_config, "intent_router_policy", None) if explicit_mode else None),
-        industry_rules_enabled=(
-            getattr(effective_rag_config, "industry_rules_enabled", None) if explicit_mode else None
-        ),
-        industry_rules_rulesets=(
-            getattr(effective_rag_config, "industry_rules_rulesets", None) if explicit_mode else None
-        ),
-        enable_query_alias_expansion=(
-            getattr(effective_rag_config, "enable_query_alias_expansion", None) if explicit_mode else None
-        ),
-        query_aliases=(getattr(effective_rag_config, "query_aliases", None) if explicit_mode else None),
-        query_alias_max_queries=(
-            getattr(effective_rag_config, "query_alias_max_queries", None) if explicit_mode else None
-        ),
-        enable_multi_query=(getattr(effective_rag_config, "enable_multi_query", None) if explicit_mode else False),
-        multi_query_count=(getattr(effective_rag_config, "multi_query_count", None) if explicit_mode else None),
-        multi_query_temperature=(
-            getattr(effective_rag_config, "multi_query_temperature", None) if explicit_mode else None
-        ),
-        multi_query_max_chars=(getattr(effective_rag_config, "multi_query_max_chars", None) if explicit_mode else None),
-        enable_hyde=(getattr(effective_rag_config, "enable_hyde", None) if explicit_mode else False),
-        enable_query_decomposition=(
-            getattr(effective_rag_config, "enable_query_decomposition", None) if explicit_mode else None
-        ),
-        enable_hierarchy_recall=(
-            getattr(effective_rag_config, "enable_hierarchy_recall", None) if explicit_mode else None
-        ),
-        hierarchy_family_collapse=(
-            getattr(effective_rag_config, "hierarchy_family_collapse", None) if explicit_mode else None
-        ),
-        hierarchy_family_aggregation=(
-            getattr(effective_rag_config, "hierarchy_family_aggregation", None) if explicit_mode else None
-        ),
-        hierarchy_tree_dedup=(getattr(effective_rag_config, "hierarchy_tree_dedup", None) if explicit_mode else None),
-        hierarchy_parent_depth=(
-            getattr(effective_rag_config, "hierarchy_parent_depth", None) if explicit_mode else None
-        ),
-        hierarchy_sibling_window=(
-            getattr(effective_rag_config, "hierarchy_sibling_window", None) if explicit_mode else None
-        ),
-        hierarchy_overfetch_factor=(
-            getattr(effective_rag_config, "hierarchy_overfetch_factor", None) if explicit_mode else None
-        ),
-        enable_kg_query_expansion=(
-            getattr(effective_rag_config, "enable_kg_query_expansion", None) if explicit_mode else None
-        ),
-        enable_kg_chunk_injection=(
-            getattr(effective_rag_config, "enable_kg_chunk_injection", None) if explicit_mode else None
-        ),
-        kg_chunk_injection_max_chunks=(
-            getattr(effective_rag_config, "kg_chunk_injection_max_chunks", None) if explicit_mode else None
-        ),
-        enable_kg_chunk_boost=(getattr(effective_rag_config, "enable_kg_chunk_boost", None) if explicit_mode else None),
-        kg_chunk_boost_weight=(getattr(effective_rag_config, "kg_chunk_boost_weight", None) if explicit_mode else None),
-        kg_chunk_boost_max_promoted=(
-            getattr(effective_rag_config, "kg_chunk_boost_max_promoted", None) if explicit_mode else None
-        ),
+        intent_router=(effective_rag_config.intent_router if explicit_mode else None),
+        intent_router_policy=(effective_rag_config.intent_router_policy if explicit_mode else None),
+        industry_rules_enabled=(effective_rag_config.industry_rules_enabled if explicit_mode else None),
+        industry_rules_rulesets=(effective_rag_config.industry_rules_rulesets if explicit_mode else None),
+        enable_query_alias_expansion=(effective_rag_config.enable_query_alias_expansion if explicit_mode else None),
+        query_aliases=(effective_rag_config.query_aliases if explicit_mode else None),
+        query_alias_max_queries=(effective_rag_config.query_alias_max_queries if explicit_mode else None),
+        enable_multi_query=(effective_rag_config.enable_multi_query if explicit_mode else False),
+        multi_query_count=(effective_rag_config.multi_query_count if explicit_mode else None),
+        multi_query_temperature=(effective_rag_config.multi_query_temperature if explicit_mode else None),
+        multi_query_max_chars=(effective_rag_config.multi_query_max_chars if explicit_mode else None),
+        enable_hyde=(effective_rag_config.enable_hyde if explicit_mode else False),
+        enable_query_decomposition=(effective_rag_config.enable_query_decomposition if explicit_mode else None),
+        enable_hierarchy_recall=(effective_rag_config.enable_hierarchy_recall if explicit_mode else None),
+        hierarchy_family_collapse=(effective_rag_config.hierarchy_family_collapse if explicit_mode else None),
+        hierarchy_family_aggregation=(effective_rag_config.hierarchy_family_aggregation if explicit_mode else None),
+        hierarchy_tree_dedup=(effective_rag_config.hierarchy_tree_dedup if explicit_mode else None),
+        hierarchy_parent_depth=(effective_rag_config.hierarchy_parent_depth if explicit_mode else None),
+        hierarchy_sibling_window=(effective_rag_config.hierarchy_sibling_window if explicit_mode else None),
+        hierarchy_overfetch_factor=(effective_rag_config.hierarchy_overfetch_factor if explicit_mode else None),
+        enable_kg_query_expansion=(effective_rag_config.enable_kg_query_expansion if explicit_mode else None),
+        enable_kg_chunk_injection=(effective_rag_config.enable_kg_chunk_injection if explicit_mode else None),
+        kg_chunk_injection_max_chunks=(effective_rag_config.kg_chunk_injection_max_chunks if explicit_mode else None),
+        enable_kg_chunk_boost=(effective_rag_config.enable_kg_chunk_boost if explicit_mode else None),
+        kg_chunk_boost_weight=(effective_rag_config.kg_chunk_boost_weight if explicit_mode else None),
+        kg_chunk_boost_max_promoted=(effective_rag_config.kg_chunk_boost_max_promoted if explicit_mode else None),
         enable_query_rewrite=False,
-        alpha=getattr(effective_rag_config, "alpha", None),
-        fusion_strategy=getattr(effective_rag_config, "fusion_strategy", None),
-        fusion_budgets=getattr(effective_rag_config, "fusion_budgets", None),
-        fusion_min_scores=getattr(effective_rag_config, "fusion_min_scores", None),
-        fusion_weights=getattr(effective_rag_config, "fusion_weights", None),
-        enable_weight_rerank=getattr(effective_rag_config, "enable_weight_rerank", None),
-        vector_weight=getattr(effective_rag_config, "vector_weight", None),
-        keyword_weight=getattr(effective_rag_config, "keyword_weight", None),
-        mmr_lambda=getattr(effective_rag_config, "mmr_lambda", None),
-        enable_reranker=(getattr(effective_rag_config, "enable_reranker", None) if explicit_mode else False),
-        reranker_provider=(getattr(effective_rag_config, "reranker_provider", None) if explicit_mode else None),
-        reranker_top_n=(getattr(effective_rag_config, "reranker_top_n", None) if explicit_mode else None),
-        sparse_retrieval_enabled=getattr(effective_rag_config, "sparse_retrieval_enabled", None),
-        sparse_retrieval_provider=getattr(effective_rag_config, "sparse_retrieval_provider", None),
-        visible_evidence_only=getattr(effective_rag_config, "visible_evidence_only", None),
-        metadata_filter=getattr(effective_rag_config, "metadata_filter", None),
+        alpha=effective_rag_config.alpha,
+        fusion_strategy=effective_rag_config.fusion_strategy,
+        fusion_budgets=effective_rag_config.fusion_budgets,
+        fusion_min_scores=effective_rag_config.fusion_min_scores,
+        fusion_weights=effective_rag_config.fusion_weights,
+        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+        vector_weight=effective_rag_config.vector_weight,
+        keyword_weight=effective_rag_config.keyword_weight,
+        mmr_lambda=effective_rag_config.mmr_lambda,
+        enable_reranker=(effective_rag_config.enable_reranker if explicit_mode else False),
+        reranker_provider=(effective_rag_config.reranker_provider if explicit_mode else None),
+        reranker_top_n=(effective_rag_config.reranker_top_n if explicit_mode else None),
+        sparse_retrieval_enabled=effective_rag_config.sparse_retrieval_enabled,
+        sparse_retrieval_provider=effective_rag_config.sparse_retrieval_provider,
+        visible_evidence_only=effective_rag_config.visible_evidence_only,
+        metadata_filter=effective_rag_config.metadata_filter,
         db=db,
     )
     result = run_retrieval(state) or {}
@@ -743,7 +699,7 @@ def _graph_runtime_context(
     }
 
 
-def _graph_modality_meta(*, request: Any) -> tuple[str, dict[str, Any]]:
+def _graph_modality_meta(*, request: ChatRequest) -> tuple[str, dict[str, Any]]:
     multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
     try:
         from app.rag.policy.modality_router import classify_query_modality
@@ -764,69 +720,31 @@ def _graph_tag_context_docs(
     db: Session,
     tenant_id: UUID,
     doc_ids_to_use: list[UUID],
-    request: Any,
-    effective_rag_config: Any,
+    request: ChatRequest,
+    effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any]]:
     try:
-        import inspect
-
         from app.services.chat_tag_service import build_chat_tag_context_docs
 
-        tag_kwargs: dict[str, Any] = {
-            "tenant_id": tenant_id,
-            "document_ids": doc_ids_to_use,
-            "question": request.message,
-        }
-        if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
-            tag_kwargs["must_recall_expected_source_keys"] = effective_rag_config.must_recall_expected_source_keys
-        tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
+        tag_docs, tag_meta = build_chat_tag_context_docs(
+            db,
+            tenant_id=tenant_id,
+            document_ids=doc_ids_to_use,
+            question=request.message,
+            must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        )
         return list(tag_docs or []), tag_meta
     except Exception as exc:  # noqa: BLE001
         return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
-
-
-def _graph_image_context_docs(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    modality: str,
-    dataset_id_used: UUID | None,
-    scope_dataset_id: UUID | None,
-) -> tuple[list[Any], dict[str, Any]]:
-    try:
-        if str(modality or "text").lower().strip() != "image":
-            return [], {"enabled": False, "used": False, "reason": "not_run"}
-
-        from app.services.chat_image_service import build_chat_image_context_docs
-
-        ds_for_images = dataset_id_used or scope_dataset_id
-        if ds_for_images is None:
-            return [], {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=ds_for_images,
-            question=request.message,
-            top_k=6,
-        )
-        return list(image_docs or []), image_meta
-    except Exception as exc:  # noqa: BLE001
-        return [], {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
 
 
 def _graph_multimodal_enrichment(
     *,
     db: Session,
     tenant_id: UUID,
-    account_id: str,
-    request: Any,
+    request: ChatRequest,
     doc_ids_to_use: list[UUID],
-    dataset_id_used: UUID | None,
-    scope_dataset_id: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     modality, multimodal_meta = _graph_modality_meta(request=request)
     tag_docs, tag_meta = _graph_tag_context_docs(
@@ -836,16 +754,8 @@ def _graph_multimodal_enrichment(
         request=request,
         effective_rag_config=effective_rag_config,
     )
-    image_docs, image_meta = _graph_image_context_docs(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        request=request,
-        modality=modality,
-        dataset_id_used=dataset_id_used,
-        scope_dataset_id=scope_dataset_id,
-    )
-    return [*tag_docs, *image_docs], multimodal_meta, tag_meta, image_meta
+    image_meta = {"enabled": False, "used": False, "reason": "image_vector_retrieval_retired"}
+    return tag_docs, multimodal_meta, tag_meta, image_meta
 
 
 def _apply_source_identification_override(
@@ -885,7 +795,7 @@ def _setdefault_graph_metrics(
 def _parse_graph_structured_output(
     *,
     parse_json_from_text,
-    request: Any,
+    request: ChatRequest,
     full_response: str,
     metrics_data: dict[str, Any],
 ) -> object | None:
@@ -1003,11 +913,8 @@ def execute_graph_chat_once(
     injected_docs, multimodal_meta, tag_meta, image_meta = _graph_multimodal_enrichment(
         db=db,
         tenant_id=tenant_id,
-        account_id=account_id,
         request=request,
         doc_ids_to_use=doc_ids_to_use,
-        dataset_id_used=dataset_id_used,
-        scope_dataset_id=scope_dataset_id,
         effective_rag_config=effective_rag_config,
     )
     if injected_docs:
@@ -1019,17 +926,17 @@ def execute_graph_chat_once(
     state.pop("db", None)
     db.rollback()
 
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
     graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
 
     citations_data = graph_result.get("citations") or []
-    full_response = graph_result.get("answer") or ""
+    full_response = graph_result["answer"]
     metrics_data = dict(graph_result.get("metrics") or {})
     full_response = _apply_source_identification_override(
         db=db,
         tenant_id=tenant_id,
-        question=str(request.message or ""),
+        question=request.message,
         citations_data=citations_data,
         full_response=full_response,
         metrics_data=metrics_data,
@@ -1057,7 +964,7 @@ def execute_graph_chat_once(
 
 async def execute_langchain_chat_once(
     *,
-    engine: Any,
+    engine: "RAGEngine",
     context: ChatExecutionContext,
 ) -> ExecutedGraphChatOnceResult:
     db = context.db
@@ -1148,7 +1055,7 @@ async def execute_langchain_chat_once(
             citations_data = event.get("data") or []
         elif etype == "token":
             data = event.get("data") or {}
-            full_response_parts.append(str(data.get("content") or ""))
+            full_response_parts.append(data["content"])
         elif etype == "done":
             done_data = event.get("data") or {}
         elif etype == "error":
@@ -1161,7 +1068,7 @@ async def execute_langchain_chat_once(
     source_answer = _source_identification_answer_from_citations(
         db=db,
         tenant_id=tenant_id,
-        question=str(request.message or ""),
+        question=request.message,
         citations=[c for c in citations_data if isinstance(c, dict)],
     )
     if source_answer:

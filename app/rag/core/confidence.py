@@ -1,6 +1,16 @@
-
 import math
-from typing import Any
+from typing import Any, TypedDict
+
+
+class _ConfidenceReason(TypedDict):
+    signal: str
+    value: float | str
+
+
+class ConfidenceScore(TypedDict):
+    score: float | None
+    band: str
+    reasons: list[_ConfidenceReason]
 
 
 def _clamp_unit(value: Any) -> float | None:
@@ -17,7 +27,7 @@ def _resolve_gap_score(evidence_gap: dict[str, Any] | None) -> tuple[float, str]
     if not isinstance(evidence_gap, dict):
         return 0.9, "unavailable"
 
-    severity = str(evidence_gap.get("severity") or "").strip().lower()
+    severity = evidence_gap["severity"].strip().lower()
     has_gap = bool(evidence_gap.get("has_gap"))
     if not has_gap or severity in {"", "none"}:
         return 0.9, "none"
@@ -46,11 +56,11 @@ def compute_confidence_score(
     claim_total: int | None,
     claim_supported: int | None,
     evidence_gap: dict[str, Any] | None,
-) -> dict[str, Any]:
+) -> ConfidenceScore:
     """Aggregate existing retrieval and answer-quality signals into a simple score."""
 
     signals: list[tuple[float, float]] = []
-    reasons: list[dict[str, Any]] = []
+    reasons: list[_ConfidenceReason] = []
 
     faithfulness = _clamp_unit(faithfulness_score)
     if faithfulness is not None:
@@ -74,7 +84,7 @@ def compute_confidence_score(
         return {"score": None, "band": "unknown", "reasons": reasons}
 
     total_weight = sum(weight for _, weight in signals)
-    raw_score = sum(value * weight for value, weight in signals) / total_weight if total_weight else 0.0
+    raw_score = sum(value * weight for value, weight in signals) / total_weight
     score = round(max(0.0, min(1.0, raw_score)), 1)
     return {"score": score, "band": _band_for_score(score), "reasons": reasons}
 

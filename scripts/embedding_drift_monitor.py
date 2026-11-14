@@ -16,7 +16,7 @@ def _utc_compact_timestamp() -> str:
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
+        return UUID(value)
     except Exception as exc:  # noqa: BLE001
         raise argparse.ArgumentTypeError("value must be a valid UUID") from exc
 
@@ -43,15 +43,15 @@ def main(argv: list[str] | None = None) -> int:
             tenant_id=args.tenant_id,
             dataset_id=args.dataset_id,
             document_id=args.document_id,
-            sample_n=int(args.sample_n or 0),
-            drift_threshold=float(args.threshold),
-            max_ids_per_query=int(args.max_ids_per_query or 0),
-            max_content_chars=int(args.max_content_chars or 0),
+            sample_n=args.sample_n,
+            drift_threshold=args.threshold,
+            max_ids_per_query=args.max_ids_per_query,
+            max_content_chars=args.max_content_chars,
         )
     finally:
         db.close()
 
-    out_path = Path(str(args.out or "").strip() or default_out)
+    out_path = Path(args.out.strip() or default_out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

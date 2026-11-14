@@ -1,4 +1,5 @@
 """Stage result dataclasses for the document processor pipeline."""
+
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID

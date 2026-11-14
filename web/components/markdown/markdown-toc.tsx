@@ -7,18 +7,13 @@ import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/li
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
-function useScrollSpy(
-  headingIds: string[],
-  scrollContainerSelector?: string
-): string | null {
+function useScrollSpy(headingIds: string[], scrollContainerSelector?: string): string | null {
   const [activeId, setActiveId] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || headingIds.length === 0) return
 
-    const root = scrollContainerSelector
-      ? document.querySelector(scrollContainerSelector)
-      : null
+    const root = scrollContainerSelector ? document.querySelector(scrollContainerSelector) : null
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -34,7 +29,7 @@ function useScrollSpy(
         root: root ?? undefined,
         rootMargin: '-10% 0px -70% 0px',
         threshold: 0,
-      }
+      },
     )
 
     const elements: Element[] = []
@@ -70,10 +65,7 @@ export const MarkdownToc = memo(function MarkdownToc({
   onNavigate?: (id: string) => void
   scrollContainerSelector?: string
 }>) {
-  const headings = useMemo(
-    () => extractMarkdownHeadings(markdown || '', { maxDepth }),
-    [markdown, maxDepth]
-  )
+  const headings = useMemo(() => extractMarkdownHeadings(markdown || '', { maxDepth }), [markdown, maxDepth])
 
   const headingIds = useMemo(() => headings.map((h) => h.id), [headings])
   const activeId = useScrollSpy(headingIds, scrollContainerSelector)
@@ -100,9 +92,7 @@ export const MarkdownToc = memo(function MarkdownToc({
 
   return (
     <nav className={cn('text-sm', className)} aria-label="Table of contents">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-        {title}
-      </div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">{title}</div>
       <ul className="mt-2 space-y-0.5">
         {headings.map((h) => {
           const isActive = activeId === h.id
@@ -115,7 +105,7 @@ export const MarkdownToc = memo(function MarkdownToc({
                   'w-full text-left text-[13px] leading-5 truncate rounded-md px-1.5 py-0.5 transition-colors',
                   isActive
                     ? 'font-medium text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/35'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/35',
                 )}
                 style={{ paddingLeft: `${Math.max(0, h.level - 1) * 12 + 6}px` }}
                 title={h.text}

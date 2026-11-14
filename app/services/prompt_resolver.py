@@ -8,7 +8,6 @@ persist the choice into message_metadata for evaluation loops (A/B comparisons,
 user feedback correlation, regression datasets, and more).
 """
 
-
 import hashlib
 from uuid import UUID
 
@@ -35,7 +34,7 @@ def _weighted_variants(variants: list[PromptTemplate]) -> tuple[list[float], flo
     weights: list[float] = []
     total = 0.0
     for variant in variants:
-        weight = float(getattr(variant, "ab_weight", 1.0) or 0.0)
+        weight = variant.ab_weight or 0.0
         if weight < 0:
             weight = 0.0
         weights.append(weight)
@@ -77,8 +76,8 @@ def resolve_prompt_template(
     tenant_id: UUID,
     prompt_template_id: UUID | None = None,
     template_key: str | None = None,
-    ab_experiment_key: str | None = None,
-    ab_user_key: str | None = None,
+    ab_experiment_key: str | None,
+    ab_user_key: str | None,
 ) -> PromptTemplate | None:
     """
     Resolve the final PromptTemplate to use (returns ORM object).
@@ -100,11 +99,7 @@ def resolve_prompt_template(
     query = _active_prompt_template_query(db=db, tenant_id=tenant_id)
 
     if template_key:
-        return (
-            query.filter(PromptTemplate.template_key == template_key)
-            .order_by(PromptTemplate.version.desc())
-            .first()
-        )
+        return query.filter(PromptTemplate.template_key == template_key).order_by(PromptTemplate.version.desc()).first()
 
     if ab_experiment_key:
         return _resolve_ab_variant(query=query, ab_experiment_key=ab_experiment_key, ab_user_key=ab_user_key)

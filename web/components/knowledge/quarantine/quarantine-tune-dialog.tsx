@@ -1,6 +1,6 @@
 'use client'
 
-import { RotateCcw, Settings2 } from 'lucide-react'
+import { RotateCcw, Settings2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -48,7 +48,7 @@ export function QuarantineTuneDialog({
   onResetRecommended,
   onSave,
 }: Readonly<QuarantineTuneDialogProps>) {
-  const tuneBusy = acting?.action === 'tune'
+  const tuneBusy = Boolean(acting && acting.id === target?.id)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -67,9 +67,7 @@ export function QuarantineTuneDialog({
           <div className="rounded-xl border border-border bg-muted/40 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-sm font-medium text-foreground">
-                  推荐预设
-                </div>
+                <div className="text-sm font-medium text-foreground">推荐预设</div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
                 </div>
@@ -103,9 +101,7 @@ export function QuarantineTuneDialog({
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">大纲过滤</div>
-                  <div className="text-xs text-muted-foreground">
-                    outline_only
-                  </div>
+                  <div className="text-xs text-muted-foreground">outline_only</div>
                 </div>
                 <Switch
                   checked={Boolean(patch.governance_drop_outline_only)}
@@ -120,16 +116,13 @@ export function QuarantineTuneDialog({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    最小内容字符
-                  </Label>
+                  <Label className="text-xs text-muted-foreground">最小内容字符</Label>
                   <Input
                     type="number"
                     min={0}
                     max={200000}
                     value={
-                      typeof patch.governance_drop_outline_min_content_chars ===
-                      'number'
+                      typeof patch.governance_drop_outline_min_content_chars === 'number'
                         ? patch.governance_drop_outline_min_content_chars
                         : ''
                     }
@@ -144,17 +137,14 @@ export function QuarantineTuneDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    标题占比阈值
-                  </Label>
+                  <Label className="text-xs text-muted-foreground">标题占比阈值</Label>
                   <Input
                     type="number"
                     min={0}
                     max={1}
                     step={0.01}
                     value={
-                      typeof patch.governance_drop_outline_max_heading_ratio ===
-                      'number'
+                      typeof patch.governance_drop_outline_max_heading_ratio === 'number'
                         ? patch.governance_drop_outline_max_heading_ratio
                         : ''
                     }
@@ -175,9 +165,7 @@ export function QuarantineTuneDialog({
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">低密度过滤</div>
-                  <div className="text-xs text-muted-foreground">
-                    low_density
-                  </div>
+                  <div className="text-xs text-muted-foreground">low_density</div>
                 </div>
                 <Switch
                   checked={Boolean(patch.governance_drop_low_density)}
@@ -191,17 +179,14 @@ export function QuarantineTuneDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  密度阈值
-                </Label>
+                <Label className="text-xs text-muted-foreground">密度阈值</Label>
                 <Input
                   type="number"
                   min={0}
                   max={1}
                   step={0.01}
                   value={
-                    typeof patch.governance_drop_low_density_threshold ===
-                    'number'
+                    typeof patch.governance_drop_low_density_threshold === 'number'
                       ? patch.governance_drop_low_density_threshold
                       : ''
                   }
@@ -222,9 +207,7 @@ export function QuarantineTuneDialog({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium">隔离策略</div>
-                <div className="text-xs text-muted-foreground">
-                  quarantine_on_drop
-                </div>
+                <div className="text-xs text-muted-foreground">quarantine_on_drop</div>
               </div>
               <Switch
                 checked={Boolean(patch.governance_quarantine_on_drop)}
@@ -260,12 +243,7 @@ export function QuarantineTuneDialog({
             onClick={() => onSave({ retryAfterSave: false })}
             disabled={tuneBusy}
           >
-            <Settings2
-              className={cn(
-                'size-4 mr-1',
-                tuneBusy ? 'animate-spin motion-reduce:animate-none' : ''
-              )}
-            />
+            <Settings2 className={cn('size-4 mr-1', tuneBusy ? 'animate-spin motion-reduce:animate-none' : '')} />
             保存配置
           </Button>
           <Button
@@ -275,12 +253,7 @@ export function QuarantineTuneDialog({
             onClick={() => onSave({ retryAfterSave: true })}
             disabled={tuneBusy}
           >
-            <RotateCcw
-              className={cn(
-                'size-4 mr-1',
-                tuneBusy ? 'animate-spin motion-reduce:animate-none' : ''
-              )}
-            />
+            <RotateCcw className={cn('size-4 mr-1', tuneBusy ? 'animate-spin motion-reduce:animate-none' : '')} />
             保存并重试
           </Button>
         </DialogFooter>

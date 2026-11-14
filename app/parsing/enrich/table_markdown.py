@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from PIL import Image
@@ -7,16 +6,16 @@ from app.parsing.quality.ocr_validator import rapid_ocr_service
 
 
 def _normalize_lines(text: str) -> tuple[list[str], int | None]:
-    lines = [" ".join(line.split()) for line in str(text or "").splitlines()]
+    lines = [" ".join(line.split()) for line in text.splitlines()]
     lines = [line for line in lines if line]
     expected_rows: int | None = None
     if lines:
-        footer = lines[-1].strip()
+        footer = lines[-1]
         if footer.lower().startswith("rows"):
             raw_count = footer.split(":", 1)[1] if ":" in footer else footer[4:]
             try:
                 expected_rows = max(0, int(raw_count.strip()))
-            except Exception:
+            except ValueError:
                 expected_rows = None
             if expected_rows is not None:
                 lines = lines[:-1]
@@ -29,13 +28,13 @@ def markdown_table_from_ocr_text(text: str) -> str:
         return ""
 
     for start in range(len(lines) - 2):
-        header_tokens = [token.strip() for token in lines[start].split(" ") if token.strip()]
+        header_tokens = lines[start].split()
         if len(header_tokens) < 2 or len(header_tokens) > 6:
             continue
         rows: list[list[str]] = []
         cursor = start + 1
         while cursor < len(lines):
-            row_tokens = [token.strip() for token in lines[cursor].split(" ") if token.strip()]
+            row_tokens = lines[cursor].split()
             if len(row_tokens) != len(header_tokens):
                 break
             rows.append(row_tokens)

@@ -30,7 +30,11 @@ from app.parsing.utils.mineru_layout import (
     extract_position_tagged_markdown_from_zip_bytes,
     extract_position_tagged_markdown_from_zip_path,
 )
-from app.parsing.utils.zip_processor import zip_image_processor
+from app.parsing.utils.zip_processor import (
+    normalize_zip_image_ref,
+    process_zip_with_images,
+    replace_zip_image_refs,
+)
 from app.rag.core.logging import get_logger
 from app.services.document_preview_utils import _write_preview_owner_binding
 
@@ -58,9 +62,9 @@ def _normalize_local_backend(value: Any) -> str:
 
 
 def _zip_safe_entries(zip_bytes: bytes) -> tuple[zipfile.ZipFile, list[zipfile.ZipInfo]]:
-    max_files = int(getattr(settings, "ZIP_MAX_FILES", 2000))
-    max_total = int(getattr(settings, "ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES", 500_000_000))
-    max_single = int(getattr(settings, "ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES", 100_000_000))
+    max_files = int(settings.ZIP_MAX_FILES)
+    max_total = int(settings.ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES)
+    max_single = int(settings.ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES)
     zip_file = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
     infos = zip_file.infolist()
     if len(infos) > max_files:
@@ -69,7 +73,7 @@ def _zip_safe_entries(zip_bytes: bytes) -> tuple[zipfile.ZipFile, list[zipfile.Z
 
     total_bytes = 0
     for info in infos:
-        total_bytes += int(getattr(info, "file_size", 0) or 0)
+        total_bytes += info.file_size or 0
         if info.file_size and info.file_size > max_single:
             zip_file.close()
             raise ValueError(f"ZIP entry too large: {info.filename} ({info.file_size} bytes)")
@@ -84,7 +88,7 @@ def _markdown_zip_infos(infos: list[zipfile.ZipInfo]) -> list[zipfile.ZipInfo]:
     for info in infos:
         if info.is_dir():
             continue
-        name = (info.filename or "").replace("\\", "/")
+        name = (info.filename).replace("\\", "/")
         parts = [part.lower() for part in name.split("/") if part]
         if "__macosx" in parts:
             continue
@@ -97,7 +101,7 @@ def _preferred_markdown_info(markdown_infos: list[zipfile.ZipInfo]) -> zipfile.Z
     preferred_names = ["full.md", "output.md", "result.md", "index.md", "readme.md"]
     for preferred_name in preferred_names:
         for info in markdown_infos:
-            base = (info.filename or "").replace("\\", "/").split("/")[-1].lower()
+            base = (info.filename).replace("\\", "/").split("/")[-1].lower()
             if base == preferred_name:
                 return info
 
@@ -105,8 +109,8 @@ def _preferred_markdown_info(markdown_infos: list[zipfile.ZipInfo]) -> zipfile.Z
         return None
 
     def sort_key(info: zipfile.ZipInfo) -> tuple[int, int]:
-        depth = len([part for part in (info.filename or "").replace("\\", "/").split("/") if part])
-        return (depth, -int(getattr(info, "file_size", 0) or 0))
+        depth = len([part for part in (info.filename).replace("\\", "/").split("/") if part])
+        return (depth, -(info.file_size or 0))
 
     return min(markdown_infos, key=sort_key)
 
@@ -140,7 +144,7 @@ def _preview_image_members(zip_file: zipfile.ZipFile) -> dict[str, str]:
     for info in zip_file.infolist():
         if info.is_dir():
             continue
-        name = (info.filename or "").replace("\\", "/").lstrip("/")
+        name = (info.filename).replace("\\", "/").lstrip("/")
         if not name:
             continue
         parts_lower = [part.lower() for part in name.split("/") if part]
@@ -155,12 +159,12 @@ def _preview_image_members(zip_file: zipfile.ZipFile) -> dict[str, str]:
 
 def _preview_zip_member_for_ref(ref: str, member_by_key: dict[str, str]) -> tuple[str, str] | None:
     parsed_ref = urlparse(ref)
-    scheme = (parsed_ref.scheme or "").lower().strip()
-    if scheme in {"http", "https"} or (parsed_ref.netloc or "").strip():
+    scheme = (parsed_ref.scheme).lower().strip()
+    if scheme in {"http", "https"} or (parsed_ref.netloc).strip():
         return None
     if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
         return None
-    normalized_ref = zip_image_processor._normalize_ref_path(ref)
+    normalized_ref = normalize_zip_image_ref(ref)
     if not normalized_ref:
         return None
     member = member_by_key.get(normalized_ref)
@@ -179,14 +183,18 @@ def _normalize_batch_state_counters(extract_result: list[Any]) -> tuple[int, int
     for item in extract_result:
         if not isinstance(item, dict):
             continue
-        state = str(item.get("state") or "").lower()
+        state = item.get("state")
+        if state is not None:
+            state = str(state).lower()
         if state == "done":
             completed_files += 1
             continue
         if state == "failed":
             failed_files += 1
             if not first_error:
-                err = (item.get("err_msg") or "").strip()
+                err = item.get("err_msg")
+                if err is not None:
+                    err = err.strip()
                 if err:
                     first_error = err
             continue
@@ -218,7 +226,8 @@ def _matching_extract_item(
     for item in extract_result:
         if not isinstance(item, dict):
             continue
-        if str(item.get(field_name) or "") == expected:
+        value = item.get(field_name)
+        if value is not None and str(value) == expected:
             return item
     return None
 
@@ -257,8 +266,8 @@ def _extract_preview_image_reference(
                 images_dir=images_dir,
                 preview_id=img_id,
                 binding=(
-                    {"tenant_id": str(tenant_id), "account_id": str(account_id or "").strip()}
-                    if str(account_id or "").strip()
+                    {"tenant_id": str(tenant_id), "account_id": account_id.strip()}
+                    if account_id is not None and account_id.strip()
                     else None
                 ),
             )
@@ -278,7 +287,7 @@ def _bounded_preview_refs(markdown: str) -> list[str]:
     refs = _preview_markdown_refs(markdown)
     if not refs:
         return []
-    max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
+    max_images = max(0, int(settings.ZIP_MAX_IMAGES or 0))
     if max_images and len(refs) > max_images:
         return refs[:max_images]
     return refs
@@ -293,7 +302,7 @@ def _preview_image_mapping(
     account_id: str | None,
 ) -> tuple[list[dict[str, str]], dict[str, dict[str, str]]]:
     member_by_key = _preview_image_members(zip_file)
-    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
     max_bytes = max(1_000_000, max_bytes)
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
@@ -349,32 +358,30 @@ class MinerUService:
         - If the token looks like a JWT and is expired, treat online mode as disabled
           (best-effort) to avoid repeated 401 failures.
         """
-        self.api_base = (getattr(settings, "MINERU_API_BASE", "") or "").strip().rstrip(
-            "/"
-        ) or "https://mineru.net/api/v4"
-        self.api_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
-        self.model_version = (getattr(settings, "MINERU_MODEL_VERSION", "") or "").strip() or "vlm"
-        self.local_backend = _normalize_local_backend(getattr(settings, "MINERU_BACKEND", "pipeline"))
+        self.api_base = (settings.MINERU_API_BASE).strip().rstrip("/") or "https://mineru.net/api/v4"
+        self.api_token = (settings.MINERU_API_TOKEN).strip()
+        self.model_version = (settings.MINERU_MODEL_VERSION).strip() or "vlm"
+        self.local_backend = _normalize_local_backend(settings.MINERU_BACKEND)
 
-        local_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip()
+        local_url = (settings.MINERU_LOCAL_SERVER_URL).strip()
         self.local_server_url = local_url.rstrip("/") if local_url else None
 
         self._token_exp = try_get_jwt_exp(self.api_token) if self.api_token else None
         now = int(time.time())
-        token_valid = bool(self.api_token) and (self._token_exp is None or int(self._token_exp) > now)
+        token_valid = bool(self.api_token) and (self._token_exp is None or self._token_exp > now)
 
-        self.enabled = bool(getattr(settings, "MINERU_ENABLED", False)) and (token_valid or bool(self.local_server_url))
+        self.enabled = bool(settings.MINERU_ENABLED) and (token_valid or bool(self.local_server_url))
 
         if (
-            bool(getattr(settings, "MINERU_ENABLED", False))
+            bool(settings.MINERU_ENABLED)
             and self.api_token
             and self._token_exp is not None
-            and int(self._token_exp) <= now
+            and self._token_exp <= now
             and not self._warned_token_expired
         ):
             logger.warning(
                 "MINERU_API_TOKEN appears expired (exp=%s). Refresh token to use MinerU online API.",
-                format_unix_ts_utc(int(self._token_exp)),
+                format_unix_ts_utc(self._token_exp),
             )
             self._warned_token_expired = True
 
@@ -388,26 +395,26 @@ class MinerUService:
         exp = self._token_exp
         if exp is not None:
             now = int(time.time())
-            if int(exp) <= now:
+            if exp <= now:
                 return (
                     f"MinerU API unauthorized (HTTP {status_code}): MINERU_API_TOKEN expired at "
-                    f"{format_unix_ts_utc(int(exp))}"
+                    f"{format_unix_ts_utc(exp)}"
                 )
             return (
                 f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN "
-                f"(exp={format_unix_ts_utc(int(exp))})"
+                f"(exp={format_unix_ts_utc(exp)})"
             )
         return f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN"
 
     def _ensure_online_enabled(self) -> None:
         self._refresh_config()
-        if not bool(getattr(settings, "MINERU_ENABLED", False)):
+        if not bool(settings.MINERU_ENABLED):
             raise RuntimeError("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
         if not self.api_token:
             raise RuntimeError("MinerU online API requires MINERU_API_TOKEN.")
-        if self._token_exp is not None and int(self._token_exp) <= int(time.time()):
+        if self._token_exp is not None and self._token_exp <= int(time.time()):
             raise RuntimeError(
-                f"MINERU_API_TOKEN expired at {format_unix_ts_utc(int(self._token_exp))}. Please refresh token."
+                f"MINERU_API_TOKEN expired at {format_unix_ts_utc(self._token_exp)}. Please refresh token."
             )
 
     @staticmethod
@@ -444,7 +451,7 @@ class MinerUService:
         try:
             resp = await pool.request_with_retry(method, url, headers=headers, timeout=30.0, **kwargs)
         except httpx.HTTPStatusError as exc:
-            status = int(getattr(exc.response, "status_code", 0) or 0)
+            status = int(exc.response.status_code or 0)
             if status in {401, 403}:
                 raise RuntimeError(self._format_auth_error(status)) from exc
             raise RuntimeError(f"MinerU API request failed (HTTP {status}): {str(exc)[:200]}") from exc
@@ -552,7 +559,7 @@ class MinerUService:
                     return gen()
 
             resp = await pool.put(upload_url, content=_FileChunks(file_path), timeout=300.0)
-            ok = int(getattr(resp, "status_code", 0) or 0) == 200
+            ok = int(resp.status_code or 0) == 200
             try:
                 await resp.aclose()
             except Exception as exc:
@@ -563,7 +570,7 @@ class MinerUService:
             return False
 
     def upload_file(self, file_path: Path, upload_url: str) -> bool:
-        return bool(_run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url)))
+        return _run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url))
 
     async def aget_task_status(self, batch_id: str) -> dict[str, Any]:
         """
@@ -624,7 +631,7 @@ class MinerUService:
             "total_files": total_files,
             "completed_files": completed_files,
             "failed_files": failed_files,
-            "progress": max(0, min(100, int(progress))),
+            "progress": max(0, min(100, progress)),
             "result_url": None,
             "error": first_error,
         }
@@ -690,14 +697,16 @@ class MinerUService:
                 extract_result = []
 
             item = self._pick_extract_item(extract_result, data_id=data_id, filename=filename)
-            state = str((item or {}).get("state") or "").lower()
+            state = item.get("state") if item is not None else None
+            if state is not None:
+                state = str(state).lower()
 
-            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id or "")
+            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id)
 
             if state == "done":
-                return item or {}
+                return item
             if state == "failed":
-                err = (item or {}).get("err_msg") or UNKNOWN_ERROR
+                err = item.get("err_msg") or UNKNOWN_ERROR
                 raise RuntimeError(f"Task {batch_id} failed: {err}")
 
             # Exponential backoff with jitter (best-effort)
@@ -756,7 +765,7 @@ class MinerUService:
         Returns:
             Markdown content.
         """
-        return str(_run_coroutine_sync(lambda: self.adownload_result(result_url)))
+        return _run_coroutine_sync(lambda: self.adownload_result(result_url))
 
     async def adownload_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (async)."""
@@ -772,7 +781,7 @@ class MinerUService:
 
     def download_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (sync)."""
-        return bytes(_run_coroutine_sync(lambda: self.adownload_result_zip(zip_url)))
+        return _run_coroutine_sync(lambda: self.adownload_result_zip(zip_url))
 
     @staticmethod
     def _extract_markdown_from_zip_bytes(zip_bytes: bytes) -> str:
@@ -832,7 +841,7 @@ class MinerUService:
                 account_id=account_id,
             )
             if mapping:
-                markdown = zip_image_processor._replace_image_refs(markdown, mapping)
+                markdown = replace_zip_image_refs(markdown, mapping)
             return markdown, extracted
         finally:
             try:
@@ -858,7 +867,7 @@ class MinerUService:
                 tmp_zip_path = Path(tmp_dir) / "result.zip"
                 tmp_zip_path.write_bytes(zip_bytes)
 
-                result = zip_image_processor.process_zip_with_images(
+                result = process_zip_with_images(
                     zip_path=tmp_zip_path,
                     tenant_id=str(tenant_id) if tenant_id else None,
                     dataset_id=str(dataset_id),
@@ -931,7 +940,7 @@ class MinerUService:
             poll_interval=5,
         )
 
-        zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
+        zip_url = item.get("full_zip_url") or item.get("zip_url")
         if not zip_url:
             raise RuntimeError("No result ZIP URL in response")
 
@@ -945,7 +954,7 @@ class MinerUService:
                 await asyncio.to_thread(tmp_zip_path.write_bytes, zip_bytes)
 
                 result = await asyncio.to_thread(
-                    zip_image_processor.process_zip_with_images,
+                    process_zip_with_images,
                     zip_path=tmp_zip_path,
                     tenant_id=str(tenant_id) if tenant_id else None,
                     dataset_id=str(dataset_id),
@@ -1018,7 +1027,7 @@ class MinerUService:
         }
 
         if data["backend"] == "vlm-http-client":
-            mineru_vl_server = getattr(settings, "MINERU_VL_SERVER", None)
+            mineru_vl_server = settings.MINERU_VL_SERVER
             if mineru_vl_server:
                 data["server_url"] = mineru_vl_server
 
@@ -1039,7 +1048,7 @@ class MinerUService:
             )
 
             try:
-                content_type = str(resp.headers.get("Content-Type", "") or "")
+                content_type = resp.headers.get("Content-Type")
                 body = resp.content
             finally:
                 try:
@@ -1047,7 +1056,9 @@ class MinerUService:
                 except Exception as exc:
                     logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
-            if ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower()):
+            if content_type is None or (
+                ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower())
+            ):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
             return await asyncio.to_thread(

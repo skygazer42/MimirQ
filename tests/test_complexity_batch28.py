@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -472,6 +471,14 @@ def test_chat_tag_context_docs_match_quoted_source_keys_and_row_source_metadata(
             "columns": ["policy_name", "__row_pk_hash"],
             "rows": [["Revenue", "pk-1"]],
             "truncated": False,
+            "planner_execution_mismatch": {
+                "expected_sql_fingerprint": None,
+                "actual_sql_fingerprint": None,
+                "expected_tables": [],
+                "actual_tables": [],
+                "mismatch": False,
+                "reasons": [],
+            },
         }
 
     monkeypatch.setattr(chat_tag_service, "run_table_query", _run_table_query, raising=True)

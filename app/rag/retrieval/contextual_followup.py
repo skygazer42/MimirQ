@@ -70,7 +70,7 @@ _META_FIELDS = (
 
 
 def _sig(value: str) -> str:
-    s = str(value or "").strip()
+    s = value.strip()
     if not s:
         return ""
     return s.casefold() if s.isascii() else s
@@ -78,8 +78,8 @@ def _sig(value: str) -> str:
 
 def _extract_terms(text: str, *, min_chars: int, max_chars: int) -> list[str]:
     out: list[str] = []
-    for m in _TOKEN_RE.finditer(str(text or "")):
-        tok = str(m.group(0) or "").strip()
+    for m in _TOKEN_RE.finditer(text):
+        tok = m.group(0).strip()
         if not tok:
             continue
         if len(tok) < int(min_chars):
@@ -103,7 +103,9 @@ def _iter_meta_values(raw: Any) -> Iterable[str]:
     if isinstance(raw, (list, tuple, set)):
         out: list[str] = []
         for v in raw:
-            s = str(v or "").strip()
+            if v is None:
+                continue
+            s = str(v).strip()
             if not s:
                 continue
             out.append(s)
@@ -117,7 +119,7 @@ def _dedupe_terms(values: list[str], *, max_items: int) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in values:
-        term = str(raw or "").strip()
+        term = raw.strip()
         if not term:
             continue
         sig = _sig(term)
@@ -142,9 +144,9 @@ def _unused_followup_result(
         "query": query,
         "used": False,
         "reason_codes": [reason_code],
-        "selected_terms": list(selected_terms or []),
-        "terms_considered": int(terms_considered),
-        "docs_considered": int(docs_considered),
+        "selected_terms": list((selected_terms if selected_terms is not None else [])),
+        "terms_considered": terms_considered,
+        "docs_considered": docs_considered,
     }
 
 
@@ -197,9 +199,9 @@ def _score_terms_from_docs(
                     if not sig or sig in query_terms:
                         continue
                     considered += 1
-                    score_by_sig[sig] = float(score_by_sig.get(sig, 0.0) or 0.0) + float(weight)
+                    score_by_sig[sig] = score_by_sig.get(sig, 0.0) + weight
                     term_by_sig.setdefault(sig, token)
-        content = str(getattr(doc, "page_content", "") or "")
+        content = doc.page_content
         if not content:
             continue
         for token in _extract_terms(content[:2000], min_chars=min_chars, max_chars=max_chars):
@@ -207,7 +209,7 @@ def _score_terms_from_docs(
             if not sig or sig in query_terms:
                 continue
             considered += 1
-            score_by_sig[sig] = float(score_by_sig.get(sig, 0.0) or 0.0) + 1.0
+            score_by_sig[sig] = score_by_sig.get(sig, 0.0) + 1.0
             term_by_sig.setdefault(sig, token)
     return score_by_sig, term_by_sig, considered
 
@@ -217,8 +219,8 @@ def _rank_scored_terms(score_by_sig: dict[str, float], term_by_sig: dict[str, st
         (
             (
                 sig,
-                float(score_by_sig.get(sig, 0.0) or 0.0),
-                str(term_by_sig.get(sig) or sig),
+                score_by_sig[sig],
+                term_by_sig[sig],
             )
             for sig in score_by_sig
         ),
@@ -233,6 +235,8 @@ def _select_followup_terms(
     max_terms: int,
 ) -> list[str]:
     selected_terms = list(gap_terms)
+    if len(selected_terms) >= max_terms:
+        return selected_terms
     selected_sigs = {_sig(value) for value in selected_terms if _sig(value)}
     for _rank_sig, _rank_score, term in ranked_terms:
         sig = _sig(term)
@@ -257,11 +261,11 @@ def build_contextual_followup_query(
     max_term_chars: int = 40,
     max_query_chars: int = 500,
 ) -> dict[str, Any]:
-    base = " ".join(str(query or "").strip().split())
+    base = " ".join(query.strip().split())
     if not base:
         return _unused_followup_result(query="", reason_code="empty_query")
 
-    docs_list = [d for d in (docs or []) if d is not None]
+    docs_list = [d for d in (docs if docs is not None else []) if d is not None]
     max_docs_n = max(0, int(max_docs or 0))
     max_terms_n = max(0, int(max_terms or 0))
     min_chars = max(2, int(min_term_chars or 0))
@@ -322,7 +326,7 @@ def build_contextual_followup_query(
         "used": used,
         "reason_codes": reason_codes,
         "selected_terms": selected_terms[:max_terms_n],
-        "terms_considered": int(considered),
+        "terms_considered": considered,
         "docs_considered": min(len(docs_list), max_docs_n),
     }
 

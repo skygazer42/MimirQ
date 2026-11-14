@@ -10,10 +10,7 @@ from typing import Any
 
 
 def _percent(v: float) -> str:
-    try:
-        return f"{v * 100.0:.2f}%"
-    except Exception:
-        return "n/a"
+    return f"{v * 100.0:.2f}%"
 
 
 def _coerce_float(v: Any) -> float | None:
@@ -38,7 +35,7 @@ def _quantile(values: list[float], q: float) -> float | None:
     return xs[i]
 
 
-def _read_jsonl(path: Path, *, tail: int = 0) -> Iterable[dict[str, Any]]:
+def _read_jsonl(path: Path, *, tail: int = 0) -> list[dict[str, Any]]:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError:
@@ -46,7 +43,7 @@ def _read_jsonl(path: Path, *, tail: int = 0) -> Iterable[dict[str, Any]]:
 
     lines = [ln for ln in raw.splitlines() if ln.strip()]
     if tail and tail > 0:
-        lines = lines[-int(tail) :]
+        lines = lines[-tail:]
 
     out: list[dict[str, Any]] = []
     for ln in lines:
@@ -84,7 +81,7 @@ def _summarize_ops(records: Iterable[dict[str, Any]]) -> tuple[list[OpSummary], 
 
         ms = _coerce_float(r.get("elapsed_ms"))
         if ms is not None:
-            latencies[op].append(float(ms))
+            latencies[op].append(ms)
 
         err = r.get("error")
         if not ok and isinstance(err, str) and err.strip():
@@ -92,9 +89,9 @@ def _summarize_ops(records: Iterable[dict[str, Any]]) -> tuple[list[OpSummary], 
 
     out: list[OpSummary] = []
     for op, c in sorted(counts.items(), key=lambda kv: (-kv[1]["total"], kv[0])):
-        total = int(c["total"])
-        failed = int(c["failed"])
-        success = int(c["success"])
+        total = c["total"]
+        failed = c["failed"]
+        success = c["success"]
         failure_rate = (failed / total) if total else 0.0
         xs = latencies.get(op) or []
         out.append(
@@ -232,28 +229,26 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    path = Path(str(args.path))
+    path = Path(args.path)
     if not path.exists():
         print(f"[minio-metrics] file not found: {path}")
         return 1
 
-    records = list(_read_jsonl(path, tail=int(args.tail or 0)))
-    if float(args.since_sec or 0) > 0:
-        since_ts = time.time() - float(args.since_sec)
+    records = _read_jsonl(path, tail=args.tail)
+    if args.since_sec > 0:
+        since_ts = time.time() - args.since_sec
         records = _filter_since(records, since_ts=since_ts)
 
     summaries, errors = _summarize_ops(records)
     print(f"[minio-metrics] records={len(records)} file={path}")
     _print_table(summaries)
 
-    if bool(args.show_errors) and errors:
+    if args.show_errors and errors:
         print("\n[minio-metrics] recent failures:")
         for e in errors[-20:]:
             print(f"  - {e}")
 
-    _maybe_bucket_stats(
-        enabled=bool(args.bucket_stats), prefix=str(args.prefix or "images/"), max_objects=int(args.max_objects or 0)
-    )
+    _maybe_bucket_stats(enabled=args.bucket_stats, prefix=args.prefix or "images/", max_objects=args.max_objects)
     return 0
 
 

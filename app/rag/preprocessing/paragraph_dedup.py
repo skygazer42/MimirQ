@@ -7,7 +7,6 @@ across pages (headers/footers/legal notices) which line-based filters miss.
 Opt-in and conservative: only drops paragraphs repeated >= min_occurrences.
 """
 
-
 import re
 from dataclasses import dataclass
 
@@ -26,26 +25,18 @@ class ParagraphDedupResult:
     changed: bool
 
 
-def _normalize_paragraph_signature(text: str) -> str:
-    norm = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
-    norm = re.sub(r"\s+", " ", norm.strip())
-    return norm.casefold()
-
-
 def _eligible_paragraph_signature(
     paragraph: str,
     *,
     min_chars: int,
     max_chars: int,
 ) -> str | None:
-    raw_paragraph = paragraph or ""
-    if not raw_paragraph.strip():
+    if not paragraph.strip():
         return None
-    if _CODE_FENCE_RE.search(raw_paragraph) or _HEADING_RE.search(raw_paragraph) or _TABLE_ROW_RE.search(raw_paragraph):
+    if _CODE_FENCE_RE.search(paragraph) or _HEADING_RE.search(paragraph) or _TABLE_ROW_RE.search(paragraph):
         return None
-    sig = _normalize_paragraph_signature(raw_paragraph)
-    if not sig:
-        return None
+    # The whole document is normalized before it is split into paragraphs.
+    sig = re.sub(r"\s+", " ", paragraph.strip()).casefold()
     if len(sig) < min_chars:
         return None
     if max_chars and len(sig) > max_chars:
@@ -67,7 +58,7 @@ def drop_duplicate_paragraphs(
     - skips code fences/headings/tables (structure)
     - only considers paragraphs within [min_paragraph_chars, max_paragraph_chars]
     """
-    original = text or ""
+    original = text
     if not original:
         return ParagraphDedupResult(text="", paragraphs_total=0, paragraphs_dropped=0, changed=False)
 
@@ -77,8 +68,7 @@ def drop_duplicate_paragraphs(
 
     # Normalize to consistent line endings for splitting.
     norm = normalize_text(original, normalize_line_endings=True, remove_control_chars=True)
-    parts = re.split(r"\n{2,}", norm)
-    paragraphs = [p for p in parts if p is not None]
+    paragraphs = re.split(r"\n{2,}", norm)
     total = len(paragraphs)
     if total <= 1:
         return ParagraphDedupResult(text=norm, paragraphs_total=total, paragraphs_dropped=0, changed=(norm != original))
@@ -98,17 +88,17 @@ def drop_duplicate_paragraphs(
     dropped = 0
     kept: list[str] = []
     for p, sig in zip(paragraphs, signatures, strict=False):
-        if sig is not None and counts.get(sig, 0) >= min_occ:
+        if sig is not None and counts[sig] >= min_occ:
             dropped += 1
             continue
         kept.append(p)
 
-    out = "\n\n".join([k for k in kept if k is not None])
+    out = "\n\n".join(kept)
     return ParagraphDedupResult(
         text=out,
-        paragraphs_total=int(total),
-        paragraphs_dropped=int(dropped),
-        changed=bool(out != original),
+        paragraphs_total=total,
+        paragraphs_dropped=dropped,
+        changed=out != original,
     )
 
 

@@ -24,18 +24,18 @@ def _percentile(sorted_values: list[float], p: float) -> float | None:
     if not sorted_values:
         return None
     if p <= 0:
-        return float(sorted_values[0])
+        return sorted_values[0]
     if p >= 100:
-        return float(sorted_values[-1])
+        return sorted_values[-1]
 
     n = len(sorted_values)
     pos = (p / 100.0) * (n - 1)
     lo = int(math.floor(pos))
     hi = int(math.ceil(pos))
     if lo == hi:
-        return float(sorted_values[lo])
+        return sorted_values[lo]
     frac = pos - lo
-    return float(sorted_values[lo] * (1.0 - frac) + sorted_values[hi] * frac)
+    return sorted_values[lo] * (1.0 - frac) + sorted_values[hi] * frac
 
 
 def _cosine_distance(a: list[float], b: list[float]) -> float | None:
@@ -81,17 +81,17 @@ def _summarize_distances(values: list[float]) -> dict[str, float | int | None]:
             "max": None,
         }
 
-    sorted_values = sorted(float(v) for v in values)
+    sorted_values = sorted(values)
     count = len(sorted_values)
-    avg = sum(sorted_values) / float(count)
+    avg = sum(sorted_values) / count
     return {
         "count": count,
-        "avg": float(avg),
-        "min": float(sorted_values[0]),
+        "avg": avg,
+        "min": sorted_values[0],
         "p50": _percentile(sorted_values, 50.0),
         "p95": _percentile(sorted_values, 95.0),
         "p99": _percentile(sorted_values, 99.0),
-        "max": float(sorted_values[-1]),
+        "max": sorted_values[-1],
     }
 
 
@@ -103,8 +103,8 @@ def _init_embedding_model_for_drift():
     return create_langchain_embeddings_from_config(
         provider=mapped_provider,
         model=str(settings.EMBEDDING_MODEL or "text-embedding-3-small"),
-        api_key=api_key or "",
-        base_url=base_url or "",
+        api_key=api_key,
+        base_url=base_url,
         dimension=None,  # Auto-detect
     )
 
@@ -117,30 +117,29 @@ class _DriftSampleItem:
 
 
 def _bounded_content(content: str, *, max_content_chars: int) -> str:
-    if int(max_content_chars or 0) > 0 and len(content) > int(max_content_chars or 0):
-        return content[: int(max_content_chars or 0)]
+    if max_content_chars > 0 and len(content) > max_content_chars:
+        return content[:max_content_chars]
     return content
 
 
 def _collect_drift_sample_items(
-    rows: list[tuple[object, object, object]],
+    rows: list[tuple[str | None, str, object]],
     *,
     max_content_chars: int,
 ) -> tuple[list[_DriftSampleItem], Counter[str]]:
     items: list[_DriftSampleItem] = []
     stored_space_counts: Counter[str] = Counter()
-    for row in rows:
-        if not row or len(row) < 3:
+    for vector_id_raw, content_raw, meta_raw in rows:
+        if vector_id_raw is None:
             continue
-        vector_id_raw, content_raw, meta_raw = row
-        vector_id = str(vector_id_raw or "").strip()
+        vector_id = vector_id_raw.strip()
         if not vector_id:
             continue
-        content = str(content_raw or "")
+        content = content_raw
         if not content.strip():
             continue
         meta = meta_raw if isinstance(meta_raw, dict) else {}
-        stored_space = str(meta.get("embedding_space_hash") or "").strip() or None
+        stored_space = meta.get("embedding_space_hash")
         if stored_space:
             stored_space_counts[stored_space] += 1
         items.append(
@@ -166,7 +165,7 @@ def _partition_items_with_vectors(
     stored_vectors: dict[str, list[float]],
 ) -> tuple[list[_DriftSampleItem], int]:
     items_with_vectors = [item for item in items if item.vector_id in stored_vectors]
-    missing_vectors = int(len(items) - len(items_with_vectors))
+    missing_vectors = len(items) - len(items_with_vectors)
     return items_with_vectors, missing_vectors
 
 
@@ -189,7 +188,7 @@ def _collect_drift_distances(
             continue
         distance = _cosine_distance(stored_vec, [float(x) for x in new_vec])
         if distance is not None:
-            distances.append(float(distance))
+            distances.append(distance)
     return distances, dim_mismatch
 
 
@@ -212,8 +211,8 @@ def run_embedding_drift_monitor(
 
     Output intentionally does NOT include chunk/document identifiers or raw content.
     """
-    vector_backend = str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower()
-    current_space = str(current_embedding_space_hash() or "").strip() or None
+    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower()
+    current_space = current_embedding_space_hash()
 
     cap = max(0, int(sample_n or 0))
     cap = min(cap, 2000)
@@ -226,11 +225,11 @@ def run_embedding_drift_monitor(
         "vector_backend": vector_backend,
         "current_embedding_space_hash": current_space,
         "sample_n_requested": int(sample_n or 0),
-        "sample_n_used": int(cap),
-        "threshold": float(threshold),
+        "sample_n_used": cap,
+        "threshold": threshold,
         "scope": {
-            "dataset_scoped": bool(dataset_id is not None),
-            "document_scoped": bool(document_id is not None),
+            "dataset_scoped": dataset_id is not None,
+            "document_scoped": document_id is not None,
         },
     }
 
@@ -302,7 +301,7 @@ def run_embedding_drift_monitor(
         rows=rows,
         max_content_chars=max_content_chars,
     )
-    payload["sampled_items"] = int(len(items))
+    payload["sampled_items"] = len(items)
     payload["stored_embedding_space_hash_counts"] = dict(stored_space_counts.most_common(10))
 
     if not items:
@@ -314,7 +313,7 @@ def run_embedding_drift_monitor(
 
     vector_ids = [x.vector_id for x in items]
     stored_vectors = milvus_store.fetch_vectors_by_ids(vector_ids, max_ids_per_query=max_ids_per_query)
-    payload["stored_vectors_fetched"] = int(len(stored_vectors))
+    payload["stored_vectors_fetched"] = len(stored_vectors)
 
     items_with_vectors, missing_vectors = _partition_items_with_vectors(
         items=items,
@@ -339,11 +338,11 @@ def run_embedding_drift_monitor(
         stored_vectors=stored_vectors,
         reembedded=reembedded,
     )
-    payload["dim_mismatch"] = int(dim_mismatch)
+    payload["dim_mismatch"] = dim_mismatch
     payload["drift"] = _summarize_distances(distances)
     above = [d for d in distances if d >= threshold]
     ratio = (len(above) / len(distances)) if distances else 0.0
-    payload["above_threshold"] = {"count": int(len(above)), "ratio": float(ratio)}
+    payload["above_threshold"] = {"count": len(above), "ratio": ratio}
     return payload
 
 

@@ -5,10 +5,14 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
+from app.rag.engine_support.common import _UNABLE_TO_ANSWER_MESSAGE
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.llm.structured_output import parse_and_repair_structured_output
+from app.services.metrics_logger import log_metrics
 
 
 async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
@@ -33,10 +37,10 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
         (
             runtime.data.structured_data,
             runtime.data.structured_parse_meta,
-        ) = runtime.module.parse_and_repair_structured_output(
+        ) = parse_and_repair_structured_output(
             runtime.data.full_response,
             preset=runtime.data.structured_preset,
-            fallback_answer=runtime.module._UNABLE_TO_ANSWER_MESSAGE,
+            fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
             fallback_citations=runtime.data.structured_citations,
         )
     runtime.data.done_payload = {
@@ -54,15 +58,15 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "elapsed_sec": round(runtime.data.t_total, 3),
                 "retrieval_elapsed_sec": round(runtime.data.retrieval_elapsed, 3),
                 "generation_elapsed_sec": round(runtime.data.generation_elapsed, 3),
-                "generation_max_tokens": runtime.data.generation_max_tokens or None,
+                "generation_max_tokens": runtime.data.generation_max_tokens,
                 "retrieval_mode": runtime.data.mode_used,
                 "retrieval_mode_requested": runtime.data.mode_req,
                 "retrieval_mode_auto_routed": bool(runtime.data.mode_auto),
-                "retrieval_profile": runtime.data.profile_norm or None,
+                "retrieval_profile": runtime.data.profile_norm,
                 "retrieval_profile_requested": (
                     str(runtime.data.profile_req).strip().lower() if runtime.data.profile_req is not None else None
                 ),
-                "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective or None,
+                "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective,
                 "retrieval_contract_policy": dict(runtime.data.retrieval_contract_policy or {}),
                 "intent_router_enabled": bool(runtime.data.intent_router_meta.get("enabled")),
                 "intent_router_used": bool(runtime.data.intent_router_meta.get("used")),
@@ -84,8 +88,8 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                 "retrieval_rrf_k": (settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None),
                 "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),
-                "retrieval_max_chunks_per_doc": int(settings.RETRIEVAL_MAX_CHUNKS_PER_DOC or 0),
-                "retrieval_min_distinct_docs": int(settings.RETRIEVAL_MIN_DISTINCT_DOCS or 0),
+                "retrieval_max_chunks_per_doc": int(settings.RETRIEVAL_MAX_CHUNKS_PER_DOC),
+                "retrieval_min_distinct_docs": int(settings.RETRIEVAL_MIN_DISTINCT_DOCS),
                 "vector_backend": settings.VECTOR_BACKEND,
                 "model_route": runtime.data.model_route,
                 "llm_provider_fallback_used": bool(runtime.data.llm_invocation_meta.get("fallback_used")),
@@ -115,10 +119,10 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "distinct_documents": len(
                     {c.get("document_id") for c in runtime.data.citations if c.get("document_id")}
                 ),
-                "history_chars": len(runtime.data.history_text or ""),
-                "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text or ""),
-                "context_chars": len(runtime.data.context or ""),
-                "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context or ""),
+                "history_chars": len(runtime.data.history_text),
+                "history_tokens": num_tokens_from_string(runtime.data.history_text),
+                "context_chars": len(runtime.data.context),
+                "context_tokens": num_tokens_from_string(runtime.data.context),
                 "tag_enabled": bool(runtime.data.tag_meta.get("enabled")),
                 "tag_used": bool(runtime.data.tag_meta.get("used")),
                 "tag_reason": runtime.data.tag_meta.get("reason"),
@@ -144,23 +148,23 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                     runtime.data.vision_generation_meta.get("returned_images") or 0
                 ),
                 "vision_generation_model": runtime.data.vision_generation_meta.get("model"),
-                "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0),
-                "context_limit_total_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0),
-                "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0),
-                "context_limit_per_chunk_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0),
+                "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS),
+                "context_limit_total_tokens": int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS),
+                "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK),
+                "context_limit_per_chunk_tokens": int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK),
                 "answer_chars": runtime.data.answer_chars,
                 "answer_tokens": runtime.data.answer_tokens,
                 # Stable, numeric, PII-safe cost attribution.
-                "cost_schema": str(runtime.data.cost_attribution.get("schema") or ""),
+                "cost_schema": runtime.data.cost_attribution["schema"],
                 "cost_llm_prompt_tokens": int(runtime.data.prompt_tokens_est),
                 "cost_llm_completion_tokens": int(runtime.data.answer_tokens),
                 "cost_llm_total_tokens": int(runtime.data.prompt_tokens_est + runtime.data.answer_tokens),
                 "cost_llm_source": runtime.data.llm_source,
                 "cost_embedding_query_tokens": int(runtime.data.embed_query_tokens),
                 "cost_embedding_query_chars": int(runtime.data.embed_query_chars),
-                "cost_embedding_query_count": int(len(runtime.data.retrieval_per_query or [])),
-                "cost_embedding_provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
-                "cost_embedding_model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+                "cost_embedding_query_count": len(runtime.data.retrieval_per_query or []),
+                "cost_embedding_provider": str(settings.EMBEDDING_PROVIDER),
+                "cost_embedding_model": str(settings.EMBEDDING_MODEL),
                 "cost_retrieval_elapsed_sec": round(float(runtime.data.retrieval_elapsed or 0.0), 3),
                 "cost_rerank_elapsed_sec": (
                     round(float(runtime.data.rerank_elapsed_sec), 3)
@@ -180,19 +184,19 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 if runtime.data.claim_check_configured
                 else None,
                 "claim_nli_verifier": {
-                    "enabled": bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                    "provider": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                    "model_name": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                    "enabled": bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
+                    "provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+                    "model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
                 },
                 "claim_evidence": runtime.data.claim_evidence,
-                "sentence_citations_count": int(len(runtime.data.claim_evidence or [])),
+                "sentence_citations_count": len(runtime.data.claim_evidence or []),
                 "sentence_citations": runtime.data.claim_evidence,
                 "sentence_citations_inline_enabled": bool(runtime.data.sentence_citations_inline_enabled),
                 "sentence_citations_inline_style": str(runtime.data.sentence_citations_inline_style),
                 "sentence_citations_inline_used": bool(runtime.data.sentence_citations_inline_used),
                 "sentence_citations_inline_count": int(runtime.data.sentence_citations_inline_count or 0),
                 "sentence_citations_inline_fallback_reason": runtime.data.sentence_citations_inline_fallback_reason,
-                "faithfulness_score_enabled": bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)),
+                "faithfulness_score_enabled": bool(settings.FAITHFULNESS_SCORE_ENABLED),
                 "faithfulness_score_method": str(runtime.data.faithfulness_meta.get("method") or "claim_support_ratio"),
                 "faithfulness_score": runtime.data.faithfulness_meta.get("score"),
                 "faithfulness_supported_claims": int(runtime.data.faithfulness_meta.get("supported_claims") or 0),
@@ -208,12 +212,12 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "evidence_span_missing_citations": int(runtime.data.evidence_span_missing_citations or 0),
                 "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                 "context_evidence_max_sentences_per_chunk": (
-                    int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
+                    int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK)
                     if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
                     else None
                 ),
                 "context_evidence_min_sentence_chars": (
-                    int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0)
+                    int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS)
                     if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
                     else None
                 ),
@@ -260,14 +264,14 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "kg_query_expansion_used": bool(runtime.data.kg_query_expansion_used),
                 "kg_query_expansion_entities_total": int(runtime.data.kg_query_expansion_entities_total),
                 "kg_query_expansion_entities_selected": int(runtime.data.kg_query_expansion_entities_selected),
-                "kg_query_expansion_query_count": int(len(runtime.data.kg_query_expansion_queries)),
+                "kg_query_expansion_query_count": len(runtime.data.kg_query_expansion_queries),
                 "kg_query_expansion_elapsed_sec": round(float(runtime.data.kg_query_expansion_elapsed), 3),
                 "kg_query_expansion_error": runtime.data.kg_query_expansion_error,
                 "hyde_enabled": bool(runtime.data.hyde_enabled),
                 "hyde_used": bool(runtime.data.hyde_used),
                 "hyde_elapsed_sec": round(runtime.data.hyde_elapsed, 3),
                 "hyde_model_used": runtime.data.hyde_model_used,
-                "decompose_enabled": bool(runtime.data.dq_enabled),
+                "decompose_enabled": bool(runtime.data.decompose_enabled),
                 "decompose_used": bool(runtime.data.decompose_used),
                 "decompose_count": len(runtime.data.sub_questions),
                 "decompose_elapsed_sec": round(runtime.data.decompose_elapsed, 3),
@@ -298,7 +302,7 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
     yield runtime.data.done_payload
 
     # Persist logs (optional).
-    runtime.module.log_metrics(
+    log_metrics(
         {
             "event": "rag_done",
             "conversation_id": str(runtime.data.conversation_id) if runtime.data.conversation_id else None,

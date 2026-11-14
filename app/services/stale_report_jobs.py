@@ -8,10 +8,9 @@ Purpose:
 Design principles (similar to retention jobs):
 - Bounded: callers provide max_documents
 - Auditable: best-effort audit_log_event
-- Fail-open: never crash the product due to reporting automation
+- Audit writes are best-effort; required database lookups propagate failures
 """
 
-import contextlib
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -29,20 +28,14 @@ from app.services.audit_log_service import audit_log_event
 logger = get_logger(__name__)
 
 
-def _dt_to_json(v: datetime | None) -> str | None:
-    if v is None:
-        return None
-    try:
-        s = v.astimezone(UTC).isoformat()
-    except Exception:
-        return None
-    if s.endswith("+00:00"):
-        s = s[:-6] + "Z"
-    return s
+def _dt_to_json(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _parse_datetime_best_effort(raw: object) -> datetime | None:
-    value = str(raw or "").strip()
+    if raw is None:
+        return None
+    value = str(raw).strip()
     if not value:
         return None
 
@@ -67,28 +60,22 @@ def _parse_datetime_best_effort(raw: object) -> datetime | None:
 
 
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for k, v in counter.most_common(max(0, int(max_items or 0))):
-        out[str(k)] = int(v)
-    return out
+    return dict(counter.most_common(max(0, max_items)))
 
 
 def _audit_already_written(db: Session, *, tenant_id: UUID, action: str, report_date: str) -> bool:
-    try:
-        row = (
-            db.query(AuditLog.id)
-            .filter(
-                AuditLog.tenant_id == tenant_id,
-                AuditLog.action == str(action),
-                AuditLog.resource_type == "stale_report",
-                AuditLog.resource_id == str(report_date),
-            )
-            .limit(1)
-            .first()
+    row = (
+        db.query(AuditLog.id)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == str(action),
+            AuditLog.resource_type == "stale_report",
+            AuditLog.resource_id == str(report_date),
         )
-        return bool(row)
-    except Exception:
-        return False
+        .limit(1)
+        .first()
+    )
+    return row is not None
 
 
 def _list_connector_document_rows(
@@ -105,9 +92,6 @@ def _list_connector_document_rows(
     - Uses a conservative pre-filter on `documents.updated_at <= cutoff` to reduce work.
     - Returns a list of JSON-safe dict rows (bounded by max_documents).
     """
-    max_docs = max(1, int(max_documents or 0))
-    max_docs = min(max_docs, 50_000)
-
     q = (
         db.query(
             ConnectorRun.connector_id,
@@ -131,7 +115,7 @@ def _list_connector_document_rows(
         .filter(DBDocument.disabled_at.is_(None))
         .filter(DBDocument.updated_at <= cutoff)
         .order_by(DBDocument.updated_at.asc(), ConnectorRunDocument.created_at.asc())
-        .limit(max_docs)
+        .limit(max_documents)
     )
 
     rows = q.all()
@@ -139,16 +123,16 @@ def _list_connector_document_rows(
     for r in rows:
         out.append(
             {
-                "connector_id": str(getattr(r, "connector_id", "") or ""),
-                "run_dataset_id": getattr(r, "run_dataset_id", None),
-                "document_id": getattr(r, "document_id", None),
-                "linked_at": getattr(r, "linked_at", None),
-                "document_dataset_id": getattr(r, "document_dataset_id", None),
-                "status": str(getattr(r, "status", "") or ""),
-                "created_at": getattr(r, "created_at", None),
-                "updated_at": getattr(r, "updated_at", None),
-                "processed_at": getattr(r, "processed_at", None),
-                "doc_metadata": dict(getattr(r, "doc_metadata", None) or {}),
+                "connector_id": str(r.connector_id),
+                "run_dataset_id": r.run_dataset_id,
+                "document_id": r.document_id,
+                "linked_at": r.linked_at,
+                "document_dataset_id": r.document_dataset_id,
+                "status": r.status,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+                "processed_at": r.processed_at,
+                "doc_metadata": dict(r.doc_metadata or {}),
             }
         )
     return out
@@ -159,14 +143,8 @@ def _normalize_stale_report_limits(
     stale_after_days: int,
     max_documents: int,
 ) -> tuple[int, int]:
-    try:
-        days_i = max(1, int(stale_after_days or 0))
-    except Exception:
-        days_i = 30
-    try:
-        max_docs_i = max(1, int(max_documents or 0))
-    except Exception:
-        max_docs_i = 5000
+    days_i = max(1, int(stale_after_days))
+    max_docs_i = max(1, int(max_documents))
     return days_i, min(max_docs_i, 50_000)
 
 
@@ -182,8 +160,8 @@ def _skip_summary(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now),
-        "stale_after_days": int(stale_after_days),
-        "max_documents": int(max_documents),
+        "stale_after_days": stale_after_days,
+        "max_documents": max_documents,
         "ok": True,
         "skipped": True,
         "skip_reason": "already_written",
@@ -207,7 +185,7 @@ def _effective_timestamp_and_reason(
     row: dict[str, Any],
     now: datetime,
 ) -> tuple[datetime, str]:
-    meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
+    meta = row["doc_metadata"]
 
     eff_dt = _parse_datetime_best_effort(meta.get("source_last_modified_at"))
     reason = "meta:source_last_modified_at"
@@ -215,7 +193,7 @@ def _effective_timestamp_and_reason(
         eff_dt = _parse_datetime_best_effort(meta.get("source_fetched_at"))
         reason = "meta:source_fetched_at"
     if eff_dt is None:
-        eff_dt = row.get("processed_at") or row.get("updated_at") or row.get("created_at") or row.get("linked_at")
+        eff_dt = row["processed_at"] or row["updated_at"] or row["created_at"] or row["linked_at"]
         reason = "fallback:document_timestamps"
 
     if isinstance(eff_dt, datetime):
@@ -247,18 +225,18 @@ def _summarize_stale_rows(
     age_buckets: Counter[str] = Counter()
 
     for row in rows:
-        doc_id_raw = row.get("document_id")
-        doc_id = str(doc_id_raw) if doc_id_raw is not None else ""
-        if not doc_id or doc_id in seen_doc_ids:
+        doc_id = str(row["document_id"])
+        if doc_id in seen_doc_ids:
             continue
         seen_doc_ids.add(doc_id)
 
-        connector_id = str(row.get("connector_id") or "unknown").strip() or "unknown"
+        connector_id = row["connector_id"].strip() or "unknown"
         by_connector_scanned[connector_id] += 1
         scanned += 1
 
-        meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
-        src_kind = str(meta.get("source_last_modified_source") or "").strip() or "unknown"
+        meta = row["doc_metadata"]
+        source_kind = meta.get("source_last_modified_source")
+        src_kind = "unknown" if source_kind is None else str(source_kind).strip() or "unknown"
         by_source_kind[src_kind] += 1
 
         eff_dt, reason = _effective_timestamp_and_reason(row=row, now=now)
@@ -272,7 +250,7 @@ def _summarize_stale_rows(
         stale += 1
         by_connector_stale[connector_id] += 1
 
-        dataset_id = row.get("document_dataset_id") or row.get("run_dataset_id")
+        dataset_id = row["document_dataset_id"] or row["run_dataset_id"]
         if dataset_id is not None:
             by_dataset_stale[str(dataset_id)] += 1
         if len(stale_sample_ids) < 20:
@@ -282,10 +260,10 @@ def _summarize_stale_rows(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now),
-        "stale_after_days": int(stale_after_days),
-        "max_documents": int(max_documents),
-        "scanned": int(scanned),
-        "stale": int(stale),
+        "stale_after_days": stale_after_days,
+        "max_documents": max_documents,
+        "scanned": scanned,
+        "stale": stale,
         "by_connector_scanned": _bounded_top_counts(by_connector_scanned, max_items=50),
         "by_connector_stale": _bounded_top_counts(by_connector_stale, max_items=50),
         "by_dataset_stale": _bounded_top_counts(by_dataset_stale, max_items=50),
@@ -325,11 +303,11 @@ def run_daily_stale_report(
         max_documents=max_documents,
     )
     report_date = now0.date().isoformat()
-    cutoff = now0 - timedelta(days=int(days_i))
+    cutoff = now0 - timedelta(days=days_i)
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db, tenant_id=tenant_id, action="connectors.stale_report.daily", report_date=report_date
         )
@@ -353,7 +331,7 @@ def run_daily_stale_report(
         cutoff=cutoff,
     )
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
@@ -372,8 +350,13 @@ def run_daily_stale_report(
         summary["dry_run"] = False
         return summary
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        logger.warning(
+            "Stale report audit write failed: tenant_id=%s report_date=%s",
+            tenant_id,
+            report_date,
+            exc_info=True,
+        )
         summary["ok"] = False
         summary["error"] = "failed_to_write_audit"
         summary["dry_run"] = False

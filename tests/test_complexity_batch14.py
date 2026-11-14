@@ -206,7 +206,6 @@ def test_fusion_weight_services_preserve_observability_and_learning_contracts() 
         "tenant_id": tenant_id,
         "summary": {
             "observed_rows": 2,
-            "ltr_training_ready_rows": 1,
             "fusion_strategy_histogram": {"rrf": 2},
             "rrf_k_histogram": {"60": 2},
             "channel_signal_coverage": {"vector": 4, "bm25": 4, "lexical": 4, "sparse": 2},

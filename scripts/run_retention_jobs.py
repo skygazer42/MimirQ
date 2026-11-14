@@ -47,8 +47,8 @@ if __package__ in {None, ""}:
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
-    except Exception as exc:  # noqa: BLE001
+        return UUID(value)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
 
 
@@ -125,8 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _job_selected(args: argparse.Namespace) -> bool:
     return any(
-        bool(value)
-        for value in (
+        (
             args.audit_logs,
             args.regression_runs,
             args.knowledge_assets,
@@ -137,23 +136,13 @@ def _job_selected(args: argparse.Namespace) -> bool:
 
 
 def _tenant_ids(args: argparse.Namespace, deps: SimpleNamespace) -> list[UUID]:
-    if bool(args.all_tenants):
-        tenant_ids: list[UUID] = []
+    if args.all_tenants:
         db = deps.SessionLocal()
         try:
             rows = db.query(deps.Tenant.id).all()
-            for row in rows:
-                candidate = getattr(row, "id", None)
-                if candidate is None:
-                    try:
-                        candidate = row[0]
-                    except (IndexError, KeyError, TypeError):
-                        continue
-                if isinstance(candidate, UUID):
-                    tenant_ids.append(candidate)
+            return [tenant_id for (tenant_id,) in rows]
         finally:
             db.close()
-        return tenant_ids
     if args.tenant_id is not None:
         return [args.tenant_id]
     return [UUID(str(deps.settings.DEFAULT_TENANT_ID))]
@@ -161,8 +150,7 @@ def _tenant_ids(args: argparse.Namespace, deps: SimpleNamespace) -> list[UUID]:
 
 def _db_job_selected(args: argparse.Namespace) -> bool:
     return any(
-        bool(value)
-        for value in (
+        (
             args.audit_logs,
             args.regression_runs,
             args.knowledge_assets,
@@ -181,8 +169,8 @@ def _run_semantic_cache_job(
     return deps.run_semantic_cache_retention(
         tenant_id=tenant_id,
         dry_run=dry_run,
-        max_delete=int(args.max_delete or 0),
-        max_scan=int(args.max_scan or 0),
+        max_delete=args.max_delete,
+        max_scan=args.max_scan,
     )
 
 
@@ -201,8 +189,8 @@ def _run_dataset_jobs(
     rows = query.order_by(deps.Dataset.created_at.asc()).all()
     results: list[dict[str, Any]] = []
     for dataset_id, metadata in rows:
-        policy = deps.parse_retention_policy_from_metadata(metadata if isinstance(metadata, dict) else {})
-        if policy is None or not bool(getattr(policy, "enabled", False)):
+        policy = deps.parse_retention_policy_from_metadata(metadata)
+        if policy is None or not policy.enabled:
             continue
         result = asyncio.run(
             deps.run_dataset_retention_sweep(
@@ -211,11 +199,14 @@ def _run_dataset_jobs(
                 dataset_id=dataset_id,
                 policy=policy,
                 dry_run=dry_run,
-                max_documents=int(args.max_documents or 0),
-                max_versions_pruned=int(args.max_versions_pruned or 0),
+                max_documents=args.max_documents,
+                max_versions_pruned=args.max_versions_pruned,
                 actor_id="system:retention",
                 now=ran_at,
             )
+        )
+        result["ok"] = result["ok"] and not (
+            result["documents"]["errors"] or result["documents"]["conflicts"] or result["versions"]["errors"]
         )
         results.append(result)
     return results
@@ -229,43 +220,44 @@ def _run_db_jobs(
     tenant_id: UUID,
     dry_run: bool,
     ran_at: datetime,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     results: list[dict[str, Any]] = []
+    failed = False
     common = {
         "tenant_id": tenant_id,
-        "retention_days": int(args.retention_days or 0),
-        "max_delete": int(args.max_delete or 0),
+        "retention_days": args.retention_days,
+        "max_delete": args.max_delete,
         "dry_run": dry_run,
         "actor_id": "system:retention",
         "now": ran_at,
     }
-    if bool(args.audit_logs):
+    if args.audit_logs:
         results.append(deps.run_audit_log_retention(db, **common))
-    if bool(args.regression_runs):
+    if args.regression_runs:
         results.append(deps.run_regression_run_retention(db, **common))
-    if bool(args.knowledge_assets):
-        results.append(
-            asyncio.run(
-                deps.run_knowledge_asset_retention(
-                    db,
-                    **common,
-                    dataset_id=args.dataset_id,
-                    lifecycle_state=str(args.lifecycle_state or "either"),
-                )
-            )
-        )
-    if bool(args.dataset_retention):
-        results.extend(
-            _run_dataset_jobs(
-                args,
-                deps,
+    if args.knowledge_assets:
+        knowledge_result = asyncio.run(
+            deps.run_knowledge_asset_retention(
                 db,
-                tenant_id=tenant_id,
-                dry_run=dry_run,
-                ran_at=ran_at,
+                **common,
+                dataset_id=args.dataset_id,
+                lifecycle_state=args.lifecycle_state,
             )
         )
-    return results
+        results.append(knowledge_result)
+        failed = any(knowledge_result[key] for key in ("denied", "conflicts", "errors"))
+    if args.dataset_retention:
+        dataset_results = _run_dataset_jobs(
+            args,
+            deps,
+            db,
+            tenant_id=tenant_id,
+            dry_run=dry_run,
+            ran_at=ran_at,
+        )
+        results.extend(dataset_results)
+        failed = failed or any(not result["ok"] for result in dataset_results)
+    return results, failed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -280,40 +272,40 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     deps = _load_runtime_dependencies()
-    dry_run = not bool(args.execute)
+    dry_run = not args.execute
     tenant_ids = _tenant_ids(args, deps)
     ran_at = datetime.now(UTC)
     results: list[dict[str, Any]] = []
+    failed = False
 
     for tenant_id in tenant_ids:
-        if bool(args.semantic_cache):
-            results.append(
-                _run_semantic_cache_job(
-                    args,
-                    deps,
-                    tenant_id=tenant_id,
-                    dry_run=dry_run,
-                )
+        if args.semantic_cache:
+            result = _run_semantic_cache_job(
+                args,
+                deps,
+                tenant_id=tenant_id,
+                dry_run=dry_run,
             )
+            results.append(result)
+            failed = failed or result["failed"]
         if not _db_job_selected(args):
             continue
 
         db = deps.SessionLocal()
         try:
-            results.extend(
-                _run_db_jobs(
-                    args,
-                    deps,
-                    db,
-                    tenant_id=tenant_id,
-                    dry_run=dry_run,
-                    ran_at=ran_at,
-                )
+            job_results, job_failed = _run_db_jobs(
+                args,
+                deps,
+                db,
+                tenant_id=tenant_id,
+                dry_run=dry_run,
+                ran_at=ran_at,
             )
+            results.extend(job_results)
+            failed = failed or job_failed
         finally:
             db.close()
 
-    failed = any(bool(item.get("failed")) for item in results if isinstance(item, dict))
     print(json.dumps({"ok": not failed, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 1 if failed else 0
 

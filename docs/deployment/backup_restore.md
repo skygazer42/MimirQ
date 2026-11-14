@@ -1,10 +1,10 @@
 # 备份 / 恢复指南（Postgres + MinIO + Vector Backend）
 
-本指南用于把 MimirQ 的核心数据做成可演练的备份/恢复闭环，覆盖：
+本指南用于把 Ragvia 的核心数据做成可演练的备份/恢复闭环，覆盖：
 
 - Postgres（元数据/审计日志/评估结果等）
 - MinIO（对象存储：文档/图片等，取决于部署开关）
-- 向量库（Milvus / Chroma 等，取决于 `VECTOR_BACKEND`）
+- 向量库（Milvus / Qdrant / pgvector，取决于 `VECTOR_BACKEND`）
 
 > 重要：不同团队的合规/成本/恢复时长（RTO/RPO）目标不同。你需要先明确：哪些数据必须“原样恢复”，哪些可以“恢复后重算”。
 
@@ -106,11 +106,11 @@ mc mirror --overwrite backups/minio/<bucket-name> mimirq-minio/<bucket-name>
 
 ---
 
-## 3) 向量库（Milvus / Chroma / 其他）
+## 3) 向量库（Milvus / Qdrant / pgvector）
 
 ### 3.1) 原则：先确认你们的 `VECTOR_BACKEND`
 
-MimirQ 运行依赖向量库实现检索。向量库数据是否“必须备份”，取决于：
+Ragvia 运行依赖向量库实现检索。向量库数据是否“必须备份”，取决于：
 
 - 是否可接受恢复后重建索引（策略 A）
 - 索引构建成本与时间窗口
@@ -125,13 +125,9 @@ Milvus 的备份/恢复通常要依赖你们的部署方式（standalone / clust
 1. 优先在 **DR/staging** 验证“备份文件 → 新集群恢复 → index-audit 通过”
 2. 没有成熟备份链路时，采用策略 A：向量库可重建，并在 DR 演练中验证重建流程与耗时
 
-### 3.3) Chroma（示例建议）
+### 3.3) 已退出的 Chroma 索引
 
-若使用 Chroma 并开启持久化目录，通常可通过 **持久化卷快照** 完成备份（具体取决于你们的存储类）。
-
-建议：
-
-- 定期对 Chroma 挂载卷做 snapshot（同样需要演练验证）
+当前版本不再读取 Chroma。已有目录或挂载卷保留原有备份，在旧版本中导出，再显式迁移或从原始文档重建到受支持后端。复制旧目录到 Milvus 数据卷不构成迁移；确认新索引可用前不删除旧数据。
 
 ---
 
@@ -147,7 +143,7 @@ Milvus 的备份/恢复通常要依赖你们的部署方式（standalone / clust
 1. 恢复 Postgres（§1）
 2. 恢复 MinIO bucket（§2，若启用）
 3. 恢复/重建向量库（§3）
-4. 启动 MimirQ（Helm / Compose）
+4. 启动 Ragvia（Helm / Compose）
 5. 验证：
    - Readiness：`GET /api/v1/health/ready`
    - smoke test：`python scripts/smoke_test.py ...`

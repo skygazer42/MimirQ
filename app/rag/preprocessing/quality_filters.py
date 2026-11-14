@@ -29,7 +29,7 @@ _VOWEL_RE = re.compile(r"[aeiou]")
 
 
 def _is_outline_line(line: str) -> bool:
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     if not stripped:
         return False
     if _MD_HEADING_RE.match(stripped):
@@ -60,7 +60,7 @@ def _outline_only_metrics(raw: str) -> tuple[int, int, int]:
             continue
         if in_code:
             continue
-        stripped = (line or "").strip()
+        stripped = line.strip()
         if not stripped:
             continue
         total += 1
@@ -77,7 +77,7 @@ def drop_if_outline_only(
     min_content_chars: int = 200,
     max_heading_ratio: float = 0.85,
 ) -> QualityDecision:
-    raw = text or ""
+    raw = text
     if not raw.strip():
         return QualityDecision(dropped=True, reason="empty_document", metrics={"content_chars": 0})
 
@@ -90,8 +90,8 @@ def drop_if_outline_only(
     metrics: dict[str, float | int] = {
         "lines_total": total,
         "lines_outline": outline,
-        "heading_ratio": float(heading_ratio),
-        "content_chars": int(content_chars),
+        "heading_ratio": heading_ratio,
+        "content_chars": content_chars,
     }
 
     if content_chars < max(0, int(min_content_chars)) and heading_ratio >= float(max_heading_ratio or 0.0):
@@ -107,18 +107,18 @@ def drop_if_low_density(text: str, *, threshold: float = 0.12) -> QualityDecisio
     This is useful for garbled OCR or corrupted encodings that produce mostly
     symbols. It is intentionally simple and should be opt-in.
     """
-    raw = text or ""
+    raw = text
     if not raw.strip():
         return QualityDecision(dropped=True, reason="empty_document", metrics={"density": 0.0})
 
     non_space = sum(1 for ch in raw if not ch.isspace())
     alnum = len(_ALNUM_CJK_RE.findall(raw))
-    density = (alnum / max(1, non_space)) if non_space else 0.0
+    density = alnum / non_space
 
     metrics: dict[str, float | int] = {
-        "chars_non_space": int(non_space),
-        "chars_alnum_cjk": int(alnum),
-        "density": float(density),
+        "chars_non_space": non_space,
+        "chars_alnum_cjk": alnum,
+        "density": density,
     }
 
     if density < float(threshold or 0.0):
@@ -142,24 +142,24 @@ def drop_if_high_perplexity_proxy(
     - many digit-mixed tokens
     - very low vowel ratio in ASCII words
     """
-    raw = text or ""
+    raw = text
     if not raw.strip():
         return QualityDecision(
             dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0}
         )
 
-    tokens = [str(tok or "").strip().casefold() for tok in _TOKEN_RE.findall(raw) if str(tok or "").strip()]
+    tokens = [tok.casefold() for tok in _TOKEN_RE.findall(raw)]
     token_count = len(tokens)
-    unique_ratio = (len(set(tokens)) / max(1, token_count)) if token_count else 0.0
-    stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / max(1, token_count)) if token_count else 0.0
-    long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / max(1, token_count)) if token_count else 0.0
+    unique_ratio = (len(set(tokens)) / token_count) if token_count else 0.0
+    stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / token_count) if token_count else 0.0
+    long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / token_count) if token_count else 0.0
     digit_token_ratio = (
-        (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / max(1, token_count)) if token_count else 0.0
+        (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / token_count) if token_count else 0.0
     )
 
     ascii_alpha_tokens = [tok for tok in tokens if tok.isascii() and any(ch.isalpha() for ch in tok)]
     ascii_letters = "".join(ch for tok in ascii_alpha_tokens for ch in tok if ch.isalpha())
-    vowel_ratio = len(_VOWEL_RE.findall(ascii_letters)) / max(1, len(ascii_letters)) if ascii_letters else 0.0
+    vowel_ratio = len(_VOWEL_RE.findall(ascii_letters)) / len(ascii_letters) if ascii_letters else 0.0
 
     proxy = 0.0
     proxy += max(0.0, unique_ratio - 0.72) * 1.6
@@ -168,16 +168,16 @@ def drop_if_high_perplexity_proxy(
     proxy += max(0.0, digit_token_ratio - 0.15) * 1.2
     if ascii_letters:
         proxy += max(0.0, 0.24 - vowel_ratio) * 1.3
-    proxy = max(0.0, min(1.0, float(proxy)))
+    proxy = max(0.0, min(1.0, proxy))
 
     metrics: dict[str, float | int] = {
-        "token_count": int(token_count),
-        "unique_ratio": float(unique_ratio),
-        "stopword_ratio": float(stopword_ratio),
-        "long_token_ratio": float(long_token_ratio),
-        "digit_token_ratio": float(digit_token_ratio),
-        "vowel_ratio": float(vowel_ratio),
-        "perplexity_proxy": float(proxy),
+        "token_count": token_count,
+        "unique_ratio": unique_ratio,
+        "stopword_ratio": stopword_ratio,
+        "long_token_ratio": long_token_ratio,
+        "digit_token_ratio": digit_token_ratio,
+        "vowel_ratio": vowel_ratio,
+        "perplexity_proxy": proxy,
     }
 
     if token_count < max(0, int(min_tokens or 0)):

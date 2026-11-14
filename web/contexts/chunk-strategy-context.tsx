@@ -47,16 +47,15 @@ export function ChunkStrategyProvider({ children }: Readonly<{ children: React.R
     }
   }, [capabilities, chunkStrategy, chunkStrategyAvailable, persistChunkStrategy])
 
-  const contextValue = useMemo(() => ({
-    chunkStrategy,
-    setChunkStrategy: persistChunkStrategy,
-  }), [chunkStrategy, persistChunkStrategy])
-
-  return (
-    <ChunkStrategyContext.Provider value={contextValue}>
-      {children}
-    </ChunkStrategyContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      chunkStrategy,
+      setChunkStrategy: persistChunkStrategy,
+    }),
+    [chunkStrategy, persistChunkStrategy],
   )
+
+  return <ChunkStrategyContext.Provider value={contextValue}>{children}</ChunkStrategyContext.Provider>
 }
 
 export function useChunkStrategyPreference() {

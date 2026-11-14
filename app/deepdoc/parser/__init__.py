@@ -29,7 +29,6 @@ __all__ = [
     "TxtParser",
     "MinerUParser",
     "DoclingParser",
-    "TCADPParser",
 ]
 
 _MISSING = object()
@@ -84,10 +83,6 @@ def _additional_parser_export(name: str) -> Any:
         from .docling_parser import DoclingParser
 
         return DoclingParser
-    if name == "TCADPParser":
-        from .tcadp_parser import TCADPParser
-
-        return TCADPParser
     return _MISSING
 
 

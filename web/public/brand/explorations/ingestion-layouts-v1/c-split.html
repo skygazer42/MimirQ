@@ -1,0 +1,236 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>C · 文件与配置分栏 · Ragvia</title><link rel="stylesheet" href="./common.css"><style>
+.split-workspace{height:852px;display:grid;grid-template-columns:minmax(0,1fr) 354px;min-height:0}
+.files-pane{min-width:0;padding:20px 28px 22px;display:flex;flex-direction:column}
+.sources-line{height:44px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:stretch}
+.sources-line .source-tabs{height:44px;gap:25px}
+.sources-line .source-tab{height:44px;position:relative}
+.sources-line .source-tab.active:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--ink)}
+.drop-band{height:104px;flex:none;margin:14px 0 16px;border:1px dashed #BFC7CF;border-radius:6px;background:#F5F7F8;display:flex;align-items:center;gap:16px;padding:18px 20px}
+.drop-band .drop-icon{width:42px;height:42px;background:#E9EDF0}
+.drop-copy{min-width:0}.drop-copy strong{display:block;font-size:14px;font-weight:600;line-height:22px}
+.drop-copy p{font-size:13px;line-height:21px;color:var(--muted);margin-top:4px}
+.drop-band>.btn{margin-left:auto;flex:none}
+.queue-top{height:44px;flex:none;display:flex;align-items:center;gap:10px}
+.queue-top h2{font-size:15px;line-height:24px;font-weight:600}
+.queue-top .queue-size{font-size:13px;color:var(--muted);margin-left:2px}
+.queue-top .text-action{margin-left:auto;font-size:13px}
+.queue-top .count{font-size:13px;background:#E8ECEF}
+.file-table{flex:none;font-variant-numeric:tabular-nums}
+.file-table col:first-child{width:34px}.file-table col:nth-child(3){width:100px}.file-table col:nth-child(4){width:100px}.file-table col:nth-child(5){width:104px}.file-table col:last-child{width:34px}
+.file-table thead{background:#F0F3F5}.file-table th{height:36px;font-size:13px;font-weight:500;padding:0 10px}
+.file-table th:first-child{padding:0 0 0 10px}.file-table td{height:42px;padding:0 10px;font-size:13px}
+.file-table td:first-child{padding:0 0 0 10px;color:var(--muted);font-size:13px}
+.file-table td:last-child,.file-table th:last-child{padding:0}
+.file-table .file-name{font-size:13px;gap:10px}.file-table .status{font-size:13px}
+.file-table .format{font-size:13px;color:var(--muted)}.file-table .size{text-align:right;color:var(--muted);padding-right:22px}
+.file-table .remove{height:32px;width:32px;display:grid;place-items:center;color:#76828D}.file-table .remove .icon{width:14px;height:14px}
+.files-note{margin-top:18px;display:flex;gap:7px;align-items:center;color:var(--muted);font-size:13px;line-height:20px}
+.files-note .icon{width:14px;height:14px}
+.settings-pane{border-left:1px solid var(--line);background:#F0F3F5;padding:24px 24px 22px;min-width:0;display:flex;flex-direction:column}
+.settings-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.settings-title h2{font-size:15px;line-height:24px;font-weight:600}.settings-title>.icon{width:17px;height:17px;color:var(--muted)}
+.settings-section{padding:0 0 22px}
+.settings-pane .field-label{font-size:13px;line-height:20px;color:#4D5A66;margin-bottom:10px;font-weight:550}
+.settings-pane .select{height:38px;font-size:13px;background:#FAFBFC;border-color:#CFD6DD}
+.settings-pane .mode-options{flex-direction:column;gap:0;margin:0 -8px}
+.settings-pane .mode-option{border:0;border-radius:5px;background:none;padding:9px;min-height:60px;align-items:flex-start;gap:10px}
+.settings-pane .mode-option.selected{background:#E6EAED}
+.settings-pane .mode-option strong{font-size:14px;line-height:22px;font-weight:550}
+.settings-pane .mode-option p{font-size:13px;line-height:20px;margin-top:2px;white-space:nowrap;color:#52606C}
+.settings-pane .radio{margin-top:3px;width:15px;height:15px}
+.settings-section.execution{border-top:1px solid #D7DDE2;padding:20px 0 0}
+.process-settings{display:grid;gap:16px;padding:23px 0}
+.settings-section.advanced{border-top:1px solid #D7DDE2;padding:16px 0}
+.settings-section.compact{padding:18px 0}
+.inline-field{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.inline-field .field-label{margin-bottom:0}
+.inline-field .small-select{width:156px;height:36px}
+.setting-detail{font-size:13px;line-height:21px;color:var(--muted);margin-top:10px}
+.dedup-value{display:flex;align-items:center;gap:7px;font-size:13px}.dedup-value .icon{width:15px;height:15px;color:var(--muted)}
+.advanced-entry{display:flex;align-items:center;justify-content:space-between;height:28px;font-size:13px;font-weight:550}
+.advanced-entry .icon{height:14px;width:14px;color:var(--muted)}
+.advanced-details{font-size:13px;color:var(--muted);line-height:21px;margin-top:7px}
+.settings-tail{display:flex;align-items:center;gap:7px;margin-top:auto;padding-top:18px;color:var(--muted);font-size:13px;line-height:21px}
+.settings-tail .icon{width:14px;height:14px}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><img src="../../ragvia/logo.svg" alt="Ragvia"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16m8-12-4 4 4 4" /></svg>
+</div><div class="sidebar-new"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新对话</div><div class="sidebar-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+搜索与命令<small>⌘K</small></div><div class="nav-group">工作区<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+对话</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7" /><path d="M12 6v6l4 2" /></svg>
+问答历史</div><div class="nav-group">知识库管理<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+数据集</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg>
+知识库</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5" /><path d="M5 7.5v13h14v-13M12 11v4" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+隔离队列</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+反馈质检</div><div class="nav-group">入库流程<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+入库管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="parsing"><path d="M12.5 3.5H4v17h8.5M8 8h3M8 12h3M8 16h3M15 7h5m-5 5h5m-5 5h5" /><path d="m17 5 3 2-3 2" /></svg>
+文档解析</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="data-governance"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="M8 9h8M8 12h5M8 15h5" /></svg>
+数据治理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+治理配置</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+切块预览</div><div class="sidebar-bottom"><div class="profile"><span class="avatar"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3" /><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20" /></svg>
+</span><div><strong>开发模式</strong><small>本地开发环境</small></div><span class="profile-icons"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="log-out"><path d="M12 3H3v18h9m-2-9h12m-4-4 4 4-4 4" /></svg>
+<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="sun"><circle cx="12" cy="12" r="4.5" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+</span></div><div class="appearance"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z" /><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none" /></svg>
+界面外观<span>5 种风格</span></div><div class="service"><i></i>本地开发环境</div></div></aside><main class="main"><header class="page-header"><div class="heading"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+<h1>入库管理</h1></div><div class="view-tabs"><span class="active">入库操作</span><span>执行监控</span></div><div class="header-end"><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-up-right"><path d="M5 19 19 5M6 5h13v13" /></svg>
+查看文档</button></div></header>
+<div class="split-workspace">
+  <section class="files-pane" aria-label="导入文件">
+    <div class="sources-line"><div class="source-tabs "><div class="source-tab active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="upload-cloud"><path d="M5 18a4.5 4.5 0 0 1 1.3-8.5A6 6 0 0 1 18 10a4.5 4.5 0 0 1 1 8M12 22V12m-4 4 4-4 4 4" /></svg>
+本地文件</div><div class="source-tab "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="folder"><path d="M3.5 6h6l2 2h9v12h-17Z" /></svg>
+文件夹</div><div class="source-tab "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="link"><path d="m8 14-3 3a4 4 0 0 1-2-7l5-5a4 4 0 0 1 6 1m-4 4 4-4m0 4 3-3a4 4 0 0 1 2 7l-5 5a4 4 0 0 1-6-1" /></svg>
+URL 列表</div><div class="source-tab "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="cloud"><path d="M6.5 19h11a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.7-1.5 5.25 5.25 0 0 0 .2 10.5Z" /></svg>
+对象存储</div><div class="source-tab "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="archive"><rect x="3" y="3.5" width="18" height="5" rx="1" /><path d="M5 8.5v12h14v-12M9 12h6" /></svg>
+API 导入</div></div></div>
+    <div class="drop-band">
+      <span class="drop-icon"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="upload-cloud"><path d="M5 18a4.5 4.5 0 0 1 1.3-8.5A6 6 0 0 1 18 10a4.5 4.5 0 0 1 1 8M12 22V12m-4 4 4-4 4 4" /></svg>
+</span>
+      <div class="drop-copy"><strong>拖拽文件到这里，或从电脑选择</strong><p>支持 PDF、Word、表格等文件，单个文件最大 2 GB</p></div>
+      <button type="button" class="btn "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+添加文件</button>
+    </div>
+    <div class="queue-top"><h2>待提交文件</h2><span class="count">12</span><span class="queue-size">共 19.13 MB</span><span class="text-action"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="trash2"><path d="M3 6h18M6 6l1 15h10l1-15M9 6V3h6v3M10 10v7m4-7v7" /></svg>
+清空</span></div>
+    <table class="file-table" aria-label="待提交文件清单">
+      <colgroup><col><col><col><col><col><col></colgroup>
+      <thead><tr><th>#</th><th>文件名称</th><th>格式</th><th class="size">大小</th><th>状态</th><th></th></tr></thead>
+      <tbody><tr>
+  <td>01</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-pdf" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+<span>员工手册 2026.pdf</span></span></td>
+  <td class="format">PDF</td>
+  <td class="size">2.40 MB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 员工手册 2026.pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>02</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-word" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-type"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 11h8m-4 0v6m-2 0h4" /></svg>
+<span>产品使用指南.docx</span></span></td>
+  <td class="format">Word</td>
+  <td class="size">1.80 MB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 产品使用指南.docx"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>03</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-md" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+<span>接口接入规范.md</span></span></td>
+  <td class="format">Markdown</td>
+  <td class="size">42 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 接口接入规范.md"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>04</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-sheet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-spreadsheet"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M5 11h14m-14 4.5h14M11 11v9.5" /></svg>
+<span>客户资料.csv</span></span></td>
+  <td class="format">CSV</td>
+  <td class="size">368 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 客户资料.csv"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>05</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-pdf" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+<span>部署操作说明.pdf</span></span></td>
+  <td class="format">PDF</td>
+  <td class="size">3.20 MB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 部署操作说明.pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>06</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-sheet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-spreadsheet"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M5 11h14m-14 4.5h14M11 11v9.5" /></svg>
+<span>数据字典.xlsx</span></span></td>
+  <td class="format">Excel</td>
+  <td class="size">840 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 数据字典.xlsx"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>07</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-md" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+<span>问题排查记录.md</span></span></td>
+  <td class="format">Markdown</td>
+  <td class="size">28 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 问题排查记录.md"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>08</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-pdf" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+<span>服务接入协议.pdf</span></span></td>
+  <td class="format">PDF</td>
+  <td class="size">1.60 MB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 服务接入协议.pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>09</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-code" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-code"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m9.5 11-2 2.5 2 2.5m5-5 2 2.5-2 2.5" /></svg>
+<span>帮助中心导出.html</span></span></td>
+  <td class="format">HTML</td>
+  <td class="size">312 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 帮助中心导出.html"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>10</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-text" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /></svg>
+<span>变更说明.txt</span></span></td>
+  <td class="format">TXT</td>
+  <td class="size">12 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 变更说明.txt"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>11</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-json" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-json"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M10 11H8.5v2l-1 1 1 1v2H10m4-6h1.5v2l1 1-1 1v2H14" /></svg>
+<span>数据字段映射.json</span></span></td>
+  <td class="format">JSON</td>
+  <td class="size">24 KB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 数据字段映射.json"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr><tr>
+  <td>12</td>
+  <td><span class="file-name"><svg aria-hidden="true" class="icon file-zip" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-archive"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M11 4v3m2 0v3m-2 0v3m2 0v3" /><rect x="10" y="17" width="4" height="2" rx="0.5" /></svg>
+<span>项目资料.zip</span></span></td>
+  <td class="format">ZIP</td>
+  <td class="size">8.40 MB</td>
+  <td><span class="status ">待提交</span></td>
+  <td><button type="button" class="remove" aria-label="移除 项目资料.zip"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="x"><path d="m6 6 12 12M6 18 18 6" /></svg>
+</button></td>
+</tr></tbody>
+    </table>
+  </section>
+  <aside class="settings-pane" aria-label="入库配置">
+    <div class="settings-title"><h2>入库配置</h2></div>
+    <section class="settings-section">
+      <span class="field-label">目标数据集</span>
+      <div class="select "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+<span>产品文档</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div>
+    </section>
+    <section class="settings-section execution">
+      <span class="field-label">处理方式</span>
+      <div class="mode-options "><div class="mode-option "><span class="radio" aria-hidden="true"></span><div><strong>仅登记</strong><p>保存文件，不解析</p></div></div><div class="mode-option selected"><span class="radio" aria-hidden="true"></span><div><strong>入库并解析</strong><p>提取正文，不建索引</p></div></div><div class="mode-option "><span class="radio" aria-hidden="true"></span><div><strong>解析 + 索引</strong><p>解析并建立检索索引</p></div></div></div>
+    </section>
+    <div class="process-settings">
+      <div class="inline-field"><span class="field-label">解析器</span><div class="select small-select"><span>自动选择</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div></div>
+      <div class="inline-field"><span class="field-label">重复处理</span><div class="select small-select"><span>内容哈希</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div></div>
+    </div>
+    <section class="settings-section advanced">
+      <div class="advanced-entry"><span>高级设置</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div>
+      <p class="advanced-details">导入方式、标签与目录</p>
+    </section>
+  </aside>
+</div>
+<footer class="submit "><div class="submit-summary"><strong>12 个文件<span class="divider-dot">·</span>19.13 MB</strong><span>目标：产品文档<span class="divider-dot">·</span>登记 → 解析</span></div><div class="submit-actions"><button type="button" class="btn quiet">清空队列</button><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-right"><path d="M4 12h15m-6-6 6 6-6 6" /></svg>
+登记并解析</button></div></footer></main></div></body></html>

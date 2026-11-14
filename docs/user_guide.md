@@ -1,8 +1,8 @@
-# MimirQ 全流程操作指南
+# Ragvia 全流程操作指南
 
-本文面向第一次使用 MimirQ 的管理员、知识库运营人员、研发和测试人员，覆盖从部署到生产运维的完整路径。目标不是罗列全部 API，而是回答四个问题：系统怎么启动、知识库怎么建、效果怎么验收、出现问题怎么定位。
+本文面向第一次使用 Ragvia 的管理员、知识库运营人员、研发和测试人员，覆盖从部署到生产运维的完整路径。目标不是罗列全部 API，而是回答四个问题：系统怎么启动、知识库怎么建、效果怎么验收、出现问题怎么定位。
 
-MimirQ 的主流程是：
+Ragvia 的主流程是：
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ flowchart LR
 Docker 一键启动需要 Git、Docker Engine 或 Docker Desktop、Docker Compose v2；推荐安装 GNU Make。源码开发还需要 Python 3.11+ 和 pnpm。Windows、macOS 与 Linux 的详细差异见[快速入门](./quickstart.md)。
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -226,7 +226,7 @@ Chunk Preview 用于试验参数；正式资产仍应从入库页面进入目标
 
 ## 6. 检索、生成与 Dify 接入
 
-MimirQ 将检索证据和 LLM 生成分开看待：
+Ragvia 将检索证据和 LLM 生成分开看待：
 
 - “检索测试”验证能否找到正确证据。
 - 首页问答验证 LLM 能否基于证据生成正确答案。
@@ -236,8 +236,8 @@ MimirQ 将检索证据和 LLM 生成分开看待：
 
 Dify 有两种接入方式：
 
-1. **External Knowledge API**：Dify 负责编排与生成，MimirQ 负责检索、重排、权限过滤与证据返回。
-2. **Workflow HTTP 节点**：Dify 传入查询、数据集范围和过滤参数，MimirQ 返回证据与 Trace。
+1. **External Knowledge API**：Dify 负责编排与生成，Ragvia 负责检索、重排、权限过滤与证据返回。
+2. **Workflow HTTP 节点**：Dify 传入查询、数据集范围和过滤参数，Ragvia 返回证据与 Trace。
 
 标准 External Knowledge 端点为 `POST /api/v1/integrations/dify/retrieval`。映射、会话回填和调用顺序见 [API 工作流](./api/workflows.md)；真实工作流截图和评测见根目录 [README](../README.md#dify-接入)。
 
@@ -288,7 +288,7 @@ Dify 有两种接入方式：
 | 清空数据重建 | `make docker-reset` | 删除 | 保留 |
 | 删除数据和服务镜像 | `make docker-purge` | 删除 | 删除 |
 
-`docker-reset` 和 `docker-purge` 不可恢复。执行前必须完成[备份与恢复指南](./deployment/backup_restore.md)中的备份和恢复演练。MimirQ 使用独立 Compose 项目名 `mimirq`；如何核对项目归属、Windows PowerShell 操作和 Dify 共存恢复见[Docker Compose 部署指南](./deployment/docker_compose.md#4-数据卷与清理)。
+`docker-reset` 和 `docker-purge` 不可恢复。执行前必须完成[备份与恢复指南](./deployment/backup_restore.md)中的备份和恢复演练。Ragvia 使用独立 Compose 项目名 `mimirq`；如何核对项目归属、Windows PowerShell 操作和 Dify 共存恢复见[Docker Compose 部署指南](./deployment/docker_compose.md#4-数据卷与清理)。
 
 生产升级应先备份、阅读发布说明、在预发运行迁移和回归，再发布。数据库迁移、依赖健康和回滚步骤以[运维 Runbook](./deployment/runbook.md)为准。
 

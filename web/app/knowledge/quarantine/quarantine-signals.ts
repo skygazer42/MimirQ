@@ -1,14 +1,7 @@
 import { getDocumentKind } from '@/components/ingestion/monitor-utils'
-import { cn } from '@/lib/utils'
 import type { Document, DocumentPipelineOptions } from '@/types'
 
-import type {
-  ActingState,
-  JsonRecord,
-  QuarantineAction,
-  QuarantineSeverity,
-  UserMetadata,
-} from './types'
+import type { JsonRecord, QuarantineSeverity, UserMetadata } from './types'
 
 export function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -56,23 +49,16 @@ export function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
 
   const out: DocumentPipelineOptions = {}
 
-  if (typeof governance.drop_outline_only === 'boolean')
-    out.governance_drop_outline_only = governance.drop_outline_only
+  if (typeof governance.drop_outline_only === 'boolean') out.governance_drop_outline_only = governance.drop_outline_only
   if (typeof governance.drop_outline_min_content_chars === 'number')
-    out.governance_drop_outline_min_content_chars =
-      governance.drop_outline_min_content_chars
+    out.governance_drop_outline_min_content_chars = governance.drop_outline_min_content_chars
   if (typeof governance.drop_outline_max_heading_ratio === 'number')
-    out.governance_drop_outline_max_heading_ratio =
-      governance.drop_outline_max_heading_ratio
-  if (typeof governance.drop_low_density === 'boolean')
-    out.governance_drop_low_density = governance.drop_low_density
+    out.governance_drop_outline_max_heading_ratio = governance.drop_outline_max_heading_ratio
+  if (typeof governance.drop_low_density === 'boolean') out.governance_drop_low_density = governance.drop_low_density
   if (typeof governance.drop_low_density_threshold === 'number')
-    out.governance_drop_low_density_threshold =
-      governance.drop_low_density_threshold
-  if (typeof governance.pii_max_hits === 'number')
-    out.governance_pii_max_hits = governance.pii_max_hits
-  if (typeof governance.secrets_max_hits === 'number')
-    out.governance_secrets_max_hits = governance.secrets_max_hits
+    out.governance_drop_low_density_threshold = governance.drop_low_density_threshold
+  if (typeof governance.pii_max_hits === 'number') out.governance_pii_max_hits = governance.pii_max_hits
+  if (typeof governance.secrets_max_hits === 'number') out.governance_secrets_max_hits = governance.secrets_max_hits
   if (typeof governance.quarantine_on_drop === 'boolean')
     out.governance_quarantine_on_drop = governance.quarantine_on_drop
 
@@ -82,15 +68,21 @@ export function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
 export function reasonLabel(reason: string): string {
   switch (reason) {
     case 'outline_only':
-      return '大纲文档'
+      return '仅包含大纲'
     case 'low_density':
-      return '低密度文本'
+      return '正文密度过低'
     case 'empty_document':
       return '空文档'
     case 'pii_exceeded':
-      return 'PII 超阈值'
+      return '个人信息超阈值'
     case 'secrets_exceeded':
-      return 'Secrets 超阈值'
+      return '疑似密钥超阈值'
+    case 'parsing_failed':
+      return '文档解析失败'
+    case 'embedding_failed':
+    case 'vector_write_failed':
+    case 'index_failed':
+      return '索引写入失败'
     default:
       return reason
   }
@@ -100,22 +92,11 @@ export function buildReviewAdvice(doc: Document): string[] {
   const reasons = new Set(getDropReasons(doc))
   const advice: string[] = []
 
-  if (reasons.has('outline_only'))
-    advice.push(
-      '如果正文有效但被判定为大纲文档，可关闭 outline_only 过滤后重试。'
-    )
-  if (reasons.has('low_density'))
-    advice.push(
-      '如果文本主要由表格或短句构成，可放宽 low_density 阈值后重新入库。'
-    )
-  if (reasons.has('pii_exceeded'))
-    advice.push(
-      '确认是否包含真实敏感信息；若仅为误报，建议先抽样预览再决定放行。'
-    )
-  if (reasons.has('secrets_exceeded'))
-    advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
-  if (!advice.length)
-    advice.push('先查看命中规则与原文片段，再决定放行、重试或删除。')
+  if (reasons.has('outline_only')) advice.push('如果正文有效但被判定为大纲文档，可关闭 outline_only 过滤后重试。')
+  if (reasons.has('low_density')) advice.push('如果文本主要由表格或短句构成，可放宽 low_density 阈值后重新入库。')
+  if (reasons.has('pii_exceeded')) advice.push('确认是否包含真实敏感信息；若仅为误报，建议先抽样预览再决定放行。')
+  if (reasons.has('secrets_exceeded')) advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
+  if (!advice.length) advice.push('核对原文与入库详情后，可重试或调整文档参数。')
 
   return advice
 }
@@ -129,19 +110,6 @@ export function createReviewMetadataPatch(extra?: JsonRecord): JsonRecord {
   if (extra) Object.assign(patch, extra)
 
   return patch
-}
-
-export function getBusyIconClassName(
-  acting: ActingState,
-  docId: string,
-  action: QuarantineAction
-): string {
-  return cn(
-    'h-4 w-4 mr-1',
-    acting?.id === docId && acting.action === action
-      ? 'animate-spin motion-reduce:animate-none'
-      : ''
-  )
 }
 
 export function downloadTextFile(filename: string, content: string, type: string) {
@@ -192,50 +160,8 @@ export function getQuarantineSeverity(doc: Document): QuarantineSeverity {
   ) {
     return '高'
   }
-  if (
-    reasons.has('low_density') ||
-    reasons.has('outline_only') ||
-    doc.status === 'quarantined'
-  ) {
+  if (reasons.has('low_density') || reasons.has('outline_only') || doc.status === 'quarantined') {
     return '中'
   }
   return '低'
-}
-
-export function getSeverityClassName(severity: QuarantineSeverity): string {
-  switch (severity) {
-    case '高':
-      return 'text-rose'
-    case '中':
-      return 'text-warning'
-    case '低':
-    default:
-      return 'text-success'
-  }
-}
-
-export function getSeverityBarClassName(severity: QuarantineSeverity): string {
-  switch (severity) {
-    case '高':
-      return 'bg-rose/70'
-    case '中':
-      return 'bg-warning/70'
-    case '低':
-    default:
-      return 'bg-success/70'
-  }
-}
-
-export function buildConicGradient(values: number[], colors: string[]): string {
-  const total = values.reduce((sum, value) => sum + value, 0)
-  if (!total) return 'conic-gradient(rgba(148,163,184,0.18) 0deg 360deg)'
-
-  let current = 0
-  const stops = values.map((value, index) => {
-    const start = current
-    const end = current + (value / total) * 360
-    current = end
-    return `${colors[index]} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`
-  })
-  return `conic-gradient(${stops.join(', ')})`
 }

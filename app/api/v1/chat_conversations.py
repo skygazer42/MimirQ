@@ -2,7 +2,6 @@
 Conversation read/delete routes for the chat API.
 """
 
-import contextlib
 import json
 import re
 from datetime import UTC, datetime
@@ -14,19 +13,20 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query as ORMQuery
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.chat import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import (
     ConversationCreate,
     ConversationDetail,
     ConversationList,
     ConversationSchema,
     ConversationUpdate,
 )
-from app.api.utils.response_headers import download_response_headers
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES, file_response_headers
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
+from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.chat_conversation_access import (
     ensure_conversation_access,
@@ -39,19 +39,30 @@ from app.services.chat_conversation_titles import (
     get_latest_user_message_content,
 )
 from app.services.chat_scope import enforce_non_empty_chat_scope
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 CONVERSATION_NOT_FOUND_DETAIL = "Conversation not found"
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
+
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+def _get_accessible_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID,
+) -> Conversation:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    conversation = (
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
+    ensure_conversation_access(db, tenant_id, account_id, conversation)
+    return conversation
 
 
 def _get_latest_messages_by_conversation_id(
@@ -89,11 +100,11 @@ def _get_latest_messages_by_conversation_id(
 
 
 def _apply_conversation_search(
-    query: ORMQuery,
+    query: ORMQuery[Conversation],
     *,
     tenant_id: UUID,
     search_term: str,
-) -> ORMQuery:
+) -> ORMQuery[Conversation]:
     latest_message_content = (
         select(Message.content)
         .where(
@@ -113,42 +124,6 @@ def _apply_conversation_search(
     )
 
 
-def _normalized_conversation_limit(limit: int) -> int:
-    try:
-        limit_value = int(limit or 0)
-    except Exception:
-        limit_value = 20
-    return max(1, min(limit_value, 200))
-
-
-def _conversation_doc_ids_index(batch: list[Conversation]) -> tuple[dict[UUID, list[UUID]], set[UUID]]:
-    doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
-    all_doc_ids: set[UUID] = set()
-    for conv in batch:
-        doc_ids = list(getattr(conv, "document_ids", None) or [])
-        doc_ids_by_conversation_id[conv.id] = doc_ids
-        all_doc_ids.update(doc_ids)
-    return doc_ids_by_conversation_id, all_doc_ids
-
-
-def _allowed_conversation_document_sets(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    all_doc_ids: set[UUID],
-) -> tuple[set[UUID], set[UUID]]:
-    if not all_doc_ids:
-        return set(), set()
-    return get_allowed_document_id_sets(
-        db,
-        tenant_id,
-        account_id,
-        list(all_doc_ids),
-        check_member=False,
-    )
-
-
 def _dataset_scope_accessible(
     db: Session,
     *,
@@ -157,7 +132,7 @@ def _dataset_scope_accessible(
     conv: Conversation,
     dataset_access: dict[UUID, bool],
 ) -> bool:
-    dataset_id = getattr(conv, "dataset_id", None)
+    dataset_id = conv.dataset_id
     if dataset_id is None:
         return True
     if dataset_id not in dataset_access:
@@ -169,21 +144,11 @@ def _dataset_scope_accessible(
                 conv=conv,
             )
             dataset_access[dataset_id] = True
-        except HTTPException:
+        except HTTPException as exc:
+            if exc.status_code not in {403, 404}:
+                raise
             dataset_access[dataset_id] = False
     return dataset_access[dataset_id]
-
-
-def _conversation_documents_accessible(
-    *,
-    doc_ids: list[UUID],
-    allowed_doc_ids: set[UUID],
-    missing_doc_ids: set[UUID],
-) -> bool:
-    if not doc_ids:
-        return True
-    remaining_doc_ids = set(doc_ids) - missing_doc_ids
-    return not remaining_doc_ids or bool(remaining_doc_ids & allowed_doc_ids)
 
 
 def _build_conversation_list_item(
@@ -201,22 +166,22 @@ def _build_conversation_list_item(
         "last_message_at": None,
     }
     last_msg = last_message_by_conversation_id.get(conv.id)
-    if last_msg:
+    if last_msg is not None:
         conv_dict["last_message"] = last_msg.content[:100] + "..." if len(last_msg.content) > 100 else last_msg.content
         conv_dict["last_message_at"] = last_msg.created_at
     return conv_dict
 
 
 def _collect_accessible_conversations(
-    ordered_query: ORMQuery,
+    ordered_query: ORMQuery[Conversation],
     *,
     db: Session,
     tenant_id: UUID,
     account_id: str,
     skip: int,
-    limit_eff: int,
+    limit: int,
 ) -> tuple[int, list[Conversation]]:
-    batch_size = max(50, limit_eff)
+    batch_size = max(50, limit)
     query_offset = 0
     accessible_total = 0
     conversations: list[Conversation] = []
@@ -228,12 +193,16 @@ def _collect_accessible_conversations(
             break
         query_offset += len(batch)
 
-        doc_ids_by_conversation_id, all_doc_ids = _conversation_doc_ids_index(batch)
-        allowed_doc_ids, missing_doc_ids = _allowed_conversation_document_sets(
+        doc_ids_by_conversation_id = {conv.id: list(conv.document_ids or []) for conv in batch}
+        all_doc_ids: set[UUID] = set()
+        for doc_ids in doc_ids_by_conversation_id.values():
+            all_doc_ids.update(doc_ids)
+        allowed_doc_ids, missing_doc_ids = get_allowed_document_id_sets(
             db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            all_doc_ids=all_doc_ids,
+            tenant_id,
+            account_id,
+            list(all_doc_ids),
+            check_member=False,
         )
 
         for conv in batch:
@@ -245,17 +214,13 @@ def _collect_accessible_conversations(
                 dataset_access=dataset_access,
             ):
                 continue
-            doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
-            if not _conversation_documents_accessible(
-                doc_ids=doc_ids,
-                allowed_doc_ids=allowed_doc_ids,
-                missing_doc_ids=missing_doc_ids,
-            ):
+            remaining_doc_ids = set(doc_ids_by_conversation_id[conv.id]) - missing_doc_ids
+            if remaining_doc_ids and not remaining_doc_ids.intersection(allowed_doc_ids):
                 continue
             accessible_total += 1
-            if accessible_total <= int(skip):
+            if accessible_total <= skip:
                 continue
-            if len(conversations) < limit_eff:
+            if len(conversations) < limit:
                 conversations.append(conv)
 
         if len(batch) < batch_size:
@@ -268,7 +233,7 @@ def _collect_accessible_conversations(
     "/conversations",
     response_model=ConversationSchema,
     status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def create_conversation(
     request: ConversationCreate,
@@ -278,22 +243,20 @@ def create_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a new conversation."""
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
-    requested_title = str(request.title or "").strip()
+    allow_empty_docs = settings.CHAT_ALLOW_EMPTY_DOCUMENTS
+    requested_title = request.title.strip() if request.title is not None else None
+    if requested_title == "":
+        requested_title = None
 
     scope_dataset_id: UUID | None = None
+    allowed_doc_ids: list[UUID] = []
     if request.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
-        scope_dataset_id = None
     elif request.dataset_id is not None:
-        DatasetService.ensure_member(db, tenant_id, account_id)
-        ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = request.dataset_id
-        allowed_doc_ids = []
-    else:
-        scope_dataset_id = None
-        allowed_doc_ids = []
 
     if not allow_empty_docs:
         enforce_non_empty_chat_scope(
@@ -307,8 +270,8 @@ def create_conversation(
 
     conversation = Conversation(
         tenant_id=tenant_id,
-        owner_account_id=str(account_id or "").strip() or None,
-        title=requested_title or None,
+        owner_account_id=account_id,
+        title=requested_title,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if requested_title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids,
@@ -324,7 +287,7 @@ def create_conversation(
 @router.patch(
     "/conversations/{conversation_id}",
     response_model=ConversationSchema,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def update_conversation(
     conversation_id: UUID,
@@ -335,19 +298,11 @@ def update_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update conversation metadata (currently: title)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    conversation = (
-        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    conversation = _get_accessible_conversation(
+        db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id
     )
-    if not conversation:
-        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
-
-    ensure_conversation_access(db, tenant_id, account_id, conversation)
-
-    changed = False
-    if "title" in getattr(payload, "model_fields_set", set()):
-        title = (payload.title or "").strip()
+    if "title" in payload.model_fields_set:
+        title = payload.title.strip() if payload.title is not None else None
         if title:
             conversation.title = title
             conversation.title_source = CONVERSATION_TITLE_SOURCE_MANUAL
@@ -360,9 +315,6 @@ def update_conversation(
                     conversation_id=conversation_id,
                 )
             )
-        changed = True
-
-    if changed:
         audit_log_event(
             db,
             tenant_id=tenant_id,
@@ -370,7 +322,7 @@ def update_conversation(
             action="chat.conversation.update",
             resource_type="conversation",
             resource_id=str(conversation_id),
-            details={"title_chars": len((conversation.title or "").strip())},
+            details={"title_chars": len(conversation.title.strip()) if conversation.title is not None else 0},
         )
         db.commit()
         db.refresh(conversation)
@@ -378,7 +330,7 @@ def update_conversation(
     return conversation
 
 
-@router.get("/conversations", response_model=ConversationList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/conversations", response_model=ConversationList, responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_conversations(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
@@ -389,12 +341,11 @@ def list_conversations(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List conversations."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    normalized_account_id = str(account_id or "").strip()
-    search_term = str(q or "").strip()
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    search_term = q.strip() if q is not None else None
     query = db.query(Conversation).filter(
         Conversation.tenant_id == tenant_id,
-        Conversation.owner_account_id == normalized_account_id,
+        Conversation.owner_account_id == account_id,
     )
     if search_term:
         query = _apply_conversation_search(
@@ -404,44 +355,36 @@ def list_conversations(
         )
 
     # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
-    limit_eff = _normalized_conversation_limit(limit)
     accessible_total, conversations = _collect_accessible_conversations(
         query.order_by(Conversation.updated_at.desc()),
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        skip=int(skip),
-        limit_eff=limit_eff,
+        skip=skip,
+        limit=limit,
     )
 
-    result_items = []
-    conv_ids = [conv.id for conv in conversations]
     last_message_by_conversation_id = _get_latest_messages_by_conversation_id(
         db,
         tenant_id,
-        conv_ids,
+        [conv.id for conv in conversations],
     )
 
-    for conv in conversations:
-        result_items.append(
-            _build_conversation_list_item(
-                conv,
-                last_message_by_conversation_id=last_message_by_conversation_id,
-            )
-        )
-
+    result_items = [
+        _build_conversation_list_item(conv, last_message_by_conversation_id=last_message_by_conversation_id)
+        for conv in conversations
+    ]
     result_items.sort(
-        key=lambda item: item.get("last_message_at") or item.get("created_at") or item.get("updated_at"),
+        key=lambda item: item["last_message_at"] or item["created_at"] or item["updated_at"],
         reverse=True,
     )
 
     returned = len(result_items)
-    total = accessible_total
-    next_skip = int(skip) + returned
-    has_more = next_skip < total
+    next_skip = skip + returned
+    has_more = next_skip < accessible_total
 
     return {
-        "total": total,
+        "total": accessible_total,
         "returned": returned,
         "has_more": has_more,
         "next_skip": next_skip if has_more else None,
@@ -449,7 +392,7 @@ def list_conversations(
     }
 
 
-@router.get("/conversations/{conversation_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/conversations/{conversation_id}/export", responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_conversation(
     conversation_id: UUID,
     fmt: Annotated[str, Query(pattern="^(markdown|json)$")] = "markdown",
@@ -465,15 +408,9 @@ def export_conversation(
     - fmt=markdown (default): text/markdown
     - fmt=json: application/json
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    conversation = (
-        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    conversation = _get_accessible_conversation(
+        db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id
     )
-    if not conversation:
-        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
-
-    ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     messages = (
         db.query(Message)
@@ -482,13 +419,16 @@ def export_conversation(
         .all()
     )
 
-    title = (conversation.title or "").strip() or f"Conversation {conversation_id}"
+    title = conversation.title.strip() if conversation.title is not None else None
+    if not title:
+        title = f"Conversation {conversation_id}"
 
+    exported_at = datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
     if fmt == "json":
         payload = {
             "conversation_id": str(conversation_id),
             "title": title,
-            "exported_at": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
+            "exported_at": exported_at,
             "messages": [
                 {
                     "id": str(m.id),
@@ -504,47 +444,46 @@ def export_conversation(
         media_type = "application/json"
         suffix = "json"
     else:
-        parts: list[str] = []
-        parts.append(f"# {title}")
-        parts.append("")
-        parts.append(f"- conversation_id: `{conversation_id}`")
-        parts.append(f"- exported_at_utc: `{datetime.now(UTC).replace(tzinfo=None).isoformat()}Z`")
-        parts.append("")
+        parts = [
+            f"# {title}",
+            "",
+            f"- conversation_id: `{conversation_id}`",
+            f"- exported_at_utc: `{exported_at}`",
+            "",
+        ]
 
         for m in messages:
-            role = str(m.role or "").strip() or "unknown"
+            role = m.role.strip() or "unknown"
             parts.append(f"## {role}")
             parts.append("")
-            parts.append(str(m.content or ""))
+            parts.append(m.content)
             parts.append("")
 
-            if include_citations and role == "assistant" and isinstance(getattr(m, "citations", None), list):
-                cites = m.citations or []
-                if cites:
-                    parts.append("### citations")
-                    for c in cites[:20]:
-                        if not isinstance(c, dict):
-                            continue
-                        doc_name = (str(c.get("document_name") or "") or "").strip()
-                        doc_id = c.get("document_id")
-                        chunk_index = c.get("chunk_index")
-                        page = c.get("page_number")
-                        snippet = (str(c.get("chunk_content") or "") or "").strip()
-                        if len(snippet) > 260:
-                            snippet = snippet[:260] + "..."
-                        parts.append(
-                            f"- {doc_name or 'Document'} (doc_id={doc_id}, "
-                            f"chunk_index={chunk_index}, page={page}): {snippet}"
-                        )
-                    parts.append("")
+            if include_citations and role == "assistant" and isinstance(m.citations, list) and m.citations:
+                parts.append("### citations")
+                for c in m.citations[:20]:
+                    if not isinstance(c, dict):
+                        continue
+                    doc_name = (str(c.get("document_name") or "")).strip()
+                    doc_id = c.get("document_id")
+                    chunk_index = c.get("chunk_index")
+                    page = c.get("page_number")
+                    snippet = (str(c.get("chunk_content") or "")).strip()
+                    if len(snippet) > 260:
+                        snippet = snippet[:260] + "..."
+                    parts.append(
+                        f"- {doc_name or 'Document'} (doc_id={doc_id}, "
+                        f"chunk_index={chunk_index}, page={page}): {snippet}"
+                    )
+                parts.append("")
 
         body = "\n".join(parts).strip() + "\n"
         media_type = "text/markdown; charset=utf-8"
         suffix = "md"
 
-    safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title)[:80] or "conversation"
+    safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title)[:80]
     filename = f"{safe_title}.{suffix}"
-    headers = download_response_headers(filename)
+    headers = file_response_headers(filename)
 
     audit_log_event(
         db,
@@ -553,10 +492,18 @@ def export_conversation(
         action="chat.conversation.export",
         resource_type="conversation",
         resource_id=str(conversation_id),
-        details={"format": fmt, "include_citations": bool(include_citations), "messages": len(messages)},
+        details={"format": fmt, "include_citations": include_citations, "messages": len(messages)},
     )
-    with contextlib.suppress(Exception):
+    try:
         db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning(
+            "Conversation export audit commit failed: tenant_id=%s conversation_id=%s error_type=%s",
+            tenant_id,
+            conversation_id,
+            type(exc).__name__,
+        )
 
     return Response(content=body, media_type=media_type, headers=headers)
 
@@ -564,7 +511,7 @@ def export_conversation(
 @router.get(
     "/conversations/{conversation_id}/messages",
     response_model=ConversationDetail,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_conversation_messages(
     conversation_id: UUID,
@@ -576,20 +523,7 @@ def get_conversation_messages(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Fetch conversation history (paged)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    conversation = (
-        db.query(Conversation)
-        .filter(
-            Conversation.id == conversation_id,
-            Conversation.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not conversation:
-        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
-
-    ensure_conversation_access(db, tenant_id, account_id, conversation)
+    _get_accessible_conversation(db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id)
 
     if before is not None and limit is None:
         raise HTTPException(status_code=400, detail="limit is required when before is set")
@@ -632,10 +566,7 @@ def get_conversation_messages(
     # Fetch latest-first for cheap paging, then reverse for display order.
     rows = query.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1).all()
     has_more = len(rows) > limit
-    if has_more:
-        rows = rows[:limit]
-
-    messages = list(reversed(rows))
+    messages = list(reversed(rows[:limit]))
 
     return {
         "conversation_id": conversation_id,
@@ -648,7 +579,7 @@ def get_conversation_messages(
 @router.delete(
     "/conversations/{conversation_id}",
     status_code=204,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def delete_conversation(
     conversation_id: UUID,
@@ -658,22 +589,9 @@ def delete_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a conversation."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    conversation = (
-        db.query(Conversation)
-        .filter(
-            Conversation.id == conversation_id,
-            Conversation.tenant_id == tenant_id,
-        )
-        .first()
+    conversation = _get_accessible_conversation(
+        db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id
     )
-
-    if not conversation:
-        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
-
-    ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     db.delete(conversation)
     db.commit()
-
-    return None

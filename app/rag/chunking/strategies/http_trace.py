@@ -5,7 +5,6 @@ Targets HTTP request/response transcripts such as curl -v output or raw
 HTTP dumps. The chunker splits by request blocks and preserves offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -33,27 +32,24 @@ _RESP_RE = re.compile(r"(?m)^(?:<\s*)?HTTP/(?P<ver>\d(?:\.\d)?)\s+(?P<status>\d{
 
 
 def _build_request_blocks(text: str) -> list[_RequestBlock]:
-    matches = list(_REQ_RE.finditer(text or ""))
+    matches = list(_REQ_RE.finditer(text))
     if not matches:
         return []
     blocks: list[_RequestBlock] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        method = (m.group("method") or "").upper()
-        path = (m.group("path") or "").strip()
-        blocks.append(_RequestBlock(start=start, end=end, index=int(idx), method=method, path=path))
+        method = (m.group("method")).upper()
+        path = m.group("path")
+        blocks.append(_RequestBlock(start=start, end=end, index=idx, method=method, path=path))
     return blocks
 
 
 def _extract_status(block_text: str) -> int | None:
-    m = _RESP_RE.search((block_text or "")[:20000])
+    m = _RESP_RE.search((block_text)[:20000])
     if not m:
         return None
-    try:
-        return int(m.group("status") or "")
-    except Exception:
-        return None
+    return int(m.group("status"))
 
 
 def looks_like_http_trace(text: str) -> bool:
@@ -99,7 +95,7 @@ def _build_split_documents(
 
 
 class HTTPTraceChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -115,7 +111,7 @@ class HTTPTraceChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -159,11 +155,11 @@ class HTTPTraceChunker(BaseChunker):
                 extra_meta: dict[str, Any] = {
                     "http_method": blk.method,
                     "http_path": blk.path,
-                    "http_request_index": int(blk.index),
-                    "http_request_count": int(len(blocks)),
+                    "http_request_index": blk.index,
+                    "http_request_count": len(blocks),
                 }
                 if status is not None:
-                    extra_meta["http_status"] = int(status)
+                    extra_meta["http_status"] = status
                 out.extend(
                     _build_split_documents(
                         split_docs=split_docs,

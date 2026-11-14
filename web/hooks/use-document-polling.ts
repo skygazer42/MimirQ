@@ -9,44 +9,56 @@ import {
   isTerminalDocumentStatus,
   mergePolledDocumentList,
   replacePolledDocumentList,
-  type UpdateCachedDocuments,
+  type CaptureDocumentListOperation,
 } from './use-document-shared'
 
 type UseDocumentPollingOptions = {
-  updateCachedDocuments: UpdateCachedDocuments
+  captureDocumentListOperation: CaptureDocumentListOperation
 }
 
-export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPollingOptions) {
-  const pollTimersRef = useRef<Map<string, number>>(new Map())
+type DocumentPoll = { timerId?: number }
+
+export function useDocumentPolling({ captureDocumentListOperation }: UseDocumentPollingOptions) {
+  const pollsRef = useRef<Map<string, DocumentPoll>>(new Map())
   const cancelledRef = useRef(false)
 
   const cancelDocumentPolling = useCallback((documentId: string) => {
-    const existing = pollTimersRef.current.get(documentId)
-    if (existing) {
-      clearTimeout(existing)
-      pollTimersRef.current.delete(documentId)
-    }
+    const existing = pollsRef.current.get(documentId)
+    if (existing?.timerId !== undefined) clearTimeout(existing.timerId)
+    pollsRef.current.delete(documentId)
   }, [])
 
   const cancelAllDocumentPolling = useCallback(() => {
-    for (const timerId of pollTimersRef.current.values()) {
-      clearTimeout(timerId)
+    for (const poll of pollsRef.current.values()) {
+      if (poll.timerId !== undefined) clearTimeout(poll.timerId)
     }
-    pollTimersRef.current.clear()
+    pollsRef.current.clear()
   }, [])
 
   const pollDocumentStatus = useCallback(
-    (documentId: string) => {
+    (documentId: string, operation = captureDocumentListOperation()) => {
       cancelDocumentPolling(documentId)
 
+      const poll: DocumentPoll = {}
+      pollsRef.current.set(documentId, poll)
+      const isCurrent = () => !cancelledRef.current && operation.isActive() && pollsRef.current.get(documentId) === poll
+      const finish = () => {
+        if (pollsRef.current.get(documentId) === poll) pollsRef.current.delete(documentId)
+      }
       const startedAt = Date.now()
       const pollOnce = async () => {
-        if (cancelledRef.current) return
+        if (!isCurrent()) {
+          finish()
+          return
+        }
         try {
           const status = await documentApi.getStatus(documentId)
-          if (cancelledRef.current) return
+          if (!isCurrent()) {
+            finish()
+            return
+          }
 
-          updateCachedDocuments((current) => {
+          operation.updateCachedDocuments((current) => {
             if (!current?.items?.length) return current
             return {
               ...current,
@@ -55,39 +67,46 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
           })
 
           if (isTerminalDocumentStatus(status.status)) {
-            pollTimersRef.current.delete(documentId)
-
             const fullDoc = await documentApi.get(documentId)
-            if (cancelledRef.current) return
-            updateCachedDocuments((current) => {
+            if (!isCurrent()) {
+              finish()
+              return
+            }
+            operation.updateCachedDocuments((current) => {
               if (!current?.items?.length) return current
               return {
                 ...current,
                 items: replacePolledDocumentList(current.items || [], documentId, fullDoc),
               }
             })
+            finish()
             return
           }
         } catch (err) {
-          if (cancelledRef.current) return
+          if (!isCurrent()) {
+            finish()
+            return
+          }
           reportClientError('Poll document status failed', err)
-          pollTimersRef.current.delete(documentId)
+          finish()
           return
         }
 
         if (Date.now() - startedAt > 30000) {
-          pollTimersRef.current.delete(documentId)
+          finish()
           return
         }
 
-        if (cancelledRef.current) return
-        const timeoutId = globalThis.window.setTimeout(pollOnce, 2000)
-        pollTimersRef.current.set(documentId, timeoutId)
+        if (!isCurrent()) {
+          finish()
+          return
+        }
+        poll.timerId = globalThis.window.setTimeout(pollOnce, 2000)
       }
 
       void pollOnce()
     },
-    [cancelDocumentPolling, updateCachedDocuments]
+    [cancelDocumentPolling, captureDocumentListOperation],
   )
 
   useEffect(() => {

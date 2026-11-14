@@ -10,12 +10,12 @@ from urllib.request import Request, urlopen
 
 
 def _strip_trailing_slashes(value: str) -> str:
-    return (value or "").strip().rstrip("/")
+    return value.strip().rstrip("/")
 
 
 def _join_url(base: str, path: str) -> str:
     b = _strip_trailing_slashes(base)
-    p = (path or "").strip()
+    p = path.strip()
     if not p:
         return b
     if not p.startswith("/"):
@@ -24,7 +24,7 @@ def _join_url(base: str, path: str) -> str:
 
 
 def _chunks(items: list[str], n: int) -> Iterable[list[str]]:
-    step = max(1, int(n or 1))
+    step = max(1, n)
     for i in range(0, len(items), step):
         yield items[i : i + step]
 
@@ -72,14 +72,14 @@ def _request_json(
 ) -> HttpResult:
     start = time.perf_counter()
     body: bytes | None = None
-    hdrs = dict(headers or {})
+    hdrs = dict(headers)
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         hdrs.setdefault("Content-Type", "application/json")
 
     try:
         req = Request(url, method=method.upper(), headers=hdrs, data=body)
-        with urlopen(req, timeout=float(timeout_sec)) as resp:
+        with urlopen(req, timeout=timeout_sec) as resp:
             raw = resp.read() or b""
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             content_type = (resp.headers.get("Content-Type") or "").lower()
@@ -101,7 +101,7 @@ def _request_json(
             except Exception:
                 parsed = raw.decode("utf-8", errors="replace")
         return HttpResult(
-            status_code=int(getattr(exc, "code", 0) or 0) or None,
+            status_code=(exc.code),
             elapsed_ms=elapsed_ms,
             data=parsed,
             error=f"HTTPError: {getattr(exc, 'code', 'unknown')}",
@@ -274,22 +274,22 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    base_url = _strip_trailing_slashes(str(args.base_url))
-    dataset_id = str(args.dataset_id).strip()
-    tenant_id = str(args.tenant_id).strip()
+    base_url = _strip_trailing_slashes(args.base_url)
+    dataset_id = args.dataset_id.strip()
+    tenant_id = args.tenant_id.strip()
     if not tenant_id:
         raise SystemExit("ERROR: --tenant-id is required (or set NEXT_PUBLIC_TENANT_ID)")
 
-    auth_mode = str(args.auth_mode).strip().lower()
-    user_id = str(args.user_id).strip() or None
-    token = str(args.token).strip() or None
-    timeout_sec = float(args.timeout)
+    auth_mode = args.auth_mode.strip().lower()
+    user_id = args.user_id.strip() or None
+    token = args.token.strip() or None
+    timeout_sec = args.timeout
 
     headers = _build_auth_headers(auth_mode=auth_mode, tenant_id=tenant_id, user_id=user_id, token=token)
 
-    only_missing_img_ids = not bool(args.all)
+    only_missing_img_ids = not args.all
 
-    batch_size = int(args.batch_size or 200)
+    batch_size = args.batch_size or 200
     batch_size = max(1, min(200, batch_size))
 
     # Best-effort warning (does not block execution).
@@ -302,14 +302,14 @@ def main() -> int:
         dataset_id=dataset_id,
         headers=headers,
         only_missing_img_ids=only_missing_img_ids,
-        require_image_count=bool(args.require_image_count),
+        require_image_count=args.require_image_count,
         timeout_sec=timeout_sec,
     )
     print(f"[backfill] Candidate documents: {len(doc_ids)}")
     if not doc_ids:
         return 0
 
-    if bool(args.dry_run):
+    if args.dry_run:
         print("[backfill] Dry run: no retries submitted.")
         for v in doc_ids[:10]:
             print(f"  - {v}")
@@ -318,8 +318,8 @@ def main() -> int:
         return 0
 
     payload_template = {
-        "force": bool(args.force),
-        "skip_if_unchanged": bool(args.skip_if_unchanged),
+        "force": args.force,
+        "skip_if_unchanged": args.skip_if_unchanged,
     }
     queued_total = 0
     skipped_total = 0

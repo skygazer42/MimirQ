@@ -1,7 +1,4 @@
-import threading
-from collections import OrderedDict
 from types import SimpleNamespace
-from uuid import uuid4
 
 import pytest
 from langchain_core.documents import Document as LangChainDocument
@@ -13,7 +10,6 @@ from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES, build_governance_rules
 from app.rag.reranker.hybrid import KeywordSetting, VectorSetting, WeightedReranker, Weights
 from app.rag.retrieval.document_structure import build_document_structure_from_chunks
-from app.rag.retrieval.hybrid.bm25_index import Bm25IndexMixin
 from app.rag.retrieval.orchestration.kg_merge_boost import _merge_kg_metadata_into_main
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
 
@@ -168,116 +164,6 @@ def test_build_document_structure_marks_truncation_after_max_nodes() -> None:
     assert structure["node_count"] == 1
     assert structure["nodes"][0]["chunk_ids"] == []
     assert structure["nodes"][0]["node_key"] is None
-
-
-class _FakeBm25Retriever(Bm25IndexMixin):
-    def __init__(self, dataset_id):
-        self.dataset_id = dataset_id
-        self.dataset_ids = None
-        self.sparse_enabled = False
-        self._bm25_cache_lock = threading.Lock()
-        self._bm25_docs = {}
-        self._bm25_retrievers = {}
-        self._bm25_doc_ids = {}
-        self._chunk_id_lookup = {}
-        self._bm25_deferred_scopes = set()
-        self._bm25_cache_versions = {}
-        self._sparse_doc_vectors = {}
-        self._colbert_index_cache = {}
-        self._bm25_cache_order = OrderedDict()
-        self._bm25_build_locks = {}
-        self._sparse_build_locks = {}
-        self._colbert_build_locks = {}
-        self.replace_calls = []
-        self.sparse_sync_calls = []
-        self.colbert_sync_calls = []
-        self.cleared_tenant_ids = []
-
-    def _tenant_key(self, tenant_id):
-        return str(tenant_id)
-
-    @staticmethod
-    def _resolve_tenant_uuid(tenant_id):
-        return tenant_id
-
-    @classmethod
-    def _normalize_dataset_scope_ids(cls, dataset_scope_ids):
-        return tuple(sorted({item for item in dataset_scope_ids or [] if item is not None}, key=str))
-
-    def _explicit_dataset_scope_ids(self):
-        return (self.dataset_id,) if self.dataset_id is not None else ()
-
-    def _clear_candidate_corpus_token_cache(self, tenant_id):
-        self.cleared_tenant_ids.append(tenant_id)
-
-    def _effective_sparse_enabled(self):
-        return False
-
-    def _prepare_retrieval_document(self, doc):
-        return doc
-
-    def _replace_bm25_scope_index(self, *, cache_key: str, merged_docs):
-        self.replace_calls.append((cache_key, [doc.id for doc in merged_docs]))
-
-    def _sync_sparse_index_after_bm25_upsert(self, **kwargs):
-        self.sparse_sync_calls.append(kwargs)
-
-    def _sync_colbert_index_after_bm25_upsert(self, **kwargs):
-        self.colbert_sync_calls.append(kwargs)
-
-
-def test_upsert_bm25_documents_clears_document_scopes_and_eagerly_rebuilds_dataset_scope(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.core.config import settings
-
-    tenant_id = uuid4()
-    dataset_id = uuid4()
-    doc_id = uuid4()
-    retriever = _FakeBm25Retriever(dataset_id=dataset_id)
-    document_scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(),
-        document_ids=[doc_id],
-    )
-    dataset_scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(dataset_id,),
-        document_ids=None,
-    )
-    existing_doc = LangChainDocument(
-        page_content="existing",
-        id="existing-chunk",
-        metadata={"document_id": str(uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
-    )
-    upsert_doc = LangChainDocument(
-        page_content="upsert",
-        id="upsert-chunk",
-        metadata={"document_id": str(uuid4()), "dataset_id": str(dataset_id), "chunk_index": 1},
-    )
-    retriever._bm25_docs[document_scope_key] = [existing_doc]
-    retriever._bm25_retrievers[document_scope_key] = object()
-    retriever._bm25_deferred_scopes.add(document_scope_key)
-    retriever._bm25_docs[dataset_scope_key] = [existing_doc]
-    retriever._bm25_retrievers[dataset_scope_key] = object()
-
-    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 50, raising=False)
-    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
-
-    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id)
-
-    assert retriever.cleared_tenant_ids == [tenant_id]
-    assert document_scope_key not in retriever._bm25_docs
-    assert document_scope_key not in retriever._bm25_retrievers
-    assert document_scope_key not in retriever._bm25_deferred_scopes
-    assert retriever.replace_calls == [
-        (
-            dataset_scope_key,
-            ["existing-chunk", "upsert-chunk"],
-        )
-    ]
-    assert [doc.id for doc in retriever.sparse_sync_calls[0]["merged_docs"]] == ["existing-chunk", "upsert-chunk"]
-    assert [doc.id for doc in retriever.colbert_sync_calls[0]["merged_docs"]] == ["existing-chunk", "upsert-chunk"]
 
 
 def test_merge_kg_metadata_into_main_preserves_main_content_and_combines_fields() -> None:

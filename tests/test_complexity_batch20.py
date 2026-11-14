@@ -1,4 +1,3 @@
-
 import datetime as dt
 import io
 import zipfile
@@ -86,7 +85,7 @@ def test_plan_feedback_hardcase_candidates_dedupes_request_error_counts_and_pref
 
 def test_normalize_reference_sources_dedupes_and_coerces_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services.ltr_rollout_workflow import normalize_reference_sources
+    from app.services.evidence_feedback_materialization import normalize_reference_sources
 
     document_id = "00000000-0000-0000-0000-000000000001"
     chunk_id = "00000000-0000-0000-0000-000000000002"
@@ -131,24 +130,6 @@ def test_normalize_reference_sources_dedupes_and_coerces_fields(monkeypatch: pyt
             "label": "alpha",
         }
     ]
-
-
-def test_comparison_metric_value_uses_named_sections_and_nested_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    _ensure_datetime_utc(monkeypatch)
-    from app.services.ltr_rollout_workflow import _comparison_metric_value
-
-    comparison = {
-        "deltas": {"retrieval_mrr": 0.125},
-        "candidate_metrics": {"hit": 0.8},
-        "baseline_eval_summary": {"cases_total": 12},
-        "nested": {"path": {"value": "1.5"}},
-    }
-
-    assert _comparison_metric_value(comparison=comparison, metric_key="delta.retrieval_mrr") == 0.125
-    assert _comparison_metric_value(comparison=comparison, metric_key="candidate.hit") == 0.8
-    assert _comparison_metric_value(comparison=comparison, metric_key="baseline.cases_total") == 12.0
-    assert _comparison_metric_value(comparison=comparison, metric_key="nested.path.value") == 1.5
-    assert _comparison_metric_value(comparison=comparison, metric_key="candidate.unknown") is None
 
 
 def test_render_regression_run_diff_html_redacts_ids_and_renders_sections() -> None:

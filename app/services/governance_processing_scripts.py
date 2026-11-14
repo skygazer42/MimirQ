@@ -6,7 +6,7 @@ on the 重复行学习 page (formerly 样板行发现 / common-lines workbench).
 
 IMPORTANT
 ---------
-Per :class:`app.api.schemas.governance_profile.GovernanceProcessingScript`,
+Per :class:`app.api.schemas.pipelines.governance.GovernanceProcessingScript`,
 scripts are persisted with a governance profile **only for review/versioning**.
 The ingestion pipeline does **not** execute them unless a separate sandboxed
 runtime explicitly supports that in the future. The templates below are

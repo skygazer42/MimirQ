@@ -19,7 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 
-_HEADER_KEYWORDS = [
+_HEADER_KEYS = {
     "from",
     "to",
     "cc",
@@ -37,9 +37,7 @@ _HEADER_KEYWORDS = [
     "日期",
     "发送时间",
     "时间",
-]
-
-_HEADER_KEYS = {str(k or "").strip().casefold() for k in _HEADER_KEYWORDS if str(k or "").strip()}
+}
 _HEADER_START_KEYS = {"from", "发件人"}
 
 
@@ -53,7 +51,7 @@ def _parse_header_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return None
 
@@ -79,7 +77,7 @@ def _parse_header_line(line: str) -> tuple[str, str] | None:
 
 
 def _looks_like_thread_separator_line(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return False
     # Require some dashes to avoid false positives.
@@ -93,7 +91,7 @@ def _looks_like_thread_separator_line(line: str) -> bool:
 
 
 def _looks_like_on_wrote_line(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return False
 
@@ -110,7 +108,7 @@ def _looks_like_on_wrote_line(line: str) -> bool:
 
 
 def _has_quote_lines(text: str) -> bool:
-    for ln in str(text or "").splitlines():
+    for ln in text.splitlines():
         if ln.lstrip().startswith(">"):
             return True
     return False
@@ -140,7 +138,7 @@ def _has_plausible_header_block(text: str, start: int) -> bool:
     # Require at least From + (Subject/To) for stability.
     has_from = any(k in {"from", "发件人"} for k in keys)
     has_subject_or_to = any(k in {"subject", "主题", "to", "收件人"} for k in keys)
-    return bool(has_from and has_subject_or_to)
+    return has_from and has_subject_or_to
 
 
 def _extract_headers(message_text: str) -> dict[str, str]:
@@ -153,8 +151,6 @@ def _extract_headers(message_text: str) -> dict[str, str]:
         if parsed is None:
             continue
         key, val = parsed
-        if not key or not val:
-            continue
         if key in headers:
             continue
         headers[key] = val
@@ -190,8 +186,6 @@ def _messages_from_starts(text: str, starts: list[int]) -> list[_Message]:
     msgs: list[_Message] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
-        if end <= start:
-            continue
         segment = text[start:end]
         if not segment.strip():
             continue
@@ -220,10 +214,10 @@ def looks_like_email_thread(text: str) -> bool:
     if msgs:
         return True
     # Best-effort: many threads include separators even without full headers.
-    head = (text or "")[:50000]
+    head = (text)[:50000]
     has_sep = any(_looks_like_thread_separator_line(ln) for ln in head.splitlines())
     has_headers = _count_header_lines(head.splitlines()[:120]) >= 3
-    return bool(has_sep and has_headers)
+    return has_sep and has_headers
 
 
 def _split_email_fallback_docs(
@@ -232,8 +226,8 @@ def _split_email_fallback_docs(
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     chunks: list[Document] = []
     for split_doc in split_docs:
-        split_meta = dict(split_doc.metadata or {})
-        abs_start = int(split_meta.pop("start_index", None) or 0)
+        split_meta = dict(split_doc.metadata)
+        abs_start = split_meta.pop("start_index")
         meta: dict[str, Any] = dict(base_meta)
         meta.update(split_meta)
         meta["chunk_strategy"] = "email_thread"
@@ -252,7 +246,7 @@ def _email_window_end(msgs: list[_Message], start_idx: int, chunk_size: int) -> 
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _window_email_subjects(msgs: list[_Message], start_idx: int, end_idx: int) -> tuple[list[str], list[str]]:
@@ -281,7 +275,7 @@ def _build_email_chunk(
     meta["chunk_strategy"] = "email_thread"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["email_message_count"] = int(end_idx - start_idx)
+    meta["email_message_count"] = end_idx - start_idx
     if subjects:
         meta["email_subjects"] = subjects
     if froms:
@@ -303,11 +297,11 @@ def _next_email_start(msgs: list[_Message], start_idx: int, end_idx: int, chunk_
             continue
         break
     next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 class EmailThreadChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -326,18 +320,18 @@ class EmailThreadChunker(BaseChunker):
             out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         msgs = _iter_messages(text)
         if not msgs:
             return _split_email_fallback_docs(self._fallback_splitter, text, base_meta)
@@ -347,5 +341,7 @@ class EmailThreadChunker(BaseChunker):
         while start_idx < len(msgs):
             end_idx = _email_window_end(msgs, start_idx, self.chunk_size)
             chunks.append(_build_email_chunk(msgs, start_idx, end_idx, base_meta, text))
+            if end_idx == len(msgs):
+                break
             start_idx = _next_email_start(msgs, start_idx, end_idx, self.chunk_overlap)
         return chunks

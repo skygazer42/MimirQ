@@ -28,6 +28,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 if __package__ in {None, ""}:
@@ -36,8 +37,8 @@ if __package__ in {None, ""}:
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
-    except Exception as exc:  # noqa: BLE001
+        return UUID(value)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
 
 
@@ -94,12 +95,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
-    if (
-        (not bool(args.index_audit))
-        and (not bool(args.evidence_drift_audit))
-        and (not bool(args.access_review))
-        and (not bool(args.embedding_drift))
-    ):
+    if not (args.index_audit or args.evidence_drift_audit or args.access_review or args.embedding_drift):
         print(
             "No job selected. Use --index-audit and/or --evidence-drift-audit "
             "and/or --access-review and/or --embedding-drift.",
@@ -117,16 +113,14 @@ def main(argv: list[str] | None = None) -> int:
         run_daily_index_audit_report,
     )
 
-    execute = bool(args.execute)
-    if not bool(args.dry_run) and not bool(args.execute):
-        execute = False  # default dry-run
+    execute = args.execute
 
     tenant_ids: list[UUID] = []
-    if bool(args.all_tenants):
+    if args.all_tenants:
         db = SessionLocal()
         try:
             rows = db.query(Tenant.id).all()
-            tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+            tenant_ids = [tenant_id for (tenant_id,) in rows]
         finally:
             db.close()
     elif args.tenant_id is not None:
@@ -135,78 +129,78 @@ def main(argv: list[str] | None = None) -> int:
         tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
 
     ran_at = datetime.now(UTC)
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     ok = True
 
     for tid in tenant_ids:
         db = SessionLocal()
         try:
-            if bool(args.access_review):
+            if args.access_review:
                 res = run_daily_access_review_summary(
                     db,
                     tenant_id=tid,
-                    execute=bool(execute),
-                    force=bool(args.force),
+                    execute=execute,
+                    force=args.force,
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "access_review_summary"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res["ok"]
 
-            if bool(args.index_audit):
+            if args.index_audit:
                 res = run_daily_index_audit_report(
                     db,
                     tenant_id=tid,
-                    max_datasets=int(args.max_datasets or 0),
-                    max_check_ids=int(args.max_check_ids or 0),
-                    milvus_list_limit=int(args.milvus_list_limit or 0),
-                    sample_limit=int(args.sample_limit or 0),
-                    execute=bool(execute),
-                    force=bool(args.force),
+                    max_datasets=args.max_datasets,
+                    max_check_ids=args.max_check_ids,
+                    milvus_list_limit=args.milvus_list_limit,
+                    sample_limit=args.sample_limit,
+                    execute=execute,
+                    force=args.force,
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "index_audit"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res["ok"]
 
-            if bool(args.evidence_drift_audit):
+            if args.evidence_drift_audit:
                 res = run_daily_evidence_drift_audit_report(
                     db,
                     tenant_id=tid,
-                    max_datasets=int(args.max_datasets or 0),
-                    include_archived_items=bool(args.include_archived_items),
-                    include_details=bool(args.include_details),
-                    details_limit=int(args.details_limit or 0),
-                    slice_top_n=int(args.slice_top_n or 0),
-                    execute=bool(execute),
-                    force=bool(args.force),
+                    max_datasets=args.max_datasets,
+                    include_archived_items=args.include_archived_items,
+                    include_details=args.include_details,
+                    details_limit=args.details_limit,
+                    slice_top_n=args.slice_top_n,
+                    execute=execute,
+                    force=args.force,
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "evidence_drift_audit"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res["ok"]
 
-            if bool(args.embedding_drift):
+            if args.embedding_drift:
                 res = run_daily_embedding_drift_report(
                     db,
                     tenant_id=tid,
-                    execute=bool(execute),
-                    force=bool(args.force),
-                    sample_n=int(args.drift_sample_n or 0),
-                    drift_threshold=float(args.drift_threshold),
+                    execute=execute,
+                    force=args.force,
+                    sample_n=args.drift_sample_n,
+                    drift_threshold=args.drift_threshold,
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "embedding_drift"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res["ok"]
         finally:
             db.close()
 
-    print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    print(json.dumps({"ok": ok, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1
 
 

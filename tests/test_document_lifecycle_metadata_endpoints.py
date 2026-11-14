@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.models.dataset import Dataset
+from app.models.document import Document as DBDocument
 
 
 class _DummyQuery:
@@ -45,9 +47,8 @@ class _DummyDB:
 
 
 def _build_client(monkeypatch, *, doc):  # noqa: ANN001
-    import app.api.v1.document_lifecycle as lifecycle_module
     import app.api.v1.documents as documents_module
-    from app.models.document import Document as DBDocument
+    from app.services import document_lifecycle_service as lifecycle_module
 
     tenant_id = doc.tenant_id
 
@@ -61,8 +62,13 @@ def _build_client(monkeypatch, *, doc):  # noqa: ANN001
         return "test-account"
 
     # Bypass membership checks in unit tests (covered by dedicated RBAC tests).
-    monkeypatch.setattr(lifecycle_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(lifecycle_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(lifecycle_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        lifecycle_module.dataset_service,
+        "get_dataset",
+        lambda *_a, **_k: Dataset(id=doc.dataset_id, owner_id="dataset-owner"),
+        raising=True,
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -77,23 +83,12 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    class _DummyDoc:
-        def __init__(self) -> None:
-            self.id = doc_id
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.publication_status = "published"
-            self.lifecycle_owner = None
-            self.review_due_at = None
-            self.authority_level = None
-            self.supersedes_document_id = None
-
-    dummy_doc = _DummyDoc()
+    dummy_doc = DBDocument(id=doc_id, tenant_id=tenant_id, dataset_id=dataset_id, publication_status="published")
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     # Allow writes for this test.
     monkeypatch.setattr(
-        documents_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+        documents_module.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
     )
 
     captured: list[dict] = []
@@ -164,23 +159,13 @@ def test_document_lifecycle_metadata_patch_denied_when_not_writable(monkeypatch)
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    class _DummyDoc:
-        def __init__(self) -> None:
-            self.id = doc_id
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.lifecycle_owner = None
-            self.review_due_at = None
-            self.authority_level = None
-            self.supersedes_document_id = None
-
-    dummy_doc = _DummyDoc()
+    dummy_doc = DBDocument(id=doc_id, tenant_id=tenant_id, dataset_id=dataset_id, publication_status="published")
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     def _deny(*_a, **_k):  # noqa: ANN001
         raise HTTPException(status_code=403, detail="No dataset write permission")
 
-    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", _deny, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "assert_dataset_writable", _deny, raising=True)
 
     res = client.patch(
         f"/api/v1/documents/{doc_id}/lifecycle-metadata",
@@ -195,21 +180,11 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    class _DummyDoc:
-        def __init__(self) -> None:
-            self.id = doc_id
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.lifecycle_owner = None
-            self.review_due_at = None
-            self.authority_level = None
-            self.supersedes_document_id = None
-
-    dummy_doc = _DummyDoc()
+    dummy_doc = DBDocument(id=doc_id, tenant_id=tenant_id, dataset_id=dataset_id, publication_status="published")
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     monkeypatch.setattr(
-        documents_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+        documents_module.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
     )
 
     # Use doc_id string; ensure endpoint rejects self reference regardless of other payload fields.
@@ -224,8 +199,7 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
 
 
 def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
-    import app.api.v1.document_mutations as mutations_module
-    import app.api.v1.documents as documents_module
+    import app.services.document_qa_service as document_qa_service
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
@@ -244,12 +218,15 @@ def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
         called.update(kwargs)
         return SimpleNamespace(mode="extract", deleted=0, created=1, chunk_ids=[], preview=[])
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args: None, raising=True)
+    monkeypatch.setattr(document_qa_service.dataset_service, "ensure_member", lambda *_args: None, raising=True)
     monkeypatch.setattr(
-        documents_module, "_assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None, raising=True
+        document_qa_service,
+        "assert_document_writable_for_lifecycle",
+        lambda *_args, **_kwargs: None,
+        raising=True,
     )
-    monkeypatch.setattr(mutations_module, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(mutations_module, "generate_and_index_document_qa", _generate, raising=True)
+    monkeypatch.setattr(document_qa_service, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_qa_service, "generate_and_index_document_qa", _generate, raising=True)
 
     response = client.post(f"/api/v1/documents/{document_id}/qa/generate", json={"num_pairs": 3})
 

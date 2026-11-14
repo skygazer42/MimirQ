@@ -19,6 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.heading_parsing import parse_cn_prefixed_heading
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
 
 
 @dataclass(frozen=True)
@@ -42,7 +43,7 @@ _CN_PAREN_NUM_CHARS = set("0123456789一二三四五六七八九十")
 
 def _classify_outline_heading(line: str) -> int | None:
     if (lv := _parse_numeric_heading_level(line)) is not None:
-        return int(lv)
+        return lv
     if parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
         return 1
     if _looks_like_cn_num_heading(line):
@@ -84,7 +85,7 @@ def _append_outline_chunks(
 
         if heading is not None:
             meta["outline_heading"] = heading.text
-            meta["outline_level"] = int(heading.level)
+            meta["outline_level"] = heading.level
         if header_path:
             meta["outline_path"] = header_path
         if header_path_str:
@@ -102,7 +103,7 @@ def _parse_numeric_heading_level(line: str) -> int | None:
       1.1.1 Title
     Returns the heading level (number of segments) if it looks like a heading.
     """
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
 
@@ -136,11 +137,11 @@ def _parse_numeric_heading_level(line: str) -> int | None:
     title = s[i:].strip()
     if not title:
         return None
-    return int(segs)
+    return segs
 
 
 def _looks_like_cn_num_heading(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return False
     i = 0
@@ -160,7 +161,7 @@ def _looks_like_cn_num_heading(line: str) -> bool:
 
 
 def _looks_like_cn_paren_heading(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s or s[0] not in ("（", "("):
         return False
     i = 1
@@ -183,7 +184,7 @@ def _looks_like_cn_paren_heading(line: str) -> bool:
 
 
 def _looks_like_en_chapter_heading(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return False
     low = s.lower()
@@ -231,19 +232,11 @@ def _iter_headings(text: str) -> list[OutlineHeading]:
                 start=line_start,
                 end=line_start + len(raw_line),
                 text=line,
-                level=int(level),
+                level=level,
             )
         )
 
-    # De-duplicate headings that start at the same position (best-effort).
-    deduped: list[OutlineHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[OutlineHeading]) -> list[_Section]:
@@ -264,20 +257,12 @@ def _build_sections(text: str, headings: list[OutlineHeading]) -> list[_Section]
     return sections
 
 
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
-    # Ensure stack depth matches heading level.
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
-
-
 class OutlineChunker(BaseChunker):
     """
     Chunker optimized for numbered-outline documents (manuals, policies, SOPs).
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -293,7 +278,7 @@ class OutlineChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

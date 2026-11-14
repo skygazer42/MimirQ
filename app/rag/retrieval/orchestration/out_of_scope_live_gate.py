@@ -14,7 +14,9 @@ _SCHEMA = "mimirq.out_of_scope_live_guard.v1"
 
 
 def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -22,7 +24,7 @@ def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
 
 def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
     best: float | None = None
-    for item in rows or []:
+    for item in rows if rows is not None else []:
         if not isinstance(item, dict):
             continue
         try:
@@ -36,14 +38,14 @@ def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
 
 
 def _expand_query(query: str, glossary: Mapping[str, Sequence[str]] | None) -> str:
-    expanded: list[str] = [str(query or "").strip()]
+    expanded: list[str] = [query.strip()]
     q_norm = expanded[0]
-    for key, values in (glossary or {}).items():
-        term = str(key or "").strip()
+    for key, values in (glossary if glossary is not None else {}).items():
+        term = key.strip()
         if not term or term not in q_norm:
             continue
         for value in values or []:
-            alias = str(value or "").strip()
+            alias = value.strip()
             if alias and alias not in expanded:
                 expanded.append(alias)
     return " ".join(part for part in expanded if part)
@@ -71,7 +73,7 @@ def verify_out_of_scope_query(
     l2_top1_sim = _best_score(vector_hits) if enable_vector else None
 
     l3_hyde_query = _safe_str(hyde_generate(query)) if enable_hyde else None
-    hyde_hits = list(vector_search(l3_hyde_query or "")) if enable_hyde and l3_hyde_query else []
+    hyde_hits = list(vector_search(l3_hyde_query)) if enable_hyde and l3_hyde_query else []
     hyde_top1 = _best_score(hyde_hits) if enable_hyde and l3_hyde_query else None
     l3_hyde_hit = (
         None if not enable_hyde else bool(hyde_top1 is not None and hyde_top1 >= float(hyde_similarity_threshold))
@@ -91,7 +93,7 @@ def verify_out_of_scope_query(
             verdict = "ambiguous"
 
     return {
-        "query": str(query or "").strip(),
+        "query": query.strip(),
         "expanded_query": expanded_query,
         "l1_keyword_hit": l1_keyword_hit,
         "l2_top1_sim": l2_top1_sim,
@@ -120,7 +122,7 @@ def run_default_out_of_scope_live_guard(
     tenant_uuid = UUID(str(tenant_id))
     dataset_uuid = UUID(str(dataset_id))
     glossary: Mapping[str, Sequence[str]] = {}
-    if str(ruleset_name or "").strip():
+    if str((ruleset_name if ruleset_name is not None else "")).strip():
         try:
             glossary = load_ruleset(str(ruleset_name)).glossary
         except Exception:
@@ -144,7 +146,7 @@ def run_default_out_of_scope_live_guard(
         )
 
     def _vector_search(text: str) -> Sequence[dict[str, Any]]:
-        if not str(text or "").strip():
+        if not text.strip():
             return []
         try:
             rows = get_vector_store().search(
@@ -159,16 +161,16 @@ def run_default_out_of_scope_live_guard(
         return [{"score": float(item.get("score") or 0.0)} for item in rows if isinstance(item, dict)]
 
     verdict = verify_out_of_scope_query(
-        query=str(query or "").strip(),
+        query=query.strip(),
         glossary=glossary,
         keyword_search=_keyword_search,
         vector_search=_vector_search,
-        hyde_generate=lambda _q: str(hyde_query or "").strip(),
+        hyde_generate=lambda _q: str((hyde_query if hyde_query is not None else "")).strip(),
         vector_similarity_threshold=float(vector_similarity_threshold),
         hyde_similarity_threshold=float(hyde_similarity_threshold),
         enable_keyword=True,
         enable_vector=True,
-        enable_hyde=bool(str(hyde_query or "").strip()),
+        enable_hyde=bool(str((hyde_query if hyde_query is not None else "")).strip()),
     )
     return {"schema": _SCHEMA, **dict(verdict or {})}
 
@@ -184,7 +186,7 @@ def maybe_apply_out_of_scope_live_guard(
     dataset_id: str | None,
     verifier: Callable[[], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    if not bool(enabled) or not bool(candidate) or not str(query or "").strip() or not tenant_id or not dataset_id:
+    if not bool(enabled) or not bool(candidate) or not query.strip() or not tenant_id or not dataset_id:
         return {
             "applied": False,
             "abstain_triggered": bool(current_triggered),
@@ -201,7 +203,7 @@ def maybe_apply_out_of_scope_live_guard(
             "verdict": None,
         }
 
-    if str(verdict.get("verdict") or "") == "out_of_scope":
+    if verdict["verdict"] == "out_of_scope":
         return {
             "applied": True,
             "abstain_triggered": True,

@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, cast
+from typing import Any, TypedDict
 
 from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_runtime import safe_subn as safe_regex_subn
@@ -45,6 +45,13 @@ class CleaningOptions:
     noise_ratio_threshold: float = 0.2
 
 
+class _CommonLineCandidate(TypedDict):
+    signature: str
+    sample: str
+    docs: int
+    ratio: float
+
+
 _MID_WS_RE = re.compile(r"(?<=\S)[ \t]{2,}(?=\S)")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 _UPPER_RUN_RE = re.compile(r"[A-Z]{3,}")
@@ -80,7 +87,7 @@ _PDF_BULLETS: tuple[str, ...] = (
 
 def _trim_trailing_spaces(text: str) -> str:
     """Remove trailing ASCII spaces/tabs before newlines (linear time; no regex)."""
-    if not text or "\n" not in text:
+    if "\n" not in text:
         return text
     out: list[str] = []
     for line in text.splitlines(keepends=True):
@@ -98,7 +105,7 @@ def _looks_like_pipe_table_row(line: str) -> bool:
     These lines are considered "structural" and should not be merged/rewritten by
     unwrap/noise filters.
     """
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     return bool("|" in stripped and stripped != "|")
 
 
@@ -121,7 +128,7 @@ def _consume_digits_left(text: str, idx: int, *, max_digits: int) -> int:
 
 def _strip_trailing_page_of(text: str) -> str:
     # Equivalent to: r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = len(s)
     j = _consume_digits_left(s, i, max_digits=4)
     if j == i:
@@ -142,7 +149,7 @@ def _strip_trailing_page_of(text: str) -> str:
 
 def _strip_trailing_page_word(text: str) -> str:
     # Equivalent to: r"\s+(?:page|p\.?)\s*\d{1,4}\s*$" (case-insensitive)
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = len(s)
     j = _consume_digits_left(s, i, max_digits=4)
     if j == i:
@@ -162,7 +169,7 @@ def _strip_trailing_page_word(text: str) -> str:
 
 def _strip_trailing_page_num(text: str) -> str:
     # Equivalent to: r"\s+\d{1,4}\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = len(s)
     j = _consume_digits_left(s, i, max_digits=4)
     if j == i:
@@ -174,7 +181,7 @@ def _strip_trailing_page_num(text: str) -> str:
 
 def _strip_trailing_page_cn_of(text: str) -> str:
     # Equivalent to: r"\s*第?\s*\d{1,4}\s*页\s*/\s*共?\s*\d{1,4}\s*页\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = _skip_spaces_left(s, len(s))
     if i <= 0 or s[i - 1] != "页":
         return text
@@ -207,7 +214,7 @@ def _strip_trailing_page_cn_of(text: str) -> str:
 
 def _strip_trailing_page_cn(text: str) -> str:
     # Equivalent to: r"\s*第?\s*\d{1,4}\s*页\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = _skip_spaces_left(s, len(s))
     if i <= 0 or s[i - 1] != "页":
         return text
@@ -240,18 +247,6 @@ def _strip_trailing_page_markers(text: str) -> str:
     return _strip_trailing_page_cn(text)
 
 
-def _resolve_cleaning_options(
-    *,
-    options: CleaningOptions | None,
-    legacy_overrides: dict[str, Any],
-) -> CleaningOptions:
-    if options is None:
-        return CleaningOptions(**legacy_overrides)
-    if not legacy_overrides:
-        return options
-    return cast(CleaningOptions, replace(options, **legacy_overrides))
-
-
 def clean_markdown(
     markdown: str,
     *,
@@ -265,84 +260,79 @@ def clean_markdown(
     - This is intentionally conservative (no semantic rewriting of Markdown).
     - More domain-specific transforms should be added as explicit RegexRule entries.
     """
-    clean_options = _resolve_cleaning_options(options=options, legacy_overrides=legacy_overrides)
-    rules = clean_options.rules
-    regex_timeout_ms = clean_options.regex_timeout_ms
-    normalize_line_endings = clean_options.normalize_line_endings
-    trim_trailing_spaces = clean_options.trim_trailing_spaces
-    collapse_blank_lines = clean_options.collapse_blank_lines
-    max_blank_lines = clean_options.max_blank_lines
-    remove_control_chars = clean_options.remove_control_chars
-    remove_toc_lines = clean_options.remove_toc_lines
-    remove_noise_lines = clean_options.remove_noise_lines
-    unwrap_lines = clean_options.unwrap_lines
-    remove_common_lines = clean_options.remove_common_lines
-    common_lines = clean_options.common_lines
-    unwrap_max_line_length = clean_options.unwrap_max_line_length
-    noise_min_chars = clean_options.noise_min_chars
-    noise_ratio_threshold = clean_options.noise_ratio_threshold
+    if options is None:
+        clean_options = CleaningOptions(**legacy_overrides)
+    elif legacy_overrides:
+        clean_options = replace(options, **legacy_overrides)
+    else:
+        clean_options = options
 
     original = markdown
     text = normalize_text(
         markdown,
-        normalize_line_endings=bool(normalize_line_endings),
-        remove_control_chars=bool(remove_control_chars),
+        normalize_line_endings=bool(clean_options.normalize_line_endings),
+        remove_control_chars=bool(clean_options.remove_control_chars),
     )
 
     applied = 0
     rule_hits: list[int] = []
     regex_timeout_rules: list[dict[str, Any]] = []
-    if rules:
-        for idx, rule in enumerate(rules):
+    if clean_options.rules:
+        for idx, rule in enumerate(clean_options.rules):
             try:
                 text2, n = safe_regex_subn(
                     pattern=rule.pattern,
                     repl=rule.repl,
                     text=text,
                     flags=rule.flags,
-                    timeout_ms=regex_timeout_ms,
-                    rule_index=int(idx),
+                    timeout_ms=clean_options.regex_timeout_ms,
+                    rule_index=idx,
                 )
             except RegexSubstitutionTimeoutError as exc:
                 detail = exc.to_detail()
                 regex_timeout_rules.append(
                     {
-                        "rule_index": int(detail.get("rule_index") or idx),
-                        "timeout_ms": int(detail.get("timeout_ms") or regex_timeout_ms or 0),
-                        "pattern": str(detail.get("pattern") or ""),
+                        "rule_index": detail["rule_index"],
+                        "timeout_ms": detail["timeout_ms"],
+                        "pattern": detail["pattern"],
                     }
                 )
                 rule_hits.append(0)
                 continue
-            rule_hits.append(int(n or 0))
+            rule_hits.append(n)
             if text2 != text:
                 applied += 1
                 text = text2
 
-    if remove_toc_lines or remove_noise_lines or unwrap_lines or remove_common_lines:
+    if (
+        clean_options.remove_toc_lines
+        or clean_options.remove_noise_lines
+        or clean_options.unwrap_lines
+        or clean_options.remove_common_lines
+    ):
         lines = text.split("\n")
-        if remove_noise_lines and _detect_leading_line_numbers(lines):
+        if clean_options.remove_noise_lines and _detect_leading_line_numbers(lines):
             lines = _strip_leading_line_numbers(lines)
         lines = _filter_lines(
             lines,
-            remove_toc_lines=remove_toc_lines,
-            remove_noise_lines=remove_noise_lines,
-            remove_common_lines=remove_common_lines,
-            common_lines=common_lines,
-            noise_min_chars=noise_min_chars,
-            noise_ratio_threshold=noise_ratio_threshold,
+            remove_toc_lines=clean_options.remove_toc_lines,
+            remove_noise_lines=clean_options.remove_noise_lines,
+            remove_common_lines=clean_options.remove_common_lines,
+            common_lines=clean_options.common_lines,
+            noise_min_chars=clean_options.noise_min_chars,
+            noise_ratio_threshold=clean_options.noise_ratio_threshold,
         )
-        if unwrap_lines:
-            lines = _unwrap_soft_line_breaks(lines, max_line_length=unwrap_max_line_length)
+        if clean_options.unwrap_lines:
+            lines = _unwrap_soft_line_breaks(lines, max_line_length=clean_options.unwrap_max_line_length)
         # Post-process line-level artifacts typical for PDF/DOC exporters.
         lines = _normalize_text_lines(lines)
         text = "\n".join(lines)
 
-    if trim_trailing_spaces:
+    if clean_options.trim_trailing_spaces:
         text = _trim_trailing_spaces(text)
 
-    if collapse_blank_lines:
-        text = limit_blank_lines(text, max_blank_lines=max_blank_lines)
+    if clean_options.collapse_blank_lines:
+        text = limit_blank_lines(text, max_blank_lines=clean_options.max_blank_lines)
 
     stats: dict[str, Any] = {
         "regex_timeout_count": len(regex_timeout_rules),
@@ -370,11 +360,7 @@ def build_common_line_signatures(
         return set()
 
     line_docs, _samples = _common_line_stats(texts, max_line_length=max_line_length)
-    return {
-        key
-        for key, count in line_docs.items()
-        if count >= min_docs and (count / doc_count) >= min_ratio
-    }
+    return {key for key, count in line_docs.items() if count >= min_docs and (count / doc_count) >= min_ratio}
 
 
 def build_repeated_line_signatures(
@@ -412,7 +398,7 @@ def _normalize_line_for_display(line: str) -> str:
 
     Keep this aligned with _normalize_line_signature() so candidates map cleanly to signatures.
     """
-    text = (line or "").strip()
+    text = (line).strip()
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text)
@@ -423,16 +409,17 @@ def _normalize_line_for_display(line: str) -> str:
 def _document_common_line_samples(text: str, *, max_line_length: int) -> dict[str, str]:
     samples: dict[str, str] = {}
     in_code = False
-    for raw_line in (text or "").splitlines():
+    for raw_line in (text).splitlines():
         if _CODE_FENCE_RE.match(raw_line):
             in_code = not in_code
             continue
         if in_code or _is_structural_line(raw_line):
             continue
-        signature = _normalize_line_signature(raw_line)
+        sample = _normalize_line_for_display(raw_line)
+        signature = sample.casefold()
         if not signature or len(signature) > max_line_length:
             continue
-        samples.setdefault(signature, _normalize_line_for_display(raw_line) or signature)
+        samples.setdefault(signature, sample)
     return samples
 
 
@@ -461,7 +448,7 @@ def learn_common_line_candidates(
     min_ratio: float = 0.35,
     max_line_length: int = 120,
     max_candidates: int = 50,
-) -> list[dict[str, object]]:
+) -> list[_CommonLineCandidate]:
     """
     Suggest "common lines" across multiple documents (dataset-level learning mode).
 
@@ -493,7 +480,7 @@ def learn_common_line_candidates(
     min_ratio_eff = float(min_ratio or 0.0)
     min_ratio_eff = max(0.0, min(1.0, min_ratio_eff))
 
-    out: list[dict[str, object]] = []
+    out: list[_CommonLineCandidate] = []
     for sig, count in line_docs.items():
         if count < min_docs_eff:
             continue
@@ -503,13 +490,13 @@ def learn_common_line_candidates(
         out.append(
             {
                 "signature": sig,
-                "sample": samples.get(sig, sig),
-                "docs": int(count),
+                "sample": samples[sig],
+                "docs": count,
                 "ratio": ratio,
             }
         )
 
-    out.sort(key=lambda it: (int(it.get("docs", 0) or 0), float(it.get("ratio", 0.0) or 0.0)), reverse=True)
+    out.sort(key=lambda it: (it["docs"], it["ratio"]), reverse=True)
 
     cap = max(1, int(max_candidates or 0)) if int(max_candidates or 0) else 50
     cap = max(1, min(cap, 200))
@@ -517,12 +504,7 @@ def learn_common_line_candidates(
 
 
 def _normalize_line_signature(line: str) -> str:
-    text = line.strip()
-    if not text:
-        return ""
-    text = re.sub(r"\s+", " ", text)
-    text = _strip_trailing_page_markers(text)
-    return text.strip().casefold()
+    return _normalize_line_for_display(line).casefold()
 
 
 def _filter_lines(
@@ -616,9 +598,6 @@ def _normalize_text_lines(lines: list[str]) -> list[str]:
     - Collapses mid-line excessive whitespace (keeps leading indentation).
     - Repairs OCR/PDF "spaced letters" like "t h i s" -> "this" (conservative).
     """
-    if not lines:
-        return []
-
     out: list[str] = []
     in_code = False
     for line in lines:
@@ -657,7 +636,7 @@ def _normalize_pdf_bullet_line(line: str) -> str | None:
     - Skips code fences/blocks (handled by caller).
     - Does not touch already-structured list lines.
     """
-    if not line or not line.strip():
+    if not line.strip():
         return None
 
     prefix = line[: len(line) - len(line.lstrip(" \t"))]
@@ -682,7 +661,7 @@ def _collapse_spaced_letters(line: str) -> str:
       - Requires >=5 letters in the spaced sequence.
       - Skips ALL-CAPS sequences (e.g. "U S A F") to avoid mangling acronyms.
     """
-    if not line or " " not in line:
+    if " " not in line:
         return line
 
     out: list[str] = []
@@ -697,23 +676,14 @@ def _collapse_spaced_letters(line: str) -> str:
             letters = [ch]
             # Keep collapsing only when each letter is separated by spaces, i.e. avoid
             # accidentally consuming the first character of a normal word like "t e s t".
-            while (
-                j + 2 < n
-                and line[j + 1] == " "
-                and line[j + 2].isalpha()
-                and (j + 3 >= n or line[j + 3] == " ")
-            ):
+            while j + 2 < n and line[j + 1] == " " and line[j + 2].isalpha() and (j + 3 >= n or line[j + 3] == " "):
                 letters.append(line[j + 2])
                 j += 2
 
             if len(letters) >= 5:
                 word = "".join(letters)
                 # Skip ALL-CAPS sequences to avoid mangling acronyms like "U S A F".
-                if (
-                    not word.isupper()
-                    and not _UPPER_RUN_RE.search(word)
-                    and sum(1 for c in word if c.islower()) >= 2
-                ):
+                if not word.isupper() and not _UPPER_RUN_RE.search(word) and sum(1 for c in word if c.islower()) >= 2:
                     out.append(word)
                     i = j + 1
                     continue
@@ -813,8 +783,4 @@ def _is_cjk(text: str) -> bool:
         return False
     ch = text[0]
     code = ord(ch)
-    return (
-        0x4E00 <= code <= 0x9FFF
-        or 0x3400 <= code <= 0x4DBF
-        or 0xF900 <= code <= 0xFAFF
-    )
+    return 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF or 0xF900 <= code <= 0xFAFF

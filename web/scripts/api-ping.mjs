@@ -7,8 +7,8 @@
  */
 
 function resolveBaseUrl() {
-  const raw = String(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").trim()
-  return raw.replace(/\/+$/, "")
+  const raw = String(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim()
+  return raw.replace(/\/+$/, '')
 }
 
 async function fetchJson(url, { timeoutMs = 5000 } = {}) {
@@ -16,12 +16,12 @@ async function fetchJson(url, { timeoutMs = 5000 } = {}) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      method: 'GET',
+      headers: { Accept: 'application/json' },
       signal: controller.signal,
     })
-    const requestId = res.headers.get("x-request-id") || res.headers.get("X-Request-ID") || undefined
-    const contentType = String(res.headers.get("content-type") || "")
+    const requestId = res.headers.get('x-request-id') || res.headers.get('X-Request-ID') || undefined
+    const contentType = String(res.headers.get('content-type') || '')
     const isJsonContentType = /application\/json|application\/[^;]+\+json/i.test(contentType)
 
     const bodyText = await res.text()
@@ -36,8 +36,8 @@ async function fetchJson(url, { timeoutMs = 5000 } = {}) {
     }
 
     // Require JSON on success; otherwise the frontend will likely crash on shape mismatches.
-    const ok = Boolean(res.ok && isJsonContentType && json && typeof json === "object")
-    const snippet = bodyText ? bodyText.trimStart().slice(0, 160) : ""
+    const ok = Boolean(res.ok && isJsonContentType && json && typeof json === 'object')
+    const snippet = bodyText ? bodyText.trimStart().slice(0, 160) : ''
     return { ok, status: res.status, requestId, json, jsonError, contentType, snippet }
   } finally {
     clearTimeout(timeout)
@@ -47,9 +47,9 @@ async function fetchJson(url, { timeoutMs = 5000 } = {}) {
 async function main() {
   const base = resolveBaseUrl()
   const endpoints = [
-    { name: "health", url: `${base}/api/v1/health` },
-    { name: "ready", url: `${base}/api/v1/health/ready` },
-    { name: "meta", url: `${base}/api/v1/meta` },
+    { name: 'health', url: `${base}/api/v1/health` },
+    { name: 'ready', url: `${base}/api/v1/health/ready` },
+    { name: 'meta', url: `${base}/api/v1/meta` },
   ]
 
   console.log(`[api-ping] base=${base}`)
@@ -58,11 +58,11 @@ async function main() {
   for (const ep of endpoints) {
     try {
       const out = await fetchJson(ep.url)
-      const rid = out.requestId ? ` request_id=${out.requestId}` : ""
+      const rid = out.requestId ? ` request_id=${out.requestId}` : ''
       console.log(`[api-ping] ${ep.name} ${out.status}${rid}`)
       if (!out.ok) {
         failed++
-        const ct = out.contentType ? ` content-type=${out.contentType}` : ""
+        const ct = out.contentType ? ` content-type=${out.contentType}` : ''
         console.error(`[api-ping] ${ep.name} FAIL${ct}`)
         if (out.json) console.error(JSON.stringify(out.json, null, 2))
         else if (out.jsonError) console.error(`[api-ping] ${ep.name} JSON parse error: ${out.jsonError}`)

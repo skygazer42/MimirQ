@@ -15,6 +15,7 @@ from app.rag.safety.rules import (
     ROLE_HIJACK_RULES,
     SYSTEM_PROMPT_PROBE_RULES,
     ZERO_WIDTH_CHARS,
+    GuardRule,
 )
 from app.services.metrics_logger import log_metrics
 
@@ -29,10 +30,10 @@ class GuardResult:
 
 
 def _record_match(matched: dict[str, float], rule_name: str, score: float) -> None:
-    matched[rule_name] = max(float(matched.get(rule_name) or 0.0), float(score))
+    matched[rule_name] = max(matched.get(rule_name) or 0.0, float(score))
 
 
-def _record_rule_matches(text: str, rules: tuple[Any, ...], matched: dict[str, float]) -> None:
+def _record_rule_matches(text: str, rules: tuple[GuardRule, ...], matched: dict[str, float]) -> None:
     for rule in rules:
         if rule.pattern.search(text):
             _record_match(matched, rule.name, rule.score)
@@ -41,8 +42,6 @@ def _record_rule_matches(text: str, rules: tuple[Any, ...], matched: dict[str, f
 def _base64_obfuscation_hits(text: str) -> int:
     hits = 0
     for candidate in BASE64_BLOCK_RE.findall(text):
-        if len(candidate) < 24:
-            continue
         try:
             decoded = base64.b64decode(candidate, validate=True).decode("utf-8", errors="ignore").lower()
         except ValueError:
@@ -57,9 +56,9 @@ def _history_injection_hits(conversation_history: list[dict[str, Any]] | None) -
     for message in (conversation_history or [])[-4:]:
         if not isinstance(message, dict):
             continue
-        if str(message.get("role") or "").strip().lower() != "user":
+        if message["role"].strip().lower() != "user":
             continue
-        content = str(message.get("content") or "")
+        content = message["content"]
         if not content:
             continue
         if any(rule.pattern.search(content) for rule in INSTRUCTION_OVERRIDE_RULES + SYSTEM_PROMPT_PROBE_RULES):
@@ -100,22 +99,20 @@ class InputGuard:
         query: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
-        text = str(query or "")
-        return await asyncio.to_thread(self._check_sync, text, conversation_history)
+        return await asyncio.to_thread(self._check_sync, query, conversation_history)
 
     def _check_sync(
         self,
         query: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
-        text = str(query or "")
-        matched = _collect_matches(text, conversation_history)
+        matched = _collect_matches(query, conversation_history)
 
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))
         matched_rules = sorted(matched.keys())
         action = self._resolve_action(score=score, matched_rules=matched_rules)
         result = GuardResult(action=action, score=round(score, 3), matched_rules=matched_rules)
-        self._log_result(query=text, result=result)
+        self._log_result(query=query, result=result)
         return result
 
     @staticmethod
@@ -123,9 +120,9 @@ class InputGuard:
         if not matched_rules:
             return "allow"
 
-        warn_threshold = float(getattr(settings, "INPUT_GUARD_WARN_THRESHOLD", 0.35) or 0.35)
-        block_threshold = float(getattr(settings, "INPUT_GUARD_SCORE_THRESHOLD", 0.7) or 0.7)
-        mode = str(getattr(settings, "INPUT_GUARD_MODE", "warn") or "warn").strip().lower()
+        warn_threshold = float(settings.INPUT_GUARD_WARN_THRESHOLD)
+        block_threshold = float(settings.INPUT_GUARD_SCORE_THRESHOLD)
+        mode = str(settings.INPUT_GUARD_MODE).strip().lower()
 
         if score >= block_threshold:
             return "block" if mode == "block" else "warn"
@@ -135,8 +132,8 @@ class InputGuard:
 
     @staticmethod
     def _log_result(*, query: str, result: GuardResult) -> None:
-        query_hash = stable_hash(query or "")
-        matched_rules = list(result.matched_rules or [])
+        query_hash = stable_hash(query)
+        matched_rules = list(result.matched_rules)
         observe_input_guard(action=result.action, matched_rules=matched_rules)
 
         if result.action == "allow":
@@ -145,14 +142,14 @@ class InputGuard:
         payload = {
             "event": "rag_input_guard",
             "action": result.action,
-            "score": float(result.score or 0.0),
+            "score": float(result.score),
             "matched_rules": matched_rules,
             "query_hash": query_hash,
         }
         log_metrics(payload)
 
         if result.action == "block":
-            if bool(getattr(settings, "INPUT_GUARD_LOG_BLOCKED", True)):
+            if bool(settings.INPUT_GUARD_LOG_BLOCKED):
                 logger.warning(
                     "Input guard blocked query hash=%s rules=%s score=%.3f", query_hash, matched_rules, result.score
                 )

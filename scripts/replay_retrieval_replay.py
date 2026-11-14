@@ -20,60 +20,21 @@ from typing import Any
 
 import httpx
 
-from app.rag.core.hashing import stable_hash
-from app.rag.evaluation.replay_capture import (
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from app.rag.core.hashing import stable_hash  # noqa: E402
+from app.rag.evaluation.replay_capture import (  # noqa: E402
     RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
     fingerprint_citations,
 )
-
-
-def _load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
+from scripts.capture_retrieval_replay import _headers, _load_json, coerce_case_bundle  # noqa: E402
 
 
 def _build_case_lookup(items: list[dict[str, Any]]) -> dict[str, str]:
     lookup: dict[str, str] = {}
     for it in items or []:
-        if not isinstance(it, dict):
-            continue
         q = str(it.get("question") or it.get("query") or "").strip()
         if not q:
             continue
@@ -156,9 +117,9 @@ def _compare_capture(
 ) -> tuple[bool, dict[str, Any]]:
     fingerprint_expected = str(record.get("citations_fingerprint") or "").strip()
     fingerprint_actual = fingerprint_citations(payload.get("citations"))
-    config_expected = str(record.get("retrieval_config_hash") or "").strip() or None
+    config_expected = record.get("retrieval_config_hash")
     metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
-    config_actual = str(metrics.get("retrieval_config_hash") or "").strip() or None
+    config_actual = metrics.get("retrieval_config_hash")
     matched = bool(fingerprint_expected) and fingerprint_actual == fingerprint_expected
     matched = matched and (config_expected is None or config_actual == config_expected)
     mismatch = {
@@ -276,16 +237,16 @@ def main(argv: list[str] | None = None) -> int:
             captures_path,
             max_items=int(args.max_items or 0),
             case_lookup=case_lookup,
-            dataset_id=str(dataset_id),
+            dataset_id=dataset_id,
             client=client,
             url=url,
             headers=_headers(args),
         )
 
-    elapsed = round(float(time.monotonic() - t0), 3)
+    elapsed = round(time.monotonic() - t0, 3)
     report = {
         "schema": "mimirq.retrieval_replay_report.v1",
-        "dataset_id": str(dataset_id),
+        "dataset_id": dataset_id,
         "totals": totals,
         "elapsed_sec": elapsed,
         "mismatches": mismatches[:50],

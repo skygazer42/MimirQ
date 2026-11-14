@@ -10,7 +10,7 @@ fallback RecursiveCharacterTextSplitter inside each section to respect the
 configured chunk size/overlap while preserving positions.
 """
 
-
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.heading_parsing import parse_cn_prefixed_heading
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,9 @@ def _parse_en_num_section(s: str, start: int) -> tuple[str, int] | None:
     return s[start:i], i
 
 
-def _en_heading_candidates() -> tuple[tuple[str, int, tuple[str, ...], Any], ...]:
+def _en_heading_candidates() -> tuple[
+    tuple[str, int, tuple[str, ...], Callable[[str, int], tuple[str, int] | None]], ...
+]:
     return (
         ("volume", 1, ("volume", "vol."), _parse_en_num_simple),
         ("book", 1, ("book",), _parse_en_num_simple),
@@ -100,14 +103,14 @@ def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
     Parse book-ish headings without regex to avoid backtracking hotspots.
     Returns (kind, level, number).
     """
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
     low = s.lower()
     for kind, level, prefixes, num_parser in _en_heading_candidates():
         parsed = _parse_en_heading_candidate(s, low, prefixes=prefixes, num_parser=num_parser)
         if parsed is not None:
-            return kind, int(level), parsed
+            return kind, level, parsed
     return None
 
 
@@ -116,7 +119,7 @@ def _parse_en_heading_candidate(
     low: str,
     *,
     prefixes: tuple[str, ...],
-    num_parser,
+    num_parser: Callable[[str, int], tuple[str, int] | None],
 ) -> str | None:
     n = len(s)
     for pref in prefixes:
@@ -198,20 +201,12 @@ def _iter_headings(text: str) -> list[BookHeading]:
                 start=line_start,
                 end=line_start + len(raw_line),
                 text=line,
-                level=int(level),
+                level=level,
                 kind=kind,
             )
         )
 
-    # Best-effort de-dup.
-    deduped: list[BookHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[BookHeading]) -> list[_Section]:
@@ -229,13 +224,6 @@ def _build_sections(text: str, headings: list[BookHeading]) -> list[_Section]:
         sections.append(_Section(start=start, end=end, heading=h))
 
     return sections
-
-
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
 
 
 def _build_section_path(section: _Section, heading_stack: list[str]) -> tuple[list[str], str | None]:
@@ -270,7 +258,7 @@ def _build_section_chunk_meta(
     sec_heading = section.heading
     if sec_heading is not None:
         meta["book_heading"] = sec_heading.text
-        meta["book_level"] = int(sec_heading.level)
+        meta["book_level"] = sec_heading.level
         meta["book_kind"] = sec_heading.kind
     if path:
         meta["book_path"] = path
@@ -294,7 +282,7 @@ class BookStructuredChunker(BaseChunker):
     Chunker optimized for book-like chapter/part structure.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -320,7 +308,7 @@ class BookStructuredChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

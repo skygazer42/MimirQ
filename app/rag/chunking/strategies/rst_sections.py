@@ -14,7 +14,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -23,14 +22,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
-    plain: str
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -53,22 +46,8 @@ _ADORN_CHARS = "=-~^\"`:.+'_*+#"
 _DIRECTIVE_HINT_RE = re.compile(r"(?m)^\s*\.\.\s*(toctree|rubric|note|warning|code-block)\s*::")
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        plain = raw.rstrip("\r\n")
-        out.append(_Line(start=start, end=end, text=raw, plain=plain))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text, plain=text))
-    return out
-
-
-def _is_adornment(plain: str) -> str | None:
-    s = (plain or "").strip()
+def _detect_adornment_character(plain: str) -> str | None:
+    s = (plain).strip()
     if len(s) < 3:
         return None
     ch = s[0]
@@ -80,10 +59,7 @@ def _is_adornment(plain: str) -> str | None:
 
 
 def _level_for_adorn(ch: str) -> int:
-    try:
-        return _ADORN_CHARS.index(ch) + 1
-    except ValueError:
-        return 10
+    return _ADORN_CHARS.index(ch) + 1
 
 
 def _iter_headings(text: str) -> list[RstHeading]:
@@ -94,11 +70,11 @@ def _iter_headings(text: str) -> list[RstHeading]:
         ln = lines[i]
 
         # Overline + title + underline
-        ch_over = _is_adornment(ln.plain)
+        ch_over = _detect_adornment_character(ln.plain)
         if ch_over and i + 2 < len(lines):
             title_ln = lines[i + 1]
             under_ln = lines[i + 2]
-            ch_under = _is_adornment(under_ln.plain)
+            ch_under = _detect_adornment_character(under_ln.plain)
             title = title_ln.plain.strip()
             if title and ch_under == ch_over and len(under_ln.plain.strip()) >= len(title):
                 headings.append(
@@ -117,7 +93,7 @@ def _iter_headings(text: str) -> list[RstHeading]:
         title = ln.plain.strip()
         if title and i + 1 < len(lines):
             under_ln = lines[i + 1]
-            ch_under = _is_adornment(under_ln.plain)
+            ch_under = _detect_adornment_character(under_ln.plain)
             if ch_under and len(under_ln.plain.strip()) >= len(title):
                 headings.append(
                     RstHeading(
@@ -133,14 +109,7 @@ def _iter_headings(text: str) -> list[RstHeading]:
 
         i += 1
 
-    deduped: list[RstHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[RstHeading]) -> list[_Section]:
@@ -158,13 +127,6 @@ def _build_sections(text: str, headings: list[RstHeading]) -> list[_Section]:
     return sections
 
 
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
-
-
 def looks_like_rst_sections(text: str) -> bool:
     if not text or len(text) < 120:
         return False
@@ -177,7 +139,7 @@ def looks_like_rst_sections(text: str) -> bool:
 
 
 class RSTSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -214,7 +176,7 @@ class RSTSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["rst_heading"] = section.heading.title
-                meta["rst_level"] = int(section.heading.level)
+                meta["rst_level"] = section.heading.level
                 meta["rst_adorn"] = section.heading.adorn
             if path:
                 meta["rst_path"] = path
@@ -227,7 +189,7 @@ class RSTSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

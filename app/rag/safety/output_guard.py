@@ -1,4 +1,3 @@
-
 import asyncio
 import re
 from dataclasses import dataclass
@@ -38,17 +37,17 @@ class OutputGuard:
         del question, tenant  # reserved for future topic policy
         sync_result = await asyncio.to_thread(
             self._check_sync,
-            str(text or ""),
+            text,
             list(context_chunks or []),
         )
-        safety_result = await self._safety_guard.guard_agent_response(str(text or ""))
-        matched_rules = list(sync_result.matched_rules or [])
-        details = dict(sync_result.details or {})
-        score = float(sync_result.score or 0.0)
+        safety_result = await self._safety_guard.guard_agent_response(text)
+        matched_rules = list(sync_result.matched_rules)
+        details = dict(sync_result.details)
+        score = float(sync_result.score)
 
-        if str(getattr(safety_result, "action", "allow") or "allow").strip().lower() != "allow":
+        if safety_result.action != "allow":
             matched_rules.append("safety_guard_response")
-            details["safety_guard_action"] = str(getattr(safety_result, "action", "allow") or "allow")
+            details["safety_guard_action"] = safety_result.action
             score = min(1.0, max(score, 0.9))
 
         matched_rules = sorted(set(matched_rules))
@@ -56,30 +55,27 @@ class OutputGuard:
             action=self._resolve_action(score=score, matched_rules=matched_rules),
             score=round(score, 3),
             matched_rules=matched_rules,
-            details=details or None,
+            details=details,
         )
 
     def _check_sync(self, text: str, context_chunks: list[str]) -> OutputGuardResult:
         matched: dict[str, float] = {}
         details: dict[str, Any] = {}
 
-        def _record(name: str, score: float) -> None:
-            matched[name] = max(float(matched.get(name) or 0.0), float(score))
-
         if _PHONE_RE.search(text):
-            _record("pii_phone", 0.72)
+            matched["pii_phone"] = 0.72
         if _ID_CARD_RE.search(text):
-            _record("pii_id_card", 0.9)
+            matched["pii_id_card"] = 0.9
         if _FAKE_CITATION_RE.search(text):
-            _record("citation_fabrication_risk", 0.42)
+            matched["citation_fabrication_risk"] = 0.42
 
-        context_text = " ".join(str(item or "") for item in context_chunks if str(item or "").strip())
+        context_text = " ".join(item for item in context_chunks if item.strip())
         if context_text:
-            answer_entities = {item.strip() for item in _CN_ENTITY_RE.findall(text) if len(item.strip()) >= 4}
-            context_entities = {item.strip() for item in _CN_ENTITY_RE.findall(context_text) if len(item.strip()) >= 4}
+            answer_entities = {item for item in _CN_ENTITY_RE.findall(text) if len(item) >= 4}
+            context_entities = {item for item in _CN_ENTITY_RE.findall(context_text) if len(item) >= 4}
             missing = sorted(entity for entity in answer_entities if entity not in context_entities)
             if missing:
-                _record("citation_consistency", 0.41)
+                matched["citation_consistency"] = 0.41
                 details["missing_entities"] = missing[:10]
 
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))
@@ -88,7 +84,7 @@ class OutputGuard:
             action=self._resolve_action(score=score, matched_rules=matched_rules),
             score=round(score, 3),
             matched_rules=matched_rules,
-            details=details or None,
+            details=details,
         )
 
     @staticmethod

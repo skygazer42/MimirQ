@@ -49,7 +49,7 @@ class _QAPair:
 
 
 def _iter_tag_segments(text: str) -> list[_TagSeg]:
-    matches = list(_QA_TAG_LINE_RE.finditer(text or ""))
+    matches = list(_QA_TAG_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -57,9 +57,7 @@ def _iter_tag_segments(text: str) -> list[_TagSeg]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        prefix = (m.group("prefix") or "").strip()
-        if not prefix:
-            continue
+        prefix = (m.group("prefix")).strip()
         kind = "Q" if prefix.lower().startswith("q") or prefix.startswith("问") else "A"
         segs.append(_TagSeg(start=start, end=end, kind=kind))
     return segs
@@ -85,7 +83,7 @@ def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
                 break
 
         question_end = first_a_start if first_a_start is not None else next_q_start
-        question_text = (text[pair_start:question_end] or "").strip()
+        question_text = (text[pair_start:question_end]).strip()
         first_line = question_text.splitlines()[0] if question_text else ""
         preview = _Q_STRIP_RE.sub("", first_line).strip() if first_line else None
         if preview and len(preview) > 120:
@@ -146,7 +144,7 @@ def _window_end_index(*, pairs: list[_QAPair], start_idx: int, chunk_size: int) 
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -160,7 +158,7 @@ def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, ch
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 def _qa_chunk_document(
@@ -180,15 +178,15 @@ def _qa_chunk_document(
     meta["chunk_strategy"] = "qa_pairs"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["qa_pair_count"] = int(end_idx - start_idx)
-    meta["qa_answered_count"] = int(answered)
+    meta["qa_pair_count"] = end_idx - start_idx
+    meta["qa_answered_count"] = answered
     if previews:
         meta["qa_question_previews"] = previews
     return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
 
 
 class QAPairsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -204,7 +202,7 @@ class QAPairsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

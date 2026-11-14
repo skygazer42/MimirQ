@@ -21,10 +21,6 @@ from app.services.metrics_logger import log_metrics
 logger = get_logger("rag.middleware.agent_logging")
 
 
-def _now_ts() -> float:
-    return time.time()
-
-
 def _safe_str(value: Any, max_chars: int) -> str:
     text = str(value) if value is not None else ""
     if max_chars > 0 and len(text) > max_chars:
@@ -42,7 +38,7 @@ class AgentExecutionLoggingMiddleware:
         if not self.enabled:
             return state
         agent = dict(state.get("_agent") or {})
-        agent["start_ts"] = _now_ts()
+        agent["start_ts"] = time.time()
         state["_agent"] = agent
         return state
 
@@ -52,7 +48,7 @@ class AgentExecutionLoggingMiddleware:
 
         agent = dict(state.get("_agent") or {})
         start_ts = agent.get("start_ts")
-        end_ts = _now_ts()
+        end_ts = time.time()
         elapsed_ms: float | None = None
         if isinstance(start_ts, (int, float)):
             elapsed_ms = round((end_ts - float(start_ts)) * 1000, 2)
@@ -92,21 +88,19 @@ class AgentExecutionLoggingMiddleware:
         return state
 
 
+def _configured_logging_middleware() -> AgentExecutionLoggingMiddleware:
+    return AgentExecutionLoggingMiddleware(
+        enabled=settings.AGENT_LOG_ENABLED,
+        include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
+        max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
+    )
+
+
 @before_agent(priority=50, name="agent_logging_before")
 def _agent_logging_before(state: dict[str, Any]) -> dict[str, Any]:
-    mw = AgentExecutionLoggingMiddleware(
-        enabled=bool(getattr(settings, "AGENT_LOG_ENABLED", False)),
-        include_execution_path=bool(getattr(settings, "AGENT_LOG_INCLUDE_EXECUTION_PATH", False)),
-        max_preview_chars=int(getattr(settings, "AGENT_LOG_MAX_PREVIEW_CHARS", 500) or 500),
-    )
-    return mw.before(state)
+    return _configured_logging_middleware().before(state)
 
 
 @after_agent(priority=50, name="agent_logging_after")
 def _agent_logging_after(state: dict[str, Any]) -> dict[str, Any]:
-    mw = AgentExecutionLoggingMiddleware(
-        enabled=bool(getattr(settings, "AGENT_LOG_ENABLED", False)),
-        include_execution_path=bool(getattr(settings, "AGENT_LOG_INCLUDE_EXECUTION_PATH", False)),
-        max_preview_chars=int(getattr(settings, "AGENT_LOG_MAX_PREVIEW_CHARS", 500) or 500),
-    )
-    return mw.after(state)
+    return _configured_logging_middleware().after(state)

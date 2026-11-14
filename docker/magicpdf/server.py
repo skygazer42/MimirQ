@@ -66,7 +66,7 @@ async def _read_upload(file: UploadFile) -> bytes:
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = value.strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "magicpdf"
     return text
 
@@ -202,7 +202,7 @@ def _find_markdown(run_root: Path, *, safe_stem: str, method: str) -> Path | Non
 
 
 def _strip_image_refs(markdown: str) -> str:
-    text = _IMAGE_MD_RE.sub("", markdown or "")
+    text = _IMAGE_MD_RE.sub("", markdown)
     return _IMAGE_HTML_RE.sub("", text)
 
 
@@ -344,9 +344,9 @@ async def convert(
                 filename=file.filename or "input.pdf",
                 method=method,
                 lang=lang,
-                debug=bool(debug),
+                debug=debug,
                 device_mode=device_mode,
-                keep_artifacts=bool(keep_artifacts),
+                keep_artifacts=keep_artifacts,
                 document_id=document_id,
             )
         except RuntimeError as exc:

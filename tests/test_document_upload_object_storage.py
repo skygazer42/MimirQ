@@ -5,6 +5,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
+import app.services.document_ingestion as upload_owner
+import app.services.document_processing_dispatch as document_dispatch
+import app.services.document_source_persistence as source_owner
 from app.api.v1 import documents as documents_module
 
 document_upload = documents_module.document_upload
@@ -19,8 +22,8 @@ async def test_store_document_source_uses_minio_when_document_storage_enabled(mo
     document_id = uuid.uuid4()
     calls: list[dict] = []
 
-    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
 
     def _upload(**kwargs):  # noqa: ANN003, ANN202
         calls.append(kwargs)
@@ -28,7 +31,7 @@ async def test_store_document_source_uses_minio_when_document_storage_enabled(mo
 
     monkeypatch.setattr(document_upload.minio_service, "upload_document_file", _upload, raising=True)
 
-    stored_path = await document_upload._store_document_source(
+    stored_path = await source_owner.store_document_source(
         file_path=source,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -65,12 +68,12 @@ async def test_store_document_source_uses_generic_object_store_when_enabled(monk
             calls.append(kwargs)
             return "s3://documents/documents/t/d/source.txt"
 
-    monkeypatch.setattr(document_upload.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "OBJECT_STORAGE_PROVIDER", "s3", raising=False)
-    monkeypatch.setattr(document_upload, "get_document_object_store", lambda: _Store(), raising=True)
+    monkeypatch.setattr(upload_owner.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "OBJECT_STORAGE_PROVIDER", "s3", raising=False)
+    monkeypatch.setattr(source_owner, "get_document_object_store", lambda: _Store(), raising=True)
 
-    stored_path = await document_upload._store_document_source(
+    stored_path = await source_owner.store_document_source(
         file_path=source,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -97,8 +100,8 @@ async def test_store_document_source_uses_generic_object_store_when_enabled(monk
 async def test_store_document_source_removes_temp_when_minio_upload_fails(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
-    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
 
     def _fail_upload(**_kwargs):  # noqa: ANN003, ANN202
         raise RuntimeError("minio unavailable")
@@ -106,7 +109,7 @@ async def test_store_document_source_removes_temp_when_minio_upload_fails(monkey
     monkeypatch.setattr(document_upload.minio_service, "upload_document_file", _fail_upload, raising=True)
 
     with pytest.raises(RuntimeError, match="minio unavailable"):
-        await document_upload._store_document_source(
+        await source_owner.store_document_source(
             file_path=source,
             tenant_id=uuid.uuid4(),
             dataset_id=uuid.uuid4(),
@@ -121,14 +124,14 @@ async def test_store_document_source_removes_temp_when_minio_upload_fails(monkey
 async def test_schedule_document_processing_cleans_object_temp_after_fallback_failure(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from app.api.v1 import documents as documents_module
-
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
     background_tasks = BackgroundTasks()
-    db_document = SimpleNamespace(doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt")
+    db_document = SimpleNamespace(
+        id=document_id, doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt"
+    )
 
     async def _no_queue(**_kwargs):  # noqa: ANN003, ANN202
         return None
@@ -136,20 +139,19 @@ async def test_schedule_document_processing_cleans_object_temp_after_fallback_fa
     async def _fail_processing(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         raise RuntimeError("processing failed")
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_queue, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _fail_processing, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _no_queue, raising=True)
+    monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _fail_processing, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.dispatch_uploaded_document(
         background_tasks=background_tasks,
-        file_path=source,
-        document_id=document_id,
+        source=document_dispatch.LocalProcessingSource(source),
         tenant_id=tenant_id,
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
         db=SimpleNamespace(),
-        db_document=db_document,
+        document=db_document,
     )
 
     assert keep_local_file is True
@@ -162,11 +164,11 @@ async def test_schedule_document_processing_cleans_object_temp_after_fallback_fa
 async def test_schedule_document_processing_returns_object_temp_to_request_after_queueing(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from app.api.v1 import documents as documents_module
-
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
-    db_document = SimpleNamespace(doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt")
+    db_document = SimpleNamespace(
+        id=uuid.uuid4(), doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt"
+    )
 
     async def _queued(**_kwargs):  # noqa: ANN003, ANN202
         return "task-1"
@@ -178,19 +180,18 @@ async def test_schedule_document_processing_returns_object_temp_to_request_after
         def refresh(self, _document) -> None:  # noqa: ANN001
             return None
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.dispatch_uploaded_document(
         background_tasks=BackgroundTasks(),
-        file_path=source,
-        document_id=uuid.uuid4(),
+        source=document_dispatch.LocalProcessingSource(source),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
         db=_DB(),
-        db_document=db_document,
+        document=db_document,
     )
 
     assert keep_local_file is False
@@ -204,7 +205,9 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
     source.write_text("hello", encoding="utf-8")
     processed: list[Path] = []
     background_tasks = BackgroundTasks()
-    db_document = SimpleNamespace(doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt")
+    db_document = SimpleNamespace(
+        id=uuid.uuid4(), doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt"
+    )
 
     async def _fail_enqueue(**_kwargs):  # noqa: ANN003, ANN202
         raise RuntimeError("redis unavailable")
@@ -212,21 +215,20 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
     async def _process(file_path, *_args):  # noqa: ANN001, ANN002, ANN202
         processed.append(file_path)
 
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
+    monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _process, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.dispatch_uploaded_document(
         background_tasks=background_tasks,
-        file_path=source,
-        document_id=uuid.uuid4(),
+        source=document_dispatch.LocalProcessingSource(source),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
         db=SimpleNamespace(),
-        db_document=db_document,
+        document=db_document,
     )
 
     assert keep_local_file is True
@@ -244,6 +246,7 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     db_document = SimpleNamespace(
+        id=uuid.uuid4(),
         status="pending",
         current_stage="queued",
         error_message=None,
@@ -265,25 +268,24 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
         def rollback(self) -> None:
             return None
 
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
-        await document_upload._schedule_document_processing(
+        await document_dispatch.dispatch_uploaded_document(
             background_tasks=BackgroundTasks(),
-            file_path=source,
-            document_id=uuid.uuid4(),
+            source=document_dispatch.LocalProcessingSource(source),
             tenant_id=uuid.uuid4(),
-            account_id="account-1",
+            requested_by="account-1",
             pipeline_hash="pipeline-hash",
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             db=_DB(),
-            db_document=db_document,
+            document=db_document,
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert commits == ["commit"]
     assert db_document.status == "failed"
     assert db_document.current_stage == "failed"
@@ -296,7 +298,9 @@ async def test_schedule_document_processing_ignores_task_metadata_commit_failure
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     rollbacks: list[bool] = []
-    db_document = SimpleNamespace(doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt")
+    db_document = SimpleNamespace(
+        id=uuid.uuid4(), doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt"
+    )
 
     async def _queued(**_kwargs):  # noqa: ANN003, ANN202
         return "task-1"
@@ -308,19 +312,18 @@ async def test_schedule_document_processing_ignores_task_metadata_commit_failure
         def rollback(self) -> None:
             rollbacks.append(True)
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.dispatch_uploaded_document(
         background_tasks=BackgroundTasks(),
-        file_path=source,
-        document_id=uuid.uuid4(),
+        source=document_dispatch.LocalProcessingSource(source),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
         db=_DB(),
-        db_document=db_document,
+        document=db_document,
     )
 
     assert keep_local_file is False
@@ -331,7 +334,7 @@ async def test_schedule_document_processing_ignores_task_metadata_commit_failure
 @pytest.mark.asyncio
 async def test_cleanup_unpersisted_object_deletes_minio_object(monkeypatch) -> None:
     deleted: list[str] = []
-    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
     monkeypatch.setattr(
         document_upload.minio_service,
         "delete_object",
@@ -339,7 +342,7 @@ async def test_cleanup_unpersisted_object_deletes_minio_object(monkeypatch) -> N
         raising=True,
     )
 
-    await document_upload._cleanup_unpersisted_source("minio://documents/documents/t/d/source.txt")
+    await source_owner.cleanup_unpersisted_source("minio://documents/documents/t/d/source.txt")
 
     assert deleted == ["documents/t/d/source.txt"]
 
@@ -355,9 +358,9 @@ async def test_cleanup_unpersisted_object_skips_bucket_mismatch(monkeypatch) -> 
         def delete_object(self, *, object_name):  # noqa: ANN001
             deleted.append(object_name)
 
-    monkeypatch.setattr(document_upload, "get_object_store_for_uri", lambda *_args, **_kwargs: _Store(), raising=True)
+    monkeypatch.setattr(source_owner, "get_object_store_for_uri", lambda *_args, **_kwargs: _Store(), raising=True)
 
-    await document_upload._cleanup_unpersisted_source(
+    await source_owner.cleanup_unpersisted_source(
         "s3://other-bucket/documents/t/d/source.txt",
         document_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
     )
@@ -372,7 +375,7 @@ async def test_persist_commit_failure_keeps_uploaded_object(monkeypatch, tmp_pat
     deleted: list[str] = []
     rollbacks: list[bool] = []
     db_document = SimpleNamespace(id=uuid.uuid4(), file_path="minio://documents/documents/t/d/source.txt")
-    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -391,14 +394,14 @@ async def test_persist_commit_failure_keeps_uploaded_object(monkeypatch, tmp_pat
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_owner,
         "SessionLocal",
         lambda: SimpleNamespace(get=lambda *_args, **_kwargs: object(), close=lambda: None),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+        await source_owner.persist_uploaded_document(_FailingDB(), db_document, file_path=source)
 
     assert rollbacks == [True]
     assert deleted == []
@@ -411,7 +414,7 @@ async def test_persist_commit_failure_deletes_uploaded_object_when_row_missing(m
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     db_document = SimpleNamespace(id=uuid.uuid4(), file_path="minio://documents/documents/t/d/source.txt")
-    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -430,14 +433,14 @@ async def test_persist_commit_failure_deletes_uploaded_object_when_row_missing(m
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_owner,
         "SessionLocal",
         lambda: SimpleNamespace(get=lambda *_args, **_kwargs: None, close=lambda: None),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+        await source_owner.persist_uploaded_document(_FailingDB(), db_document, file_path=source)
 
     assert deleted == ["documents/t/d/source.txt"]
     assert not source.exists()
@@ -460,14 +463,14 @@ async def test_persist_commit_failure_keeps_local_source_when_row_exists(monkeyp
             return None
 
     monkeypatch.setattr(
-        documents_module,
+        source_owner,
         "SessionLocal",
         lambda: SimpleNamespace(get=lambda *_args, **_kwargs: object(), close=lambda: None),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+        await source_owner.persist_uploaded_document(_FailingDB(), db_document, file_path=source)
 
     assert source.exists()
 
@@ -491,14 +494,11 @@ async def test_persist_commit_failure_keeps_local_source_when_row_existence_unkn
             return None
 
     monkeypatch.setattr(
-        documents_module,
-        "SessionLocal",
-        lambda: (_ for _ in ()).throw(RuntimeError("session unavailable")),
-        raising=True,
+        source_owner, "SessionLocal", lambda: (_ for _ in ()).throw(RuntimeError("session unavailable")), raising=True
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+        await source_owner.persist_uploaded_document(_FailingDB(), db_document, file_path=source)
 
     assert source.exists()
 
@@ -509,7 +509,7 @@ async def test_persist_add_failure_deletes_definitely_unpersisted_object(monkeyp
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     db_document = SimpleNamespace(file_path="minio://documents/documents/t/d/source.txt")
-    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _DB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -526,7 +526,7 @@ async def test_persist_add_failure_deletes_definitely_unpersisted_object(monkeyp
     )
 
     with pytest.raises(RuntimeError, match="add failed"):
-        await document_upload._persist_uploaded_document(_DB(), db_document, file_path=source)
+        await source_owner.persist_uploaded_document(_DB(), db_document, file_path=source)
 
     assert deleted == ["documents/t/d/source.txt"]
     assert not source.exists()
@@ -538,7 +538,7 @@ async def test_persist_refresh_failure_does_not_fail_committed_upload(monkeypatc
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     db_document = SimpleNamespace(file_path="minio://documents/documents/t/d/source.txt")
-    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _DB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -557,7 +557,7 @@ async def test_persist_refresh_failure_does_not_fail_committed_upload(monkeypatc
         raising=True,
     )
 
-    await document_upload._persist_uploaded_document(_DB(), db_document, file_path=source)
+    await source_owner.persist_uploaded_document(_DB(), db_document, file_path=source)
 
     assert deleted == []
     assert source.exists()
@@ -572,7 +572,7 @@ async def test_upload_document_finally_cleans_unowned_temp(monkeypatch, tmp_path
         file_lease.acquire(source)
         raise RuntimeError("validation failed")
 
-    monkeypatch.setattr(document_upload, "_upload_document_impl", _fail_impl, raising=True)
+    monkeypatch.setattr(upload_owner, "_ingest_file_impl", _fail_impl, raising=True)
 
     with pytest.raises(RuntimeError, match="validation failed"):
         await document_upload.upload_document(
@@ -598,7 +598,7 @@ async def test_upload_document_finally_preserves_transferred_file(monkeypatch, t
         file_lease.transfer()
         return "scheduled"
 
-    monkeypatch.setattr(document_upload, "_upload_document_impl", _transfer_impl, raising=True)
+    monkeypatch.setattr(upload_owner, "_ingest_file_impl", _transfer_impl, raising=True)
 
     result = await document_upload.upload_document(
         BackgroundTasks(),
@@ -617,13 +617,13 @@ async def test_upload_document_finally_preserves_transferred_file(monkeypatch, t
 def test_document_upload_path_uses_temp_only_for_object_storage(monkeypatch, tmp_path: Path) -> None:
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
-    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
-    local_path = document_upload._document_upload_path(tenant_id, document_id, ".txt")
+    monkeypatch.setattr(upload_owner.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    local_path = upload_owner._document_upload_path(tenant_id, document_id, ".txt")
     assert local_path == tmp_path / str(tenant_id) / f"{document_id}.txt"
 
-    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", True, raising=False)
-    object_temp_path = document_upload._document_upload_path(tenant_id, document_id, ".txt")
+    monkeypatch.setattr(upload_owner.settings, "MINIO_ENABLED", True, raising=False)
+    object_temp_path = upload_owner._document_upload_path(tenant_id, document_id, ".txt")
     assert object_temp_path == tmp_path / str(tenant_id) / ".tmp" / f"{document_id}.txt"

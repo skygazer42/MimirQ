@@ -6,7 +6,6 @@ pipeline version (`pipeline_hash`) and the derived `doc_pipeline_key` that ties
 chunks/vectors/BM25 entries to a specific processing configuration.
 """
 
-
 from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
@@ -20,9 +19,17 @@ def get_active_pipeline_hash(doc_metadata: Mapping[str, Any] | None) -> str | No
     1) metadata.active_pipeline_hash
     2) metadata.pipeline_hash (legacy/current pipeline hash)
     """
-    meta = doc_metadata or {}
-    value = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
-    return value or None
+    meta = {} if doc_metadata is None else doc_metadata
+    active = meta.get("active_pipeline_hash")
+    if active is not None:
+        active = active.strip()
+        if active:
+            return active
+    pipeline_hash = meta.get("pipeline_hash")
+    if pipeline_hash is None:
+        return None
+    value = pipeline_hash.strip()
+    return value if value else None
 
 
 def get_selected_pipeline_hash(doc_metadata: Mapping[str, Any] | None, pipeline_hash: str | None) -> str | None:
@@ -31,7 +38,7 @@ def get_selected_pipeline_hash(doc_metadata: Mapping[str, Any] | None, pipeline_
     - explicit pipeline_hash param wins
     - otherwise fallback to active pipeline hash
     """
-    explicit = str(pipeline_hash or "").strip()
+    explicit = pipeline_hash.strip() if pipeline_hash is not None else None
     if explicit:
         return explicit
     return get_active_pipeline_hash(doc_metadata)
@@ -44,11 +51,15 @@ def should_preserve_existing_versions(doc_metadata: Mapping[str, Any] | None) ->
 
     This is used to avoid clobbering active-version stats/indexes during retries.
     """
-    meta = doc_metadata or {}
-    if not bool(meta.get("active_pipeline_ready")):
+    meta = {} if doc_metadata is None else doc_metadata
+    if not meta.get("active_pipeline_ready"):
         return False
-    active_hash = str(meta.get("active_pipeline_hash") or "").strip()
-    current_hash = str(meta.get("pipeline_hash") or "").strip()
+    active_hash = meta.get("active_pipeline_hash")
+    current_hash = meta.get("pipeline_hash")
+    if active_hash is not None:
+        active_hash = active_hash.strip()
+    if current_hash is not None:
+        current_hash = current_hash.strip()
     if not active_hash or not current_hash:
         return False
     return active_hash != current_hash

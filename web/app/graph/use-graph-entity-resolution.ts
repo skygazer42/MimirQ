@@ -7,32 +7,19 @@ import { toast } from 'sonner'
 import { formatApiError } from '@/lib/api-errors'
 import { kgApi } from '@/lib/api/graph'
 import { detachPromise } from '@/lib/utils'
-import type {
-  KGEntityAliasItem,
-  KGEntityAliasSuggestionItem,
-  KGEntityMergePreviewResponse,
-  KGGraphNode,
-} from '@/types'
+import type { KGEntityAliasItem, KGEntityAliasSuggestionItem, KGEntityMergePreviewResponse, KGGraphNode } from '@/types'
 
 import type { GraphNodeLike } from './graph-page-utils'
+import type { UseGraphDataLoadingResult } from './use-graph-data-loading'
+import type { UseGraphPageStateResult } from './use-graph-page-state'
 
-type GraphScopeParams = Readonly<{
-  document_ids?: string[]
-  dataset_id?: string
-  pipeline_hash?: string
-}> | null
-
-type GraphLoadOptions = Readonly<{
-  includeEntityLinks?: boolean
-  includeRelationLinks?: boolean
-  minSharedEvents?: number
-}>
+type GraphLoadOptions = Readonly<NonNullable<Parameters<UseGraphDataLoadingResult['loadInitialData']>[1]>>
 
 type UseGraphEntityResolutionParams = Readonly<{
   dataSource: 'live' | 'file'
   isDetailOpen: boolean
   selectedNode: GraphNodeLike | null
-  scopeParams: GraphScopeParams
+  scopeParams: UseGraphPageStateResult['scopeParams']
   loadInitialData: (source?: 'live', opts?: GraphLoadOptions) => Promise<void>
 }>
 
@@ -270,19 +257,21 @@ export function useGraphEntityResolution({
         setMergePreviewLoading(false)
       }
     },
-    [selectedEntityId]
+    [selectedEntityId],
   )
 
   const handleMergeAliasSuggestion = useCallback(
     (suggestion: KGEntityAliasSuggestionItem) => {
       openMergeDialog()
-      detachPromise(selectMergeTarget({
-        id: suggestion.entity_id,
-        label: suggestion.name || suggestion.entity_id,
-        meta: { kind: 'entity', type: suggestion.type },
-      }))
+      detachPromise(
+        selectMergeTarget({
+          id: suggestion.entity_id,
+          label: suggestion.name || suggestion.entity_id,
+          meta: { kind: 'entity', type: suggestion.type },
+        }),
+      )
     },
-    [openMergeDialog, selectMergeTarget]
+    [openMergeDialog, selectMergeTarget],
   )
 
   const submitMerge = useCallback(async () => {
@@ -303,7 +292,7 @@ export function useGraphEntityResolution({
       await loadInitialData('live')
       await reloadEntityResolution(selectedEntityId)
     } catch (error) {
-      setMergeError(formatApiError(error, '合并失败'))
+      toast.error(formatApiError(error, '合并失败'))
     } finally {
       setMergeSubmitting(false)
     }
@@ -352,7 +341,7 @@ export function useGraphEntityResolution({
       await loadInitialData('live')
       await reloadEntityResolution(selectedEntityId)
     } catch (error) {
-      setSplitError(formatApiError(error, '拆分失败'))
+      toast.error(formatApiError(error, '拆分失败'))
     } finally {
       setSplitSubmitting(false)
     }

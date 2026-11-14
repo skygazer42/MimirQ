@@ -12,7 +12,7 @@ Currently implemented:
 Design principles (mirrors retention/stale jobs):
 - Bounded: callers provide max_datasets + per-audit bounds
 - Auditable: best-effort audit_log_event with small payloads
-- Fail-open: never crash product flows due to automation
+- Audit writes are best-effort; required database lookups propagate failures
 """
 
 from collections import Counter
@@ -36,27 +36,15 @@ from app.services.evidence_drift_audit_service import audit_reference_sources_dr
 from app.services.index_audit_service import run_dataset_index_audit_internal
 
 logger = get_logger(__name__)
-_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE = "Ignoring non-critical periodic audit fallback failure: %s"
 SYSTEM_PERIODIC_AUDIT_ACTOR_ID = "system:periodic_audit"
 
 
-def _dt_to_json(v: datetime | None) -> str | None:
-    if v is None:
-        return None
-    try:
-        s = v.astimezone(UTC).isoformat()
-    except Exception:
-        return None
-    if s.endswith("+00:00"):
-        s = s[:-6] + "Z"
-    return s
+def _dt_to_json(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for k, v in counter.most_common(max(0, int(max_items or 0))):
-        out[str(k)] = int(v)
-    return out
+    return dict(counter.most_common(max(0, max_items)))
 
 
 def _audit_already_written(
@@ -67,21 +55,18 @@ def _audit_already_written(
     resource_type: str,
     report_date: str,
 ) -> bool:
-    try:
-        row = (
-            db.query(AuditLog.id)
-            .filter(
-                AuditLog.tenant_id == tenant_id,
-                AuditLog.action == str(action),
-                AuditLog.resource_type == str(resource_type),
-                AuditLog.resource_id == str(report_date),
-            )
-            .limit(1)
-            .first()
+    row = (
+        db.query(AuditLog.id)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == str(action),
+            AuditLog.resource_type == str(resource_type),
+            AuditLog.resource_id == str(report_date),
         )
-        return bool(row)
-    except Exception:
-        return False
+        .limit(1)
+        .first()
+    )
+    return row is not None
 
 
 def _list_dataset_ids_for_index_audit(
@@ -90,18 +75,15 @@ def _list_dataset_ids_for_index_audit(
     tenant_id: UUID,
     max_datasets: int,
 ) -> list[UUID]:
-    cap = max(1, int(max_datasets or 0))
-    cap = min(cap, 5000)
     rows = (
         db.query(Dataset.id)
         .filter(Dataset.tenant_id == tenant_id)
         .order_by(Dataset.updated_at.desc(), Dataset.created_at.desc(), Dataset.id.asc())
-        .limit(cap)
+        .limit(max_datasets)
         .all()
     )
     out: list[UUID] = []
-    for r in rows:
-        ds_id = r[0] if isinstance(r, tuple) and r else None
+    for (ds_id,) in rows:
         if isinstance(ds_id, UUID):
             out.append(ds_id)
     return out
@@ -113,16 +95,13 @@ def _list_dataset_ids_for_drift_audit(
     tenant_id: UUID,
     max_datasets: int,
 ) -> list[UUID]:
-    cap = max(1, int(max_datasets or 0))
-    cap = min(cap, 5000)
-
     # Prefer datasets that have recently-updated suites.
     rows = (
         db.query(EvidenceSuite.dataset_id, func.max(EvidenceSuite.updated_at))
         .filter(EvidenceSuite.tenant_id == tenant_id, EvidenceSuite.archived_at.is_(None))
         .group_by(EvidenceSuite.dataset_id)
         .order_by(func.max(EvidenceSuite.updated_at).desc())  # type: ignore[arg-type]
-        .limit(cap)
+        .limit(max_datasets)
         .all()
     )
     out: list[UUID] = []
@@ -143,19 +122,16 @@ def _run_dataset_evidence_drift_audit(
     slice_top_n: int,
     max_items: int = 10_000,
 ) -> dict[str, Any]:
-    suite_ids = [
-        row[0]
-        for row in (
-            db.query(EvidenceSuite.id)
-            .filter(
-                EvidenceSuite.tenant_id == tenant_id,
-                EvidenceSuite.dataset_id == dataset_id,
-                EvidenceSuite.archived_at.is_(None),
-            )
-            .all()
+    rows = (
+        db.query(EvidenceSuite.id)
+        .filter(
+            EvidenceSuite.tenant_id == tenant_id,
+            EvidenceSuite.dataset_id == dataset_id,
+            EvidenceSuite.archived_at.is_(None),
         )
-        if row and row[0] is not None
-    ]
+        .all()
+    )
+    suite_ids = [suite_id for (suite_id,) in rows]
     if not suite_ids:
         return {
             "dataset_id": str(dataset_id),
@@ -183,47 +159,44 @@ def _run_dataset_evidence_drift_audit(
         suite_id=None,
         suite_dataset_id=dataset_id,
         items=items,
-        include_details=bool(include_details),
-        details_limit=int(details_limit or 0),
-        slice_top_n=int(slice_top_n or 0),
+        include_details=include_details,
+        details_limit=details_limit,
+        slice_top_n=slice_top_n,
     )
 
     return {
         "dataset_id": str(audit.dataset_id),
-        "total_items": int(audit.total_items),
-        "total_references": int(audit.total_references),
-        "ok_references": int(audit.ok_references),
-        "drift_references": int(audit.drift_references),
-        "drift_rate": float(audit.drift_rate),
-        "reasons": dict(audit.reasons or {}),
-        "details_truncated": bool(audit.details_truncated),
+        "total_items": audit.total_items,
+        "total_references": audit.total_references,
+        "ok_references": audit.ok_references,
+        "drift_references": audit.drift_references,
+        "drift_rate": audit.drift_rate,
+        "reasons": dict(audit.reasons),
+        "details_truncated": audit.details_truncated,
     }
 
 
-def _resolve_index_audit_dataset_cap(max_datasets: int) -> int:
-    try:
-        cap = max(1, int(max_datasets or 0))
-    except Exception:
-        cap = 50
+def _resolve_dataset_audit_cap(max_datasets: int) -> int:
+    cap = max(1, int(max_datasets))
     return min(cap, 5000)
 
 
-def _summarize_index_audit_result(res: dict[str, Any], dataset_id: UUID) -> tuple[dict[str, Any], bool, int, int, int]:
-    vector_id_missing = int(res.get("vector_id_missing") or 0)
-    missing_backend = int(res.get("vector_ids_missing_in_backend") or 0)
-    orphan_ids = res.get("milvus_orphan_ids_sample") or []
-    orphan_count = len(orphan_ids) if isinstance(orphan_ids, list) else 0
+def _summarize_index_audit_result(res: dict[str, Any]) -> tuple[dict[str, Any], bool, int, int, int]:
+    vector_id_missing = res["vector_id_missing"]
+    missing_backend = res["vector_ids_missing_in_backend"]
+    orphan_ids = res["milvus_orphan_ids_sample"]
+    orphan_count = len(orphan_ids)
 
     return (
         {
-            "dataset_id": str(res.get("dataset_id") or dataset_id),
-            "active_documents": int(res.get("active_documents") or 0),
-            "active_chunks": int(res.get("active_chunks") or 0),
-            "vector_id_missing": int(vector_id_missing),
-            "vector_ids_missing_in_backend": int(missing_backend),
-            "milvus_orphan_ids_sampled": int(orphan_count),
-            "vector_ids_missing_in_backend_sample": list(res.get("vector_ids_missing_in_backend_sample") or [])[:20],
-            "milvus_orphan_ids_sample": list(orphan_ids)[:20],
+            "dataset_id": res["dataset_id"],
+            "active_documents": res["active_documents"],
+            "active_chunks": res["active_chunks"],
+            "vector_id_missing": vector_id_missing,
+            "vector_ids_missing_in_backend": missing_backend,
+            "milvus_orphan_ids_sampled": orphan_count,
+            "vector_ids_missing_in_backend_sample": res["vector_ids_missing_in_backend_sample"][:20],
+            "milvus_orphan_ids_sample": orphan_ids[:20],
         },
         (vector_id_missing > 0) or (missing_backend > 0) or (orphan_count > 0),
         max(0, vector_id_missing),
@@ -234,18 +207,20 @@ def _summarize_index_audit_result(res: dict[str, Any], dataset_id: UUID) -> tupl
 
 def _index_audit_severity(dataset_summary: dict[str, Any]) -> tuple[int, int, int, str]:
     return (
-        int(dataset_summary.get("vector_ids_missing_in_backend") or 0),
-        int(dataset_summary.get("vector_id_missing") or 0),
-        int(dataset_summary.get("milvus_orphan_ids_sampled") or 0),
-        str(dataset_summary.get("dataset_id") or ""),
+        dataset_summary["vector_ids_missing_in_backend"],
+        dataset_summary["vector_id_missing"],
+        dataset_summary["milvus_orphan_ids_sampled"],
+        dataset_summary["dataset_id"],
     )
 
 
-def _write_index_audit_summary(
+def _write_audit_summary(
     *,
     db: Session,
     tenant_id: UUID,
     actor_id: str | None,
+    action: str,
+    resource_type: str,
     report_date: str,
     summary: dict[str, Any],
 ) -> dict[str, Any]:
@@ -254,8 +229,8 @@ def _write_index_audit_summary(
             db,
             tenant_id=tenant_id,
             actor_id=actor_id,
-            action="observability.index_audit.daily",
-            resource_type="index_audit_report",
+            action=action,
+            resource_type=resource_type,
             resource_id=report_date,
             details={k: v for k, v in summary.items() if k not in {"ok"}},
         )
@@ -263,10 +238,13 @@ def _write_index_audit_summary(
         summary["dry_run"] = False
         return summary
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning(
+            "Periodic audit report write failed: action=%s tenant_id=%s",
+            action,
+            tenant_id,
+            exc_info=True,
+        )
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -296,8 +274,8 @@ def run_daily_index_audit_report(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -315,7 +293,7 @@ def run_daily_index_audit_report(
             "skip_reason": "already_written",
         }
 
-    cap_ds = _resolve_index_audit_dataset_cap(max_datasets)
+    cap_ds = _resolve_dataset_audit_cap(max_datasets)
 
     ds_ids = list(dataset_ids or [])
     if not ds_ids:
@@ -347,7 +325,7 @@ def run_daily_index_audit_report(
             continue
 
         scanned += 1
-        dataset_summary, has_issue, vid_missing, missing_backend, orphan_cnt = _summarize_index_audit_result(res, ds_id)
+        dataset_summary, has_issue, vid_missing, missing_backend, orphan_cnt = _summarize_index_audit_result(res)
         vector_id_missing_total += vid_missing
         vector_missing_backend_total += missing_backend
         milvus_orphan_ids_total += orphan_cnt
@@ -365,29 +343,31 @@ def run_daily_index_audit_report(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "max_datasets": int(cap_ds),
+        "max_datasets": cap_ds,
         "max_check_ids": int(max_check_ids or 0),
         "milvus_list_limit": int(milvus_list_limit or 0),
         "sample_limit": int(sample_limit or 0),
-        "scanned_datasets": int(scanned),
-        "datasets_with_issues": int(datasets_with_issues),
-        "vector_id_missing_total": int(vector_id_missing_total),
-        "vector_ids_missing_in_backend_total": int(vector_missing_backend_total),
-        "milvus_orphan_ids_sampled_total": int(milvus_orphan_ids_total),
-        "top_issue_datasets": list(top_issue_datasets),
-        "errors_sample": list(errors),
-        "ok": True,
+        "scanned_datasets": scanned,
+        "datasets_with_issues": datasets_with_issues,
+        "vector_id_missing_total": vector_id_missing_total,
+        "vector_ids_missing_in_backend_total": vector_missing_backend_total,
+        "milvus_orphan_ids_sampled_total": milvus_orphan_ids_total,
+        "top_issue_datasets": top_issue_datasets,
+        "errors_sample": errors,
+        "ok": not errors,
         "skipped": False,
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
-    return _write_index_audit_summary(
+    return _write_audit_summary(
         db=db,
         tenant_id=tenant_id,
         actor_id=actor_id,
+        action="observability.index_audit.daily",
+        resource_type="index_audit_report",
         report_date=report_date,
         summary=summary,
     )
@@ -415,8 +395,8 @@ def run_daily_embedding_drift_report(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -454,7 +434,7 @@ def run_daily_embedding_drift_report(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "ok": bool(snap.get("ok") is True),
+        "ok": snap.get("ok") is True,
         "skipped": False,
         "schema": str(snap.get("schema") or "mimirq.embedding_drift_snapshot.v1"),
         "vector_backend": snap.get("vector_backend"),
@@ -472,32 +452,19 @@ def run_daily_embedding_drift_report(
         "scope": snap.get("scope"),
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="observability.embedding_drift.daily",
-            resource_type="embedding_drift_report",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="observability.embedding_drift.daily",
+        resource_type="embedding_drift_report",
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 def run_daily_evidence_drift_audit_report(
@@ -524,8 +491,8 @@ def run_daily_evidence_drift_audit_report(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -543,11 +510,7 @@ def run_daily_evidence_drift_audit_report(
             "skip_reason": "already_written",
         }
 
-    try:
-        cap_ds = max(1, int(max_datasets or 0))
-    except Exception:
-        cap_ds = 50
-    cap_ds = min(cap_ds, 5000)
+    cap_ds = _resolve_dataset_audit_cap(max_datasets)
 
     ds_ids = list(dataset_ids or [])
     if not ds_ids:
@@ -581,25 +544,24 @@ def run_daily_evidence_drift_audit_report(
             continue
 
         scanned += 1
-        ti = int(res.get("total_items") or 0)
-        tr = int(res.get("total_references") or 0)
-        okr = int(res.get("ok_references") or 0)
-        dr = int(res.get("drift_references") or 0)
+        ti = res["total_items"]
+        tr = res["total_references"]
+        okr = res["ok_references"]
+        dr = res["drift_references"]
         total_items += max(0, ti)
         total_refs += max(0, tr)
         ok_refs += max(0, okr)
         drift_refs += max(0, dr)
 
-        rs = res.get("reasons") if isinstance(res.get("reasons"), dict) else {}
-        reasons.update({str(k): int(v or 0) for k, v in rs.items()})
+        reasons.update(res["reasons"])
 
         per_dataset.append(
             {
-                "dataset_id": str(res.get("dataset_id") or ds_id),
-                "total_items": int(ti),
-                "total_references": int(tr),
-                "drift_references": int(dr),
-                "drift_rate": float(res.get("drift_rate") or 0.0),
+                "dataset_id": res["dataset_id"],
+                "total_items": ti,
+                "total_references": tr,
+                "drift_references": dr,
+                "drift_rate": res["drift_rate"],
             }
         )
 
@@ -608,9 +570,9 @@ def run_daily_evidence_drift_audit_report(
     top_drift_datasets = sorted(
         per_dataset,
         key=lambda d: (
-            -float(d.get("drift_rate") or 0.0),
-            -int(d.get("drift_references") or 0),
-            str(d.get("dataset_id") or ""),
+            -d["drift_rate"],
+            -d["drift_references"],
+            d["dataset_id"],
         ),
     )[:50]
 
@@ -618,50 +580,37 @@ def run_daily_evidence_drift_audit_report(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "max_datasets": int(cap_ds),
+        "max_datasets": cap_ds,
         "include_archived_items": bool(include_archived_items),
         "include_details": bool(include_details),
         "details_limit": int(details_limit or 0),
         "slice_top_n": int(slice_top_n or 0),
-        "scanned_datasets": int(scanned),
-        "total_items": int(total_items),
-        "total_references": int(total_refs),
-        "ok_references": int(ok_refs),
-        "drift_references": int(drift_refs),
-        "drift_rate": float(overall_drift_rate),
+        "scanned_datasets": scanned,
+        "total_items": total_items,
+        "total_references": total_refs,
+        "ok_references": ok_refs,
+        "drift_references": drift_refs,
+        "drift_rate": overall_drift_rate,
         "reasons": _bounded_top_counts(reasons, max_items=50),
-        "top_drift_datasets": list(top_drift_datasets),
-        "errors_sample": list(errors),
-        "ok": True,
+        "top_drift_datasets": top_drift_datasets,
+        "errors_sample": errors,
+        "ok": not errors,
         "skipped": False,
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="evidence.drift_audit.daily",
-            resource_type="evidence_drift_report",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="evidence.drift_audit.daily",
+        resource_type="evidence_drift_report",
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 def run_daily_access_review_summary(
@@ -684,8 +633,8 @@ def run_daily_access_review_summary(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -760,13 +709,13 @@ def run_daily_access_review_summary(
             .count()
         )
         doc_known = doc_inherit_count + doc_partial_count + doc_only_me_count + doc_all_team_count
-        doc_unknown_count = max(0, int(document_count - doc_known))
+        doc_unknown_count = max(0, document_count - doc_known)
         document_access_mode_counts = {
-            "inherit": int(doc_inherit_count),
-            "partial_members": int(doc_partial_count),
-            "only_me": int(doc_only_me_count),
-            "all_team_members": int(doc_all_team_count),
-            "unknown": int(doc_unknown_count),
+            "inherit": doc_inherit_count,
+            "partial_members": doc_partial_count,
+            "only_me": doc_only_me_count,
+            "all_team_members": doc_all_team_count,
+            "unknown": doc_unknown_count,
         }
 
         document_member_allowlist_count = int(
@@ -790,46 +739,33 @@ def run_daily_access_review_summary(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "group_count": int(group_count),
-        "group_member_count": int(group_member_count),
-        "dataset_count": int(dataset_count),
-        "dataset_permission_counts": dict(dataset_permission_counts),
-        "dataset_member_allowlist_count": int(dataset_member_allowlist_count),
-        "dataset_group_allowlist_count": int(dataset_group_allowlist_count),
-        "document_count": int(document_count),
-        "document_access_mode_counts": dict(document_access_mode_counts),
-        "document_member_allowlist_count": int(document_member_allowlist_count),
-        "document_group_allowlist_count": int(document_group_allowlist_count),
+        "group_count": group_count,
+        "group_member_count": group_member_count,
+        "dataset_count": dataset_count,
+        "dataset_permission_counts": dataset_permission_counts,
+        "dataset_member_allowlist_count": dataset_member_allowlist_count,
+        "dataset_group_allowlist_count": dataset_group_allowlist_count,
+        "document_count": document_count,
+        "document_access_mode_counts": document_access_mode_counts,
+        "document_member_allowlist_count": document_member_allowlist_count,
+        "document_group_allowlist_count": document_group_allowlist_count,
         "ok": True,
         "skipped": False,
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="compliance.access_review.daily",
-            resource_type="access_review_summary",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="compliance.access_review.daily",
+        resource_type="access_review_summary",
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 __all__ = [

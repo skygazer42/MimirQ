@@ -1,6 +1,6 @@
 # OpenTelemetry（OTEL）与 Phoenix 可观测性
 
-MimirQ 后端内置 **OpenTelemetry tracing**（默认关闭）。开启后可将 FastAPI 请求链路与 httpx 出站请求导出到 OTLP Collector（例如 Arize Phoenix）。
+Ragvia 后端内置 **OpenTelemetry tracing**（默认关闭）。开启后可将 FastAPI 请求链路与 httpx 出站请求导出到 OTLP Collector（例如 Arize Phoenix）。
 
 ## 1) 开启 OTEL（后端）
 
@@ -39,11 +39,11 @@ docker run -p 6006:6006 -p 4317:4317 arizephoenix/phoenix:latest
 - UI：http://localhost:6006
 - OTLP gRPC：`http://localhost:4317`
 
-将后端 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向 Phoenix 的 4317 端口后，启动 MimirQ，访问任意 API（如 `/docs` / `/api/v1/chat/stream`）即可在 Phoenix 中看到 traces。
+将后端 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向 Phoenix 的 4317 端口后，启动 Ragvia，访问任意 API（如 `/docs` / `/api/v1/chat/stream`）即可在 Phoenix 中看到 traces。
 
 ## 3) 重要：Phoenix Cloud / 协议差异
 
-当前 MimirQ 后端 exporter 使用 **OTLP gRPC**（`opentelemetry-exporter-otlp-proto-grpc`）。
+当前 Ragvia 后端 exporter 使用 **OTLP gRPC**（`opentelemetry-exporter-otlp-proto-grpc`）。
 
 Phoenix Cloud 在部分时期可能仅支持 **HTTP/protobuf** 方式收集 traces（以 Phoenix 官方文档为准）。如果你的目标环境不支持 gRPC：
 

@@ -93,14 +93,9 @@ def _requested_score_threshold(state: Mapping[str, Any], defaults: QueryContract
 def _resolve_request_retrieval_mode(*, state: Mapping[str, Any], query_for_retrieval: str) -> tuple[str, bool]:
     effective_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     request_retrieval_mode = normalize_retrieval_mode(effective_retrieval_mode)
-    mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
-    if mode_norm == "auto":
-        routed_mode = guess_retrieval_mode(query_for_retrieval)
-        mode_norm = str(routed_mode or "hybrid").lower().strip()
-        return (routed_mode if mode_norm in ("hybrid", "vector", "keyword", "mmr") else "hybrid"), True
-    if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
-        return "hybrid", False
-    return str(request_retrieval_mode or "hybrid"), False
+    if request_retrieval_mode == "auto":
+        return guess_retrieval_mode(query_for_retrieval), True
+    return request_retrieval_mode, False
 
 
 def _apply_hierarchy_profile_overrides(
@@ -149,7 +144,7 @@ def _resolve_sparse_settings(
     if profile_applied.get("sparse_retrieval_enabled") is not None:
         enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
     if profile_applied.get("sparse_retrieval_provider"):
-        provider = str(profile_applied.get("sparse_retrieval_provider") or "")
+        provider = profile_applied["sparse_retrieval_provider"]
     return enabled, provider
 
 
@@ -175,7 +170,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         score_threshold=_requested_score_threshold(state, payload.defaults),
         retrieval_mode=request_retrieval_mode,
         enable_reranker=bool(state.get("enable_reranker", payload.defaults.enable_reranker)),
-        reranker_provider=str(state.get("reranker_provider", payload.defaults.reranker_provider) or ""),
+        reranker_provider=state.get("reranker_provider", payload.defaults.reranker_provider),
         reranker_top_n=int(
             state.get("reranker_top_n", payload.defaults.reranker_top_n) or payload.defaults.reranker_top_n or 20
         ),
@@ -189,7 +184,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
             bool(state.get("visible_evidence_only")) if state.get("visible_evidence_only") is not None else None
         ),
     )
-    profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower() or None
+    profile_norm = profile_applied["retrieval_profile"]
 
     hierarchy = _apply_hierarchy_profile_overrides(payload.hierarchy, profile_applied)
     sparse_enabled, sparse_provider = _resolve_sparse_settings(
@@ -202,7 +197,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         "k": int(profile_applied.get("top_k") or payload.defaults.retrieval_top_k),
         "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
         "alpha": state.get("alpha", 0.6),
-        "retrieval_profile": profile_norm or None,
+        "retrieval_profile": profile_norm,
         "context_neighbor_window": profile_applied.get("context_neighbor_window"),
         "context_neighbor_max_added": profile_applied.get("context_neighbor_max_added"),
         "context_neighbor_score_driven": profile_applied.get("context_neighbor_score_driven"),
@@ -277,7 +272,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         visible_evidence_only_setting=bool(payload.defaults.visible_evidence_only_setting),
         evidence_span_strict_setting=bool(payload.defaults.evidence_span_strict_setting),
     )
-    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
+    retrieval_contract_mode = retrieval_contract_policy["mode"].strip().lower()
     contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
 
     if is_recall_first_profile(profile_norm):
@@ -296,7 +291,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         profile_applied=dict(profile_applied),
         profile_norm=profile_norm,
         sparse_enabled=bool(sparse_enabled),
-        sparse_provider=str(sparse_provider or ""),
+        sparse_provider=sparse_provider,
         hierarchy=hierarchy,
         retriever_update=retriever_update,
         state_updates=state_updates,
@@ -307,39 +302,18 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
 
 
 def _normalize_rag_config_template(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict) or not raw:
+    if raw is None:
         return None
-
-    out: dict[str, Any] = {}
-    key = str(raw.get("template_key") or "").strip()
-    if key:
-        out["template_key"] = key
-
-    try:
-        version = int(raw.get("version") or 0)
-    except (TypeError, ValueError, AttributeError):
-        version = 0
-    if version > 0:
-        out["version"] = version
-
-    exp = str(raw.get("ab_experiment_key") or "").strip()
-    if exp:
-        out["ab_experiment_key"] = exp
-
-    variant = str(raw.get("ab_variant") or "").strip()
-    if variant:
-        out["ab_variant"] = variant
-
-    patch_hash = str(raw.get("patch_hash") or "").strip()
-    if patch_hash:
-        out["patch_hash"] = patch_hash
-
-    return out or None
+    return {
+        key: value
+        for key, value in raw.items()
+        if key in ("template_key", "version", "ab_experiment_key", "ab_variant", "patch_hash")
+    }
 
 
 def build_retrieval_config_snapshot(payload: RetrievalConfigSnapshotInput) -> RetrievalConfigSnapshotOutput:
     config = dict(payload.retrieval_config or {})
     rag_config_template = _normalize_rag_config_template(payload.rag_config_template)
-    if rag_config_template:
+    if rag_config_template is not None:
         config["rag_config_template"] = rag_config_template
     return RetrievalConfigSnapshotOutput(fingerprint=build_retrieval_config_fingerprint(config=config))

@@ -1,5 +1,5 @@
 """
-PII-safe hard negative mining helpers for LTR training.
+PII-safe hard negative mining helpers for retrieval evaluation.
 
 Wave7(A) goals:
 - Mine "near-miss" negatives (ranked above first positive) from regression traces.
@@ -7,14 +7,22 @@ Wave7(A) goals:
 - Deterministic and bounded (stable schema, caps).
 """
 
-
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.logging import get_logger
 
 HARD_NEGATIVES_SCHEMA_V1 = "mimirq.hard_negatives.v1"
+
+
+class _TraceCitation(TypedDict):
+    rank: int
+    chunk_id: str
+    document_id: str | None
+    relevance_score: Any
+    vector_score: Any
+    bm25_score: Any
 
 
 def _coerce_nonneg_int(value: Any) -> int:
@@ -26,7 +34,9 @@ def _coerce_nonneg_int(value: Any) -> int:
 
 
 def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
-    s = str(value or "").strip()
+    if value is None:
+        return None
+    s = str(value).strip()
     if not s:
         return None
     lim = max(0, int(max_len or 0))
@@ -58,7 +68,7 @@ def _dedupe_chunk_rows(
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     dropped = 0
-    for row in (rows or []):
+    for row in rows or []:
         if not isinstance(row, dict):
             continue
         cid = _safe_str(row.get("chunk_id"), max_len=200)
@@ -88,8 +98,8 @@ def _trace_retrieval_config_hash(trace_record: dict[str, Any]) -> str | None:
     return _safe_str(trace_record.get("retrieval_config_hash"), max_len=128)
 
 
-def _normalize_trace_citations(citations: list[Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def _normalize_trace_citations(citations: list[Any]) -> list[_TraceCitation]:
+    rows: list[_TraceCitation] = []
     seen_chunks: set[str] = set()
     for rank, citation in enumerate(citations, 1):
         if not isinstance(citation, dict):
@@ -112,28 +122,28 @@ def _normalize_trace_citations(citations: list[Any]) -> list[dict[str, Any]]:
 
 
 def _first_positive(
-    rows: list[dict[str, Any]],
+    rows: list[_TraceCitation],
     reference_chunk_ids: set[str],
 ) -> tuple[int | None, list[dict[str, Any]]]:
     for row in rows:
-        chunk_id = row.get("chunk_id")
+        chunk_id = row["chunk_id"]
         if chunk_id and chunk_id in reference_chunk_ids:
-            rank = int(row.get("rank") or 0)
-            return rank or None, [{"chunk_id": chunk_id, "rank": rank}]
+            rank = row["rank"]
+            return (rank), [{"chunk_id": chunk_id, "rank": rank}]
     return None, []
 
 
 def _hard_candidates_before_positive(
-    rows: list[dict[str, Any]],
+    rows: list[_TraceCitation],
     reference_chunk_ids: set[str],
     first_positive_rank: int | None,
-) -> list[dict[str, Any]]:
+) -> list[_TraceCitation]:
     if first_positive_rank is None:
         return []
-    candidates: list[dict[str, Any]] = []
+    candidates: list[_TraceCitation] = []
     for row in rows:
-        rank = int(row.get("rank") or 0)
-        chunk_id = row.get("chunk_id")
+        rank = row["rank"]
+        chunk_id = row["chunk_id"]
         if rank >= first_positive_rank:
             break
         if chunk_id and chunk_id not in reference_chunk_ids:
@@ -142,17 +152,17 @@ def _hard_candidates_before_positive(
 
 
 def _select_hard_candidates(
-    candidates: list[dict[str, Any]],
+    candidates: list[_TraceCitation],
     *,
     max_hard_negatives: int,
     max_negatives_per_document: int,
-) -> tuple[list[dict[str, Any]], int]:
-    selected: list[dict[str, Any]] = []
+) -> tuple[list[_TraceCitation], int]:
+    selected: list[_TraceCitation] = []
     per_document_counts: dict[str, int] = {}
     dropped = 0
     for row in candidates:
-        document_id = row.get("document_id") or ""
-        used = int(per_document_counts.get(document_id, 0) or 0)
+        document_id = row["document_id"]
+        used = per_document_counts.get(document_id, 0)
         if max_negatives_per_document > 0 and document_id and used >= max_negatives_per_document:
             dropped += 1
             continue
@@ -164,12 +174,12 @@ def _select_hard_candidates(
     return selected, dropped
 
 
-def _compact_hard_negative_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _compact_hard_negative_rows(rows: list[_TraceCitation]) -> list[dict[str, Any]]:
     return [
         {
-            "chunk_id": row.get("chunk_id"),
-            "document_id": row.get("document_id"),
-            "rank": _coerce_nonneg_int(row.get("rank")),
+            "chunk_id": row["chunk_id"],
+            "document_id": row["document_id"],
+            "rank": row["rank"],
         }
         for row in rows
     ]
@@ -192,7 +202,7 @@ def mine_hard_negatives_for_case_from_trace(
 
     The output is PII-safe and MUST NOT include raw query text.
     """
-    qh = _safe_str(query_hash, max_len=64) or ""
+    qh = query_hash.strip()[:64]
     ref_chunk_ids = _extract_reference_chunk_ids(case)
     max_hard = max(0, int(max_hard_negatives or 0))
     per_doc_cap = max(0, int(max_negatives_per_document or 0))
@@ -219,10 +229,10 @@ def mine_hard_negatives_for_case_from_trace(
         out["positives"] = positives[:5]
 
     stats = {
-        "citations_total": int(len(citations)),
-        "candidates_before_first_positive": int(len(hard_candidates)),
-        "hard_negatives_selected": int(len(hard_out)),
-        "dedup_dropped": int(dedup_dropped),
+        "citations_total": len(citations),
+        "candidates_before_first_positive": len(hard_candidates),
+        "hard_negatives_selected": len(hard_out),
+        "dedup_dropped": dedup_dropped,
     }
     out["stats"] = stats
     return out
@@ -304,19 +314,19 @@ def merge_hard_negative_records(
     - dedupe by chunk_id
     - bound output by max_hard_negatives
     """
-    rows = [r for r in (records or []) if isinstance(r, dict)]
+    rows = [r for r in (records if records is not None else []) if isinstance(r, dict)]
     if not rows:
         return _empty_merged_hard_negative_record()
 
-    query_hash = _first_safe_record_value(rows, "query_hash", max_len=64) or ""
+    query_hash = _first_safe_record_value(rows, "query_hash", max_len=64)
     retrieval_config_hash = _first_safe_record_value(rows, "retrieval_config_hash", max_len=128)
     hard_rows = _collect_record_dicts(rows, "hard_negatives")
     stats_sum = _sum_record_stats(rows)
 
     hard_merged, dedup_extra = _dedupe_chunk_rows(hard_rows, max_hard_negatives=max_hard_negatives)
-    stats_sum["dedup_dropped"] += int(dedup_extra)
-    stats_sum["hard_negatives_selected"] = int(len(hard_merged))
-    stats_sum["sources_merged"] = int(len(rows))
+    stats_sum["dedup_dropped"] += dedup_extra
+    stats_sum["hard_negatives_selected"] = len(hard_merged)
+    stats_sum["sources_merged"] = len(rows)
 
     pos_out = _dedupe_positive_rows(_collect_record_dicts(rows, "positives"))
 
@@ -333,7 +343,7 @@ def merge_hard_negative_records(
 
 
 def _parse_hard_negative_line(line: str) -> tuple[str, list[Any]] | None:
-    text = str(line or "").strip()
+    text = line.strip()
     if not text:
         return None
     try:
@@ -341,7 +351,7 @@ def _parse_hard_negative_line(line: str) -> tuple[str, list[Any]] | None:
     except Exception:
         get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
         return None
-    if not isinstance(payload, dict) or str(payload.get("schema") or "") != HARD_NEGATIVES_SCHEMA_V1:
+    if not isinstance(payload, dict) or payload.get("schema") != HARD_NEGATIVES_SCHEMA_V1:
         return None
     query_hash = _safe_str(payload.get("query_hash"), max_len=64)
     hard_negatives = payload.get("hard_negatives") or []
@@ -359,6 +369,8 @@ def _append_loaded_hard_negatives(
 ) -> None:
     seen = seen_by_query.setdefault(query_hash, set())
     bucket = output.setdefault(query_hash, [])
+    if len(bucket) >= 200:
+        return
     for row in rows:
         if not isinstance(row, dict):
             continue

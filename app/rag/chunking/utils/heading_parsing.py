@@ -6,7 +6,6 @@ trigger catastrophic-backtracking hotspots. Consolidating them also
 reduces duplicated-lines density on new code, keeping the quality gate green.
 """
 
-
 _CN_HEADING_NUM_CHARS = frozenset("0123456789一二三四五六七八九十百千")
 _CN_CLAUSE_NUM_CHARS = frozenset("0123456789一二三四五六七八九十")
 
@@ -23,7 +22,7 @@ def parse_cn_prefixed_heading(line: str, *, suffixes: str) -> str | None:
     Returns:
         The matched prefix (e.g. \"第12章\"), otherwise None.
     """
-    s = (line or "").strip()
+    s = (line).strip()
     if not s.startswith("第"):
         return None
 
@@ -46,7 +45,7 @@ def parse_cn_clause_marker(line: str) -> str | None:
     Returns:
         The full marker string, otherwise None.
     """
-    s = (line or "").strip()
+    s = (line).strip()
     if not s or s[0] not in ("（", "("):
         return None
 
@@ -81,7 +80,7 @@ def parse_markdown_hash_heading(line: str) -> tuple[int, str] | None:
     - Allows up to 3 leading spaces (CommonMark).
     - Requires at least one whitespace after the leading # run.
     """
-    raw = str(line or "")
+    raw = line
     if not raw:
         return None
 
@@ -120,7 +119,7 @@ def normalize_spaces(text: str) -> str:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    return " ".join(str(text or "").split())
+    return " ".join(text.split())
 
 
 def normalize_spaces_lower(text: str) -> str:
@@ -138,7 +137,7 @@ def strip_numbered_heading_prefix(text: str) -> str:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(text or "").lstrip()
+    s = text.lstrip()
     if not s or not s[:1].isdigit():
         return s
 
@@ -168,6 +167,13 @@ def strip_numbered_heading_prefix(text: str) -> str:
     return s[i:]
 
 
+def update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
+    level = max(1, level)
+    while len(stack) >= level:
+        stack.pop()
+    stack.append(heading_text)
+
+
 __all__ = [
     "normalize_spaces",
     "normalize_spaces_lower",
@@ -175,4 +181,5 @@ __all__ = [
     "parse_cn_prefixed_heading",
     "parse_markdown_hash_heading",
     "strip_numbered_heading_prefix",
+    "update_heading_stack",
 ]

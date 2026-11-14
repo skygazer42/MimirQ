@@ -7,7 +7,6 @@ PyMuPDF unless a parser is actually constructed. Capability discovery is also
 exposed lazily for callers that need parser registry metadata.
 """
 
-
 from typing import Any
 
 from .base_parser import BaseAdvancedParser
@@ -16,7 +15,6 @@ __all__ = [
     "BaseAdvancedParser",
     "MinerUParser",
     "DoclingParser",
-    "TCADPParser",
     "Etl4LlmParser",
 ]
 

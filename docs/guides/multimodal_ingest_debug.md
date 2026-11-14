@@ -32,7 +32,7 @@
 
 ## 1. 功能地图（你在看什么）
 
-MimirQ 的多模态证据大体分两类：
+Ragvia 的多模态证据大体分两类：
 
 1. **图片证据（Image citations）**
    - Ingest 时将图片/figure 的 OCR/caption 等文本侧信息写入 chunk（用于可读 evidence）

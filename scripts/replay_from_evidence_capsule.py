@@ -53,26 +53,14 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
 
     # Prefer must-recall proof inside retrieval_trace when present; this keeps replay requests
     # self-contained even when the capsule-level must_recall summary is compact.
-    proof: dict[str, Any] = {}
     trace = capsule.get("retrieval_trace") if isinstance(capsule.get("retrieval_trace"), dict) else {}
-    if isinstance(trace, dict):
-        contract_diag = trace.get("contract_diagnostics") if isinstance(trace.get("contract_diagnostics"), dict) else {}
-        mr = (
-            contract_diag.get("must_recall")
-            if isinstance(contract_diag, dict) and isinstance(contract_diag.get("must_recall"), dict)
-            else {}
-        )
-        p = mr.get("proof") if isinstance(mr, dict) and isinstance(mr.get("proof"), dict) else {}
-        proof = dict(p) if isinstance(p, dict) else {}
+    contract_diag = trace.get("contract_diagnostics") if isinstance(trace.get("contract_diagnostics"), dict) else {}
+    mr = contract_diag.get("must_recall") if isinstance(contract_diag.get("must_recall"), dict) else {}
+    p = mr.get("proof") if isinstance(mr.get("proof"), dict) else {}
+    proof = dict(p)
 
-    required_source_keys = (
-        [str(v) for v in (proof.get("required_source_keys") or []) if str(v).strip()] if isinstance(proof, dict) else []
-    )
-    required_anchor_fields = (
-        [str(v) for v in (proof.get("required_anchor_fields") or []) if str(v).strip()]
-        if isinstance(proof, dict)
-        else []
-    )
+    required_source_keys = [str(v) for v in (proof.get("required_source_keys") or []) if str(v).strip()]
+    required_anchor_fields = [str(v) for v in (proof.get("required_anchor_fields") or []) if str(v).strip()]
     if not required_anchor_fields:
         required_anchor_fields = [str(v) for v in (must_recall.get("required_anchor_fields") or []) if str(v).strip()]
 
@@ -95,7 +83,7 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
         "capsule_hash_recomputed": actual_hash,
         "capsule_hash_valid": hash_valid,
         "signature_valid": signature_valid,
-        "signature_reason": signature_reason or None,
+        "signature_reason": (signature_reason),
         "replay_request": replay_request,
         "must_recall": {
             "status": str(must_recall.get("status") or ""),
@@ -123,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run(
             capsule_path=Path(str(args.capsule)).resolve(),
-            strict=not bool(args.no_strict),
+            strict=not args.no_strict,
             verify_signature=bool(args.verify_signature),
         )
     except Exception as exc:

@@ -1,11 +1,14 @@
 import re
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session
 
 from app.models.ingest_dead_letter import IngestDeadLetter
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from app.models.document import Document
 
 INGEST_DEAD_LETTER_SCHEMA_V1 = "mimirq.ingest_dead_letter.v1"
 logger = get_logger(__name__)
@@ -36,12 +39,16 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _safe_str(value: object, *, max_len: int) -> str:
-    return str(value or "").strip()[:max_len]
+def _safe_str(value: object, *, max_len: int) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip()[:max_len]
 
 
 def normalize_ingest_error_code(value: object, *, fallback: str = "ingest_failed") -> str:
-    raw = str(value or "").strip()
+    if value is None:
+        return fallback
+    raw = str(value).strip()
     if not raw:
         return fallback
 
@@ -59,7 +66,9 @@ def normalize_ingest_error_code(value: object, *, fallback: str = "ingest_failed
 
 def infer_failed_stage(*, failed_stage: object = None, current_stage: object = None) -> str:
     for raw in (failed_stage, current_stage):
-        stage = _safe_str(raw, max_len=50).lower()
+        stage = _safe_str(raw, max_len=50)
+        if stage is not None:
+            stage = stage.lower()
         if stage and stage not in {"failed", "error", "unknown"}:
             return stage
     return "unknown"
@@ -68,7 +77,7 @@ def infer_failed_stage(*, failed_stage: object = None, current_stage: object = N
 def record_ingest_dead_letter(
     db: Session,
     *,
-    document: Any,
+    document: "Document",
     failed_stage: str | None,
     error_message: str | None,
     error_code: str | None = None,
@@ -83,24 +92,19 @@ def record_ingest_dead_letter(
     """
 
     now = _now_utc()
-    stage = infer_failed_stage(failed_stage=failed_stage, current_stage=getattr(document, "current_stage", None))
-    code = normalize_ingest_error_code(error_code or error_message)
-    message = _safe_str(error_message, max_len=4000) or None
+    stage = infer_failed_stage(failed_stage=failed_stage, current_stage=document.current_stage)
+    code = normalize_ingest_error_code((error_code if error_code else error_message))
+    message = _safe_str(error_message, max_len=4000)
+    if not message:
+        message = None
 
-    if hasattr(document, "failed_stage"):
-        document.failed_stage = stage
-    if hasattr(document, "error_code"):
-        document.error_code = code
-    if hasattr(document, "processing_attempts"):
-        try:
-            document.processing_attempts = max(0, int(getattr(document, "processing_attempts", 0) or 0)) + 1
-        except Exception:
-            document.processing_attempts = 1
-    if hasattr(document, "next_retry_at"):
-        document.next_retry_at = None
+    document.failed_stage = stage
+    document.error_code = code
+    document.processing_attempts = max(0, int(document.processing_attempts or 0)) + 1
+    document.next_retry_at = None
 
-    tenant_id = getattr(document, "tenant_id", None)
-    document_id = getattr(document, "id", None)
+    tenant_id = document.tenant_id
+    document_id = document.id
     existing = None
     if tenant_id is not None and document_id is not None:
         existing = (
@@ -114,37 +118,34 @@ def record_ingest_dead_letter(
             .first()
         )
 
-    payload = dict(original_payload or {})
+    payload = dict((original_payload if original_payload is not None else {}))
     payload.setdefault("document_id", str(document_id) if document_id is not None else None)
     payload.setdefault(
         "task_id",
-        (getattr(document, "doc_metadata", None) or {}).get("task_id")
-        if isinstance(getattr(document, "doc_metadata", None), dict)
-        else None,
+        (document.doc_metadata or {}).get("task_id") if isinstance(document.doc_metadata, dict) else None,
     )
     payload.setdefault(
         "pipeline_hash",
-        (getattr(document, "doc_metadata", None) or {}).get("pipeline_hash")
-        if isinstance(getattr(document, "doc_metadata", None), dict)
-        else None,
+        (document.doc_metadata or {}).get("pipeline_hash") if isinstance(document.doc_metadata, dict) else None,
     )
+
+    source_ref = _safe_str(document.filename or document.file_path, max_len=1000)
+    if not source_ref:
+        source_ref = None
 
     if existing is None:
         letter = IngestDeadLetter(
             tenant_id=tenant_id,
-            dataset_id=getattr(document, "dataset_id", None),
+            dataset_id=document.dataset_id,
             document_id=document_id,
             status="open",
             failed_stage=stage,
             error_code=code,
             error_message=message,
-            source_ref=_safe_str(
-                getattr(document, "filename", None) or getattr(document, "file_path", None), max_len=1000
-            )
-            or None,
+            source_ref=source_ref,
             original_payload=payload,
             retry_count=0,
-            producer_service=_safe_str(producer_service, max_len=80) or "document_processor",
+            producer_service=producer_service.strip()[:80],
             schema_version=INGEST_DEAD_LETTER_SCHEMA_V1,
             first_failed_at=now,
             last_attempt_at=now,
@@ -152,15 +153,13 @@ def record_ingest_dead_letter(
         db.add(letter)
     else:
         letter = existing
-        letter.dataset_id = getattr(document, "dataset_id", None)
+        letter.dataset_id = document.dataset_id
         letter.failed_stage = stage
         letter.error_code = code
         letter.error_message = message
-        letter.source_ref = (
-            _safe_str(getattr(document, "filename", None) or getattr(document, "file_path", None), max_len=1000) or None
-        )
+        letter.source_ref = source_ref
         letter.original_payload = payload
-        letter.retry_count = max(0, int(getattr(letter, "retry_count", 0) or 0)) + 1
+        letter.retry_count = max(0, int(letter.retry_count or 0)) + 1
         letter.last_attempt_at = now
 
     db.commit()

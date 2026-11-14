@@ -55,13 +55,8 @@ _CAPTURE_CITATION_KEYS = frozenset(
 
 
 def _sanitize_capture_citation(citation: dict[str, Any]) -> dict[str, Any]:
-    safe = {
-        key: citation.get(key) for key in _CAPTURE_CITATION_KEYS if key in citation and citation.get(key) is not None
-    }
-    if "chunk_id" not in safe:
-        chunk_id = citation.get("chunk_id")
-        if chunk_id is not None:
-            safe["chunk_id"] = chunk_id
+    safe = {key: citation[key] for key in _CAPTURE_CITATION_KEYS if key in citation and citation[key] is not None}
+
     return safe
 
 
@@ -111,12 +106,12 @@ def fingerprint_citations(citations: Any) -> str:
     for idx, c in enumerate(safe, 1):
         cleaned.append(
             {
-                "rank": int(idx),
-                "chunk_id": str(c.get("chunk_id") or ""),
-                "document_id": str(c.get("document_id") or "") or None,
+                "rank": idx,
+                "chunk_id": str(c["chunk_id"]) if c.get("chunk_id") is not None else "",
+                "document_id": (str(c["document_id"]) or None) if c.get("document_id") is not None else None,
                 "relevance_score": _round_float(c.get("relevance_score")),
                 "retrieval_score": _round_float(c.get("retrieval_score")),
-                "retrieval_role": (str(c.get("retrieval_role") or "") or None),
+                "retrieval_role": (str(c["retrieval_role"]) or None) if c.get("retrieval_role") is not None else None,
             }
         )
 
@@ -141,11 +136,11 @@ def build_retrieval_replay_capture_record(
     - stores query_hash + query_chars only (no raw query)
     - stores only allowlisted citation keys (no chunk_content)
     """
-    q = str(query or "").strip()
+    q = query.strip()
     qh = stable_hash(q, length=16) if q else ""
 
     metrics = evidence_payload.get("metrics") if isinstance(evidence_payload.get("metrics"), dict) else {}
-    retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
+    retrieval_cfg_hash = metrics.get("retrieval_config_hash")
 
     citations_safe = sanitize_citations_for_capture(
         evidence_payload.get("citations"), max_items=int(max_citations or 0)
@@ -153,10 +148,10 @@ def build_retrieval_replay_capture_record(
 
     rec: dict[str, Any] = {
         "schema": RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
-        "query_hash": qh or None,
-        "query_chars": int(len(q)) if q else 0,
+        "query_hash": (qh),
+        "query_chars": len(q),
         "dataset_id_hash": (stable_hash(str(dataset_id), length=16) if dataset_id else None),
-        "document_ids_count": int(len(document_ids or [])),
+        "document_ids_count": len(document_ids or []),
         "rag_config": dict(rag_config or {}),
         "retrieval_config_hash": retrieval_cfg_hash,
         "seed": int(seed) if seed is not None else None,

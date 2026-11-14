@@ -40,9 +40,9 @@ def dispatch_feedback_loop_batch(
     else:
         if db is None or tenant_id is None or not account_id:
             raise ValueError("rows or db+tenant_id+account_id are required")
-        from app.services.feedback_service import FeedbackService
+        from app.services import feedback_service
 
-        candidate_payload = FeedbackService.build_feedback_loop_candidates(
+        candidate_payload = feedback_service.build_feedback_loop_candidates(
             db=db,
             tenant_id=tenant_id,
             account_id=str(account_id),
@@ -64,22 +64,14 @@ def dispatch_feedback_loop_batch(
         "trigger": trigger_name,
         "realtime_listener_enabled": False,
         "dry_run": bool(dry_run),
-        "candidates": dict(candidate_payload.get("summary") or {}) if isinstance(candidate_payload, dict) else {},
-        "eval_case_candidates": candidate_payload.get("eval_case_candidates")
-        if isinstance(candidate_payload, dict)
-        else [],
+        "candidates": dict(candidate_payload["summary"]),
+        "eval_case_candidates": candidate_payload["eval_case_candidates"],
         "hard_negative_export": hard_negative_export,
-        "rules_suggestions": candidate_payload.get("rules_suggestions") if isinstance(candidate_payload, dict) else {},
+        "rules_suggestions": candidate_payload["rules_suggestions"],
     }
-
-
-def dispatch_scheduled_feedback_loop_batch(**kwargs: Any) -> dict[str, Any]:
-    """Convenience wrapper for cron/arq callers; still pull-based, not realtime."""
-    return dispatch_feedback_loop_batch(**{**kwargs, "trigger": "scheduled"})
 
 
 __all__ = [
     "FEEDBACK_LOOP_BATCH_SCHEMA_V1",
     "dispatch_feedback_loop_batch",
-    "dispatch_scheduled_feedback_loop_batch",
 ]

@@ -7,7 +7,6 @@ Useful for fan-out operations like multi-query retrieval.
 Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 """
 
-
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -31,7 +30,7 @@ class ParallelTask:
         name: str,
         func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         weight: float = 1.0,
-    ):
+    ) -> None:
         self.name = name
         self.func = func
         self.weight = weight
@@ -60,8 +59,8 @@ class ParallelWorkflow(BaseWorkflow):
         aggregator: Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]] | None = None,
         fail_fast: bool = False,
         max_concurrency: int | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the parallel workflow.
 
@@ -136,26 +135,36 @@ class ParallelWorkflow(BaseWorkflow):
             error="No tasks configured",
         )
 
-    def _task_semaphore(self) -> asyncio.Semaphore | None:
-        if self.max_concurrency:
-            return asyncio.Semaphore(self.max_concurrency)
-        return None
-
     async def _collect_task_results(
         self,
         state: dict[str, Any],
         *,
         semaphore: asyncio.Semaphore | None,
     ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
-        task_coroutines = [self._execute_task(task, dict(state), semaphore) for task in self._tasks]
         results: list[dict[str, Any]] = []
         errors: list[str] = []
         completed_tasks: list[str] = []
         if self.fail_fast:
-            results = await asyncio.gather(*task_coroutines)
+            tasks: list[asyncio.Task[dict[str, Any]]] = []
+            try:
+                for task in self._tasks:
+                    task_coro = self._execute_task(task, dict(state), semaphore)
+                    try:
+                        tasks.append(asyncio.create_task(task_coro))
+                    except BaseException:
+                        task_coro.close()
+                        raise
+                results = await asyncio.gather(*tasks)
+            except BaseException:
+                for task in tasks:
+                    if not task.cancelling():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
             completed_tasks = [task.name for task in self._tasks]
             return results, errors, completed_tasks
 
+        task_coroutines = [self._execute_task(task, dict(state), semaphore) for task in self._tasks]
         task_results = await asyncio.gather(*task_coroutines, return_exceptions=True)
         for task, result in zip(self._tasks, task_results, strict=False):
             if isinstance(result, Exception):
@@ -206,7 +215,7 @@ class ParallelWorkflow(BaseWorkflow):
         if validation_result is not None:
             return validation_result
         execution_path: list[str] = ["parallel_start"]
-        semaphore = self._task_semaphore()
+        semaphore = asyncio.Semaphore(self.max_concurrency) if self.max_concurrency else None
         try:
             results, errors, completed_tasks = await self._collect_task_results(state, semaphore=semaphore)
         except Exception as e:
@@ -274,15 +283,16 @@ def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitabl
 
     Deduplicates and ranks contexts from multiple queries.
     """
+
     async def aggregator(results: list[dict[str, Any]]) -> dict[str, Any]:
         await asyncio.sleep(0)
-        all_contexts = []
-        seen_ids = set()
+        all_contexts: list[dict[str, Any]] = []
+        seen_ids: set[Any] = set()
 
         for result in results:
             contexts = result.get("contexts", [])
             for ctx in contexts:
-                ctx_id = ctx.get("chunk_id") or ctx.get("id") or f"content:{stable_hash(str(ctx.get('content') or ''))}"
+                ctx_id = ctx.get("chunk_id") or ctx.get("id") or f"content:{stable_hash(ctx['content'])}"
                 if ctx_id not in seen_ids:
                     seen_ids.add(ctx_id)
                     all_contexts.append(ctx)

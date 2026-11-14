@@ -5,7 +5,7 @@ Currently supports a rolling per-tenant assistant-token quota for chat.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TypedDict
 from uuid import UUID
 
 from sqlalchemy import func
@@ -15,11 +15,20 @@ from app.core.config import settings
 from app.models.chat import Message
 
 
+class ChatAssistantTokenQuota(TypedDict):
+    enabled: bool
+    limit: int
+    used: int
+    window_hours: int
+    exceeded: bool
+    mode: str
+
+
 def check_chat_assistant_token_quota(
     db: Session,
     *,
     tenant_id: UUID,
-) -> dict[str, Any]:
+) -> ChatAssistantTokenQuota:
     """
     Return quota status for assistant tokens in a rolling time window.
 
@@ -27,10 +36,10 @@ def check_chat_assistant_token_quota(
     - best-effort: failures disable enforcement
     - cheap enough for production (single aggregate query)
     """
-    enabled = bool(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED", False))
-    limit = int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0)
-    window_hours = int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS", 24) or 24)
-    mode = str(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_MODE", "block") or "block").lower()
+    enabled = settings.CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED
+    limit = settings.CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT
+    window_hours = settings.CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS or 24
+    mode = (settings.CHAT_ASSISTANT_TOKEN_QUOTA_MODE or "block").lower()
 
     if not enabled or limit <= 0:
         return {"enabled": False, "limit": 0, "used": 0, "window_hours": window_hours, "exceeded": False, "mode": mode}
@@ -38,7 +47,6 @@ def check_chat_assistant_token_quota(
     window_hours = max(1, window_hours)
     since = datetime.now(UTC) - timedelta(hours=window_hours)
 
-    used = 0
     try:
         used_raw = (
             db.query(func.coalesce(func.sum(Message.token_count), 0))

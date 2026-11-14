@@ -96,18 +96,29 @@ def _parse_ps_output(output: str) -> list[dict[str, Any]]:
     return items
 
 
+def _collect_compose_ps(
+    *,
+    repo_root: Path,
+    compose_file: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    cmd = ["docker", "compose", "-f", compose_file, "ps", "--format", "json"]
+    exit_code, stdout, stderr = _run_command(cmd, cwd=repo_root)
+    if exit_code != 0:
+        return [], {"command": cmd, "exit_code": exit_code, "stderr": (stderr or "").strip()[:800]}
+    return _parse_ps_output(stdout), None
+
+
 def _collect_services_from_compose(
     *,
     repo_root: Path,
     compose_file: str,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    cmd = ["docker", "compose", "-f", compose_file, "ps", "--format", "json"]
-    exit_code, stdout, stderr = _run_command(cmd, cwd=repo_root)
-    if exit_code != 0:
-        return {}, {"command": cmd, "exit_code": exit_code, "stderr": (stderr or "").strip()[:800]}
+    compose_rows, error = _collect_compose_ps(repo_root=repo_root, compose_file=compose_file)
+    if error:
+        return {}, error
 
     services: dict[str, Any] = {}
-    for item in _parse_ps_output(stdout):
+    for item in compose_rows:
         service = str(item.get("Service") or "").strip()
         if not service:
             continue
@@ -127,13 +138,12 @@ def _collect_ports_from_compose(
     repo_root: Path,
     compose_file: str,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    cmd = ["docker", "compose", "-f", compose_file, "ps", "--format", "json"]
-    exit_code, stdout, stderr = _run_command(cmd, cwd=repo_root)
-    if exit_code != 0:
-        return {}, {"command": cmd, "exit_code": exit_code, "stderr": (stderr or "").strip()[:800]}
+    compose_rows, error = _collect_compose_ps(repo_root=repo_root, compose_file=compose_file)
+    if error:
+        return {}, error
 
     ports: dict[str, Any] = {}
-    for item in _parse_ps_output(stdout):
+    for item in compose_rows:
         service = str(item.get("Service") or "").strip()
         if not service:
             continue

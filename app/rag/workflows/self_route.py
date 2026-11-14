@@ -1,5 +1,4 @@
-
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.retrieval_profiles import LONG_CONTEXT_RETRIEVAL_PROFILE, PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.policy.complexity_classifier import classify_query_complexity
@@ -8,13 +7,20 @@ from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
 _SCHEMA = "mimirq.self_route.v1"
 
 
+class SelfRouteResult(TypedDict):
+    schema: str
+    route: str
+    retrieval_profile: str
+    reason_codes: list[str]
+
+
 def route_self_query(
     *,
     question: str,
     decision_text: str | None = None,
-) -> dict[str, Any]:
-    raw_question = str(question or "").strip()
-    raw_decision = str(decision_text or "").strip().lower()
+) -> SelfRouteResult:
+    raw_question = question.strip()
+    raw_decision = decision_text.strip().lower() if decision_text is not None else None
 
     reason_codes: list[str] = []
     route = "rag"
@@ -32,7 +38,7 @@ def route_self_query(
 
     if not reason_codes:
         classified = classify_query_complexity(raw_question)
-        label = str(classified.get("label") or "")
+        label = classified["label"]
         if label == "multi_hop":
             route = "rag"
             retrieval_profile = PRODUCTION_RETRIEVAL_PROFILE
@@ -60,7 +66,11 @@ class SelfRouteWorkflow(BaseWorkflow):
         return WorkflowMode.ROUTING
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
-        question = str(state.get("question") or state.get("query") or "").strip()
+        question = state.get("question")
+        if question is None:
+            question = state.get("query")
+        if question is not None:
+            question = question.strip()
         if not question:
             return self.create_result(state, success=False, error="self_route_question_missing")
 
@@ -70,13 +80,13 @@ class SelfRouteWorkflow(BaseWorkflow):
         )
         next_state = dict(state)
         next_state["route_decision"] = route_decision
-        next_state["retrieval_profile"] = route_decision.get("retrieval_profile")
+        next_state["retrieval_profile"] = route_decision["retrieval_profile"]
         return self.create_result(
             next_state,
             success=True,
             metadata={
-                "route": route_decision.get("route"),
-                "retrieval_profile": route_decision.get("retrieval_profile"),
+                "route": route_decision["route"],
+                "retrieval_profile": route_decision["retrieval_profile"],
             },
         )
 

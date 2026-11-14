@@ -2,13 +2,21 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderTree, Loader2, Pencil, Search, X } from 'lucide-react'
+import { FolderTree, Loader2, Pencil, Search, X } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { datasetApi, datasetCategoryApi } from '@/lib/api'
@@ -26,7 +34,10 @@ function toggleId(list: string[], id: string): string[] {
   return [...list, id]
 }
 
-export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ datasetId: string; className?: string }>) {
+export function DatasetCategoryMultiSelect({
+  datasetId,
+  className,
+}: Readonly<{ datasetId: string; className?: string }>) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<string[]>([])
@@ -44,8 +55,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
   })
 
   const saveCategoriesMutation = useMutation({
-    mutationFn: (categoryIds: string[]) =>
-      datasetApi.setCategories(datasetId, { category_ids: categoryIds }),
+    mutationFn: (categoryIds: string[]) => datasetApi.setCategories(datasetId, { category_ids: categoryIds }),
     onSuccess: (res) => {
       queryClient.setQueryData(queryKeys.datasets.categories(datasetId), res)
       queryClient.invalidateQueries({
@@ -61,13 +71,10 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
     toast.error(formatApiError(error, '加载分类失败'))
   }, [assignedCategoriesQuery.error, categoryTreeQuery.error])
 
-  const tree = useMemo<DatasetCategoryNode[]>(
-    () => categoryTreeQuery.data?.items || [],
-    [categoryTreeQuery.data]
-  )
+  const tree = useMemo<DatasetCategoryNode[]>(() => categoryTreeQuery.data?.items || [], [categoryTreeQuery.data])
   const assigned = useMemo(
     () => (assignedCategoriesQuery.data?.category_ids || []).map(String),
-    [assignedCategoriesQuery.data]
+    [assignedCategoriesQuery.data],
   )
   const loading = categoryTreeQuery.isLoading || assignedCategoriesQuery.isLoading
   const refreshing = categoryTreeQuery.isFetching || assignedCategoriesQuery.isFetching
@@ -85,7 +92,11 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
   const filteredFlat = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return flat
-    return flat.filter((x) => String(x.name || '').toLowerCase().includes(q))
+    return flat.filter((x) =>
+      String(x.name || '')
+        .toLowerCase()
+        .includes(q),
+    )
   }, [flat, query])
 
   const openEditor = () => {
@@ -116,24 +127,30 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {(() => {
-    if (loading) {
-        return (<span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"/>
-                加载中…
-              </span>);
-    }
-    else if (assignedBadges.shown.length) {
-            return (<>
-                {assignedBadges.shown.map((name) => (<Badge key={name} variant="outline" className="text-xs">
-                    {name}
-                  </Badge>))}
-                {assignedBadges.rest ? (<Badge variant="soft" className="text-xs">{`+${assignedBadges.rest}`}</Badge>) : null}
-              </>);
-        }
-        else {
-            return (<span className="text-xs text-muted-foreground">未设置</span>);
-        }
-})()}
+              if (loading) {
+                return (
+                  <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                    加载中…
+                  </span>
+                )
+              } else if (assignedBadges.shown.length) {
+                return (
+                  <>
+                    {assignedBadges.shown.map((name) => (
+                      <Badge key={name} variant="outline" className="text-xs">
+                        {name}
+                      </Badge>
+                    ))}
+                    {assignedBadges.rest ? (
+                      <Badge variant="soft" className="text-xs">{`+${assignedBadges.rest}`}</Badge>
+                    ) : null}
+                  </>
+                )
+              } else {
+                return <span className="text-xs text-muted-foreground">未设置</span>
+              }
+            })()}
           </div>
         </div>
 
@@ -143,10 +160,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
             size="sm"
             className="h-9 px-3"
             onClick={() => {
-              Promise.all([
-                categoryTreeQuery.refetch(),
-                assignedCategoriesQuery.refetch(),
-              ])
+              Promise.all([categoryTreeQuery.refetch(), assignedCategoriesQuery.refetch()])
             }}
             disabled={refreshing}
             aria-label="刷新分类"
@@ -188,13 +202,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
                       </button>
                     ) : null}
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-9"
-                    onClick={() => setDraft([])}
-                    disabled={saving}
-                  >
+                  <Button variant="secondary" size="sm" className="h-9" onClick={() => setDraft([])} disabled={saving}>
                     清空
                   </Button>
                 </div>

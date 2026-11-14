@@ -1,5 +1,3 @@
-
-import math
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -15,25 +13,11 @@ HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*['\"][^'\"]+['\"][^>]*>", re
 def _coerce_int(value: Any) -> int:
     if value is None:
         return 0
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return int(value)
-    if isinstance(value, float):
-        if math.isnan(value):
-            return 0
-        return int(value)
-    if isinstance(value, str):
-        s = value.strip()
-        if not s:
-            return 0
-        try:
-            return int(float(s))
-        except Exception:
-            return 0
     try:
+        if isinstance(value, str):
+            value = float(value.strip())
         return int(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
@@ -60,7 +44,7 @@ def count_position_tag_blocks(markdown: str) -> int:
 
         last_index = match.end()
 
-    return int(block_count)
+    return block_count
 
 
 def count_markdown_images(markdown: str | None) -> int:
@@ -70,16 +54,15 @@ def count_markdown_images(markdown: str | None) -> int:
 
 
 def _iter_metadata(documents: Iterable[Any] | None) -> Iterable[Mapping[str, Any]]:
-    for item in documents or []:
-        meta: Any = None
+    if documents is None:
+        return
+    for item in documents:
         if isinstance(item, Mapping):
             meta = item.get("metadata")
         else:
             meta = getattr(item, "metadata", None)
         if isinstance(meta, Mapping):
             yield meta
-        else:
-            yield {}
 
 
 def compute_parsing_artifact_stats(
@@ -93,8 +76,12 @@ def compute_parsing_artifact_stats(
     image_count = 0
 
     for meta in _iter_metadata(documents):
-        content_type = str(meta.get("content_type") or "").strip().lower()
-        doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+        content_type = meta.get("content_type")
+        doc_type = meta.get("doc_type_kwd")
+        if isinstance(content_type, str):
+            content_type = content_type.strip().lower()
+        if isinstance(doc_type, str):
+            doc_type = doc_type.strip().lower()
         if content_type == "table" or doc_type == "table":
             table_count += 1
         if content_type == "image" or doc_type == "image":
@@ -109,11 +96,11 @@ def compute_parsing_artifact_stats(
         count_markdown_images(markdown),
     )
     image_count = max(image_count, markdown_image_count)
-    block_count = count_position_tag_blocks(original_markdown or "")
+    block_count = count_position_tag_blocks(original_markdown)
 
     return {
-        "page_count": int(page_count),
-        "table_count": int(table_count),
-        "image_count": int(image_count),
-        "block_count": int(block_count),
+        "page_count": page_count,
+        "table_count": table_count,
+        "image_count": image_count,
+        "block_count": block_count,
     }

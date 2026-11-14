@@ -1,10 +1,14 @@
 'use client'
 
 import type { AuthResponse, AuthToken, UserProfile } from '@/types'
-import { setAuthSession } from '@/lib/auth-storage'
 import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { generateOauthState, generatePkceCodeVerifier, pkceChallengeFromVerifier, tryDecodeJwtPayload } from '@/lib/oidc-pkce'
+import {
+  generateOauthState,
+  generatePkceCodeVerifier,
+  pkceChallengeFromVerifier,
+  tryDecodeJwtPayload,
+} from '@/lib/oidc-pkce'
 import { getOidcPublicProvidersFromEnv, resolveOidcPublicProvider } from '@/lib/oidc-providers'
 
 type OidcDiscovery = {
@@ -44,7 +48,9 @@ function readEnv(name: string): string {
 }
 
 function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
   return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
 }
 
@@ -86,18 +92,6 @@ function txStorageKey(state: string): string {
   return `${TX_KEY_PREFIX}${state}`
 }
 
-function sessionSet(key: string, value: string) {
-  writeClientStorage(key, value, 'session')
-}
-
-function sessionGet(key: string): string | null {
-  return readClientStorage(key, 'session')
-}
-
-function sessionDel(key: string) {
-  removeClientStorage(key, 'session')
-}
-
 let cachedDiscovery: { issuer: string; value: OidcDiscovery } | null = null
 
 async function discover(issuer: string): Promise<OidcDiscovery> {
@@ -109,7 +103,7 @@ async function discover(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null))
+  const data = await res.json().catch(() => null)
   if (!data || typeof data !== 'object') {
     throw new Error('oidc_discovery_invalid')
   }
@@ -202,7 +196,7 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
     code_verifier: codeVerifier,
     return_to: String(params.returnTo || '/').trim() || '/',
   }
-  sessionSet(txStorageKey(state), JSON.stringify(tx))
+  writeClientStorage(txStorageKey(state), JSON.stringify(tx), 'session')
 
   const url = new URL(discovery.authorization_endpoint)
   url.searchParams.set('response_type', 'code')
@@ -226,7 +220,10 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
   globalThis.window.location.assign(url.toString())
 }
 
-export async function completeOidcLogin(params: { code: string; state: string }): Promise<{ session: AuthResponse; returnTo: string }> {
+export async function completeOidcLogin(params: {
+  code: string
+  state: string
+}): Promise<{ session: AuthResponse; returnTo: string }> {
   if (globalThis.window === undefined) {
     throw new Error('oidc_browser_only')
   }
@@ -238,8 +235,8 @@ export async function completeOidcLogin(params: { code: string; state: string })
   }
 
   const key = txStorageKey(state)
-  const raw = sessionGet(key)
-  sessionDel(key)
+  const raw = readClientStorage(key, 'session')
+  removeClientStorage(key, 'session')
   if (!raw) {
     throw new Error('missing_oidc_transaction')
   }
@@ -292,8 +289,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
     const serverData = (await serverRes.json().catch(() => null)) as OidcTokenResponse | null
     if (!serverRes.ok) {
       const msg = toTrimmedPrimitiveString(serverData?.error)
-      const originalMsg =
-        err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
+      const originalMsg = err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
       const originalLower = originalMsg.toLowerCase()
       const preferServer =
         Boolean(msg) &&
@@ -326,6 +322,5 @@ export async function completeOidcLogin(params: { code: string; state: string })
   const user: UserProfile = buildUserFromClaims(claims)
   const session: AuthResponse = { user, token }
 
-  setAuthSession(session)
   return { session, returnTo: String(tx.return_to || '/').trim() || '/' }
 }

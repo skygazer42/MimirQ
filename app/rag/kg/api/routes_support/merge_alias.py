@@ -7,7 +7,7 @@ Function-local (deferred) imports are preserved verbatim.
 import contextlib
 import uuid
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -24,25 +24,29 @@ from app.rag.kg.api.routes_support.projection import (
 from app.rag.kg.api.routes_support.schemas import KGMergeAffectedRows, KGMergeTargets
 from app.rag.kg.schemas import KGEntityAliasSuggestionItem, KGEntityAliasSuggestionsResponse
 
+if TYPE_CHECKING:
+    from app.models.audit_log import AuditLog
+    from app.rag.kg.models import KgEntity, KgEntityRedirect, KgEntityResolutionAction, KgEventEntity, KgRelation
+
 
 def _offline_alias_suggestions(
     db: Session,
-    entity_model: Any,
+    entity_model: type["KgEntity"],
     *,
     tenant_id: UUID,
-    entity: Any,
+    entity: "KgEntity",
     resolved_id: UUID,
     want_k: int,
     min_similarity: float,
 ) -> KGEntityAliasSuggestionsResponse:
     from sqlalchemy import and_  # noqa: WPS433
 
-    norm = str(getattr(entity, "normalized_name", "") or "").strip()
-    prefix = norm[:4] if len(norm) >= 4 else norm
+    norm = entity.normalized_name.strip()
+    prefix = norm[:4]
     query = db.query(entity_model).filter(
         and_(
             entity_model.tenant_id == tenant_id,
-            entity_model.type == getattr(entity, "type", None),
+            entity_model.type == entity.type,
             entity_model.id != resolved_id,
         )
     )
@@ -62,26 +66,28 @@ def _offline_alias_suggestions(
     )
 
 
-def _score_alias_candidates(candidates: list[Any], *, norm: str, min_similarity: float) -> list[tuple[float, str, Any]]:
+def _score_alias_candidates(
+    candidates: list["KgEntity"], *, norm: str, min_similarity: float
+) -> list[tuple[float, str, "KgEntity"]]:
     from difflib import SequenceMatcher
 
-    scored: list[tuple[float, str, Any]] = []
+    scored: list[tuple[float, str, "KgEntity"]] = []
     for candidate in candidates:
-        candidate_norm = str(getattr(candidate, "normalized_name", "") or "").strip()
+        candidate_norm = candidate.normalized_name.strip()
         if not candidate_norm:
             continue
-        sim = float(SequenceMatcher(a=norm, b=candidate_norm).ratio())
+        sim = SequenceMatcher(a=norm, b=candidate_norm).ratio()
         if sim >= float(min_similarity):
             scored.append((sim, str(candidate.id), candidate))
     scored.sort(key=lambda item: (-item[0], item[1]))
     return scored
 
 
-def _alias_suggestion_item(candidate: Any, *, similarity: float, reason: str) -> KGEntityAliasSuggestionItem:
+def _alias_suggestion_item(candidate: "KgEntity", *, similarity: float, reason: str) -> KGEntityAliasSuggestionItem:
     return KGEntityAliasSuggestionItem(
         entity_id=candidate.id,
-        name=str(getattr(candidate, "name", "") or ""),
-        type=str(getattr(candidate, "type", "") or "unknown"),
+        name=candidate.name,
+        type=str(candidate.type or "unknown"),
         similarity=float(similarity),
         reason=reason,
     )
@@ -91,7 +97,7 @@ def _vector_alias_suggestions(
     db: Session,
     *,
     tenant_id: UUID,
-    entity: Any,
+    entity: "KgEntity",
     resolved_id: UUID,
     want_k: int,
 ) -> KGEntityAliasSuggestionsResponse:
@@ -103,7 +109,7 @@ def _vector_alias_suggestions(
             query_vector=list(entity.vector),
             tenant_id=tenant_id,
             k=max(1, int(want_k)),
-            entity_type=str(getattr(entity, "type", "") or None) or None,
+            entity_type=entity.type,
         )
         suggestions = [
             _vector_alias_suggestion_item(hit)
@@ -129,20 +135,22 @@ def _vector_alias_suggestion_item(hit: dict[str, Any]) -> KGEntityAliasSuggestio
         return None
     return KGEntityAliasSuggestionItem(
         entity_id=entity_id,
-        name=str(hit.get("name") or ""),
+        name=hit["name"],
         type=str(hit.get("type") or "unknown"),
         similarity=float(hit.get("similarity", 0.0) or 0.0),
         reason="vector:milvus_similarity",
     )
 
 
-def _entity_relation_rows(db: Session, relation_model: Any, *, tenant_id: UUID, entity_id: UUID) -> list[Any]:
+def _entity_relation_rows(
+    db: Session, relation_model: type["KgRelation"], *, tenant_id: UUID, entity_id: UUID
+) -> list["KgRelation"]:
     rel_rows = []
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, subject_entity_id=entity_id).all())
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, object_entity_id=entity_id).all())
-    rel_by_id: dict[str, Any] = {}
+    rel_by_id: dict[str, "KgRelation"] = {}
     for relation in rel_rows:
-        relation_id = str(getattr(relation, "id", "") or "")
+        relation_id = str(relation.id)
         if relation_id:
             rel_by_id[relation_id] = relation
     return list(rel_by_id.values())
@@ -150,7 +158,7 @@ def _entity_relation_rows(db: Session, relation_model: Any, *, tenant_id: UUID, 
 
 def _merge_targets(
     db: Session,
-    entity_model: Any,
+    entity_model: type["KgEntity"],
     *,
     tenant_id: UUID,
     source_raw: UUID,
@@ -168,7 +176,7 @@ def _merge_targets(
     target_ent = db.query(entity_model).filter_by(tenant_id=tenant_id, id=target_id).first()
     if not source_ent or not target_ent:
         raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
-    if str(getattr(source_ent, "type", "") or "").strip() != str(getattr(target_ent, "type", "") or "").strip():
+    if source_ent.type.strip() != target_ent.type.strip():
         raise HTTPException(status_code=400, detail="Cannot merge entities of different types")
     return KGMergeTargets(source_id=source_id, target_id=target_id, source_entity=source_ent, target_entity=target_ent)
 
@@ -178,14 +186,14 @@ def _merge_affected_rows(
     *,
     tenant_id: UUID,
     source_id: UUID,
-    event_entity_model: Any,
-    relation_model: Any,
+    event_entity_model: type["KgEventEntity"],
+    relation_model: type["KgRelation"],
 ) -> KGMergeAffectedRows:
     source_assocs = db.query(event_entity_model).filter_by(entity_id=source_id).all()
     source_relations = _entity_relation_rows(db, relation_model, tenant_id=tenant_id, entity_id=source_id)
     return KGMergeAffectedRows(
         source_assocs=source_assocs,
-        source_assoc_ids={str(getattr(assoc, "id", "")) for assoc in source_assocs if getattr(assoc, "id", None)},
+        source_assoc_ids={str(assoc.id) for assoc in source_assocs if getattr(assoc, "id", None)},
         assoc_snapshot_by_id={
             str(assoc.id): _event_entity_snapshot(assoc) for assoc in source_assocs if getattr(assoc, "id", None)
         },
@@ -193,9 +201,7 @@ def _merge_affected_rows(
             getattr(assoc, "event_id", None) for assoc in source_assocs if getattr(assoc, "event_id", None) is not None
         },
         source_relations=source_relations,
-        source_relation_ids={
-            str(getattr(relation, "id", "")) for relation in source_relations if getattr(relation, "id", None)
-        },
+        source_relation_ids={str(relation.id) for relation in source_relations if getattr(relation, "id", None)},
         relation_snapshot_by_id={
             str(relation.id): _relation_snapshot(relation)
             for relation in source_relations
@@ -205,19 +211,19 @@ def _merge_affected_rows(
 
 
 def _create_merge_action(
-    action_model: Any,
+    action_model: type["KgEntityResolutionAction"],
     *,
     tenant_id: UUID,
     account_id: str,
     targets: KGMergeTargets,
     affected: KGMergeAffectedRows,
-) -> Any:
+) -> "KgEntityResolutionAction":
     from datetime import datetime
 
     return action_model(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        actor_id=str(account_id or "").strip() or None,
+        actor_id=account_id,
         action_type="merge",
         status="applied",
         payload={
@@ -238,7 +244,7 @@ def _create_merge_action(
 
 def _add_resolution_audit_log(
     db: Session,
-    audit_log_model: Any,
+    audit_log_model: type["AuditLog"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -252,7 +258,7 @@ def _add_resolution_audit_log(
             audit_log_model(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action=action,
                 resource_type=resource_type,
                 resource_id=resource_id,
@@ -265,7 +271,7 @@ def _add_resolution_audit_log(
 
 def _ensure_merge_redirect(
     db: Session,
-    redirect_model: Any,
+    redirect_model: type["KgEntityRedirect"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -286,7 +292,7 @@ def _ensure_merge_redirect(
             tenant_id=tenant_id,
             to_entity_id=target_id,
             action_id=action_id,
-            created_by=str(account_id or "").strip() or None,
+            created_by=account_id,
             extra_data={"reason": "merge"},
             created_at=datetime.now(UTC).replace(tzinfo=None),
         )
@@ -299,7 +305,7 @@ def _apply_merge_relation_updates(
 ) -> list[dict[str, Any]]:
     relation_deleted_rows: list[dict[str, Any]] = []
     for relation in affected.source_relations:
-        relation_id = str(getattr(relation, "id", "") or "")
+        relation_id = str(relation.id)
         if getattr(relation, "subject_entity_id", None) == source_id:
             relation.subject_entity_id = target_id
         if getattr(relation, "object_entity_id", None) == source_id:
@@ -313,7 +319,7 @@ def _apply_merge_relation_updates(
 
 def _dedupe_merged_event_entity_edges(
     db: Session,
-    event_entity_model: Any,
+    event_entity_model: type["KgEventEntity"],
     *,
     source_id: UUID,
     target_id: UUID,
@@ -322,7 +328,7 @@ def _dedupe_merged_event_entity_edges(
     if not affected.impacted_event_ids:
         return []
     current_target_assocs = db.query(event_entity_model).filter_by(entity_id=target_id).all()
-    by_event: dict[UUID, list[Any]] = {}
+    by_event: dict[UUID, list["KgEventEntity"]] = {}
     for assoc in current_target_assocs:
         event_id = getattr(assoc, "event_id", None)
         if event_id is not None and event_id in affected.impacted_event_ids:
@@ -335,7 +341,7 @@ def _delete_duplicate_target_assocs(
     *,
     source_id: UUID,
     affected: KGMergeAffectedRows,
-    by_event: dict[UUID, list[Any]],
+    by_event: dict[UUID, list["KgEventEntity"]],
 ) -> list[dict[str, Any]]:
     deleted_assoc_rows: list[dict[str, Any]] = []
     for rows in by_event.values():
@@ -344,7 +350,7 @@ def _delete_duplicate_target_assocs(
         keep = _target_assoc_to_keep(rows, affected.source_assoc_ids)
         _merge_duplicate_assoc_fields(keep, rows)
         for row in rows:
-            row_id = str(getattr(row, "id", "") or "")
+            row_id = str(row.id)
             if row is keep or row_id not in affected.source_assoc_ids:
                 continue
             snapshot = affected.assoc_snapshot_by_id.get(row_id) or _event_entity_snapshot(row)
@@ -354,15 +360,15 @@ def _delete_duplicate_target_assocs(
     return deleted_assoc_rows
 
 
-def _target_assoc_to_keep(rows: list[Any], source_assoc_ids: set[str]) -> Any:
+def _target_assoc_to_keep(rows: list["KgEventEntity"], source_assoc_ids: set[str]) -> "KgEventEntity":
     for row in rows:
-        row_id = str(getattr(row, "id", "") or "")
+        row_id = str(row.id)
         if row_id and row_id not in source_assoc_ids:
             return row
     return rows[0]
 
 
-def _merge_duplicate_assoc_fields(keep: Any, rows: list[Any]) -> None:
+def _merge_duplicate_assoc_fields(keep: "KgEventEntity", rows: list["KgEventEntity"]) -> None:
     keep_weight = float(getattr(keep, "weight", 1.0) or 1.0)
     keep_role = getattr(keep, "role", None)
     keep_extra = getattr(keep, "extra_data", None)
@@ -380,7 +386,7 @@ def _merge_duplicate_assoc_fields(keep: Any, rows: list[Any]) -> None:
 
 
 def _delete_source_entity_vector_if_enabled(source_id: UUID) -> bool:
-    if not bool(getattr(settings, "KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED", False)):
+    if not bool(settings.KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED):
         return False
     try:
         from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name  # noqa: WPS433

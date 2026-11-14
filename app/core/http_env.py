@@ -6,7 +6,6 @@ importing the whole RAG package (which has heavier imports and may create
 cycles).
 """
 
-
 import logging
 import os
 from collections.abc import Iterable
@@ -39,7 +38,6 @@ def httpx_trust_env(
     socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
     if socks_proxy:
         if logger:
-            logger.warning("Unsupported SOCKS proxy detected: %s. Ignoring env proxies.", socks_proxy)
+            logger.warning("Unsupported SOCKS proxy detected. Ignoring env proxies.")
         return False
     return True
-

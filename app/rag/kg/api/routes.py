@@ -1,10 +1,10 @@
 import asyncio
-import contextlib
 import gzip
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 # GraphML export only constructs and serializes a new tree; no untrusted XML is parsed.
@@ -14,18 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-# Names split into app.rag.kg.api.routes_support are re-imported below so that
-# every pre-split reference (``app.rag.kg.api.routes.<name>``) keeps working.
-# Private module handles keep facade-only bindings explicit and lint-clean.
-import app.rag.kg.api.routes_support.common as _common_support
-import app.rag.kg.api.routes_support.extraction as _extraction_support
-import app.rag.kg.api.routes_support.merge_alias as _merge_alias_support
-import app.rag.kg.api.routes_support.projection as _projection_support
-import app.rag.kg.api.routes_support.schemas as _schemas_support
-import app.rag.kg.api.routes_support.undo as _undo_support
-import app.rag.kg.schemas as _kg_schemas
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies import get_current_account_id, get_tenant_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
@@ -119,68 +108,12 @@ from app.rag.kg.schemas import (
     KGSearchResponse,
     KGStatsResponse,
 )
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import filter_allowed_document_ids
 
-KG_EXTRACTION_ALREADY_QUEUED_DETAIL = _common_support.KG_EXTRACTION_ALREADY_QUEUED_DETAIL
-KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL = _common_support.KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL
-
-_default_prompt_template_id = _extraction_support._default_prompt_template_id
-_document_kg_python_plugin = _extraction_support._document_kg_python_plugin
-_selected_extraction_pipeline_hash = _extraction_support._selected_extraction_pipeline_hash
-
-_alias_suggestion_item = _merge_alias_support._alias_suggestion_item
-_delete_duplicate_target_assocs = _merge_alias_support._delete_duplicate_target_assocs
-_merge_duplicate_assoc_fields = _merge_alias_support._merge_duplicate_assoc_fields
-_score_alias_candidates = _merge_alias_support._score_alias_candidates
-_target_assoc_to_keep = _merge_alias_support._target_assoc_to_keep
-_vector_alias_suggestion_item = _merge_alias_support._vector_alias_suggestion_item
-
-_active_pipeline_hash_expr = _projection_support._active_pipeline_hash_expr
-_add_kg_entity_cooccurrence_links = _projection_support._add_kg_entity_cooccurrence_links
-_append_relation_links = _projection_support._append_relation_links
-_apply_relation_pipeline_scope = _projection_support._apply_relation_pipeline_scope
-_chunk_matches_pipeline = _projection_support._chunk_matches_pipeline
-_dict_list = _projection_support._dict_list
-_doc_pipeline_hash = _projection_support._doc_pipeline_hash
-_event_entity_nodes_and_links = _projection_support._event_entity_nodes_and_links
-_event_entity_snapshot = _projection_support._event_entity_snapshot
-_event_ids_for_center_entity = _projection_support._event_ids_for_center_entity
-_kg_allowed_entities = _projection_support._kg_allowed_entities
-_kg_entity_cooccurrence_counts = _projection_support._kg_entity_cooccurrence_counts
-_kg_entity_node = _projection_support._kg_entity_node
-_kg_event_degrees = _projection_support._kg_event_degrees
-_kg_event_entity_link = _projection_support._kg_event_entity_link
-_kg_event_entity_rows = _projection_support._kg_event_entity_rows
-_kg_event_node = _projection_support._kg_event_node
-_kg_limit_value = _projection_support._kg_limit_value
-_kg_relation_link = _projection_support._kg_relation_link
-_load_events_by_ids = _projection_support._load_events_by_ids
-_related_event_ids_for_center_event = _projection_support._related_event_ids_for_center_event
-_relation_snapshot = _projection_support._relation_snapshot
-_uuid_list = _projection_support._uuid_list
-_uuid_or_none = _projection_support._uuid_or_none
-
-KGExtractionEffectiveOptions = _schemas_support.KGExtractionEffectiveOptions
-KGGraphBuildResult = _schemas_support.KGGraphBuildResult
-KGGraphProjectionLimits = _schemas_support.KGGraphProjectionLimits
-KGMergeAffectedRows = _schemas_support.KGMergeAffectedRows
-KGMergeSideEffects = _schemas_support.KGMergeSideEffects
-KGMergeTargets = _schemas_support.KGMergeTargets
-KGUndoStats = _schemas_support.KGUndoStats
-KGEntityAliasSuggestionItem = _kg_schemas.KGEntityAliasSuggestionItem
-
-_delete_orphan_split_entity = _undo_support._delete_orphan_split_entity
-_dict_or_none = _undo_support._dict_or_none
-_limited_optional_str = _undo_support._limited_optional_str
-_remove_merge_redirect = _undo_support._remove_merge_redirect
-_restore_deleted_assoc_rows = _undo_support._restore_deleted_assoc_rows
-_restore_deleted_relation_rows = _undo_support._restore_deleted_relation_rows
-_restore_source_entity_vector_if_needed = _undo_support._restore_source_entity_vector_if_needed
-_restore_split_relations = _undo_support._restore_split_relations
-_restore_updated_assocs = _undo_support._restore_updated_assocs
-_restore_updated_relations = _undo_support._restore_updated_relations
-_restored_relation_row_payload = _undo_support._restored_relation_row_payload
+if TYPE_CHECKING:
+    from app.rag.kg.models import KgEntity, KgEntityResolutionAction, KgEventEntity, KgRelation, KgSourceEvent
+    from app.rag.kg.schemas import KGGraphLink
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -264,9 +197,7 @@ def kg_extraction_options(
         bool | None, Query(description="Extract entity relations (triples) (override settings)")
     ] = None,
     extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
-    extraction_backend: Annotated[
-        str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")
-    ] = None,
+    extraction_backend: Annotated[str | None, Query(description="Extraction backend override: llm, heuristic")] = None,
     prompt_template_id: Annotated[UUID | None, Query()] = None,
     prompt_template_key: Annotated[str | None, Query()] = None,
     prompt_ab_experiment_key: Annotated[str | None, Query()] = None,
@@ -499,24 +430,24 @@ def _search_kg_entity_nodes(
     return nodes
 
 
-def _kg_entity_search_node(ent: Any) -> KGGraphNode:
+def _kg_entity_search_node(ent: "KgEntity") -> KGGraphNode:
     return KGGraphNode(
         id=str(ent.id),
-        label=(ent.name or "").strip() or str(ent.id),
-        group=_stable_group_for(getattr(ent, "type", "") or "unknown"),
+        label=(ent.name).strip() or str(ent.id),
+        group=_stable_group_for(ent.type or "unknown"),
         val=1,
         meta={
             "kind": "entity",
-            "type": getattr(ent, "type", None),
-            "normalized_name": getattr(ent, "normalized_name", None),
+            "type": ent.type,
+            "normalized_name": ent.normalized_name,
         },
     )
 
 
-def _kg_event_search_node(event: Any) -> KGGraphNode:
+def _kg_event_search_node(event: "KgSourceEvent") -> KGGraphNode:
     return KGGraphNode(
         id=str(event.id),
-        label=(event.title or "").strip() or str(event.id),
+        label=(event.title).strip() or str(event.id),
         group=0,
         val=1,
         meta={
@@ -576,7 +507,7 @@ def search_kg_graph_nodes(
     """
     _ensure_enabled()
 
-    q_text = (q or "").strip()
+    q_text = q.strip()
     if not q_text:
         return []
 
@@ -761,7 +692,7 @@ def preview_manual_kg_import(
 ):
     """Validate a governed external KG payload without writing it to storage."""
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     from app.rag.kg.manual_import import preview_manual_import
 
     return preview_manual_import(payload)
@@ -819,7 +750,7 @@ def delete_manual_kg_import(
     _ensure_enabled()
     from app.rag.kg.manual_import import delete_manual_import
 
-    clean_import_id = str(import_id or "").strip()
+    clean_import_id = import_id.strip()
     if not clean_import_id:
         raise HTTPException(status_code=400, detail="import_id is required")
     return delete_manual_import(
@@ -983,7 +914,7 @@ def _kg_snapshot_detail_rows(
     return KGSnapshotDetailRows(events=event_rows, entities=entity_rows, links=link_rows, relations=relation_rows)
 
 
-def _kg_snapshot_event_node(event: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_event_node(event: "KgSourceEvent", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {
         "title": event.title,
         "summary": event.summary,
@@ -1000,7 +931,7 @@ def _kg_snapshot_event_node(event: Any, canonical_json_hash: Any) -> dict[str, A
     }
 
 
-def _kg_snapshot_entity_node(entity: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_entity_node(entity: "KgEntity", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {
         "name": entity.name,
         "type": entity.type,
@@ -1017,7 +948,7 @@ def _kg_snapshot_entity_node(entity: Any, canonical_json_hash: Any) -> dict[str,
     }
 
 
-def _kg_snapshot_link_edge(link: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_link_edge(link: "KgEventEntity", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {"role": link.role, "weight": str(link.weight), "extra_data": link.extra_data or {}}
     return {
         "id": f"event_entity:{link.id}",
@@ -1029,7 +960,7 @@ def _kg_snapshot_link_edge(link: Any, canonical_json_hash: Any) -> dict[str, Any
     }
 
 
-def _kg_snapshot_relation_edge(relation: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_relation_edge(relation: "KgRelation", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {
         "predicate": relation.predicate,
         "predicate_raw": relation.predicate_raw,
@@ -1054,7 +985,7 @@ def _add_kg_snapshot_details(
     rows: KGSnapshotDetailRows,
     counts: KGSnapshotCounts,
     detail_limit: int,
-    canonical_json_hash: Any,
+    canonical_json_hash: Callable[[Any], str],
 ) -> dict[str, Any]:
     snapshot["nodes"] = [
         *[_kg_snapshot_event_node(event, canonical_json_hash) for event in rows.events],
@@ -1176,11 +1107,11 @@ def compare_kg_snapshots(
     return diff_kg_snapshots(snap_a, snap_b)
 
 
-def _add_graphml_key(root: Any, *, key_id: str, kind: str, name: str, typ: str) -> None:
+def _add_graphml_key(root: ET.Element, *, key_id: str, kind: str, name: str, typ: str) -> None:
     ET.SubElement(root, "key", {"id": key_id, "for": kind, "attr.name": name, "attr.type": typ})
 
 
-def _build_graphml_root() -> tuple[Any, Any]:
+def _build_graphml_root() -> tuple[ET.Element, ET.Element]:
     graphml_xmlns = "http" + "://graphml.graphdrawing.org/xmlns"
     root = ET.Element("graphml", xmlns=graphml_xmlns)
     for key_id, kind, name, typ in (
@@ -1202,28 +1133,28 @@ def _build_graphml_root() -> tuple[Any, Any]:
     return root, graph_el
 
 
-def _add_graphml_node(graph_el: Any, node: Any) -> None:
+def _add_graphml_node(graph_el: ET.Element, node: KGGraphNode) -> None:
     n = ET.SubElement(graph_el, "node", {"id": str(node.id)})
-    meta = dict(getattr(node, "meta", {}) or {})
+    meta = dict(node.meta or {})
     ET.SubElement(n, "data", {"key": "d0"}).text = str(node.label or node.id)
     ET.SubElement(n, "data", {"key": "d1"}).text = str(meta.get("kind") or "")
     ET.SubElement(n, "data", {"key": "d2"}).text = str(meta.get("type") or "")
     ET.SubElement(n, "data", {"key": "d3"}).text = str(meta.get("normalized_name") or "")
     ET.SubElement(n, "data", {"key": "d4"}).text = str(meta.get("document_id") or "")
     ET.SubElement(n, "data", {"key": "d5"}).text = str(meta.get("chunk_id") or "")
-    ET.SubElement(n, "data", {"key": "d6"}).text = str(int(getattr(node, "group", 0) or 0))
-    ET.SubElement(n, "data", {"key": "d7"}).text = str(int(getattr(node, "val", 1) or 1))
+    ET.SubElement(n, "data", {"key": "d6"}).text = str(int(node.group or 0))
+    ET.SubElement(n, "data", {"key": "d7"}).text = str(int(node.val or 1))
 
 
-def _add_graphml_edge(graph_el: Any, idx: int, link: Any) -> None:
+def _add_graphml_edge(graph_el: ET.Element, idx: int, link: "KGGraphLink") -> None:
     edge = ET.SubElement(
         graph_el,
         "edge",
         {"id": f"e{idx}", "source": str(link.source), "target": str(link.target)},
     )
-    meta = dict(getattr(link, "meta", {}) or {})
-    ET.SubElement(edge, "data", {"key": "e0"}).text = str(getattr(link, "label", "") or "")
-    ET.SubElement(edge, "data", {"key": "e1"}).text = str(float(getattr(link, "weight", 1.0) or 1.0))
+    meta = dict(link.meta or {})
+    ET.SubElement(edge, "data", {"key": "e0"}).text = str(link.label or "")
+    ET.SubElement(edge, "data", {"key": "e1"}).text = str(float(link.weight or 1.0))
     ET.SubElement(edge, "data", {"key": "e2"}).text = str(meta.get("kind") or "")
     ET.SubElement(edge, "data", {"key": "e3"}).text = str(int(meta.get("shared_events") or 0))
 
@@ -1260,7 +1191,7 @@ def _log_kg_graph_export(
     flags: KGGraphExportFlags,
     content: str | bytes,
 ) -> None:
-    export_stats = dict(getattr(graph, "stats", {}) or {})
+    export_stats = dict(graph.stats or {})
     _log_kg_api_metric(
         "kg.api.graph_export",
         tenant_id=str(tenant_id),
@@ -1357,7 +1288,7 @@ def get_kg_event_detail(
         KGEventEntityItem(
             entity=KGEntityItem.model_validate(ent),
             weight=float(getattr(assoc, "weight", 1.0) or 1.0),
-            role=(getattr(assoc, "role", None) or None),
+            role=assoc.role,
             extra_data=build_event_entity_provenance(
                 document_id=(
                     getattr(assoc, "extra_data", None).get("document_id")
@@ -1476,7 +1407,7 @@ def get_kg_entity_detail(
             .all()
         )
         neighbors = [
-            {"entity_id": row[0], "name": row[1] or "", "type": row[2] or "unknown", "count": int(row[3] or 0)}
+            {"entity_id": row[0], "name": row[1], "type": row[2] or "unknown", "count": int(row[3] or 0)}
             for row in rows
             if row and row[0]
         ]
@@ -1554,7 +1485,7 @@ def create_kg_entity_alias(
     from datetime import datetime
 
     from app.models.audit_log import AuditLog
-    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.extraction.parser import normalize_entity_name
     from app.rag.kg.models import KgEntity, KgEntityAlias
 
     resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
@@ -1562,12 +1493,11 @@ def create_kg_entity_alias(
     if not ent:
         raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
-    alias_text = str(payload.alias or "").strip()
+    alias_text = payload.alias.strip()
     if not alias_text:
         raise HTTPException(status_code=400, detail="alias is required")
 
-    parser = EntityValueParser()
-    norm = parser.normalize_name(alias_text)
+    norm = normalize_entity_name(alias_text)
     if not norm:
         raise HTTPException(status_code=400, detail="alias normalizes to empty")
 
@@ -1585,7 +1515,7 @@ def create_kg_entity_alias(
         canonical_entity_id=resolved_id,
         alias=alias_text[:500],
         normalized_alias=norm[:500],
-        created_by=str(account_id or "").strip() or None,
+        created_by=account_id,
         extra_data={"method": "manual"},
         created_at=datetime.now(UTC).replace(tzinfo=None),
         updated_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1597,15 +1527,15 @@ def create_kg_entity_alias(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.entity.alias.create",
                 resource_type="kg_entity",
                 resource_id=str(resolved_id),
                 details={
                     "alias_hash": _audit_hash_text(alias_text),
-                    "alias_chars": int(len(alias_text)),
+                    "alias_chars": len(alias_text),
                     "normalized_alias_hash": _audit_hash_text(norm),
-                    "normalized_alias_chars": int(len(norm)),
+                    "normalized_alias_chars": len(norm),
                 },
             )
         )
@@ -1615,10 +1545,7 @@ def create_kg_entity_alias(
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     return KGEntityAliasItem.model_validate(alias_row)
@@ -1655,7 +1582,7 @@ def delete_kg_entity_alias(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.entity.alias.delete",
                 resource_type="kg_entity",
                 resource_id=str(resolved_id),
@@ -1668,14 +1595,11 @@ def delete_kg_entity_alias(
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     # Return the current alias set after deletion.
-    return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, account_id=account_id, db=db)
+    return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, _account_id=account_id, db=db)
 
 
 @router.get(
@@ -1760,7 +1684,7 @@ def preview_kg_entity_merge(
     rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=source_id).all())
     rel_by_id: dict[str, object] = {}
     for r in rel_rows:
-        rid = str(getattr(r, "id", "") or "")
+        rid = str(r.id)
         if rid:
             rel_by_id[rid] = r
 
@@ -1779,14 +1703,14 @@ def preview_kg_entity_merge(
             "target_event_entity_edges": len(target_assocs),
             "overlap_events": len(overlap_events),
             "source_relations": len(rel_by_id),
-            "self_relations_removed": int(self_rel_after),
+            "self_relations_removed": self_rel_after,
             # Preview details (bounded) for UI conflict resolution workflows.
-            "source_events": int(len(source_event_ids)),
+            "source_events": len(source_event_ids),
             "source_event_ids_sample": source_event_sample,
             "overlap_event_ids_sample": overlap_event_sample,
             # Merge semantics: overlapping events will trigger a dedupe delete of the source association.
-            "event_entity_edges_deleted": int(len(overlap_events)),
-            "event_entity_edges_updated": int(max(0, len(source_assocs) - len(overlap_events))),
+            "event_entity_edges_deleted": len(overlap_events),
+            "event_entity_edges_updated": max(0, len(source_assocs) - len(overlap_events)),
         },
     )
 
@@ -1833,7 +1757,7 @@ def create_kg_predicate_ontology(
     from app.rag.kg.extraction.relation_processor import normalize_predicate
     from app.rag.kg.models import KgPredicateOntology
 
-    key = normalize_predicate(str(payload.predicate or ""))
+    key = normalize_predicate(payload.predicate)
     if not key or key == "unknown":
         raise HTTPException(status_code=400, detail="Invalid predicate key")
 
@@ -1863,10 +1787,10 @@ def create_kg_predicate_ontology(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.ontology.predicate.upsert",
                 resource_type="kg_predicate_ontology",
-                resource_id=str(getattr(row, "id", "")),
+                resource_id=str(row.id),
                 details={"predicate": key, "is_enabled": bool(payload.is_enabled)},
             )
         )
@@ -1877,10 +1801,7 @@ def create_kg_predicate_ontology(
         db.commit()
         db.refresh(row)
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     return KGPredicateOntologyItem.model_validate(row)
@@ -1924,7 +1845,7 @@ def update_kg_predicate_ontology(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.ontology.predicate.update",
                 resource_type="kg_predicate_ontology",
                 resource_id=str(predicate_id),
@@ -1938,10 +1859,7 @@ def update_kg_predicate_ontology(
         db.commit()
         db.refresh(row)
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     return KGPredicateOntologyItem.model_validate(row)
@@ -1969,7 +1887,7 @@ def delete_kg_predicate_ontology(
     if not row:
         raise HTTPException(status_code=404, detail="Predicate not found")
 
-    pred = str(getattr(row, "predicate", "") or "")
+    pred = row.predicate
     db.delete(row)
 
     try:
@@ -1977,7 +1895,7 @@ def delete_kg_predicate_ontology(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.ontology.predicate.delete",
                 resource_type="kg_predicate_ontology",
                 resource_id=str(predicate_id),
@@ -1990,14 +1908,11 @@ def delete_kg_predicate_ontology(
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     # Return updated list for convenience in the UI.
-    return list_kg_predicate_ontology(tenant_id=tenant_id, account_id=account_id, db=db)
+    return list_kg_predicate_ontology(tenant_id=tenant_id, _account_id=account_id, db=db)
 
 
 @router.post("/entities/merge", response_model=KGEntityMergeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -2092,8 +2007,8 @@ def merge_kg_entities(
     payload_dict = dict(action.payload or {})
     payload_dict["event_entity_deleted_rows"] = deleted_assoc_rows
     payload_dict["relation_deleted_rows"] = relation_deleted_rows
-    payload_dict["redirect_created"] = bool(redirect_created)
-    payload_dict["vector_deleted"] = bool(vector_deleted)
+    payload_dict["redirect_created"] = redirect_created
+    payload_dict["vector_deleted"] = vector_deleted
     action.payload = payload_dict
 
     _commit_or_rollback(db)
@@ -2107,8 +2022,8 @@ def merge_kg_entities(
             "source_relations": len(affected.source_relations),
             "dedup_deleted_event_entity_edges": len(deleted_assoc_rows),
             "deleted_relations": len(relation_deleted_rows),
-            "redirect_created": bool(redirect_created),
-            "vector_deleted": bool(vector_deleted),
+            "redirect_created": redirect_created,
+            "vector_deleted": vector_deleted,
         },
     )
 
@@ -2123,21 +2038,21 @@ def _validated_split_event_ids(payload: KGEntitySplitRequest) -> list[UUID]:
 
 
 def _split_new_entity_name(payload: KGEntitySplitRequest) -> str:
-    new_name = str(payload.new_entity_name or "").strip()
+    new_name = payload.new_entity_name.strip()
     if not new_name:
         raise HTTPException(status_code=400, detail="new_entity_name is required")
     return new_name
 
 
 def _create_split_entity(
-    entity_model: Any,
+    entity_model: type["KgEntity"],
     *,
     tenant_id: UUID,
-    source_entity: Any,
+    source_entity: "KgEntity",
     new_name: str,
     new_norm: str,
     original_id: UUID,
-) -> tuple[UUID, Any]:
+) -> tuple[UUID, "KgEntity"]:
     from datetime import datetime
 
     new_entity_id = uuid.uuid4()
@@ -2145,7 +2060,7 @@ def _create_split_entity(
         id=new_entity_id,
         tenant_id=tenant_id,
         name=new_name,
-        type=str(getattr(source_entity, "type", "") or "unknown"),
+        type=str(source_entity.type or "unknown"),
         normalized_name=new_norm,
         description=None,
         vector=None,
@@ -2162,7 +2077,7 @@ def _move_split_associations(source_assocs: list[Any], *, event_id_set: set[UUID
         event_id = getattr(assoc, "event_id", None)
         if event_id is None or event_id not in event_id_set:
             continue
-        moved_assoc_ids.append(str(getattr(assoc, "id", "") or ""))
+        moved_assoc_ids.append(str(assoc.id))
         assoc.entity_id = new_entity_id
     return moved_assoc_ids
 
@@ -2179,7 +2094,7 @@ def _move_split_relations(
         event_id = getattr(relation, "event_id", None)
         if event_id is None or event_id not in event_id_set:
             continue
-        moved_relation_ids.append(str(getattr(relation, "id", "") or ""))
+        moved_relation_ids.append(str(relation.id))
         if getattr(relation, "subject_entity_id", None) == original_id:
             relation.subject_entity_id = new_entity_id
         if getattr(relation, "object_entity_id", None) == original_id:
@@ -2188,7 +2103,7 @@ def _move_split_relations(
 
 
 def _create_split_action(
-    action_model: Any,
+    action_model: type["KgEntityResolutionAction"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -2198,13 +2113,13 @@ def _create_split_action(
     moved_relation_ids: list[str],
     new_name: str,
     event_ids: list[UUID],
-) -> Any:
+) -> "KgEntityResolutionAction":
     from datetime import datetime
 
     return action_model(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        actor_id=str(account_id or "").strip() or None,
+        actor_id=account_id,
         action_type="split",
         status="applied",
         payload={
@@ -2240,7 +2155,7 @@ def split_kg_entity(
     _ensure_enabled()
 
     from app.models.audit_log import AuditLog
-    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.extraction.parser import normalize_entity_name
     from app.rag.kg.models import KgEntity, KgEntityResolutionAction, KgEventEntity, KgRelation
 
     original_raw = payload.entity_id
@@ -2253,8 +2168,7 @@ def split_kg_entity(
     event_ids = _validated_split_event_ids(payload)
     event_id_set = set(event_ids)
     new_name = _split_new_entity_name(payload)
-    parser = EntityValueParser()
-    new_norm = parser.normalize_name(new_name)
+    new_norm = normalize_entity_name(new_name)
     new_entity_id, new_ent = _create_split_entity(
         KgEntity,
         tenant_id=tenant_id,
@@ -2361,7 +2275,7 @@ def undo_kg_entity_resolution_action(
 
     action.status = "reverted"
     action.reversed_at = datetime.now(UTC).replace(tzinfo=None)
-    action.reversed_by = str(account_id or "").strip() or None
+    action.reversed_by = account_id
 
     _add_resolution_audit_log(
         db,
@@ -2377,12 +2291,12 @@ def undo_kg_entity_resolution_action(
 
     return KGEntityResolutionUndoResponse(
         action_id=action.id,
-        status=str(action.status or ""),
+        status=action.status,
         stats={
-            "restored_event_entity_edges": int(stats.restored_edges),
-            "restored_relations": int(stats.restored_relations),
-            "redirect_removed": bool(stats.redirect_removed),
-            "deleted_new_entity": bool(stats.deleted_new_entity),
+            "restored_event_entity_edges": stats.restored_edges,
+            "restored_relations": stats.restored_relations,
+            "redirect_removed": stats.redirect_removed,
+            "deleted_new_entity": stats.deleted_new_entity,
         },
     )
 
@@ -2417,10 +2331,12 @@ def delete_kg_for_document(
         ).delete(synchronize_session=False)
         db.flush()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning(
+            "KG relation cleanup failed before document event deletion: document_id=%s",
+            document_id,
+            exc_info=True,
+        )
 
     stats = Indexer(db).delete_event_indexes(
         tenant_id=tenant_id,
@@ -2434,7 +2350,7 @@ def delete_kg_for_document(
 
         details: dict[str, Any] = {
             "document_id": str(document_id),
-            "prune_orphan_entities": bool(eff_prune_orphans),
+            "prune_orphan_entities": eff_prune_orphans,
         }
         if isinstance(stats, dict):
             for k, v in stats.items():
@@ -2448,7 +2364,7 @@ def delete_kg_for_document(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.document.delete",
                 resource_type="document",
                 resource_id=str(document_id),
@@ -2457,8 +2373,12 @@ def delete_kg_for_document(
         )
         db.commit()
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        logger.warning(
+            "KG document deletion completed but audit logging failed: document_id=%s",
+            document_id,
+            exc_info=True,
+        )
     return KGDeleteResponse(document_id=document_id, **(stats or {}))
 
 
@@ -2566,8 +2486,8 @@ async def run_kg_search(
             )
     elif payload.dataset_id:
         # Enterprise semantics: allow dataset-scoped search without enumerating all document_ids.
-        ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = payload.dataset_id
     else:
         raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")

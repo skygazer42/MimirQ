@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.text import split_into_claims, verify_claim_with_fallback
@@ -25,7 +24,7 @@ def compute_faithfulness_score(
     - faithfulness_score = supported_claims / total_claims (0..1), or None when no claims.
     """
     max_claims = max(1, int(max_claims or 0))
-    raw_answer = str(answer or "").strip()
+    raw_answer = answer.strip()
     if not raw_answer:
         return {
             "score": None,
@@ -45,17 +44,13 @@ def compute_faithfulness_score(
             "method": "claim_support_ratio",
         }
 
-    evidence = str(evidence_text or "")
+    evidence = evidence_text
     supported = 0
-    total = 0
+    total = len(claims)
     unsupported_claims: list[str] = []
     for claim in claims:
-        c = str(claim or "").strip()
-        if not c:
-            continue
-        total += 1
         vr = verify_claim_with_fallback(
-            c,
+            claim,
             evidence,
             verifier_mode=verifier_mode,
             verifier_enable_contradiction_check=bool(verifier_enable_contradiction_check),
@@ -68,14 +63,13 @@ def compute_faithfulness_score(
             supported += 1
             continue
         if len(unsupported_claims) < 16:
-            unsupported_claims.append(c[:300])
+            unsupported_claims.append(claim[:300])
 
     score = round(float(supported) / float(total), 4) if total > 0 else None
     return {
         "score": score,
-        "supported_claims": int(supported),
-        "total_claims": int(total),
+        "supported_claims": supported,
+        "total_claims": total,
         "unsupported_claims": unsupported_claims,
         "method": "claim_support_ratio",
     }
-

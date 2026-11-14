@@ -1,15 +1,29 @@
-
 from io import BytesIO
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from docx import Document as DocxDocument
 from docx.enum.text import WD_COLOR_INDEX
 
+if TYPE_CHECKING:
+    from docx.document import Document
 
-def _add_highlighted_heading(doc: DocxDocument, title: str, *, highlight_keywords: list[str] | None) -> None:
+
+def markdown_to_blocks(markdown: str) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    for raw in markdown.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("# "):
+            blocks.append({"type": "heading", "level": 1, "text": line[2:].strip()})
+            continue
+        blocks.append({"type": "paragraph", "text": line})
+    return blocks
+
+
+def _add_highlighted_heading(doc: "Document", title: str, *, highlight_keywords: list[str] | None) -> None:
     paragraph = doc.add_heading("", level=1)
-    keywords = [str(item or "").strip() for item in (highlight_keywords or []) if str(item or "").strip()]
+    keywords = [item.strip() for item in (highlight_keywords or []) if item.strip()]
     if not keywords:
         paragraph.add_run(title)
         return
@@ -34,33 +48,6 @@ def _add_highlighted_heading(doc: DocxDocument, title: str, *, highlight_keyword
         cursor = idx + len(keyword)
 
 
-def write_clean_docx(
-    path: str | Path,
-    *,
-    title: str | None,
-    blocks: list[dict[str, Any]],
-    highlight_keywords: list[str] | None = None,
-) -> Path:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    doc = DocxDocument()
-    title_text = str(title or "").strip()
-    if title_text:
-        _add_highlighted_heading(doc, title_text, highlight_keywords=highlight_keywords)
-
-    for block in blocks or []:
-        if not isinstance(block, dict):
-            continue
-        text = str(block.get("text") or "").strip()
-        if not text:
-            continue
-        doc.add_paragraph(text)
-
-    doc.save(str(target))
-    return target
-
-
 def render_clean_docx_bytes(
     *,
     title: str | None,
@@ -68,15 +55,17 @@ def render_clean_docx_bytes(
     highlight_keywords: list[str] | None = None,
 ) -> bytes:
     doc = DocxDocument()
-    title_text = str(title or "").strip()
+    title_text = str(title).strip() if title is not None else None
     if title_text:
         _add_highlighted_heading(doc, title_text, highlight_keywords=highlight_keywords)
 
-    for block in blocks or []:
-        if not isinstance(block, dict):
+    for block in blocks:
+        raw_type = block.get("type")
+        block_type = raw_type.strip().lower() if isinstance(raw_type, str) else None
+        value = block.get("text")
+        if value is None:
             continue
-        block_type = str(block.get("type") or "").strip().lower()
-        text = str(block.get("text") or "").strip()
+        text = str(value).strip()
         if not text:
             continue
         if block_type == "heading":

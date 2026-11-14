@@ -1,5 +1,5 @@
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from app.core.config import settings
 
@@ -34,12 +34,17 @@ def normalize_kg_query_mode(mode: Any, *, default: str = "auto") -> str:
     raw = str(mode or "").strip().lower()
     if raw in _ALLOWED_MODES:
         return raw
-    return (
-        str(default or "auto").strip().lower() if str(default or "auto").strip().lower() in _ALLOWED_MODES else "auto"
-    )
+    default_norm = str(default or "auto").strip().lower()
+    return default_norm if default_norm in _ALLOWED_MODES else "auto"
 
 
-def _query_mode_result(mode: str, confidence: str, reasons: list[str]) -> dict[str, Any]:
+class _QueryModeResult(TypedDict):
+    mode: str
+    confidence: str
+    reason_codes: list[str]
+
+
+def _query_mode_result(mode: str, confidence: str, reasons: list[str]) -> _QueryModeResult:
     return {
         "mode": mode,
         "confidence": confidence,
@@ -47,7 +52,7 @@ def _query_mode_result(mode: str, confidence: str, reasons: list[str]) -> dict[s
     }
 
 
-def _query_mode_with_reason(mode: str, confidence: str, reasons: list[str], reason: str) -> dict[str, Any]:
+def _query_mode_with_reason(mode: str, confidence: str, reasons: list[str], reason: str) -> _QueryModeResult:
     reasons.append(reason)
     return _query_mode_result(mode, confidence, reasons)
 
@@ -65,7 +70,7 @@ def _dataset_scope_mode(
     dataset_id: Any,
     doc_count: int,
     reasons: list[str],
-) -> dict[str, Any] | None:
+) -> _QueryModeResult | None:
     if dataset_id is None or doc_count != 0:
         return None
     if _DATASET_FACTOID_RE.search(query):
@@ -88,11 +93,11 @@ def _apply_local_budget(
     reason_codes: list[str],
 ) -> tuple[int, int, float]:
     max_events_out = min(
-        int(max_events_out),
-        max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 40) or 40)),
+        max_events_out,
+        max(1, int(settings.KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS)),
     )
     final_entity_count_out = min(final_entity_count_out, 20)
-    bonus = float(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)
+    bonus = float(settings.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS)
     entity_weight_threshold_out = min(1.0, entity_weight_threshold_out + max(0.0, bonus))
     reason_codes.append("local_focus_budget")
     return max_events_out, final_entity_count_out, entity_weight_threshold_out
@@ -112,14 +117,14 @@ def _apply_global_budget(
     )
     if is_low_confidence_fallback:
         max_events_out = min(
-            int(max_events_out),
-            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 80) or 80)),
+            max_events_out,
+            max(1, int(settings.KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS)),
         )
         reason_codes.append("low_confidence_global_budget")
         return max_events_out, max_entities_out, final_entity_count_out
     max_events_out = max(
-        int(max_events_out),
-        max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 120) or 120)),
+        max_events_out,
+        max(1, int(settings.KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS)),
     )
     max_entities_out = max(max_entities_out, 40)
     final_entity_count_out = max(final_entity_count_out, 25)
@@ -135,8 +140,8 @@ def _apply_drift_budget(
     reason_codes: list[str],
 ) -> tuple[int, int, int]:
     max_events_out = max(
-        int(max_events_out),
-        max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 140) or 140)),
+        max_events_out,
+        max(1, int(settings.KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS)),
     )
     max_entities_out = max(max_entities_out, 45)
     final_entity_count_out = max(final_entity_count_out, 30)
@@ -150,12 +155,12 @@ def classify_kg_query_mode(
     document_ids: list[Any] | None = None,
     dataset_id: Any = None,
     default_mode: str = "auto",
-) -> dict[str, Any]:
+) -> _QueryModeResult:
     default_norm = normalize_kg_query_mode(default_mode, default="auto")
     if default_norm != "auto":
         return _query_mode_result(default_norm, "forced", ["default_mode_forced"])
 
-    q = str(query or "").strip()
+    q = query.strip()
     q_fold = q.casefold()
     reasons: list[str] = []
 
@@ -176,7 +181,7 @@ def classify_kg_query_mode(
         if not has_local:
             return _query_mode_result("global", "medium", reasons)
 
-    doc_count = len(list(document_ids or []))
+    doc_count = len(document_ids or [])
     if _single_doc_row_focus(q_fold, q, doc_count=doc_count):
         return _query_mode_with_reason("local", "high", reasons, "single_doc_row_focus")
 
@@ -241,10 +246,10 @@ def build_mode_aware_recall_overrides(
 
     return {
         "mode": mode_norm,
-        "max_events": int(max_events_out),
-        "max_entities": int(max_entities_out),
-        "final_entity_count": int(final_entity_count_out),
-        "entity_weight_threshold": round(float(entity_weight_threshold_out), 6),
+        "max_events": max_events_out,
+        "max_entities": max_entities_out,
+        "final_entity_count": final_entity_count_out,
+        "entity_weight_threshold": round(entity_weight_threshold_out, 6),
         "reason_codes": reason_codes,
     }
 

@@ -17,43 +17,37 @@ Notes:
   cleanup to avoid duplicating side effects in a second code path.
 """
 
-
-import contextlib
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.async_bridge import run_blocking_in_thread
+from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
 from app.services.retention_jobs import _resolve_delete_document_lifecycle
 
 RTBF_CASCADE_SCHEMA_V1 = "mimirq.rtbf_cascade.v1"
 RTBF_ARTIFACT_SCOPES = ["documents", "chunks", "kg", "vectors", "object_assets", "cache"]
+logger = get_logger(__name__)
 
 
 def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _safe_int(value: object, *, default: int = 0) -> int:
-    try:
-        if value is None:
-            return int(default)
-        return int(value)
-    except Exception:
-        return int(default)
-
-
-def _match_reason_list(doc: object, *, subject_account_id: str, subject_user_uuid: UUID | None) -> list[str]:
+def _match_reason_list(doc: DBDocument, *, subject_account_id: str, subject_user_uuid: UUID | None) -> list[str]:
     reasons: list[str] = []
-    if str(getattr(doc, "owner_id", "") or "").strip() == subject_account_id:
+    if str(doc.owner_id or "").strip() == subject_account_id:
         reasons.append("owner_id")
-    if str(getattr(doc, "lifecycle_owner", "") or "").strip() == subject_account_id:
+    if str(doc.lifecycle_owner or "").strip() == subject_account_id:
         reasons.append("lifecycle_owner")
-    if subject_user_uuid is not None and getattr(doc, "user_id", None) == subject_user_uuid:
+    if subject_user_uuid is not None and doc.user_id == subject_user_uuid:
         reasons.append("user_id")
     return reasons
 
@@ -65,7 +59,7 @@ def _list_rtbf_documents(
     subject_account_id: str,
     max_docs: int = 100,
 ) -> list[dict[str, object]]:
-    subject = str(subject_account_id or "").strip()
+    subject = subject_account_id.strip()
     if not subject:
         return []
 
@@ -88,18 +82,23 @@ def _list_rtbf_documents(
             continue
         out.append(
             {
-                "document_id": getattr(doc, "id", None),
-                "dataset_id": getattr(doc, "dataset_id", None),
-                "owner_id": str(getattr(doc, "owner_id", "") or "").strip() or None,
-                "filename": str(getattr(doc, "filename", "") or "").strip() or None,
+                "document_id": doc.id,
+                "dataset_id": doc.dataset_id,
+                "owner_id": doc.owner_id,
+                "filename": doc.filename,
                 "match_reasons": reasons,
             }
         )
     return out
 
 
+def _load_rtbf_candidates(*, tenant_id: UUID, subject_account_id: str, max_docs: int) -> list[dict[str, object]]:
+    with SessionLocal() as db:
+        return _list_rtbf_documents(db, tenant_id=tenant_id, subject_account_id=subject_account_id, max_docs=max_docs)
+
+
 async def _run_delete_document_lifecycle(
-    delete_document_lifecycle,
+    delete_document_lifecycle: Callable[..., Awaitable[None]],
     *,
     document_id: UUID,
     tenant_id: UUID,
@@ -134,30 +133,35 @@ def _invalidate_dataset_caches(
     dataset_ids: set[UUID],
     max_retries: int,
 ) -> int:
-    invalidated = 0
     retries = max(0, int(max_retries or 0))
-    for dataset_id in sorted(dataset_ids):
-        attempts = 0
-        while attempts <= retries:
-            attempts += 1
-            try:
+    ordered_dataset_ids = sorted(dataset_ids)
+    for attempt in range(retries + 1):
+        try:
+            for dataset_id in ordered_dataset_ids:
                 invalidate_dataset_cache_namespace(db, tenant_id=tenant_id, dataset_id=dataset_id)
-                invalidated += 1
-                break
-            except Exception:
-                if attempts > retries:
-                    raise
-    return invalidated
+            return len(ordered_dataset_ids)
+        except Exception:
+            db.rollback()
+            if attempt == retries:
+                raise
+    raise RuntimeError("dataset cache invalidation retries exhausted")
+
+
+def _invalidate_rtbf_caches(*, tenant_id: UUID, dataset_ids: set[UUID], max_retries: int) -> int:
+    with SessionLocal() as db:
+        count = _invalidate_dataset_caches(db, tenant_id=tenant_id, dataset_ids=dataset_ids, max_retries=max_retries)
+        db.commit()
+        return count
 
 
 def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: bool) -> list[dict[str, object]]:
     return [
         {
-            "document_id": str(item.get("document_id") or ""),
+            "document_id": str(item["document_id"]),
             "dataset_id": (str(item.get("dataset_id")) if item.get("dataset_id") is not None else None),
             "filename": item.get("filename"),
             "match_reasons": list(item.get("match_reasons") or []),
-            "status": "planned" if bool(dry_run) else "pending",
+            "status": "planned" if dry_run else "pending",
             "attempts": 0,
         }
         for item in candidates[:50]
@@ -165,7 +169,7 @@ def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: boo
 
 
 def _increment_summary(summary: dict[str, object], key: str) -> None:
-    summary[key] = int(summary.get(key, 0) or 0) + 1
+    summary[key] = summary[key] + 1
 
 
 def _update_summary_document(
@@ -180,7 +184,7 @@ def _update_summary_document(
     if not isinstance(state, dict):
         return
     state["status"] = status
-    state["attempts"] = int(attempts)
+    state["attempts"] = attempts
     if error is not None:
         state["error"] = error
 
@@ -201,9 +205,9 @@ def _build_rtbf_summary(
         "subject_account_id": subject,
         "dry_run": bool(dry_run),
         "max_docs": int(max_docs),
-        "max_retries": int(max(0, int(max_retries or 0))),
+        "max_retries": max(0, int(max_retries or 0)),
         "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
-        "eligible": int(len(candidates)),
+        "eligible": len(candidates),
         "deleted": 0,
         "errors": 0,
         "cache_invalidations": 0,
@@ -224,7 +228,7 @@ async def _execute_rtbf_cascade(
 ) -> None:
     delete_document_lifecycle = _resolve_delete_document_lifecycle()
     successful_dataset_ids: set[UUID] = set()
-    doc_state_by_id = {str(item.get("document_id") or ""): item for item in summary["documents"]}  # type: ignore[index]
+    doc_state_by_id = {str(item["document_id"]): item for item in summary["documents"]}  # type: ignore[index]
 
     for item in candidates:
         document_id = item.get("document_id")
@@ -253,19 +257,17 @@ async def _execute_rtbf_cascade(
                 document_id=document_id,
                 status="error",
                 error=str(exc)[:200],
-                attempts=int(max(1, int(max_retries or 0) + 1)),
+                attempts=max(1, int(max_retries or 0) + 1),
             )
             _increment_summary(summary, "errors")
 
     if successful_dataset_ids:
         try:
-            summary["cache_invalidations"] = int(
-                _invalidate_dataset_caches(
-                    db,
-                    tenant_id=tenant_id,
-                    dataset_ids=successful_dataset_ids,
-                    max_retries=max_retries,
-                )
+            summary["cache_invalidations"] = await run_blocking_in_thread(
+                _invalidate_rtbf_caches,
+                tenant_id=tenant_id,
+                dataset_ids=successful_dataset_ids,
+                max_retries=max_retries,
             )
         except Exception:
             _increment_summary(summary, "errors")
@@ -289,13 +291,27 @@ def _audit_rtbf_summary(
         resource_id=subject,
         details={
             "dry_run": bool(dry_run),
-            "eligible": int(summary.get("eligible", 0) or 0),
-            "deleted": int(summary.get("deleted", 0) or 0),
-            "errors": int(summary.get("errors", 0) or 0),
-            "cache_invalidations": int(summary.get("cache_invalidations", 0) or 0),
+            "eligible": summary["eligible"],
+            "deleted": summary["deleted"],
+            "errors": summary["errors"],
+            "cache_invalidations": summary["cache_invalidations"],
             "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
         },
     )
+
+
+def _commit_rtbf_audit(
+    *, tenant_id: UUID, actor_id: str, subject: str, dry_run: bool, summary: dict[str, object]
+) -> None:
+    with SessionLocal() as db:
+        try:
+            _audit_rtbf_summary(
+                db, tenant_id=tenant_id, actor_id=actor_id, subject=subject, dry_run=dry_run, summary=summary
+            )
+            db.commit()
+        except Exception:
+            logger.warning("RTBF audit logging failed: tenant_id=%s", tenant_id, exc_info=True)
+            db.rollback()
 
 
 async def run_rtbf_cascade(
@@ -310,9 +326,9 @@ async def run_rtbf_cascade(
     now: datetime | None = None,
 ) -> dict[str, object]:
     now0 = now or _now_utc()
-    subject = str(subject_account_id or "").strip()
-    candidates = _list_rtbf_documents(
-        db,
+    subject = subject_account_id.strip()
+    candidates = await run_blocking_in_thread(
+        _load_rtbf_candidates,
         tenant_id=tenant_id,
         subject_account_id=subject,
         max_docs=max_docs,
@@ -338,17 +354,9 @@ async def run_rtbf_cascade(
             max_retries=max_retries,
         )
 
-    with contextlib.suppress(Exception):
-        _audit_rtbf_summary(
-            db,
-            tenant_id=tenant_id,
-            actor_id=str(actor_id),
-            subject=subject,
-            dry_run=dry_run,
-            summary=summary,
-        )
-    with contextlib.suppress(Exception):
-        db.commit()
+    await run_blocking_in_thread(
+        _commit_rtbf_audit, tenant_id=tenant_id, actor_id=actor_id, subject=subject, dry_run=dry_run, summary=summary
+    )
 
     return summary
 

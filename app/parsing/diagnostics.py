@@ -42,7 +42,7 @@ def sample_pdf_text_pages(
         return _empty_pdf_text_sample()
 
     try:
-        page_count = int(getattr(doc, "page_count", 0) or 0)
+        page_count = doc.page_count
         if page_count <= 0:
             return {"page_count": page_count, "samples": [], "is_scanned": False}
 
@@ -53,21 +53,22 @@ def sample_pdf_text_pages(
         if page_count >= 2:
             idxs.append(page_count)
         idxs = sorted({i for i in idxs if 1 <= i <= page_count})
-        idxs = idxs[: max(0, int(max_pages or 0))] if int(max_pages or 0) > 0 else idxs
+        if max_pages > 0:
+            idxs = idxs[:max_pages]
 
         samples: list[dict[str, Any]] = []
         for page_no in idxs:
             try:
                 page = doc.load_page(page_no - 1)
-                txt = (page.get_text("text") or "").strip()
+                txt = (page.get_text("text")).strip()
             except Exception:
                 txt = ""
 
-            excerpt = txt[: max(0, int(max_excerpt_chars or 0))] if txt else ""
+            excerpt = txt[: max(0, max_excerpt_chars)]
             samples.append({"page": page_no, "text_chars": len(txt), "excerpt": excerpt})
 
         # Heuristic: if none of sampled pages has meaningful selectable text, treat as scanned.
-        is_scanned = bool(samples) and all(int(s.get("text_chars") or 0) < 20 for s in samples)
+        is_scanned = bool(samples) and all(sample["text_chars"] < 20 for sample in samples)
         return {"page_count": page_count, "samples": samples, "is_scanned": is_scanned}
     finally:
         try:
@@ -129,7 +130,7 @@ def suggest_parser_backends(
     """
     Suggest a small ordered list of parser backends for user retry actions.
     """
-    file_ext0 = str(file_ext or "").strip().lower()
+    file_ext0 = file_ext.strip().lower()
     available = _filter_available_backends(file_ext0, parser_factory=parser_factory)
 
     if file_ext0 == ".pdf" and pdf_is_scanned is True:
@@ -160,22 +161,22 @@ def build_parse_failure_diagnostics(
     file_ext: str,
     parser_backend_requested: str,
     parser_backend_resolved: str,
-    error_type: str,
+    error_type: str | None,
     error_message: str,
 ) -> dict[str, Any]:
     """
     Build a structured diagnostics payload for parse failures (best-effort).
     """
-    ext = str(file_ext or "").strip().lower()
-    requested = str(parser_backend_requested or "").strip().lower() or "auto"
-    resolved = str(parser_backend_resolved or "").strip().lower() or requested
+    ext = file_ext.strip().lower()
+    requested = parser_backend_requested.strip().lower() or "auto"
+    resolved = parser_backend_resolved.strip().lower() or requested
 
     diag: dict[str, Any] = {
         "file_type": ext,
         "parser_backend_requested": requested,
         "parser_backend": resolved,
-        "error_type": str(error_type or ""),
-        "error_message": str(error_message or "")[:400],
+        "error_type": error_type,
+        "error_message": error_message[:400],
     }
 
     parser_factory = ParserFactory()
@@ -184,7 +185,7 @@ def build_parse_failure_diagnostics(
     pdf_is_scanned: bool | None = None
     if ext == ".pdf":
         pdf_sample = sample_pdf_text_pages(Path(file_path), max_pages=3, max_excerpt_chars=240)
-        pdf_is_scanned = bool(pdf_sample.get("is_scanned")) if isinstance(pdf_sample, dict) else None
+        pdf_is_scanned = bool(pdf_sample["is_scanned"])
         diag["pdf_sample"] = pdf_sample
 
     diag["suggested_backends"] = suggest_parser_backends(

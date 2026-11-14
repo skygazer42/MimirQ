@@ -5,8 +5,6 @@ We accept a few common aliases from UI / env / user input and map them to the
 canonical backend names used internally.
 """
 
-
-
 _BACKEND_ALIASES: dict[str, str] = {
     # PyMuPDF basic parser aliases
     "pymupdf": "basic",
@@ -64,8 +62,20 @@ def normalize_parser_backend(value: str | None) -> str:
     - "magic-pdf" / "magic_pdf" -> "magicpdf"
     - "pymupdf" -> "basic"
     """
-    text = (value or "").strip().lower()
+    if value is None:
+        return ""
+    text = value.strip().lower()
     if not text:
         return ""
     text = text.replace("_", "-")
     return _BACKEND_ALIASES.get(text, text)
+
+
+def require_resolved_parser_backend(value: object) -> str:
+    """Validate an execution result; request selectors are not execution provenance."""
+    if not isinstance(value, str):
+        raise ValueError("resolved_backend must be a concrete parser name")
+    backend = value.strip().lower()
+    if backend in {"", "auto", "unknown"}:
+        raise ValueError("resolved_backend must be a concrete parser name")
+    return backend

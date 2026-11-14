@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter
@@ -27,16 +26,18 @@ MILVUS_SEARCH_EXPR_FALLBACK_TOTAL = Counter(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return settings.PROMETHEUS_ENABLED
 
 
 _SAFE_LABEL_RE = re.compile(r"[^a-z0-9._:-]+")
 
 
 def _safe_label(value: str | None, *, fallback: str) -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return fallback
+    s = value.strip().lower()
     s = _SAFE_LABEL_RE.sub("_", s)
-    s = (s[:64] or "").strip("_")
+    s = (s[:64]).strip("_")
     return s or fallback
 
 
@@ -60,4 +61,3 @@ __all__ = [
     "observe_milvus_write_compat_fallback",
     "observe_milvus_search_expr_fallback",
 ]
-

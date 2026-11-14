@@ -11,7 +11,6 @@ This is intentionally conservative: it only fires on explicit patterns (parenthe
 and should prefer precision over recall.
 """
 
-
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -106,14 +105,14 @@ _CJK_NON_ABBREV_SUFFIXES: tuple[str, ...] = (
 
 
 def _clean_surface(text: str) -> str:
-    s = unicodedata.normalize("NFKC", str(text or ""))
+    s = unicodedata.normalize("NFKC", text)
     s = _WS_RE.sub(" ", s).strip()
     s = s.strip(_EDGE_PUNCT_CHARS).strip()
     return s
 
 
 def _contains_cjk(text: str) -> bool:
-    for ch in str(text or ""):
+    for ch in text:
         code = ord(ch)
         if 0x4E00 <= code <= 0x9FFF:
             return True
@@ -121,7 +120,7 @@ def _contains_cjk(text: str) -> bool:
 
 
 def _is_all_cjk(text: str) -> bool:
-    s = str(text or "")
+    s = text
     if not s:
         return False
     for ch in s:
@@ -136,7 +135,7 @@ def _is_en_term_token(token: str) -> bool:
     A conservative heuristic: treat tokens as part of an English "term" if they
     look like proper nouns / abbreviations / versioned names.
     """
-    t = str(token or "").strip()
+    t = token.strip()
     if not t:
         return False
     if any(ch.isupper() for ch in t):
@@ -144,8 +143,6 @@ def _is_en_term_token(token: str) -> bool:
     if any(ch.isdigit() for ch in t):
         return True
     if any(ch in "-._+/:" for ch in t):
-        return True
-    if t.isalpha() and t.isupper():
         return True
     return False
 
@@ -209,7 +206,7 @@ def best_suffix_match(text: str, candidates: list[str], *, min_chars: int = 2) -
         lim = 1
 
     for cand in candidates or []:
-        c = _clean_surface(str(cand or "")).casefold()
+        c = _clean_surface(cand).casefold()
         if not c or len(c) < lim:
             continue
         if not t.endswith(c):
@@ -360,7 +357,7 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[Ali
 
     This returns unordered pairs (a, b). Direction (alias vs canonical) is decided later.
     """
-    clean = unicodedata.normalize("NFKC", str(text or ""))
+    clean = unicodedata.normalize("NFKC", text)
     if not clean:
         return []
 

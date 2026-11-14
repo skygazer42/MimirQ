@@ -1,4 +1,3 @@
-
 import json
 import logging
 import re
@@ -25,9 +24,7 @@ def normalize_claim_nli_provider(value: str | None) -> str:
 
 def describe_claim_nli_provider(provider: str | None, *, enabled: bool | None = None) -> dict[str, Any]:
     normalized = normalize_claim_nli_provider(provider)
-    enabled_flag = bool(enabled) if enabled is not None else bool(
-        getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)
-    )
+    enabled_flag = bool(enabled) if enabled is not None else settings.RAG_CLAIM_NLI_VERIFIER_ENABLED
     if not enabled_flag or normalized == "none":
         return {"provider": "none", "tier": "disabled", "enabled": False}
     if normalized == "openai_compatible":
@@ -45,7 +42,7 @@ class ClaimNLIVerificationResult:
 
 
 def _extract_label(content: str) -> tuple[str | None, str | None]:
-    raw = str(content or "").strip()
+    raw = content.strip()
     if not raw:
         return None, None
     try:
@@ -54,13 +51,13 @@ def _extract_label(content: str) -> tuple[str | None, str | None]:
         parsed = None
     if isinstance(parsed, dict):
         label = str(parsed.get("label") or "").strip().lower() or None
-        reason = str(parsed.get("reason") or "").strip() or None
+        reason = parsed.get("reason")
         if label in {"entailment", "contradiction", "neutral"}:
             return label, reason
 
     match = _LABEL_RE.search(raw)
     if match:
-        return str(match.group(1) or "").strip().lower(), raw[:240]
+        return match.group(1).strip().lower(), raw[:240]
     return None, raw[:240]
 
 
@@ -75,11 +72,9 @@ def verify_claim_with_nli(
     api_base: str | None = None,
     timeout_sec: float | None = None,
 ) -> ClaimNLIVerificationResult:
-    enabled_flag = bool(enabled) if enabled is not None else bool(
-        getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)
-    )
+    enabled_flag = bool(enabled) if enabled is not None else settings.RAG_CLAIM_NLI_VERIFIER_ENABLED
     provider_norm = normalize_claim_nli_provider(
-        provider if provider is not None else getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none")
+        provider if provider is not None else settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER
     )
     provider_status = describe_claim_nli_provider(provider_norm, enabled=enabled_flag)
 
@@ -100,29 +95,12 @@ def verify_claim_with_nli(
             diagnostics={"reason_code": "nli_provider_unsupported"},
         )
 
-    resolved_model = str(
-        model_name
-        or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "")
-        or getattr(settings, "LLM_MODEL", "")
-        or ""
-    ).strip()
-    resolved_api_key = str(
-        api_key
-        or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_API_KEY", "")
-        or getattr(settings, "LLM_API_KEY", "")
-        or ""
-    ).strip()
+    resolved_model = str(model_name or settings.RAG_CLAIM_NLI_VERIFIER_MODEL or settings.LLM_MODEL).strip()
+    resolved_api_key = str(api_key or settings.RAG_CLAIM_NLI_VERIFIER_API_KEY or settings.LLM_API_KEY).strip()
     resolved_api_base = normalize_openai_compatible_base_url(
-        api_base
-        or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_API_BASE", "")
-        or getattr(settings, "LLM_API_BASE", "")
-        or ""
+        api_base or settings.RAG_CLAIM_NLI_VERIFIER_API_BASE or settings.LLM_API_BASE
     )
-    resolved_timeout = float(
-        timeout_sec
-        if timeout_sec is not None
-        else getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8
-    )
+    resolved_timeout = float(timeout_sec if timeout_sec is not None else settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC)
 
     if not resolved_model or not resolved_api_key or not resolved_api_base:
         return ClaimNLIVerificationResult(
@@ -149,12 +127,7 @@ def verify_claim_with_nli(
             },
             {
                 "role": "user",
-                "content": (
-                    "Claim:\n"
-                    f"{str(claim or '').strip()}\n\n"
-                    "Evidence:\n"
-                    f"{str(evidence or '').strip()}\n"
-                ),
+                "content": (f"Claim:\n{claim.strip()}\n\nEvidence:\n{evidence.strip()}\n"),
             },
         ],
     }

@@ -1,5 +1,3 @@
-
-
 def test_chunk_quality_gate_service_returns_structured_reasons() -> None:
     from app.services.chunk_quality_gate import compute_chunk_quality_gate
 
@@ -30,4 +28,3 @@ def test_chunk_quality_gate_service_returns_structured_reasons() -> None:
     assert "coverage_lt_90" in codes
     assert "too_many_short_chunks" in codes
     assert "too_many_duplicates" in codes
-

@@ -62,6 +62,7 @@ async def test_fetch_jwks_rejects_https_to_http_redirect_downgrade(monkeypatch: 
     class _FakeResponse:
         def __init__(self) -> None:
             self.url = "http://issuer.example/.well-known/jwks.json"
+            self.history = []
 
         def raise_for_status(self) -> None:
             return None
@@ -129,6 +130,7 @@ async def test_fetch_oidc_configuration_rejects_https_to_http_redirect_downgrade
     class _FakeResponse:
         def __init__(self) -> None:
             self.url = "http://issuer.example/.well-known/openid-configuration"
+            self.history = []
 
         def raise_for_status(self) -> None:
             return None

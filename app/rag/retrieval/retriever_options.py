@@ -1,7 +1,7 @@
 """Focused support types and helpers for ``app.rag.retriever``."""
 
 from dataclasses import asdict, dataclass, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -9,6 +9,17 @@ from app.rag.core.hashing import stable_json_hash
 
 if TYPE_CHECKING:
     from app.rag.retriever import HybridRetriever
+
+
+def normalize_rerank_profile(name: str | None) -> str | None:
+    if name is None:
+        return None
+    return name.strip().lower() or None
+
+
+def resolve_rerank_search_k(*, requested_k: int, profile: str | None) -> int:
+    minimum = 20 if normalize_rerank_profile(profile) == "sweet_spot" else 1
+    return max(minimum, requested_k)
 
 
 def _dataset_scoped_runtime_lookup_error(
@@ -21,7 +32,7 @@ def _dataset_scoped_runtime_lookup_error(
     detail = reason.strip() or "unavailable"
     return LookupError(
         "dataset-scoped embedding runtime "
-        f"{detail} (tenant_id={tenant_id}, dataset_ids={len(dataset_ids)}, document_ids={len(document_ids or [])})"
+        f"{detail} (tenant_id={tenant_id}, dataset_ids={len(dataset_ids)}, document_ids={len((document_ids if document_ids is not None else []))})"
     )
 
 
@@ -54,7 +65,17 @@ def _resolve_hybrid_search_options(
         return HybridSearchOptions(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return cast(HybridSearchOptions, replace(options, **legacy_overrides))
+    return replace(options, **legacy_overrides)
+
+
+def retrieval_cache_runtime_values() -> dict[str, Any]:
+    """Bind candidate, semantic and answer caches to the same retrieval configuration."""
+    prefixes = ("BM25_", "MILVUS_BM25_", "COLBERT_", "COLPALI_", "LEXICAL_", "RERANK", "RETRIEVAL_", "SPARSE_")
+    return {
+        key: value
+        for key, value in settings.model_dump(mode="json").items()
+        if key.startswith(prefixes) or key == "VECTOR_BACKEND"
+    }
 
 
 def _build_retrieval_cache_behavior_hash(
@@ -65,12 +86,7 @@ def _build_retrieval_cache_behavior_hash(
     option_values = asdict(options)
     if options.document_ids:
         option_values["document_ids"] = sorted({str(document_id) for document_id in options.document_ids})
-    prefixes = ("BM25_", "COLBERT_", "COLPALI_", "LEXICAL_", "RERANK", "RETRIEVAL_", "SPARSE_")
-    runtime = {
-        key: value
-        for key, value in settings.model_dump(mode="json").items()
-        if key.startswith(prefixes) or key == "VECTOR_BACKEND"
-    }
+    runtime = retrieval_cache_runtime_values()
     return stable_json_hash(
         {"options": option_values, "retriever": retriever.model_dump(mode="json"), "runtime": runtime},
         length=24,
@@ -82,14 +98,14 @@ def _is_dataset_scope_condition(value: Any) -> bool:
         return False
     if isinstance(value, dict):
         if "$eq" in value:
-            return bool(str(value.get("$eq") or "").strip())
+            return _is_dataset_scope_condition(value["$eq"])
         if "$in" in value:
             items = value.get("$in")
-            return isinstance(items, list | tuple | set) and any(str(item or "").strip() for item in items)
+            return isinstance(items, list | tuple | set) and any(_is_dataset_scope_condition(item) for item in items)
         return False
     if isinstance(value, list | tuple | set):
-        return any(str(item or "").strip() for item in value)
-    return bool(str(value or "").strip())
+        return any(_is_dataset_scope_condition(item) for item in value)
+    return bool(str(value).strip())
 
 
 def _metadata_filter_has_dataset_scope(metadata_filter: dict[str, Any] | None) -> bool:
@@ -112,6 +128,7 @@ def _metadata_filter_has_dataset_scope(metadata_filter: dict[str, Any] | None) -
 
 __all__ = [
     "HybridSearchOptions",
+    "retrieval_cache_runtime_values",
     "_build_retrieval_cache_behavior_hash",
     "_dataset_scoped_runtime_lookup_error",
     "_metadata_filter_has_dataset_scope",

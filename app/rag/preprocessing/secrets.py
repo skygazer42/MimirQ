@@ -42,74 +42,52 @@ _PRIVATE_KEY_BLOCK_RE = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
     flags=re.MULTILINE,
 )
-_SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("private_key", _PRIVATE_KEY_BLOCK_RE),
-    ("openai_key", _OPENAI_KEY_RE),
-    ("github_token", _GITHUB_TOKEN_RE),
-    ("slack_token", _SLACK_TOKEN_RE),
-    ("aws_access_key", _AWS_ACCESS_KEY_RE),
-    ("bearer_token", _BEARER_TOKEN_RE),
+_SECRET_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
+    ("private_key", _PRIVATE_KEY_BLOCK_RE, ""),
+    ("openai_key", _OPENAI_KEY_RE, ""),
+    ("github_token", _GITHUB_TOKEN_RE, ""),
+    ("slack_token", _SLACK_TOKEN_RE, ""),
+    ("aws_access_key", _AWS_ACCESS_KEY_RE, ""),
+    ("bearer_token", _BEARER_TOKEN_RE, "Bearer "),
 ]
 
 
 def redact_secrets(
     text: str, *, enabled: bool, mode: SecretMode = "mask", mask: str = "[SECRET]"
 ) -> SecretsRedactResult:
-    original = text or ""
+    original = text
     if not enabled or not original:
         return SecretsRedactResult(text=original, hits={}, changed=False)
 
     hits: dict[str, int] = {}
     token_maps: dict[str, dict[str, str]] = {}
 
-    def make_replacer(
-        kind: str,
-        *,
-        validator: Callable[[str], bool] | None = None,
-        keep_prefix: str = "",
-    ) -> Callable[[re.Match[str]], str]:
+    def make_replacer(kind: str, *, keep_prefix: str) -> Callable[[re.Match[str]], str]:
         token_map = token_maps.setdefault(kind, {})
 
         def repl(match: re.Match[str]) -> str:
-            raw = match.group(0) or ""
+            raw = match.group(0)
             val = raw
             if keep_prefix and raw.lower().startswith(keep_prefix.lower()):
                 val = raw[len(keep_prefix) :]
-            if validator is not None and not validator(val):
-                return raw
-
             hits[kind] = hits.get(kind, 0) + 1
             if mode == "mask":
                 return f"{keep_prefix}{mask}" if keep_prefix else mask
 
-            key = val
-            existing = token_map.get(key)
+            existing = token_map.get(val)
             if existing:
                 return f"{keep_prefix}{existing}" if keep_prefix else existing
             token = f"[SECRET_{kind.upper()}_{len(token_map) + 1}]"
-            token_map[key] = token
+            token_map[val] = token
             return f"{keep_prefix}{token}" if keep_prefix else token
 
         return repl
 
     current = original
-    current = _PRIVATE_KEY_BLOCK_RE.sub(make_replacer("private_key"), current)
-    current = _OPENAI_KEY_RE.sub(make_replacer("openai_key"), current)
-    current = _GITHUB_TOKEN_RE.sub(make_replacer("github_token"), current)
-    current = _SLACK_TOKEN_RE.sub(make_replacer("slack_token"), current)
-    current = _AWS_ACCESS_KEY_RE.sub(make_replacer("aws_access_key"), current)
-
-    # Bearer token: keep "Bearer " prefix for readability.
-    current = _BEARER_TOKEN_RE.sub(make_replacer("bearer_token", keep_prefix="Bearer "), current)
+    for kind, pattern, keep_prefix in _SECRET_PATTERNS:
+        current = pattern.sub(make_replacer(kind, keep_prefix=keep_prefix), current)
 
     return SecretsRedactResult(text=current, hits=hits, changed=(current != original))
-
-
-def _overlaps_taken(a0: int, a1: int, taken: list[tuple[int, int]]) -> bool:
-    for b0, b1 in taken:
-        if a0 < b1 and a1 > b0:
-            return True
-    return False
 
 
 def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch]:
@@ -119,8 +97,7 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
     Intended for review-time displays (precheck / governance debug). Results are
     conservative but still require human verification.
     """
-    s = text or ""
-    if not s:
+    if not text:
         return []
 
     max_matches = max(0, min(int(max_matches or 0), 200))
@@ -130,15 +107,11 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
     taken: list[tuple[int, int]] = []
     out: list[SecretMatch] = []
 
-    for kind, pat in _SECRET_PATTERNS:
-        for m in pat.finditer(s):
-            raw = m.group(0) or ""
-            if not raw:
-                continue
-            start, end = int(m.start()), int(m.end())
-            if start < 0 or end <= start:
-                continue
-            if _overlaps_taken(start, end, taken):
+    for kind, pat, _keep_prefix in _SECRET_PATTERNS:
+        for m in pat.finditer(text):
+            raw = m.group(0)
+            start, end = m.start(), m.end()
+            if any(start < taken_end and end > taken_start for taken_start, taken_end in taken):
                 continue
             out.append(SecretMatch(kind=kind, start=start, end=end, text=raw))
             taken.append((start, end))

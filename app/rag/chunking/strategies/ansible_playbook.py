@@ -6,7 +6,6 @@ by play blocks (each top-level `- name:` / `- hosts:` entry) while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -15,13 +14,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -37,21 +30,8 @@ _PLAY_START_RE = re.compile(r"(?m)^(?P<indent>\s*)-\s*(?:name|hosts)\s*:\s*")
 _TASKS_RE = re.compile(r"(?m)^\s*tasks\s*:\s*")
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
-
-
 def _is_tasks_key_line(line: str) -> bool:
-    s = (line or "").lstrip()
+    s = (line).lstrip()
     if s.startswith("-"):
         s = s[1:].lstrip()
     if not s.lower().startswith("tasks"):
@@ -68,7 +48,7 @@ def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
       name: Value
       hosts: all
     """
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
 
@@ -77,7 +57,7 @@ def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
         s = s[1:].lstrip()
 
     low = s.lower()
-    key_low = (key or "").strip().lower()
+    key_low = (key).strip().lower()
     if not key_low or not low.startswith(key_low):
         return None
 
@@ -93,7 +73,7 @@ def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
 
 
 def _extract_play_field(block_text: str, *, key: str) -> str | None:
-    head = (block_text or "")[:2000]
+    head = (block_text)[:2000]
     for ln in head.splitlines():
         if not ln.strip() or ln.lstrip().startswith("#"):
             continue
@@ -102,16 +82,8 @@ def _extract_play_field(block_text: str, *, key: str) -> str | None:
         val = _parse_yaml_inline_key_value(ln, key=key)
         if not val:
             continue
-        return val[:120] or None
+        return val[:120]
     return None
-
-
-def _extract_play_name(block_text: str) -> str | None:
-    return _extract_play_field(block_text, key="name")
-
-
-def _extract_play_hosts(block_text: str) -> str | None:
-    return _extract_play_field(block_text, key="hosts")
 
 
 def _build_play_blocks(text: str) -> list[_PlayBlock]:
@@ -124,7 +96,7 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
         m = _PLAY_START_RE.match(plain)
         if not m:
             continue
-        indent = len(m.group("indent") or "")
+        indent = len(m.group("indent"))
         if indent != 0:
             continue
         idxs.append(i)
@@ -137,14 +109,14 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
         start = lines[i].start
         end = lines[idxs[j + 1]].start if j + 1 < len(idxs) else len(text)
         end = max(start, min(end, len(text)))
-        blk_text = (text or "")[start:end]
+        blk_text = (text)[start:end]
         blocks.append(
             _PlayBlock(
                 start=start,
                 end=end,
-                index=int(j),
-                name=_extract_play_name(blk_text),
-                hosts=_extract_play_hosts(blk_text),
+                index=j,
+                name=_extract_play_field(blk_text, key="name"),
+                hosts=_extract_play_field(blk_text, key="hosts"),
             )
         )
     return blocks
@@ -170,26 +142,20 @@ def _append_split_documents(
         meta.setdefault("doc_type_kwd", "ansible")
         if extra_meta:
             meta.update(extra_meta)
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=split_doc.page_content, metadata=meta))
 
 
 def _play_block_meta(block: _PlayBlock, block_count: int) -> dict[str, Any]:
     meta: dict[str, Any] = {
-        "ansible_play_index": int(block.index),
-        "ansible_play_count": int(block_count),
+        "ansible_play_index": block.index,
+        "ansible_play_count": block_count,
     }
     if block.name:
         meta["ansible_play_name"] = block.name
     if block.hosts:
         meta["ansible_hosts"] = block.hosts
     return meta
-
-
-def _assign_chunk_indexes(chunks: list[Document]) -> None:
-    for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta["chunk_index"] = idx
-        chunk.metadata = meta
 
 
 def looks_like_ansible_playbook(text: str) -> bool:
@@ -205,7 +171,7 @@ def looks_like_ansible_playbook(text: str) -> bool:
 
 
 class AnsiblePlaybookChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -221,8 +187,8 @@ class AnsiblePlaybookChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -251,7 +217,5 @@ class AnsiblePlaybookChunker(BaseChunker):
                     offset_base=blk.start,
                     extra_meta=_play_block_meta(blk, len(blocks)),
                 )
-
-        _assign_chunk_indexes(out)
 
         return out

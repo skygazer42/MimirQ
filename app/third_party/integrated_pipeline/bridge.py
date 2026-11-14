@@ -60,10 +60,11 @@ def chunk_file(
     else:
         raise ValueError(
             f"Unsupported Integrated pipeline strategy: {strategy}. "
-            f"Supported: integrated_naive, integrated_book, integrated_laws, integrated_email"
+            "Supported: integrated_naive, integrated_book, integrated_laws, integrated_email"
         )
 
     if callback is None:
+
         def callback(prog=None, msg=""):
             if msg:
                 logger.info("[integrated] %s (%s)", msg, prog)

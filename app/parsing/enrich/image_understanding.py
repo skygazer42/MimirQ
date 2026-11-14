@@ -1,4 +1,3 @@
-
 import base64
 import re
 from io import BytesIO
@@ -16,7 +15,7 @@ logger = get_logger(__name__)
 
 
 def _clean_single_line(s: str, *, max_chars: int) -> str:
-    s0 = re.sub(r"\s+", " ", str(s or "")).strip()
+    s0 = re.sub(r"\s+", " ", s).strip()
     if not s0:
         return ""
     if max_chars > 0 and len(s0) > max_chars:
@@ -32,7 +31,7 @@ def derive_image_caption(text: str, meta: dict[str, Any], *, max_chars: int = 20
     - Prefer existing chunk text if it's not a generic placeholder.
     - Fallback to "Page {n} image" when page info exists.
     """
-    raw = (text or "").strip()
+    raw = text.strip()
     if raw and not _PAGE_ONLY_RE.match(raw) and not _GENERIC_IMAGE_TEXT_RE.match(raw):
         return _clean_single_line(raw, max_chars=max_chars)
 
@@ -48,7 +47,7 @@ def derive_image_caption(text: str, meta: dict[str, Any], *, max_chars: int = 20
 
 
 def _b64_to_bytes(s: str) -> bytes:
-    s0 = (s or "").strip()
+    s0 = s.strip()
     if not s0:
         return b""
     if s0.startswith("data:"):
@@ -119,7 +118,8 @@ def load_image_for_ocr(meta: dict[str, Any], *, _tenant_id: str) -> tuple[PILIma
     """
     if not isinstance(meta, dict):
         return None, False
-    if str(meta.get("doc_type_kwd") or "").lower() != "image":
+    doc_type = meta.get("doc_type_kwd")
+    if not isinstance(doc_type, str) or doc_type.lower() != "image":
         return None, False
 
     for loader in (
@@ -155,7 +155,7 @@ def ocr_image(image: PILImage.Image, *, _max_chars: int = 2000) -> str:
     except Exception:
         return ""
 
-    text0 = (text or "").strip()
+    text0 = text.strip()
     if not text0:
         return ""
     if len(text0) > max_chars_i:
@@ -300,7 +300,7 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
         return ""
 
     left_digits, parity = _decode_left_ean13_digits(bit_string)
-    if left_digits is None or parity is None:
+    if left_digits is None:
         return ""
     right_digits = _decode_right_ean13_digits(bit_string)
     if right_digits is None:
@@ -311,7 +311,7 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
         return ""
 
     value = prefix + left_digits + right_digits
-    if len(value) != 13 or _ean13_check_digit(value[:12]) != value[-1]:
+    if _ean13_check_digit(value[:12]) != value[-1]:
         return ""
     return value
 
@@ -323,7 +323,7 @@ def _decode_with_pyzbar(image: PILImage.Image) -> tuple[list[str], str]:
         from pyzbar.pyzbar import decode  # type: ignore[import-untyped]
 
         for item in decode(image) or []:
-            raw_type = str(getattr(item, "type", "") or "").strip().upper()
+            raw_type = item.type.strip().upper()
             raw_data = getattr(item, "data", b"")
             try:
                 text = raw_data.decode("utf-8", "ignore").strip()
@@ -349,7 +349,7 @@ def _decode_with_opencv_qr(image: PILImage.Image) -> tuple[list[str], str]:
         arr = np.array(image.convert("RGB"))
         for candidate in (arr, cv2.resize(arr, None, fx=6, fy=6, interpolation=cv2.INTER_NEAREST)):
             text, _points, _straight = detector.detectAndDecode(candidate)
-            text = str(text or "").strip()
+            text = text.strip()
             if text:
                 return [text], "qr"
     except Exception as exc:
@@ -540,24 +540,24 @@ def append_image_understanding_text(
     """
     Append caption/OCR text into chunk content so it becomes retrievable.
     """
-    base = (text or "").rstrip()
+    base = text.rstrip()
     blocks: list[str] = []
     if base:
         blocks.append(base)
 
-    caption0 = (caption or "").strip()
+    caption0 = caption.strip()
     if caption0 and "image caption:" not in base.lower():
         blocks.append(f"Image caption: {caption0}")
 
-    ocr0 = (ocr_text or "").strip()
+    ocr0 = ocr_text.strip()
     if ocr0 and "image ocr:" not in base.lower():
         blocks.append(f"Image OCR:\n{ocr0}")
 
-    code0 = (code_text or "").strip()
+    code0 = code_text.strip()
     if code0 and "image code:" not in base.lower():
         blocks.append(f"Image code:\n{code0}")
 
-    return "\n\n".join(blocks).strip() + ("\n" if (text or "").endswith("\n") else "")
+    return "\n\n".join(blocks).strip() + ("\n" if text.endswith("\n") else "")
 
 
 __all__ = [

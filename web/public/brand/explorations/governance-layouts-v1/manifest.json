@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 数据治理布局对比",
+  "brief": "统一雾灰／墨色、Manrope 与 Noto Sans SC 字体，保留 Ragvia 全局侧栏、文件类型与治理状态的语义色。五版共用 12 份文档，以及设备维护手册的 4 类问题，分别比较批量管理、逐份阅读、清洗对照、阶段管理与分步检查。候选为静态首屏，内容使用共享设计数据，未接入真实上传、清洗、保存或切块操作。",
+  "round": "数据治理 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 治理宽表",
+      "concept": "先对照整批文档的质量与状态，再查看所选文档的问题。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，13px 表格，12px 状态与位置",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["12 份文档连续宽表", "治理状态、评分、分类与来源逐列对照", "表格下方查看问题与原文片段，适合批量管理"],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-inbox",
+      "name": "B · 复核收件箱",
+      "concept": "保持文档队列可见，在宽幅正文中就地发现和处理问题。",
+      "typography": "Manrope / Noto Sans SC；13px 队列，14px 正文，12px 问题与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["按状态分组的紧凑文件队列", "宽幅正文附带问题高亮与局部操作", "四项问题直接对应正文，适合逐份复核"],
+      "source": "b-inbox.html"
+    },
+    {
+      "id": "c-diff",
+      "name": "C · 清洗对照",
+      "concept": "逐段核对原始内容与清洗预览，再决定是否应用。",
+      "typography": "Manrope / Noto Sans SC；20px 阅读标题，13px 对照正文，12px 规则说明",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["原文与清洗预览按段落对齐", "低饱和红绿标记移除与替换", "规则贴边展示，预览与应用分开"],
+      "source": "c-diff.html"
+    },
+    {
+      "id": "d-board",
+      "name": "D · 流程看板",
+      "concept": "按处理阶段组织文档，让当前任务与整批进度同时可见。",
+      "typography": "Manrope / Noto Sans SC；14px 阶段标题，13px 文档，12px 元信息与动作",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["待治理、清洗中、待核对、已完成四列", "当前文档展开问题及处理动作", "12 份文档按阶段分布，适合追踪治理进度"],
+      "source": "d-board.html"
+    },
+    {
+      "id": "e-stepper",
+      "name": "E · 分步检查",
+      "concept": "一次聚焦一个治理阶段，逐项检查问题后继续下一步。",
+      "typography": "Manrope / Noto Sans SC；20px 当前任务，14px 问题与步骤，13px 内容片段",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["质量、清洗、标注与分类四个阶段", "问题列表逐项展开，当前片段占据主工作面", "下一步固定在底部，适合明确推进单份文档"],
+      "source": "e-stepper.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "当前真实治理页面，作为工具组织与正文空间的参照。",
+      "typography": "正式页面现有字体与控件",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#4457D8"],
+      "traits": ["当前文件目录、正文与治理工具箱三栏", "本地实际文档与质量面板", "1395 × 1004 实际页面截图"],
+      "baseline": true,
+      "kind": "image",
+      "nativeViewport": "1395x1004",
+      "source": "current.png"
+    }
+  ]
+}

@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.models.chunk import Document
 from app.rag.core.http import httpx_trust_env
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.reranker.base import DocumentReranker
 
 
@@ -81,7 +82,7 @@ def _sanitize_list_structure(list_info: Any) -> dict[str, Any] | None:
         value = _clamp_int(list_info.get(key), min_value=0, max_value=maximum)
         if value is not None:
             list_out[key] = value
-    return list_out or None
+    return list_out
 
 
 def _sanitize_table_structure(table_info: Any) -> dict[str, Any] | None:
@@ -92,7 +93,7 @@ def _sanitize_table_structure(table_info: Any) -> dict[str, Any] | None:
         value = table_info.get(key)
         if isinstance(value, str) and value.strip():
             table_out[key] = value.strip()[:200]
-    return table_out or None
+    return table_out
 
 
 def _sanitize_structure(structure: Any) -> dict[str, Any] | None:
@@ -107,7 +108,7 @@ def _sanitize_structure(structure: Any) -> dict[str, Any] | None:
     if table_out:
         out["table"] = table_out
 
-    return out or None
+    return out
 
 
 def _prepare_llm_candidates(
@@ -116,19 +117,21 @@ def _prepare_llm_candidates(
     candidates: list[dict[str, Any]] = []
     id_to_doc: dict[str, Document] = {}
     for idx, doc in enumerate(documents):
-        text = (doc.page_content or "").strip()
+        text = (doc.page_content).strip()
         if not text:
             continue
         cid = reranker._candidate_id(doc, idx)
         meta = doc.metadata or {}
-        candidates.append(
-            {
-                "id": cid,
-                "text": text,
-                "header_path": meta.get("header_path"),
-                "structure": meta.get("structure"),
-            }
-        )
+        candidate = {
+            "id": cid,
+            "text": text,
+            "header_path": meta.get("header_path"),
+            "structure": meta.get("structure"),
+        }
+        for key in ("vector_score", "score", "distance"):
+            if key in meta:
+                candidate[key] = meta[key]
+        candidates.append(candidate)
         id_to_doc[cid] = doc
     return candidates, id_to_doc
 
@@ -189,15 +192,13 @@ def _append_unreranked_documents(
 def _build_candidate_payload(
     *, cid: str, text: str, meta: dict[str, Any] | None, max_chars: int
 ) -> dict[str, Any] | None:
-    cid_norm = str(cid or "").strip()
-    text_norm = str(text or "").strip()
-    if not cid_norm or not text_norm:
+    if not cid or not text:
         return None
 
-    if max_chars and len(text_norm) > max_chars:
-        text_norm = text_norm[:max_chars] + "..."
+    if max_chars and len(text) > max_chars:
+        text = text[:max_chars] + "..."
 
-    payload: dict[str, Any] = {"id": cid_norm, "text": text_norm}
+    payload: dict[str, Any] = {"id": cid, "text": text}
 
     header_path = (meta or {}).get("header_path")
     if isinstance(header_path, str) and header_path.strip():
@@ -225,8 +226,10 @@ def _vector_anchor_score(candidate: dict[str, Any]) -> float:
 def _load_weight_mapping(raw: Any) -> dict[str, float]:
     if isinstance(raw, dict):
         source = dict(raw)
+    elif raw is None:
+        return {}
     else:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if not text:
             return {}
         try:
@@ -237,7 +240,7 @@ def _load_weight_mapping(raw: Any) -> dict[str, float]:
 
     out: dict[str, float] = {}
     for key, value in source.items():
-        name = str(key or "").strip()
+        name = key.strip()
         if not name:
             continue
         out[name.casefold()] = _clamp_score(value, default=0.7)
@@ -245,18 +248,18 @@ def _load_weight_mapping(raw: Any) -> dict[str, float]:
 
 
 def resolve_llm_reranker_weight(*, tenant_id: str | None, query_type: str | None) -> float:
-    tenant_map = _load_weight_mapping(getattr(settings, "RERANKER_LLM_WEIGHT_BY_TENANT", ""))
-    query_type_map = _load_weight_mapping(getattr(settings, "RERANKER_LLM_WEIGHT_BY_QUERY_TYPE", ""))
+    tenant_map = _load_weight_mapping(settings.RERANKER_LLM_WEIGHT_BY_TENANT)
+    query_type_map = _load_weight_mapping(settings.RERANKER_LLM_WEIGHT_BY_QUERY_TYPE)
 
-    tenant_key = str(tenant_id or "").strip().casefold()
+    tenant_key = tenant_id.strip().casefold() if tenant_id is not None else None
     if tenant_key and tenant_key in tenant_map:
-        return float(tenant_map[tenant_key])
+        return tenant_map[tenant_key]
 
-    query_type_key = str(query_type or "").strip().casefold()
+    query_type_key = query_type.strip().casefold() if query_type is not None else None
     if query_type_key and query_type_key in query_type_map:
-        return float(query_type_map[query_type_key])
+        return query_type_map[query_type_key]
 
-    return _clamp_score(getattr(settings, "RERANKER_LLM_WEIGHT", 0.7), default=0.7)
+    return _clamp_score(settings.RERANKER_LLM_WEIGHT, default=0.7)
 
 
 def _finalize_rerank_scores(
@@ -275,7 +278,7 @@ def _finalize_rerank_scores(
     score_map: dict[str, float] = {}
     seen: set[str] = set()
     for candidate in candidates:
-        cid = str(candidate.get("id") or "").strip()
+        cid = candidate["id"].strip()
         if not cid or cid in seen:
             continue
         seen.add(cid)
@@ -310,12 +313,12 @@ class LLMReranker(DocumentReranker):
 
         self.model_used = model_name
         self.llm_weight = resolve_llm_reranker_weight(tenant_id=None, query_type=None)
-        self.fallback_score = _clamp_score(getattr(settings, "RERANKER_LLM_FALLBACK_SCORE", 0.5), default=0.5)
+        self.fallback_score = _clamp_score(settings.RERANKER_LLM_FALLBACK_SCORE, default=0.5)
         self._llm = ChatOpenAI(
             model=model_name,
             api_key=settings.LLM_API_KEY,
             base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-            temperature=float(settings.RERANKER_TEMPERATURE or 0.0),
+            temperature=float(settings.RERANKER_TEMPERATURE),
             streaming=False,
             timeout=settings.LLM_TIMEOUT,
             max_retries=settings.LLM_MAX_RETRIES,
@@ -352,6 +355,12 @@ candidates(JSON): {candidates}
         if doc_id is not None and chunk_index is not None:
             return f"{doc_id}:{chunk_index}"
         return f"idx:{fallback_idx}"
+
+    def _rerank_run_options(self, options: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "tenant_id": _stringified_metadata_text(options, "tenant_id"),
+            "query_type": options.get("query_type"),
+        }
 
     def run(
         self,
@@ -447,14 +456,12 @@ candidates(JSON): {candidates}
         effective_fallback = (
             _clamp_score(fallback_score, default=0.5)
             if fallback_score is not None
-            else _clamp_score(
-                getattr(self, "fallback_score", getattr(settings, "RERANKER_LLM_FALLBACK_SCORE", 0.5)), default=0.5
-            )
+            else _clamp_score(self.fallback_score, default=0.5)
         )
-        max_chars = int(settings.RERANKER_MAX_CHARS or 800)
+        max_chars = int(settings.RERANKER_MAX_CHARS)
         for c in candidates:
-            cid = str(c.get("id") or "").strip()
-            text = (c.get("text") or "").strip()
+            cid = c["id"].strip()
+            text = c["text"].strip()
             item = _build_candidate_payload(cid=cid, text=text, meta=c, max_chars=max_chars)
             if item is not None:
                 prompt_payload.append(item)
@@ -474,7 +481,7 @@ candidates(JSON): {candidates}
         )
         elapsed = time.time() - start
 
-        json_text = _extract_json_array((out_text or "").strip())
+        json_text = _extract_json_array(out_text.strip())
         if not json_text:
             ordered, score_map = _finalize_rerank_scores(
                 candidates=payload,
@@ -500,11 +507,12 @@ candidates(JSON): {candidates}
             )
 
         llm_scores: dict[str, float] = {}
-        for item in data if isinstance(data, list) else []:
+        payload_ids = {candidate["id"] for candidate in payload}
+        for item in data:
             if not isinstance(item, dict):
                 continue
-            cid = str(item.get("id") or "").strip()
-            if not cid:
+            cid = _stringified_metadata_text(item, "id")
+            if not cid or cid not in payload_ids:
                 continue
             llm_scores[cid] = _clamp_score(item.get("score", 0.0), default=0.0)
 

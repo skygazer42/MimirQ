@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createTwoFilesPatch } from 'diff'
-import { Copy, GitCompare, FileText } from 'lucide-react'
+import { Copy, GitCompare, FileText } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -15,19 +15,9 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { diffParsingElements } from '@/lib/parsing-element-diff'
 import { cn } from '@/lib/utils'
-import type { ParsingElement } from '@/lib/api/parsing'
+import type { ParseCompareRun } from './parsing-types'
 
-export type ParseCompareRun = {
-  id: string
-  parserBackend?: string
-  parserLabel?: string
-  rawMarkdown: string
-  cleanedMarkdown?: string
-  createdAt?: number
-  elements?: ParsingElement[]
-}
-
-type Props = {
+type ParseCompareDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   runs: ParseCompareRun[]
@@ -50,7 +40,13 @@ function safeTime(run: ParseCompareRun): string {
   }
 }
 
-export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId, onUseRun }: Readonly<Props>) {
+export function ParseCompareDialog({
+  open,
+  onOpenChange,
+  runs,
+  defaultBaseRunId,
+  onUseRun,
+}: Readonly<ParseCompareDialogProps>) {
   const [mode, setMode] = useState<CompareMode>('cleaned')
   const [baseId, setBaseId] = useState<string>('')
   const [compareId, setCompareId] = useState<string>('')
@@ -155,28 +151,28 @@ export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId,
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center rounded-lg border border-border bg-muted/20 p-1">
-	              <button
-	                type="button"
-	                onClick={() => setMode('cleaned')}
-	                className={cn(
-	                  'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
-	                  mode === 'cleaned'
-	                    ? 'bg-card text-foreground shadow-sm'
-	                    : 'text-muted-foreground hover:text-foreground/80'
-	                )}
+              <button
+                type="button"
+                onClick={() => setMode('cleaned')}
+                className={cn(
+                  'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+                  mode === 'cleaned'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground/80',
+                )}
               >
                 <FileText className="w-3.5 h-3.5" />
                 Cleaned
               </button>
-	              <button
-	                type="button"
-	                onClick={() => setMode('raw')}
-	                className={cn(
-	                  'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
-	                  mode === 'raw'
-	                    ? 'bg-card text-foreground shadow-sm'
-	                    : 'text-muted-foreground hover:text-foreground/80'
-	                )}
+              <button
+                type="button"
+                onClick={() => setMode('raw')}
+                className={cn(
+                  'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
+                  mode === 'raw'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground/80',
+                )}
               >
                 <FileText className="w-3.5 h-3.5" />
                 Raw

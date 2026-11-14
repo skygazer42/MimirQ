@@ -67,7 +67,7 @@ export function buildChunkSearchIndex(chunks: ChunkPreviewItem[]) {
 export function searchChunkIndex(
   index: MiniSearch<ChunkSearchDoc>,
   query: string,
-  options?: { limit?: number }
+  options?: { limit?: number },
 ): ChunkSearchResult[] {
   const q = (query || '').trim()
   if (!q) return []

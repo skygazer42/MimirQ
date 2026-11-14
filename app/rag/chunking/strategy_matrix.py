@@ -8,7 +8,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.chunking.factory import chunker_factory
-from app.rag.chunking.integrated_pipeline.bridge import chunk_file as integrated_chunk_file
+from app.third_party.integrated_pipeline.bridge import chunk_file as integrated_chunk_file
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class StrategyFixture:
 
 def _fixture(filename: str, content: str, *, file_type: str | None = None) -> StrategyFixture:
     suffix = Path(filename).suffix.lstrip(".").lower()
-    resolved_type = str(file_type or suffix or "txt")
+    resolved_type = file_type or suffix or "txt"
     return StrategyFixture(
         filename=filename,
         content=content.strip() + "\n",
@@ -933,7 +933,7 @@ def _fixture_document(strategy: str) -> Document:
 
 
 def _is_expected_unavailable(strategy: str, exc: Exception) -> bool:
-    message = str(exc or "")
+    message = str(exc)
     if strategy in {"llama_index", "llama_index_hierarchical"}:
         try:
             import llama_index.core as llama_index_core
@@ -969,13 +969,11 @@ def run_chunk_strategy_matrix(
                         callback=lambda *_a, **_k: None,
                     )
                     chunk_count = len(chunks or [])
-                    first_meta = dict((chunks or [{}])[0]) if chunk_count > 0 and isinstance(chunks[0], dict) else {}
+                    first_meta = dict(chunks[0]) if chunk_count > 0 and isinstance(chunks[0], dict) else {}
             else:
                 restore_llama_flag = None
-                if strategy in {"llama_index", "llama_index_hierarchical"} and not bool(
-                    getattr(settings, "LLAMA_INDEX_ENABLED", False)
-                ):
-                    restore_llama_flag = bool(getattr(settings, "LLAMA_INDEX_ENABLED", False))
+                if strategy in {"llama_index", "llama_index_hierarchical"} and not settings.LLAMA_INDEX_ENABLED:
+                    restore_llama_flag = settings.LLAMA_INDEX_ENABLED
                     settings.LLAMA_INDEX_ENABLED = True
                 try:
                     chunker = chunker_factory.get_chunker(strategy, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
@@ -986,7 +984,7 @@ def run_chunk_strategy_matrix(
                         settings.LLAMA_INDEX_ENABLED = restore_llama_flag
                 chunk_count = len(chunks or [])
                 if chunk_count > 0 and isinstance(chunks[0], Document):
-                    first_meta = dict(chunks[0].metadata or {})
+                    first_meta = dict(chunks[0].metadata)
                 else:
                     first_meta = {}
             elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
@@ -999,7 +997,7 @@ def run_chunk_strategy_matrix(
                     "chunk_count": chunk_count,
                     "elapsed_ms": elapsed_ms,
                     "metadata_keys": sorted(first_meta.keys())[:12],
-                    "runtime_flag_enabled": bool(getattr(settings, "LLAMA_INDEX_ENABLED", False))
+                    "runtime_flag_enabled": settings.LLAMA_INDEX_ENABLED
                     if strategy in {"llama_index", "llama_index_hierarchical"}
                     else None,
                 }

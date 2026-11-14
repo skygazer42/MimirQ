@@ -13,13 +13,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -33,40 +28,27 @@ class _PathBlock:
 
 _OPENAPI_RE = re.compile(r"(?m)^\s*openapi\s*:\s*(?P<val>[^\s#]+)")
 _SWAGGER_RE = re.compile(r"(?m)^\s*swagger\s*:\s*(?P<val>[^\s#]+)")
-_PATHS_RE = re.compile(r"(?m)^(?P<indent>\s*)paths\s*:\s*(?:#.*)?$")
+_PATHS_RE = re.compile(r"(?m)^(?P<indent>[ \t]*)paths\s*:\s*(?:#.*)?$")
 _PATH_KEY_RE = re.compile(r"^\s*/[^:]{1,200}:\s*(?:#.*)?$")
 _METHOD_RE = re.compile(r"^\s*(get|post|put|delete|patch|options|head|trace)\s*:\s*(?:#.*)?$", re.IGNORECASE)
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
-
-
 def _find_paths_anchor(text: str) -> tuple[int, int] | None:
-    m = _PATHS_RE.search(text or "")
+    m = _PATHS_RE.search(text)
     if not m:
         return None
-    indent = len(m.group("indent") or "")
+    indent = len(m.group("indent"))
     return m.start(), indent
 
 
 def _extract_version(text: str) -> str | None:
-    head = (text or "")[:8000]
+    head = (text)[:8000]
     m = _OPENAPI_RE.search(head)
     if m:
-        return (m.group("val") or "").strip()[:40] or None
+        return m.group("val").strip()[:40]
     m = _SWAGGER_RE.search(head)
     if m:
-        return (m.group("val") or "").strip()[:40] or None
+        return m.group("val").strip()[:40]
     return None
 
 
@@ -103,8 +85,8 @@ def _extract_methods(block_text: str) -> list[str]:
         m = _METHOD_RE.match(ln.strip())
         if not m:
             continue
-        meth = (m.group(1) or "").upper()
-        if meth and meth not in methods:
+        meth = (m.group(1)).upper()
+        if meth not in methods:
             methods.append(meth)
     return methods
 
@@ -135,8 +117,8 @@ def _build_openapi_chunk_metadata(
         meta["openapi_version"] = version
     if block is not None:
         meta["openapi_path"] = block.path
-        meta["openapi_path_index"] = int(block.index)
-        meta["openapi_path_count"] = int(block_count)
+        meta["openapi_path_index"] = block.index
+        meta["openapi_path_count"] = block_count
         if block.methods:
             meta["openapi_methods"] = block.methods[:10]
     return meta
@@ -196,7 +178,7 @@ def _build_path_blocks(text: str) -> list[_PathBlock]:
                 start=start,
                 end=end,
                 path=path,
-                index=int(idx),
+                index=idx,
                 methods=_extract_methods(blk_text),
             )
         )
@@ -217,7 +199,7 @@ def looks_like_openapi_spec(text: str) -> bool:
 
 
 class OpenAPISpecChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -233,8 +215,8 @@ class OpenAPISpecChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

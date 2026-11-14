@@ -21,7 +21,7 @@ class MarkdownTableProfile:
 
 
 def _split_markdown_row(line: str) -> list[str]:
-    s = str(line or "").strip()
+    s = line.strip()
     if s.startswith("|"):
         s = s[1:]
     if s.endswith("|"):
@@ -30,9 +30,7 @@ def _split_markdown_row(line: str) -> list[str]:
 
 
 def profile_markdown_table(text: str) -> MarkdownTableProfile | None:
-    lines = [
-        str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip().startswith("|")
-    ]
+    lines = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
     if len(lines) < 2:
         return None
 
@@ -40,15 +38,11 @@ def profile_markdown_table(text: str) -> MarkdownTableProfile | None:
     if not any(header):
         return None
     sep = _split_markdown_row(lines[1])
-    if not sep or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in sep):
+    if not sep or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in sep):
         return None
 
-    row_count = 0
-    for line in lines[2:]:
-        row = _split_markdown_row(line)
-        if any(row):
-            row_count += 1
-    return MarkdownTableProfile(columns=[str(col) for col in header], row_count=row_count, column_count=len(header))
+    row_count = sum(1 for line in lines[2:] if any(_split_markdown_row(line)))
+    return MarkdownTableProfile(columns=header, row_count=row_count, column_count=len(header))
 
 
 def extract_markdown_table(
@@ -58,14 +52,12 @@ def extract_markdown_table(
     bbox: dict[str, Any] | None = None,
     source_element_id: str | None = None,
 ) -> TableExtraction | None:
-    lines = [
-        str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip().startswith("|")
-    ]
+    lines = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
     if len(lines) < 2:
         return None
     header = _split_markdown_row(lines[0])
     sep = _split_markdown_row(lines[1])
-    if not header or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in sep):
+    if not header or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in sep):
         return None
 
     rows: list[list[str]] = []
@@ -76,13 +68,13 @@ def extract_markdown_table(
 
     cells: list[TableCell] = []
     for col_index, col in enumerate(header):
-        cells.append(TableCell(row_index=0, col_index=col_index, text=str(col), is_header=True))
+        cells.append(TableCell(row_index=0, col_index=col_index, text=col, is_header=True))
     for row_index, row in enumerate(rows, start=1):
-        for col_index, cell in enumerate(row[: len(header)]):
-            cells.append(TableCell(row_index=row_index, col_index=col_index, text=str(cell), is_header=False))
+        for col_index, cell in enumerate(row):
+            cells.append(TableCell(row_index=row_index, col_index=col_index, text=cell, is_header=False))
 
     return TableExtraction(
-        columns=[str(col) for col in header],
+        columns=header,
         rows=rows,
         cells=cells,
         page=page,

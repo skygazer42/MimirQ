@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
-from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.embedding.adapter import LangChainEmbeddingsAdapter, create_langchain_embeddings_from_config
 from app.rag.embedding.utils import embedding_space_hash_for_config
 
 
@@ -22,8 +22,10 @@ class DatasetEmbeddingRuntimeConfig:
     dataset_scoped: bool
 
 
-def _clean(value: Any) -> str:
-    return str(value or "").strip()
+def _clean(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.strip()
 
 
 def _safe_collection_suffix(value: str) -> str:
@@ -32,20 +34,20 @@ def _safe_collection_suffix(value: str) -> str:
 
 
 def _base_embedding_config() -> tuple[str, str, str, str]:
-    provider_raw = _clean(getattr(settings, "EMBEDDING_PROVIDER", "")) or "openai_compatible"
+    provider_raw = settings.EMBEDDING_PROVIDER.strip() or "openai_compatible"
     provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw.lower(), provider_raw.lower())
-    model = _clean(getattr(settings, "EMBEDDING_MODEL", ""))
-    api_base = _clean(getattr(settings, "EMBEDDING_API_BASE", "")) or _clean(getattr(settings, "LLM_API_BASE", ""))
-    api_key = _clean(getattr(settings, "EMBEDDING_API_KEY", "")) or _clean(getattr(settings, "LLM_API_KEY", ""))
+    model = settings.EMBEDDING_MODEL.strip()
+    api_base = settings.EMBEDDING_API_BASE.strip() or settings.LLM_API_BASE.strip()
+    api_key = settings.EMBEDDING_API_KEY.strip() or settings.LLM_API_KEY.strip()
     return provider, model, api_base, api_key
 
 
 def _vector_backend() -> str:
-    return _clean(getattr(settings, "VECTOR_BACKEND", "milvus")).lower() or "milvus"
+    return settings.VECTOR_BACKEND.lower() or "milvus"
 
 
 def collection_name_for_embedding_space(*, space_hash: str, dataset_scoped: bool) -> str:
-    base = _clean(getattr(settings, "MILVUS_COLLECTION_NAME", "")) or "documents"
+    base = settings.MILVUS_COLLECTION_NAME.strip() or "documents"
     if not dataset_scoped:
         return base
     return f"{base}_emb_{_safe_collection_suffix(space_hash)}"
@@ -59,14 +61,14 @@ def resolve_dataset_embedding_runtime(
     raw = dataset_metadata.get("embedding_defaults") if isinstance(dataset_metadata, dict) else None
     dataset_scoped = isinstance(raw, dict) and any(_clean(raw.get(key)) for key in ("provider", "model", "api_base"))
     if isinstance(raw, dict):
-        provider = (
-            EmbeddingProviders.PROVIDER_MAP.get(
-                _clean(raw.get("provider")).lower(), _clean(raw.get("provider")).lower()
-            )
-            or provider
-        )
+        provider_override = _clean(raw.get("provider"))
+        if provider_override:
+            provider = EmbeddingProviders.PROVIDER_MAP.get(provider_override.lower(), provider_override.lower())
         model = _clean(raw.get("model")) or model
         api_base = _clean(raw.get("api_base")) or api_base
+    from app.core.model_execution import reject_retired_provider
+
+    reject_retired_provider(provider, capability="embedding")
     if dataset_scoped and _vector_backend() != "milvus":
         raise ValueError("dataset-scoped embedding_defaults require VECTOR_BACKEND=milvus")
 
@@ -91,7 +93,7 @@ def resolve_dataset_embedding_runtime(
 
 
 @lru_cache(maxsize=8)
-def create_embeddings_for_runtime(runtime: DatasetEmbeddingRuntimeConfig):
+def create_embeddings_for_runtime(runtime: DatasetEmbeddingRuntimeConfig) -> LangChainEmbeddingsAdapter:
     return create_langchain_embeddings_from_config(
         provider=runtime.provider,
         model=runtime.model,

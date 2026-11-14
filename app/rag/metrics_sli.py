@@ -7,7 +7,6 @@ Design goals:
   otherwise values are collapsed to "all".
 """
 
-
 from prometheus_client import Counter, Histogram
 
 from app.core.config import settings
@@ -16,20 +15,21 @@ _RAG_LABEL_NAMES = ["tenant_id", "dataset_id"]
 
 
 def _label_value(*, enabled: bool, value: str | None) -> str:
-    if not bool(enabled):
+    if not enabled:
         return "all"
-    v = str(value or "").strip()
-    return v or "none"
+    if value is None:
+        return "none"
+    return value.strip() or "none"
 
 
 def _labels(*, tenant_id: str | None, dataset_id: str | None) -> dict[str, str]:
     return {
         "tenant_id": _label_value(
-            enabled=bool(getattr(settings, "PROMETHEUS_RAG_LABEL_TENANT_ID", False)),
+            enabled=settings.PROMETHEUS_RAG_LABEL_TENANT_ID,
             value=tenant_id,
         ),
         "dataset_id": _label_value(
-            enabled=bool(getattr(settings, "PROMETHEUS_RAG_LABEL_DATASET_ID", False)),
+            enabled=settings.PROMETHEUS_RAG_LABEL_DATASET_ID,
             value=dataset_id,
         ),
     }
@@ -74,28 +74,25 @@ def observe_rag_sli(
     rerank_elapsed_sec: float | None,
     has_error: bool,
 ) -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not settings.PROMETHEUS_ENABLED:
         return
 
     labels = _labels(tenant_id=tenant_id, dataset_id=dataset_id)
 
-    cc = max(0, int(citations_count or 0))
-    RAG_CITATIONS_COUNT.labels(**labels).observe(float(cc))
-    if cc == 0:
+    count = max(0, citations_count)
+    RAG_CITATIONS_COUNT.labels(**labels).observe(float(count))
+    if count == 0:
         RAG_ZERO_HIT_TOTAL.labels(**labels).inc()
 
-    elapsed = float(retrieval_elapsed_sec or 0.0)
-    if elapsed >= 0:
-        RAG_RETRIEVAL_ELAPSED_SECONDS.labels(**labels).observe(elapsed)
+    if retrieval_elapsed_sec >= 0:
+        RAG_RETRIEVAL_ELAPSED_SECONDS.labels(**labels).observe(retrieval_elapsed_sec)
 
     if rerank_elapsed_sec is not None:
-        rr = float(rerank_elapsed_sec or 0.0)
-        if rr >= 0:
-            RAG_RERANK_ELAPSED_SECONDS.labels(**labels).observe(rr)
+        if rerank_elapsed_sec >= 0:
+            RAG_RERANK_ELAPSED_SECONDS.labels(**labels).observe(rerank_elapsed_sec)
 
-    if bool(has_error):
+    if has_error:
         RAG_ERRORS_TOTAL.labels(**labels).inc()
 
 
 __all__ = ["observe_rag_sli"]
-

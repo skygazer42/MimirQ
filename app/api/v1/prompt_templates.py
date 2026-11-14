@@ -13,29 +13,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.prompt_template import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import (
     BuiltinPromptTemplateSyncResponse,
     PromptTemplateCreate,
     PromptTemplateList,
+    PromptTemplateListQuery,
     PromptTemplateNewVersion,
     PromptTemplateOut,
     PromptTemplateUpdate,
 )
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.models.prompt_template import PromptTemplate
 from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 router = APIRouter(tags=["prompt-templates"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
@@ -53,20 +46,20 @@ def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 
 def _derive_template_key(name: str) -> str:
-    """Derive a stable key from name (avoid empty keys)."""
-    raw = (name or "").strip().lower()
-    if not raw:
-        return "template"
-    buf = []
-    for ch in raw:
-        if ch.isalnum():
-            buf.append(ch)
-        else:
-            buf.append("_")
-    key = "".join(buf).strip("_")
-    while "__" in key:
-        key = key.replace("__", "_")
-    return key or "template"
+    """Join alphanumeric name segments into a nonempty, stable key."""
+    normalized = "".join(character if character.isalnum() else "_" for character in name.strip().lower())
+    parts = [part for part in normalized.split("_") if part]
+    return "_".join(parts) or "template"
+
+
+def _get_prompt_template(db: Session, tenant_id: UUID, template_id: UUID) -> PromptTemplate:
+    """Return a template in the current tenant or raise the shared 404."""
+    template = (
+        db.query(PromptTemplate).filter(PromptTemplate.id == template_id, PromptTemplate.tenant_id == tenant_id).first()
+    )
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL)
+    return template
 
 
 @router.post(
@@ -96,7 +89,7 @@ def sync_builtin_prompt_templates(
             )
             .first()
         )
-        if existing is not None and not bool(getattr(existing, "is_system", False)):
+        if existing is not None and not existing.is_system:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Prompt template key already exists as a user template: {builtin.template_key}",
@@ -181,7 +174,7 @@ def create_prompt_template(
         .filter(PromptTemplate.tenant_id == tenant_id, PromptTemplate.template_key == template_key)
         .scalar()
     )
-    next_version = int(max_version or 0) + 1
+    next_version = 1 if max_version is None else max_version + 1
 
     template = PromptTemplate(
         tenant_id=tenant_id,
@@ -190,7 +183,7 @@ def create_prompt_template(
         parent_id=request.parent_id,
         ab_experiment_key=request.ab_experiment_key,
         ab_variant=request.ab_variant,
-        ab_weight=float(request.ab_weight) if request.ab_weight is not None else 1.0,
+        ab_weight=request.ab_weight if request.ab_weight is not None else 1.0,
         name=request.name,
         description=request.description,
         content=request.content,
@@ -214,10 +207,7 @@ def create_prompt_template(
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_prompt_templates(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    category: str | None = None,
-    is_active: bool | None = None,
+    query: Annotated[PromptTemplateListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -231,10 +221,7 @@ def list_prompt_templates(
     system status, usage count, and update time.
 
     Args:
-        skip: Number of records to skip for pagination (default: 0)
-        limit: Maximum number of records to return (default: 50)
-        category: Optional category filter
-        is_active: Optional active status filter
+        query: Validated pagination, category, and active-status filters
         tenant_id: Current tenant identifier (from auth context)
         account_id: Current user account identifier (from auth context)
         db: Database session
@@ -245,26 +232,26 @@ def list_prompt_templates(
     Raises:
         HTTPException: 403 if user is not a tenant member
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    query = db.query(PromptTemplate).filter(PromptTemplate.tenant_id == tenant_id)
+    templates_query = db.query(PromptTemplate).filter(PromptTemplate.tenant_id == tenant_id)
 
-    if category:
-        query = query.filter(PromptTemplate.category == category)
+    if query.category:
+        templates_query = templates_query.filter(PromptTemplate.category == query.category)
 
-    if is_active is not None:
-        query = query.filter(PromptTemplate.is_active == is_active)
+    if query.is_active is not None:
+        templates_query = templates_query.filter(PromptTemplate.is_active == query.is_active)
 
-    total = query.count()
+    total = templates_query.count()
 
     templates = (
-        query.order_by(
+        templates_query.order_by(
             PromptTemplate.is_system.desc(),
             PromptTemplate.usage_count.desc(),
             PromptTemplate.updated_at.desc(),
         )
-        .offset(skip)
-        .limit(limit)
+        .offset(query.skip)
+        .limit(query.limit)
         .all()
     )
 
@@ -295,24 +282,9 @@ def get_prompt_template(
         HTTPException: 403 if user is not a tenant member
         HTTPException: 404 if template not found or not in current tenant
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    template = (
-        db.query(PromptTemplate)
-        .filter(
-            PromptTemplate.id == template_id,
-            PromptTemplate.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not template:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
-        )
-
-    return template
+    return _get_prompt_template(db, tenant_id, template_id)
 
 
 @router.post(
@@ -332,11 +304,7 @@ def create_prompt_template_version(
     """Create a new version from a template (deactivate old version by default)."""
     _ensure_write(db, tenant_id, account_id)
 
-    current = (
-        db.query(PromptTemplate).filter(PromptTemplate.id == template_id, PromptTemplate.tenant_id == tenant_id).first()
-    )
-    if not current:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL)
+    current = _get_prompt_template(db, tenant_id, template_id)
     if current.is_system:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot version system templates")
 
@@ -346,7 +314,7 @@ def create_prompt_template_version(
         .filter(PromptTemplate.tenant_id == tenant_id, PromptTemplate.template_key == template_key)
         .scalar()
     )
-    next_version = int(max_version or 0) + 1
+    next_version = 1 if max_version is None else max_version + 1
 
     if request.deactivate_previous:
         # Deactivate older versions for the same key to avoid multi-active drift.
@@ -366,13 +334,13 @@ def create_prompt_template_version(
         variables=request.variables if request.variables is not None else (current.variables or []),
         category=request.category if request.category is not None else current.category,
         tags=request.tags if request.tags is not None else (current.tags or []),
-        is_active=bool(request.is_active),
+        is_active=request.is_active,
         is_system=False,
         ab_experiment_key=request.ab_experiment_key
         if request.ab_experiment_key is not None
         else current.ab_experiment_key,
         ab_variant=request.ab_variant if request.ab_variant is not None else current.ab_variant,
-        ab_weight=float(request.ab_weight) if request.ab_weight is not None else float(current.ab_weight or 1.0),
+        ab_weight=request.ab_weight,
         usage_count=0,
     )
     db.add(new_template)
@@ -412,20 +380,7 @@ def update_prompt_template(
     """
     _ensure_write(db, tenant_id, account_id)
 
-    template = (
-        db.query(PromptTemplate)
-        .filter(
-            PromptTemplate.id == template_id,
-            PromptTemplate.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not template:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
-        )
+    template = _get_prompt_template(db, tenant_id, template_id)
 
     if template.is_system:
         raise HTTPException(
@@ -472,20 +427,7 @@ def delete_prompt_template(
     """
     _ensure_write(db, tenant_id, account_id)
 
-    template = (
-        db.query(PromptTemplate)
-        .filter(
-            PromptTemplate.id == template_id,
-            PromptTemplate.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not template:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
-        )
+    template = _get_prompt_template(db, tenant_id, template_id)
 
     if template.is_system:
         raise HTTPException(
@@ -531,20 +473,7 @@ def duplicate_prompt_template(
     """
     _ensure_write(db, tenant_id, account_id)
 
-    original = (
-        db.query(PromptTemplate)
-        .filter(
-            PromptTemplate.id == template_id,
-            PromptTemplate.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not original:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
-        )
+    original = _get_prompt_template(db, tenant_id, template_id)
 
     duplicate = PromptTemplate(
         tenant_id=tenant_id,

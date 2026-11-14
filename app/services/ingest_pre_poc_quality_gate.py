@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import Any
 
@@ -15,15 +14,21 @@ _TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".jsonl", ".html", ".
 def _read_text_sample(path: Path, *, max_bytes: int) -> str:
     if path.suffix.lower() not in _TEXT_EXTS:
         return ""
-    data = path.read_bytes()[: max(0, int(max_bytes or 0))]
+    max_bytes = max(0, max_bytes)
+    with path.open("rb") as source:
+        data = source.read(max_bytes)
     if not data:
         return ""
-    for encoding in ("utf-8", "utf-8-sig", "gb18030", "latin-1"):
-        try:
-            return data.decode(encoding, errors="ignore")
-        except Exception:
-            continue
-    return data.decode("utf-8", errors="ignore")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        if exc.reason == "unexpected end of data" and exc.end == len(data):
+            return data.decode("utf-8-sig", errors="ignore")
+
+    try:
+        return data.decode("gb18030")
+    except UnicodeDecodeError:
+        return data.decode("latin-1")
 
 
 def evaluate_ingest_pre_poc_quality_gate(
@@ -35,15 +40,12 @@ def evaluate_ingest_pre_poc_quality_gate(
     pii_max_hits: int | None = None,
     secrets_max_hits: int | None = None,
 ) -> dict[str, Any]:
-    effective_enabled = bool(
-        getattr(settings, "INGEST_PRE_POC_SCANNER_ENABLED", False) if enabled is None else enabled
-    )
-    mode_norm = str(
-        getattr(settings, "INGEST_PRE_POC_QUALITY_GATE_MODE", "warn") if mode is None else mode
-    ).strip().lower() or "warn"
+    effective_enabled = settings.INGEST_PRE_POC_SCANNER_ENABLED if enabled is None else enabled
+    mode_value = settings.INGEST_PRE_POC_QUALITY_GATE_MODE if mode is None else mode
+    mode_norm = mode_value.strip().lower() or "warn"
     if mode_norm not in {"off", "warn", "strict"}:
         mode_norm = "warn"
-    path = Path(file_path)
+    path = file_path
     out: dict[str, Any] = {
         "schema": _SCHEMA,
         "enabled": effective_enabled,
@@ -55,46 +57,34 @@ def evaluate_ingest_pre_poc_quality_gate(
     if not effective_enabled or mode_norm == "off":
         return out
 
-    size_bytes = int(path.stat().st_size) if path.exists() else 0
+    size_bytes = path.stat().st_size if path.exists() else 0
     sample_bytes = (
-        int(getattr(settings, "INGEST_PRE_POC_TEXT_SAMPLE_BYTES", 200_000) or 200_000)
-        if text_sample_bytes is None
-        else int(text_sample_bytes or 0)
+        settings.INGEST_PRE_POC_TEXT_SAMPLE_BYTES or 200_000 if text_sample_bytes is None else text_sample_bytes
     )
     sample = _read_text_sample(path, max_bytes=sample_bytes)
-    pii_threshold = (
-        int(settings.INGEST_PRE_POC_PII_MAX_HITS)
-        if pii_max_hits is None
-        else int(pii_max_hits)
-    )
-    secret_threshold = (
-        int(getattr(settings, "INGEST_PRE_POC_SECRETS_MAX_HITS", 0) or 0)
-        if secrets_max_hits is None
-        else int(secrets_max_hits)
-    )
+    pii_threshold = settings.INGEST_PRE_POC_PII_MAX_HITS if pii_max_hits is None else pii_max_hits
+    secret_threshold = settings.INGEST_PRE_POC_SECRETS_MAX_HITS if secrets_max_hits is None else secrets_max_hits
 
     findings: list[dict[str, Any]] = []
     pii_hits: dict[str, int] = {}
     secrets_hits: dict[str, int] = {}
     if sample:
         pii = anonymize_pii(sample, enabled=True, mode="mask")
-        pii_hits = {str(k): int(v) for k, v in (pii.hits or {}).items() if int(v or 0) > 0}
+        pii_hits = dict(pii.hits)
         sec = redact_secrets(sample, enabled=True, mode="mask")
-        secrets_hits = {str(k): int(v) for k, v in (sec.hits or {}).items() if int(v or 0) > 0}
+        secrets_hits = dict(sec.hits)
         pii_total = sum(pii_hits.values())
         secret_total = sum(secrets_hits.values())
         if pii_threshold >= 0 and pii_total > pii_threshold:
-            findings.append({"key": "pii_threshold_exceeded", "severity": "high", "count": int(pii_total)})
+            findings.append({"key": "pii_threshold_exceeded", "severity": "high", "count": pii_total})
         if secret_threshold >= 0 and secret_total > secret_threshold:
-            findings.append({"key": "secrets_threshold_exceeded", "severity": "blocker", "count": int(secret_total)})
+            findings.append({"key": "secrets_threshold_exceeded", "severity": "blocker", "count": secret_total})
 
-    blocked = mode_norm == "strict" and any(
-        item.get("key") in {"pii_threshold_exceeded", "secrets_threshold_exceeded"} for item in findings
-    )
+    blocked = mode_norm == "strict" and bool(findings)
     out.update(
         {
             "status": "fail" if blocked else ("warn" if findings else "pass"),
-            "blocked": bool(blocked),
+            "blocked": blocked,
             "file": {
                 "extension": path.suffix.lower().lstrip(".") or "unknown",
                 "size_bytes": size_bytes,

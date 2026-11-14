@@ -29,15 +29,23 @@ def _as_mapping(row: Any) -> dict[str, Any]:
     return out
 
 
-def _safe_str(value: Any, *, max_len: int = 512) -> str:
-    text = str(value or "").strip()
+def _safe_str(value: Any, *, max_len: int = 512) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return ""
     return text[: max(0, int(max_len or 0))] if max_len else text
 
 
 def _stable_query_hash(query: str) -> str:
-    return hashlib.sha256(str(query or "").encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha256(query.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _bounded_optional_text(value: str | None, *, max_len: int) -> str | None:
+    if value is None:
+        return None
+    return value[:max_len]
 
 
 def _rating(row: dict[str, Any]) -> int | None:
@@ -85,18 +93,14 @@ def _retrieval_trace(row: dict[str, Any]) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
-def _feedback_id(row: dict[str, Any]) -> str:
-    return _safe_str(row.get("feedback_id") or row.get("id") or _extra(row).get("feedback_id"), max_len=128)
-
-
-def _dataset_id(row: dict[str, Any]) -> str | None:
-    text = _safe_str(row.get("dataset_id") or _extra(row).get("dataset_id"), max_len=128)
-    return text or None
+def _feedback_id(row: dict[str, Any]) -> str | None:
+    value = row.get("feedback_id", row.get("id", _extra(row).get("feedback_id")))
+    return str(value)[:128] if value is not None else None
 
 
 def _lineage_id(row: dict[str, Any], key: str) -> str | None:
-    text = _safe_str(row.get(key) or _extra(row).get(key), max_len=128)
-    return text or None
+    value = row.get(key, _extra(row).get(key))
+    return str(value)[:128] if value is not None else None
 
 
 def _positive_chunk_ids(reference_sources: list[dict[str, Any]]) -> list[str]:
@@ -120,32 +124,34 @@ def _build_training_triple(
     reference_sources: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     positives = _positive_chunk_ids(reference_sources)
-    negatives = [
-        _safe_str(item.get("chunk_id"), max_len=200)
-        for item in (mined.get("hard_negatives") or [])
-        if isinstance(item, dict) and _safe_str(item.get("chunk_id"), max_len=200)
-    ]
+    negatives: list[str] = []
+    for item in mined["hard_negatives"]:
+        chunk_id = _safe_str(item["chunk_id"], max_len=200)
+        if chunk_id:
+            negatives.append(chunk_id)
     if not positives or not negatives:
         return None
     return {
         "schema": FEEDBACK_TRAINING_TRIPLE_SCHEMA_V1,
-        "query_hash": mined.get("query_hash") or "",
+        "query_hash": mined["query_hash"],
         "positive_chunk_ids": positives,
         "negative_chunk_ids": negatives[:20],
-        "source_feedback_id": _feedback_id(row) or None,
-        "dataset_id": _dataset_id(row),
+        "source_feedback_id": _feedback_id(row),
+        "dataset_id": _lineage_id(row, "dataset_id"),
     }
 
 
 def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
     extra = _extra(row)
-    status = _safe_str(row.get("eval_case_status") or extra.get("eval_case_status"), max_len=32).lower()
+    status = _safe_str(row.get("eval_case_status") or extra.get("eval_case_status"), max_len=32)
+    if status is not None:
+        status = status.lower()
     if status in {"promoted", "rejected"} or bool(row.get("archived") or extra.get("archived")):
         return None
     question = _query(row)
     if not question:
         return None
-    category = _safe_str(row.get("category"), max_len=32) or None
+    category = _bounded_optional_text(row.get("category"), max_len=32)
     tags = [_safe_str(item, max_len=64) for item in (row.get("tags") or [])]
     tags = [item for item in tags if item]
     if category and category not in tags:
@@ -159,26 +165,26 @@ def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "schema": FEEDBACK_EVAL_CASE_SCHEMA_V1,
         "status": "pending_review",
         "question": question,
-        "expected_answer": _safe_str(row.get("expected_answer"), max_len=16_000) or None,
+        "expected_answer": _bounded_optional_text(row.get("expected_answer"), max_len=16_000),
         "reference_sources": reference_sources,
         "tags": tags[:30],
         "category": category,
-        "category_source": _safe_str(row.get("category_source"), max_len=32) or None,
+        "category_source": _bounded_optional_text(row.get("category_source"), max_len=32),
         "query_hash": _safe_str(row.get("query_hash"), max_len=64) or _stable_query_hash(question),
-        "retrieval_trace_ref": _safe_str(row.get("retrieval_trace_ref"), max_len=255) or None,
-        "retrieval_config_hash": _safe_str(retrieval.get("retrieval_config_hash"), max_len=128) or None,
-        "profile": _safe_str(row.get("profile"), max_len=64) or None,
-        "judge_score_ref": _safe_str(row.get("judge_score_ref"), max_len=255) or None,
-        "source_feedback_id": _feedback_id(row) or None,
+        "retrieval_trace_ref": _bounded_optional_text(row.get("retrieval_trace_ref"), max_len=255),
+        "retrieval_config_hash": _bounded_optional_text(retrieval.get("retrieval_config_hash"), max_len=128),
+        "profile": _bounded_optional_text(row.get("profile"), max_len=64),
+        "judge_score_ref": _bounded_optional_text(row.get("judge_score_ref"), max_len=255),
+        "source_feedback_id": _feedback_id(row),
         "source_conversation_id": _lineage_id(row, "conversation_id"),
         "source_message_id": _lineage_id(row, "message_id"),
-        "dataset_id": _dataset_id(row),
+        "dataset_id": _lineage_id(row, "dataset_id"),
     }
 
 
 def _rules_row(row: dict[str, Any]) -> dict[str, Any]:
     trace = _retrieval_trace(row)
-    citations = trace.get("citations") if isinstance(trace, dict) else []
+    citations = trace.get("citations")
     filenames: list[str] = []
     if isinstance(citations, list):
         for item in citations:
@@ -203,9 +209,11 @@ def build_feedback_loop_candidates(
     max_hard_negatives: int = 10,
 ) -> dict[str, Any]:
     normalized_rows = [_as_mapping(row) for row in (rows or [])]
-    negative_rows = [
-        row for row in normalized_rows if (_rating(row) is not None and int(_rating(row) or 0) <= int(max_rating))
-    ]
+    negative_rows: list[dict[str, Any]] = []
+    for row in normalized_rows:
+        rating = _rating(row)
+        if rating is not None and rating <= int(max_rating):
+            negative_rows.append(row)
 
     hard_negative_records: list[dict[str, Any]] = []
     training_triples: list[dict[str, Any]] = []
@@ -226,12 +234,12 @@ def build_feedback_loop_candidates(
             query_hash=_stable_query_hash(query),
             max_hard_negatives=max_hard_negatives,
         )
-        if not mined.get("hard_negatives"):
+        if not mined["hard_negatives"]:
             continue
         fid = _feedback_id(row)
         if fid:
             mined["source_feedback_ids"] = [fid]
-        ds = _dataset_id(row)
+        ds = _lineage_id(row, "dataset_id")
         if ds:
             mined["dataset_id"] = ds
         conv_id = _lineage_id(row, "conversation_id")
@@ -252,14 +260,14 @@ def build_feedback_loop_candidates(
     return {
         "schema": FEEDBACK_LOOP_CANDIDATES_SCHEMA_V1,
         "summary": {
-            "feedback_total": int(len(normalized_rows)),
-            "negative_feedback_total": int(len(negative_rows)),
-            "hard_negative_records": int(len(hard_negative_records)),
-            "training_triples": int(len(training_triples)),
-            "eval_case_candidates": int(len(eval_case_candidates)),
-            "rules_glossary_candidates": int(len(rules_suggestions.get("glossary_suggestions") or [])),
-            "rules_pattern_candidates": int(len(rules_suggestions.get("pattern_suggestions") or [])),
-            "rules_intent_candidates": int(len(rules_suggestions.get("intent_suggestions") or [])),
+            "feedback_total": len(normalized_rows),
+            "negative_feedback_total": len(negative_rows),
+            "hard_negative_records": len(hard_negative_records),
+            "training_triples": len(training_triples),
+            "eval_case_candidates": len(eval_case_candidates),
+            "rules_glossary_candidates": len(rules_suggestions["glossary_suggestions"]),
+            "rules_pattern_candidates": len(rules_suggestions["pattern_suggestions"]),
+            "rules_intent_candidates": len(rules_suggestions["intent_suggestions"]),
         },
         "hard_negative_records": hard_negative_records,
         "training_triples": training_triples,

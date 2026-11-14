@@ -1,6 +1,5 @@
 """Ablation batch helpers for RAGAS regression runs."""
 
-
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -12,7 +11,9 @@ def _is_grid_value(value: Any) -> bool:
 
 
 def _normalize_grid_key(*, raw_key: Any, allowed_keys: set[str] | None) -> str:
-    key = str(raw_key or "").strip()
+    if not isinstance(raw_key, str):
+        raise ValueError("grid keys must be strings")
+    key = raw_key.strip()
     if not key:
         raise ValueError("grid keys must be non-empty")
     if key in _DISALLOWED_GRID_KEYS:

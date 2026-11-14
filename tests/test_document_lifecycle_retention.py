@@ -112,7 +112,7 @@ async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
         return None
 
     monkeypatch.setattr(
-        dls.DatasetService, "ensure_member", lambda _db, tid, aid: membership_calls.append((tid, aid)), raising=True
+        dls.dataset_service, "ensure_member", lambda _db, tid, aid: membership_calls.append((tid, aid)), raising=True
     )
     monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
@@ -171,7 +171,7 @@ async def test_delete_document_lifecycle_persists_deleting_state_before_external
     async def _noop_async(**_kwargs) -> None:  # noqa: ANN003
         return None
 
-    monkeypatch.setattr(dls.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dls.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(dls, "_abort_document_tasks_before_delete", _noop_async, raising=True)
@@ -429,6 +429,7 @@ def test_delete_document_file_skips_malformed_minio_uri(monkeypatch: pytest.Monk
         dataset_id=uuid.uuid4(),
         file_type="pdf",
         file_path="minio://missing-object",
+        doc_metadata={},
     )
 
     dls._delete_document_file(tenant_id=uuid.uuid4(), document=document)

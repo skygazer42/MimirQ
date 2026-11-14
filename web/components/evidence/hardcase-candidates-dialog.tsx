@@ -1,7 +1,8 @@
 'use client'
 
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import type { ReactNode } from 'react'
-import { Copy, Loader2, RefreshCw } from 'lucide-react'
+import { Copy, Loader2, RefreshCw } from '@/components/icons'
 
 import type { EvidenceHardcaseDiscovery } from '@/types'
 import { cn } from '@/lib/utils'
@@ -41,13 +42,13 @@ type HardcaseCandidatesDialogProps = {
 type ErrBadgeEntry = [string, number]
 
 function compareErrBadgeEntry(a: ErrBadgeEntry, b: ErrBadgeEntry): number {
-  return Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0]))
+  return b[1] - a[1] || a[0].localeCompare(b[0])
 }
 
 function buildErrBadges(errKinds: Record<string, number>): ErrBadgeEntry[] {
   const entries: ErrBadgeEntry[] = []
   for (const [keyRaw, valueRaw] of Object.entries(errKinds || {})) {
-    const key = String(keyRaw || '').trim()
+    const key = keyRaw.trim()
     const value = Number(valueRaw) || 0
     if (!key || value <= 0) continue
     entries.push([key, value])
@@ -97,9 +98,7 @@ export function HardcaseCandidatesDialog({
       </div>
     )
   } else if (!hardcaseRes) {
-    discoveryContent = (
-      <div className="py-4 text-sm text-muted-foreground">点击 refresh 加载候选。</div>
-    )
+    discoveryContent = <div className="py-4 text-sm text-muted-foreground">点击 refresh 加载候选。</div>
   } else if (!hardcaseRes.enabled) {
     discoveryContent = (
       <div className="space-y-3 py-1">
@@ -110,7 +109,8 @@ export function HardcaseCandidatesDialog({
           </div>
         </Panel>
         <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index{' '}
+          {hardcaseRes.trace_index_size}
         </div>
       </div>
     )
@@ -124,7 +124,8 @@ export function HardcaseCandidatesDialog({
           </div>
         </Panel>
         <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index{' '}
+          {hardcaseRes.trace_index_size}
         </div>
       </div>
     )
@@ -139,7 +140,8 @@ export function HardcaseCandidatesDialog({
           const errBadges = buildErrBadges(errKinds)
           const template = candidate.rag_config_template ?? null
           const templateKey = template && typeof template.template_key === 'string' ? template.template_key.trim() : ''
-          const templateVersion = template && Number.isFinite(Number(template.version)) ? Number(template.version) : null
+          const templateVersion =
+            template && Number.isFinite(Number(template.version)) ? Number(template.version) : null
           const templatePatch = template && typeof template.patch_hash === 'string' ? template.patch_hash.trim() : ''
           const templateVersionLabel = templateVersion === null ? '' : `@${templateVersion}`
           const templateLabel = templateKey ? `${templateKey}${templateVersionLabel}` : ''
@@ -297,7 +299,8 @@ export function HardcaseCandidatesDialog({
         })}
 
         <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index{' '}
+          {hardcaseRes.trace_index_size}
         </div>
       </div>
     )
@@ -305,73 +308,82 @@ export function HardcaseCandidatesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent className={`${ws.dialog} ${ws.wideDialog}`}>
+        <DialogHeader className={ws.dialogHeader}>
           <DialogTitle>Hardcase Candidates</DialogTitle>
           <DialogDescription className="text-pretty">
-            从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span> 转为 draft EvidenceItem。
+            从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span>{' '}
+            转为 draft EvidenceItem。
           </DialogDescription>
         </DialogHeader>
+        <div className={ws.dialogBody}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">max rating</span>
+                <Select value={String(maxRating)} onValueChange={(value) => onMaxRatingChange(Number(value) || 2)}>
+                  <SelectTrigger className="h-8 w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">{'<= 1'}</SelectItem>
+                    <SelectItem value="2">{'<= 2'}</SelectItem>
+                    <SelectItem value="3">{'<= 3'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">max rating</span>
-              <Select value={String(maxRating)} onValueChange={(value) => onMaxRatingChange(Number(value) || 2)}>
-                <SelectTrigger className="h-8 w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">{'<= 1'}</SelectItem>
-                  <SelectItem value="2">{'<= 2'}</SelectItem>
-                  <SelectItem value="3">{'<= 3'}</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+                <Checkbox
+                  checked={includeExisting}
+                  onCheckedChange={(value) => onIncludeExistingChange(Boolean(value))}
+                  aria-label="Include existing items"
+                />
+                include existing
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">max candidates</span>
+                <Input
+                  value={String(maxCandidates)}
+                  onChange={(event) => {
+                    const next = Number(event.target.value || 0) || 0
+                    onMaxCandidatesChange(Math.max(0, Math.min(200, Math.floor(next))))
+                  }}
+                  className="h-8 w-24 font-mono tabular-nums"
+                  inputMode="numeric"
+                />
+              </div>
             </div>
 
-            <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
-              <Checkbox
-                checked={includeExisting}
-                onCheckedChange={(value) => onIncludeExistingChange(Boolean(value))}
-                aria-label="Include existing items"
-              />
-              include existing
-            </div>
+            <div className="flex items-center gap-2 sm:ml-auto">
+              {hardcaseSummary}
 
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">max candidates</span>
-              <Input
-                value={String(maxCandidates)}
-                onChange={(event) => {
-                  const next = Number(event.target.value || 0) || 0
-                  onMaxCandidatesChange(Math.max(0, Math.min(200, Math.floor(next))))
-                }}
-                className="h-8 w-24 font-mono tabular-nums"
-                inputMode="numeric"
-              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={onRefresh}
+                disabled={!selectedSuiteId || loading}
+              >
+                <RefreshCw
+                  className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')}
+                  aria-hidden="true"
+                />
+                refresh
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:ml-auto">
-            {hardcaseSummary}
-
-            <Button variant="outline" size="sm" className="gap-2" onClick={onRefresh} disabled={!selectedSuiteId || loading}>
-              <RefreshCw className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-              refresh
-            </Button>
+          <div className="space-y-1">
+            <Label>Convert tags</Label>
+            <TagInput value={tags} onValueChange={onTagsChange} placeholder="回车添加 tag…" />
           </div>
+
+          {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
+
+          <ScrollArea className="max-h-[70vh] pr-3">{discoveryContent}</ScrollArea>
         </div>
-
-        <div className="space-y-1">
-          <Label>Convert tags</Label>
-          <TagInput value={tags} onValueChange={onTagsChange} placeholder="回车添加 tag…" />
-        </div>
-
-        {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
-
-        <ScrollArea className="max-h-[70vh] pr-3">
-          {discoveryContent}
-        </ScrollArea>
       </DialogContent>
     </Dialog>
   )

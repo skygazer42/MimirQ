@@ -18,9 +18,14 @@ vi.mock('@/i18n/navigation', () => ({ usePathname: () => '/datasets' }))
 vi.mock('@/lib/auth-headers', () => ({ getAuthHeaders: () => ({ Authorization: 'Bearer token' }) }))
 vi.mock('@/lib/api', () => ({ observabilityApi: { reportFrontendVital: mocks.report } }))
 
-import { WebVitalsReporter, canReportWebVital, normalizeWebVitalMetric, shouldReportWebVital } from './web-vitals-reporter'
+import {
+  WebVitalsReporter,
+  canReportWebVital,
+  normalizeWebVitalMetric,
+  shouldReportWebVital,
+} from './web-vitals-reporter'
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('web vitals policy', () => {
   afterEach(() => {
@@ -37,7 +42,15 @@ describe('web vitals policy', () => {
   })
 
   it('normalizes optional metric fields', () => {
-    expect(normalizeWebVitalMetric({ id: 'v1', name: 'INP', value: 42, rating: 'good', navigationType: 'navigate' } as never)).toEqual({
+    expect(
+      normalizeWebVitalMetric({
+        id: 'v1',
+        name: 'INP',
+        value: 42,
+        rating: 'good',
+        navigationType: 'navigate',
+      } as never),
+    ).toEqual({
       id: 'v1',
       name: 'INP',
       value: 42,

@@ -1,0 +1,2687 @@
+import contextlib
+import html
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, TypedDict
+from urllib.parse import quote, urlparse
+from uuid import UUID
+
+import httpx
+from sqlalchemy.orm import Session
+
+from app.api.schemas.documents import LocalHtmlIngestRequest, UrlUploadRequest
+from app.core.config import settings
+from app.core.database import SessionLocal
+from app.core.http_client import HTTPClientPool, get_http_client_pool
+from app.core.secrets import decrypt_connector_config_secrets
+from app.models.connector import ConnectorRun, ConnectorRunDocument
+from app.models.document import Document as DBDocument
+from app.services import document_ingestion as ingestion_service
+from app.services.connector_document_access import (
+    _apply_document_access_from_config,
+    _delta_sync_jira_documents_acl_by_issue_url,
+    _soft_disable_jira_attachment_documents_missing_from_issue,
+    _soft_disable_jira_linked_artifact_documents_missing_from_issue,
+    build_source_access_settings,
+    resolve_configured_source_access,
+)
+from app.services.connector_execution.confluence import (
+    _advance_timestamp_boundary,
+    _should_skip_timestamp_boundary_item,
+)
+from app.services.connector_execution.shared.artifacts import _apply_connector_identity_metadata
+from app.services.connector_execution.shared.common import (
+    _append_connector_error,
+    _connector_run_completion_status,
+    _finalize_connector_stats,
+    _optional_source_text,
+    build_ingestion_options,
+)
+from app.services.connector_execution.shared.external import (
+    _build_auth_headers,
+    _is_http_or_https_url,
+    _is_link_href_allowed,
+    _resolve_tenant_group_ids_by_external_id,
+)
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _jira_project_run_cancelled,
+)
+from app.services.connector_execution.shared.runtime import (
+    finalize_cancelled_connector_run as _finalize_cancelled_jira_project_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    get_active_connector_run as _get_jira_project_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    mark_connector_run_failed as _mark_jira_project_run_failed,
+)
+from app.services.connector_execution.shared.runtime import (
+    mark_connector_run_running as _mark_jira_project_run_running,
+)
+from app.services.connector_sync_state import normalize_boundary_ids
+from app.services.document_ingestion_sources import _normalize_datetime_utc_iso
+
+JIRA_UPDATED_SOURCE = "connector:jira:updated"
+
+
+class JiraIssueInfo(TypedDict):
+    issue_id: str
+    issue_key: str
+    issue_url: str
+    updated: str | None
+
+
+@dataclass(frozen=True)
+class JiraProjectIssueContext:
+    run: ConnectorRun
+    run_id: UUID
+    tenant_id: UUID
+    requested_by: str
+    base_url: str
+    project_key: str
+    cursor_last_modified: str
+    cursor_last_modified_ids: set[str]
+    effective_mode: str
+    include_comments: bool
+    max_comments_per_issue: int
+    include_attachments: bool
+    max_attachments_per_issue: int
+    max_total_attachments: int
+    include_linked_artifacts: bool
+    max_linked_artifacts_per_issue: int
+    max_total_linked_artifacts: int
+    parser_backend: str
+    chunk_strategy: str
+    pipeline: dict[str, Any] | None
+    access: dict[str, Any] | None
+    source_acl: dict[str, Any] | None
+    user_agent: str | None
+    auth_headers: dict[str, str]
+    enable_source_acl: bool
+    source_acl_mode: str
+    source_acl_fallback_mode: str
+
+
+def _jira_api_base_url(base_url: str) -> str:
+    """
+    Normalize a Jira base URL to the Jira Cloud REST v3 API base.
+
+    Examples:
+    - https://<site>.atlassian.net -> https://<site>.atlassian.net/rest/api/3
+    - https://<site>.atlassian.net/rest/api/3 -> unchanged
+    """
+    base = base_url.strip().rstrip("/")
+    if base.endswith("/rest/api/3"):
+        return base
+    if base.endswith("/rest/api"):
+        return f"{base}/3"
+    if "/rest/api/" in base:
+        prefix = base.split("/rest/api/", 1)[0].rstrip("/")
+        return f"{prefix}/rest/api/3"
+    return f"{base}/rest/api/3"
+
+
+async def _jira_request(pool: HTTPClientPool, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    """
+    Jira API requests are always third-party outbound HTTP calls.
+    """
+    return await pool.request_with_retry(method, url, use_external_client=True, **kwargs)
+
+
+def _jira_extract_issue_updated(issue: dict) -> str | None:
+    """
+    Best-effort extraction of the Jira issue updated timestamp for incremental cursoring.
+    """
+    if not isinstance(issue, dict):
+        return None
+    fields = issue.get("fields")
+    if isinstance(fields, dict):
+        updated = _optional_source_text(fields.get("updated"))
+        if updated:
+            return updated
+    updated = _optional_source_text(issue.get("updated"))
+    return updated or None
+
+
+def _jira_principal_value(raw: object) -> str:
+    if raw is None:
+        return ""
+    value = str(raw).strip().lower()
+    value = re.sub(r"\s+", "-", value)
+    return value[:255]
+
+
+def _jira_group_principal_key(group_name: str) -> str:
+    name = _jira_principal_value(group_name)
+    return f"jira:group:{name}"[:255] if name else ""
+
+
+def _jira_role_principal_key(role_name: str) -> str:
+    name = _jira_principal_value(role_name)
+    return f"jira:role:{name}"[:255] if name else ""
+
+
+def _jira_security_level_principal_key(security: object) -> str:
+    if not isinstance(security, dict):
+        return ""
+    level_id = security.get("id")
+    if level_id is not None:
+        level_id = str(level_id).strip()
+    if level_id:
+        return f"jira:policy:security-level/{level_id}"[:255]
+    name = _jira_principal_value(security.get("name"))
+    if not name:
+        return ""
+    return f"jira:policy:security-level/{name}"[:255]
+
+
+def _jira_comment_visibility_principal_key(visibility: object) -> str:
+    if not isinstance(visibility, dict):
+        return ""
+
+    vis_type = _jira_principal_value(visibility.get("type"))
+    vis_value = _jira_principal_value(visibility.get("value"))
+    if not vis_value:
+        vis_value = _jira_principal_value(visibility.get("identifier"))
+    if not vis_value:
+        vis_value = _jira_principal_value(visibility.get("name"))
+    if vis_type == "group":
+        return _jira_group_principal_key(vis_value)
+    if vis_type == "role":
+        return _jira_role_principal_key(vis_value)
+    return ""
+
+
+def _jira_issue_comment_visibility_keys(fields: dict[str, Any], *, max_comments: int) -> set[str]:
+    comments_obj = fields.get("comment")
+    comments = comments_obj.get("comments") if isinstance(comments_obj, dict) else None
+    items = comments if isinstance(comments, list) else []
+    keys: set[str] = set()
+    for comment in items[: max(0, int(max_comments or 0))]:
+        visibility = comment.get("visibility") if isinstance(comment, dict) else None
+        key = _jira_comment_visibility_principal_key(visibility)
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _jira_issue_acl_principal_keys(issue: dict, *, include_comments: bool, max_comments: int) -> tuple[bool, list[str]]:
+    """
+    Collect best-effort Jira visibility/security handles for source ACL inheritance.
+
+    We do not attempt to resolve Jira memberships here. Instead we expose stable external ids
+    that operators can map onto tenant groups via `tenant_groups.external_id`.
+    """
+    if not isinstance(issue, dict):
+        return False, []
+
+    fields = issue.get("fields")
+    if not isinstance(fields, dict):
+        return False, []
+
+    keys: set[str] = set()
+
+    security_key = _jira_security_level_principal_key(fields.get("security"))
+    if security_key:
+        keys.add(security_key)
+
+    if include_comments:
+        keys.update(_jira_issue_comment_visibility_keys(fields, max_comments=max_comments))
+
+    ordered = sorted(keys)
+    return bool(ordered), ordered
+
+
+def _jira_adf_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(_jira_adf_to_text(item) for item in value)
+    if not isinstance(value, dict):
+        return str(value)
+
+    node_type = _optional_source_text(value.get("type"), lower=True)
+    if node_type == "text":
+        return value["text"]
+    if node_type == "hardbreak":
+        return "\n"
+
+    content = value.get("content")
+    child_items = content if isinstance(content, list) else []
+    text = "".join(_jira_adf_to_text(item) for item in child_items)
+    if (
+        node_type in {"paragraph", "heading", "listitem", "blockquote", "tablecell", "tableheader"}
+        and text
+        and not text.endswith("\n")
+    ):
+        text += "\n"
+    return text
+
+
+def _jira_adf_is_doc(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return _optional_source_text(value.get("type"), lower=True) == "doc" and isinstance(value.get("content"), list)
+
+
+_JIRA_ADF_MARK_TAGS = {
+    "strong": "strong",
+    "em": "em",
+    "code": "code",
+    "strike": "s",
+    "strikethrough": "s",
+}
+
+
+def _jira_adf_mark_link_html(text: str, mark: dict[str, Any]) -> str:
+    attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
+    href = _optional_source_text(attrs.get("href"))
+    if not _is_link_href_allowed(href):
+        return text
+    return f'<a href="{html.escape(href)}">{text}</a>'
+
+
+def _jira_adf_apply_mark_html(text: str, mark: object) -> str:
+    if not isinstance(mark, dict):
+        return text
+
+    mark_type = _optional_source_text(mark.get("type"), lower=True)
+    if mark_type == "link":
+        return _jira_adf_mark_link_html(text, mark)
+
+    tag = _JIRA_ADF_MARK_TAGS.get(mark_type)
+    return f"<{tag}>{text}</{tag}>" if tag else text
+
+
+def _jira_adf_text_node_html(value: dict) -> str:
+    text = html.escape(value["text"])
+
+    marks = value.get("marks") if isinstance(value.get("marks"), list) else []
+    for mark in marks:
+        text = _jira_adf_apply_mark_html(text, mark)
+
+    return text
+
+
+def _jira_adf_render_child_nodes(child_items: list[object], *, depth: int, separator: str) -> str:
+    return separator.join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+
+
+def _jira_adf_node_html_paragraph(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="")
+    if not inner:
+        return ""
+    return f"<p>{inner}</p>"
+
+
+def _jira_adf_node_html_heading(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    try:
+        level = int(attrs.get("level") or 3)
+    except Exception:
+        level = 3
+    level = max(1, min(level, 6))
+
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="")
+    if not inner:
+        return ""
+
+    safe_level = min(6, max(3, level + 1))
+    return f"<h{safe_level}>{inner}</h{safe_level}>"
+
+
+def _jira_adf_node_html_blockquote(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<blockquote>{inner}</blockquote>"
+
+
+def _jira_adf_node_html_hr(value: dict, child_items: list[object], depth: int) -> str:
+    return "<hr />"
+
+
+def _jira_adf_node_html_bullet_list(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<ul>{inner}</ul>"
+
+
+def _jira_adf_node_html_ordered_list(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<ol>{inner}</ol>"
+
+
+def _jira_adf_node_html_list_item(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<li>{inner}</li>"
+
+
+def _jira_adf_node_html_code_block(value: dict, child_items: list[object], depth: int) -> str:
+    code_text = _jira_adf_to_text(value).strip("\n")
+    if not code_text.strip():
+        return ""
+    return f"<pre><code>{html.escape(code_text)}</code></pre>"
+
+
+def _jira_adf_node_html_table(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<table><tbody>{inner}</tbody></table>"
+
+
+def _jira_adf_node_html_table_row(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="")
+    if not inner:
+        return ""
+    return f"<tr>{inner}</tr>"
+
+
+def _jira_adf_node_html_table_cell(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<td>{inner}</td>"
+
+
+def _jira_adf_node_html_table_header(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<th>{inner}</th>"
+
+
+def _jira_adf_node_html_inline_card(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    url = _optional_source_text(attrs.get("url"))
+    if _is_http_or_https_url(url):
+        esc = html.escape(url)
+        return f'<a href="{esc}">{esc}</a>'
+    return html.escape(url) if url else ""
+
+
+def _jira_adf_node_html_mention(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    text = _optional_source_text(attrs.get("text"), attrs.get("displayName"))
+    if text:
+        return html.escape(text)
+    return ""
+
+
+def _jira_adf_node_html_emoji(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    text = _optional_source_text(attrs.get("text"), attrs.get("shortName"))
+    if text:
+        return html.escape(text)
+    return ""
+
+
+_JIRA_ADF_NODE_HTML_HANDLERS = {
+    "blockquote": _jira_adf_node_html_blockquote,
+    "bulletlist": _jira_adf_node_html_bullet_list,
+    "codeblock": _jira_adf_node_html_code_block,
+    "emoji": _jira_adf_node_html_emoji,
+    "heading": _jira_adf_node_html_heading,
+    "inlinecard": _jira_adf_node_html_inline_card,
+    "listitem": _jira_adf_node_html_list_item,
+    "mention": _jira_adf_node_html_mention,
+    "orderedlist": _jira_adf_node_html_ordered_list,
+    "paragraph": _jira_adf_node_html_paragraph,
+    "rule": _jira_adf_node_html_hr,
+    "table": _jira_adf_node_html_table,
+    "tablecell": _jira_adf_node_html_table_cell,
+    "tableheader": _jira_adf_node_html_table_header,
+    "tablerow": _jira_adf_node_html_table_row,
+}
+
+
+def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
+    if depth > 50:
+        return ""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return html.escape(value)
+    if isinstance(value, list):
+        return "\n".join(part for part in (_jira_adf_node_to_html(item, depth=depth + 1) for item in value) if part)
+    if not isinstance(value, dict):
+        return html.escape(str(value))
+
+    node_type = _optional_source_text(value.get("type"), lower=True)
+    content = value.get("content")
+    child_items = content if isinstance(content, list) else []
+
+    if node_type == "text":
+        return _jira_adf_text_node_html(value)
+    if node_type == "hardbreak":
+        return "<br />"
+
+    handler = _JIRA_ADF_NODE_HTML_HANDLERS.get(node_type)
+    if handler:
+        return handler(value, child_items, depth)
+
+    return _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+
+
+def _jira_adf_to_html(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return "\n".join(f"<p>{html.escape(line.strip())}</p>" for line in value.splitlines() if line.strip())
+    return _jira_adf_node_to_html(value)
+
+
+def _jira_mapping_text(value: dict[str, Any]) -> str:
+    for key in ("displayName", "name", "value", "key", "title", "summary"):
+        raw = value.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, (str, int, float, bool)):
+            text = str(raw).strip()
+            if text:
+                return text
+    return ""
+
+
+def _jira_value_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if _jira_adf_is_doc(value):
+        return _jira_adf_to_text(value)
+    if isinstance(value, list):
+        parts = [_jira_value_to_text(item).strip() for item in value]
+        parts = [p for p in parts if p]
+        return ", ".join(parts)
+    if isinstance(value, dict):
+        return _jira_mapping_text(value)
+    return str(value).strip()
+
+
+def _jira_html_from_value(raw: object) -> str:
+    if raw is None:
+        return ""
+    if _jira_adf_is_doc(raw):
+        return _jira_adf_to_html(raw)
+    text = _jira_value_to_text(raw).strip()
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(f"<p>{html.escape(line)}</p>" for line in lines)
+
+
+def _jira_html_from_field(*, rendered: object, raw: object) -> str:
+    rendered_text = _optional_source_text(rendered) if isinstance(rendered, str) else ""
+    if rendered_text:
+        return rendered_text
+
+    return _jira_html_from_value(raw)
+
+
+def _jira_issue_url(*, base_url: str, issue_key: str) -> str:
+    base = base_url.strip().rstrip("/")
+    key = issue_key.strip()
+    if not base or not key:
+        return ""
+    return f"{base}/browse/{quote(key, safe='')}"
+
+
+def _normalize_jira_full_sync_scope(
+    *,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    connector_id: str,
+    seen_issue_urls: set[str],
+) -> tuple[UUID, str, str, str, set[str]] | None:
+    if dataset_id is None:
+        return None
+    normalized_base_url = base_url.strip().rstrip("/")
+    normalized_project_key = project_key.strip().upper()
+    normalized_connector_id = str(connector_id or "jira_project").strip() or "jira_project"
+    normalized_seen_urls = {url.strip() for url in (seen_issue_urls or set()) if url.strip()}
+    if not normalized_base_url or not normalized_project_key:
+        return None
+    return dataset_id, normalized_base_url, normalized_project_key, normalized_connector_id, normalized_seen_urls
+
+
+def _jira_project_connector_metadata(doc: DBDocument) -> tuple[dict[str, Any], dict[str, Any]]:
+    meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+    conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+    return meta, conn
+
+
+def _jira_project_doc_matches_scope(
+    doc: DBDocument,
+    *,
+    base_url: str,
+    project_key: str,
+    connector_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    meta, conn = _jira_project_connector_metadata(doc)
+    if conn.get("connector_id") != connector_id:
+        return None
+    stored_base_url = _optional_source_text(conn.get("base_url"))
+    if stored_base_url is None or stored_base_url.rstrip("/") != base_url:
+        return None
+    stored_project_key = _optional_source_text(conn.get("project_key"))
+    if stored_project_key is None or stored_project_key.upper() != project_key:
+        return None
+    return meta, conn
+
+
+def _list_recent_jira_project_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_docs_scan: int,
+) -> list[DBDocument]:
+    scan_limit = max(0, int(max_docs_scan or 0)) or 5000
+    return (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+        )
+        .order_by(DBDocument.created_at.desc())
+        .limit(scan_limit)
+        .all()
+    )
+
+
+def _load_jira_project_documents_for_full_sync(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    base_url: str,
+    project_key: str,
+    connector_id: str,
+    max_docs_scan: int,
+) -> list[DBDocument]:
+    try:
+        return (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == connector_id)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+            .all()
+        )
+    except Exception:
+        docs = _list_recent_jira_project_documents(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            max_docs_scan=max_docs_scan,
+        )
+        return [
+            doc
+            for doc in docs
+            if _jira_project_doc_matches_scope(
+                doc,
+                base_url=base_url,
+                project_key=project_key,
+                connector_id=connector_id,
+            )
+        ]
+
+
+def _soft_disable_jira_documents_missing_from_full_sync(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    seen_issue_urls: set[str],
+    connector_id: str = "jira_project",
+    max_docs_scan: int = 5000,
+) -> tuple[int, int]:
+    """
+    Best-effort soft-disable for Jira issue documents missing from a complete full sync.
+
+    Scope is limited to connector-managed Jira docs for the same tenant/dataset/base URL/project.
+    """
+    scope = _normalize_jira_full_sync_scope(
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        connector_id=connector_id,
+        seen_issue_urls=seen_issue_urls,
+    )
+    if scope is None:
+        return 0, 0
+    dataset_id, base_url, project_key, connector_id, seen_urls = scope
+    docs = _load_jira_project_documents_for_full_sync(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        connector_id=connector_id,
+        max_docs_scan=max_docs_scan,
+    )
+
+    now = _now()
+    disabled = 0
+    reconciled_issue_urls: set[str] = set()
+    for doc in docs or []:
+        if getattr(doc, "archived_at", None) is not None:
+            continue
+        match = _jira_project_doc_matches_scope(
+            doc,
+            base_url=base_url,
+            project_key=project_key,
+            connector_id=connector_id,
+        )
+        if match is None:
+            continue
+        meta, conn = match
+        issue_url = _optional_source_text(conn.get("issue_url"), meta.get("source_url"))
+        if not issue_url or issue_url in seen_urls:
+            continue
+
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            reconciled_issue_urls.add(issue_url)
+            disabled += 1
+
+    return len(reconciled_issue_urls), int(disabled)
+
+
+def _jira_jql_updated_after(raw: str | None) -> str:
+    text = _optional_source_text(raw)
+    if not text:
+        return ""
+    normalized = _normalize_datetime_utc_iso(text)
+    if not normalized:
+        return text
+    dt = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def _jira_issue_fields(issue: dict) -> dict:
+    fields = issue.get("fields")
+    return fields if isinstance(fields, dict) else {}
+
+
+def _jira_issue_rendered_fields(issue: dict) -> dict:
+    rendered = issue.get("renderedFields")
+    return rendered if isinstance(rendered, dict) else {}
+
+
+def _jira_issue_field_name(fields: dict, key: str) -> str:
+    raw = fields.get(key)
+    if not isinstance(raw, dict):
+        return ""
+    return _optional_source_text(raw.get("name"))
+
+
+def _jira_issue_label_text(fields: dict) -> str:
+    labels = fields.get("labels")
+    if not isinstance(labels, list):
+        return ""
+    cleaned = [label.strip() for label in labels if label.strip()]
+    return ", ".join(cleaned)
+
+
+def _jira_comment_items(fields: dict) -> list[dict]:
+    comments_obj = fields.get("comment")
+    if not isinstance(comments_obj, dict):
+        return []
+    comments = comments_obj.get("comments")
+    if not isinstance(comments, list):
+        return []
+    return [comment for comment in comments if isinstance(comment, dict)]
+
+
+def _jira_rendered_comment_at(rendered_comment_items: list[dict], idx: int) -> dict:
+    if idx <= 0:
+        return {}
+    offset = idx - 1
+    if offset >= len(rendered_comment_items):
+        return {}
+    return rendered_comment_items[offset]
+
+
+def _jira_comment_meta_html(comment: dict) -> str:
+    author_obj = comment.get("author")
+    author = _optional_source_text(author_obj.get("displayName")) if isinstance(author_obj, dict) else None
+    created = _optional_source_text(comment.get("created"))
+    meta_bits = [bit for bit in (author, created) if bit]
+    if not meta_bits:
+        return ""
+    return f"<p><strong>Meta:</strong> {html.escape(' | '.join(meta_bits))}</p>"
+
+
+def _jira_render_issue_comment_article(*, idx: int, comment: dict, rendered_comment: dict) -> str:
+    body_html = _jira_html_from_field(
+        rendered=rendered_comment.get("body"),
+        raw=comment.get("body"),
+    )
+    meta_html = _jira_comment_meta_html(comment)
+    return f"<article><h3>Comment {idx}</h3>{meta_html}{body_html}</article>"
+
+
+def _jira_render_issue_comment_articles(*, fields: dict, rendered: dict, max_comments: int) -> list[str]:
+    comment_items = _jira_comment_items(fields)
+    rendered_comment_items = _jira_comment_items(rendered)
+
+    out: list[str] = []
+    lim = max(0, int(max_comments or 0))
+    for idx, comment in enumerate(comment_items[:lim], start=1):
+        rendered_comment = _jira_rendered_comment_at(rendered_comment_items, idx)
+        out.append(_jira_render_issue_comment_article(idx=idx, comment=comment, rendered_comment=rendered_comment))
+
+    return out
+
+
+def _jira_render_custom_field_sections(*, fields: dict, rendered: dict) -> list[str]:
+    custom_fields = [
+        (key, raw_value) for k, raw_value in (fields or {}).items() if (key := k.strip()).startswith("customfield_")
+    ]
+    custom_fields.sort(key=lambda item: item[0])
+
+    out: list[str] = []
+    for key, raw_value in custom_fields:
+        value_html = _jira_html_from_field(
+            rendered=rendered.get(key),
+            raw=raw_value,
+        )
+        if not value_html:
+            continue
+        out.append(f"<article><h3>{html.escape(key)}</h3>{value_html}</article>")
+    return out
+
+
+def _jira_render_issue_document_preamble(*, issue_key: str, summary: str, issue_url: str, base_url: str) -> list[str]:
+    base_href = issue_url or base_url
+    base_tag = f'  <base href="{html.escape(base_href)}" />' if base_href else ""
+    return [
+        "<!doctype html>",
+        "<html>",
+        "<head>",
+        '  <meta charset="utf-8" />',
+        f"  <title>{html.escape(issue_key or summary)}</title>",
+        base_tag,
+        "</head>",
+        "<body>",
+        f"  <h1>{html.escape(issue_key or 'Jira Issue')}</h1>",
+        "  <h2>Summary</h2>",
+        f"  <p>{html.escape(summary)}</p>",
+    ]
+
+
+def _jira_render_issue_meta_paragraphs(
+    *,
+    issue_url: str,
+    issue_type: str,
+    priority: str,
+    status: str,
+    updated: str,
+    label_text: str,
+) -> list[str]:
+    out: list[str] = []
+    if issue_url:
+        esc = html.escape(issue_url)
+        out.append(f'  <p><strong>Issue URL:</strong> <a href="{esc}">{esc}</a></p>')
+
+    for label, value in (
+        ("Issue Type", issue_type),
+        ("Priority", priority),
+        ("Status", status),
+        ("Updated", updated),
+        ("Labels", label_text),
+    ):
+        if not value:
+            continue
+        out.append(f"  <p><strong>{label}:</strong> {html.escape(value)}</p>")
+
+    return out
+
+
+def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: bool, max_comments: int) -> str:
+    """
+    Render a Jira issue into a stable HTML document shape that works with `jira_ticket`.
+    """
+    fields = _jira_issue_fields(issue)
+    rendered = _jira_issue_rendered_fields(issue)
+
+    issue_key = issue["key"].strip()
+    summary = str(fields.get("summary") or issue_key or "Jira issue").strip()
+    issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
+    updated = _optional_source_text(_jira_extract_issue_updated(issue))
+
+    issue_type = _jira_issue_field_name(fields, "issuetype")
+    priority = _jira_issue_field_name(fields, "priority")
+    status = _jira_issue_field_name(fields, "status")
+    label_text = _jira_issue_label_text(fields)
+
+    description_html = _jira_html_from_field(
+        rendered=rendered.get("description"),
+        raw=fields.get("description"),
+    )
+
+    comments_html = (
+        _jira_render_issue_comment_articles(fields=fields, rendered=rendered, max_comments=max_comments)
+        if include_comments
+        else []
+    )
+    parts = _jira_render_issue_document_preamble(
+        issue_key=issue_key,
+        summary=summary,
+        issue_url=issue_url,
+        base_url=base_url,
+    )
+    parts.extend(
+        _jira_render_issue_meta_paragraphs(
+            issue_url=issue_url,
+            issue_type=issue_type,
+            priority=priority,
+            status=status,
+            updated=updated,
+            label_text=label_text,
+        )
+    )
+    custom_field_sections = _jira_render_custom_field_sections(fields=fields, rendered=rendered)
+    if custom_field_sections:
+        parts.extend(["  <h2>Custom Fields</h2>", *custom_field_sections])
+
+    if description_html:
+        parts.extend(["  <h2>Description</h2>", description_html])
+
+    if comments_html:
+        parts.extend(["  <h2>Comments</h2>", *comments_html])
+
+    parts.extend(["</body>", "</html>"])
+    return "\n".join(part for part in parts if part)
+
+
+def _jira_project_required_config(cfg: dict[str, Any]) -> tuple[str, str]:
+    base_url = cfg["base_url"].strip().rstrip("/")
+    project_key = cfg["project_key"].strip().upper()
+    if not base_url or not project_key:
+        raise ValueError("base_url and project_key are required")
+    return base_url, project_key
+
+
+def _jira_project_cursor_state(cfg: dict[str, Any]) -> tuple[str | None, set[str]]:
+    state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+    cursor_last_modified = _optional_source_text(state.get("last_modified"))
+    cursor_last_modified_ids = (
+        set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
+    )
+    return cursor_last_modified, cursor_last_modified_ids
+
+
+def _jira_project_effective_mode(cfg: dict[str, Any], *, cursor_last_modified: str | None) -> str:
+    sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
+    effective_mode = sync_mode if sync_mode in {"auto", "full", "incremental"} else "auto"
+    if effective_mode == "auto":
+        return "incremental" if cursor_last_modified else "full"
+    if effective_mode == "incremental" and not cursor_last_modified:
+        return "full"
+    return effective_mode
+
+
+def _jira_project_custom_fields(cfg: dict[str, Any]) -> list[str]:
+    custom_fields_raw = cfg.get("custom_fields")
+    custom_fields_in = custom_fields_raw if isinstance(custom_fields_raw, list) else []
+    custom_fields: list[str] = []
+    custom_fields_seen: set[str] = set()
+    for raw in custom_fields_in:
+        key = raw.strip().lower()
+        if not key or len(key) > 80 or not re.fullmatch(r"customfield_\d+", key) or key in custom_fields_seen:
+            continue
+        custom_fields_seen.add(key)
+        custom_fields.append(key)
+        if len(custom_fields) >= 30:
+            break
+    return custom_fields
+
+
+def _jira_project_headers(cfg: dict[str, Any], *, user_agent: str | None) -> tuple[dict[str, str], dict[str, str]]:
+    auth_headers = _build_auth_headers(cfg)
+    headers: dict[str, str] = {
+        "Accept": "application/json",
+        "User-Agent": (user_agent or "Ragvia/1.0 (+jira_project)"),
+    }
+    headers.update(auth_headers)
+    return auth_headers, headers
+
+
+def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    base_url, project_key = _jira_project_required_config(cfg)
+    cursor_last_modified, cursor_last_modified_ids = _jira_project_cursor_state(cfg)
+    effective_mode = _jira_project_effective_mode(cfg, cursor_last_modified=cursor_last_modified)
+    custom_fields = _jira_project_custom_fields(cfg)
+
+    include_attachments, max_attachments_per_issue, max_total_attachments = _jira_attachment_limits(cfg)
+    include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _jira_linked_artifact_limits(
+        cfg
+    )
+    access_settings = build_source_access_settings(cfg)
+    user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+    auth_headers, headers = _jira_project_headers(cfg, user_agent=user_agent)
+
+    api_base = _jira_api_base_url(base_url)
+    max_comments_per_issue = cfg.get("max_comments_per_issue")
+    return {
+        "base_url": base_url,
+        "project_key": project_key,
+        "effective_mode": effective_mode,
+        "cursor_last_modified": cursor_last_modified,
+        "cursor_last_modified_ids": cursor_last_modified_ids,
+        "max_issues": max(1, min(int(cfg.get("max_issues") or 50), 500)),
+        "page_size": max(1, min(int(cfg.get("page_size") or 25), 100)),
+        "include_comments": bool(cfg.get("include_comments", True)),
+        "max_comments_per_issue": max(
+            0, min(int(20 if max_comments_per_issue is None else max_comments_per_issue), 200)
+        ),
+        "custom_fields": custom_fields,
+        "include_attachments": bool(include_attachments),
+        "max_attachments_per_issue": int(max_attachments_per_issue),
+        "max_total_attachments": int(max_total_attachments),
+        "include_linked_artifacts": bool(include_linked_artifacts),
+        "max_linked_artifacts_per_issue": int(max_linked_artifacts_per_issue),
+        "max_total_linked_artifacts": int(max_total_linked_artifacts),
+        **build_ingestion_options(cfg, default_chunk_strategy="jira_ticket"),
+        "access": access_settings["access"],
+        "source_acl": access_settings["source_acl"],
+        "source_acl_mode": access_settings["source_acl_mode"],
+        "source_acl_fallback_mode": access_settings["source_acl_fallback_mode"],
+        "has_manual_access_override": access_settings["has_manual_access_override"],
+        "enable_source_acl": access_settings["enable_source_acl"],
+        "extra_jql": _optional_source_text(cfg.get("jql")),
+        "user_agent": user_agent,
+        "auth_headers": auth_headers,
+        "api_base": api_base,
+        "search_url": f"{api_base}/search",
+        "headers": headers,
+    }
+
+
+def _build_jira_project_search_jql(
+    *,
+    project_key: str,
+    extra_jql: str | None,
+    effective_mode: str,
+    cursor_last_modified: str | None,
+) -> str:
+    jql_parts = [f'project = "{project_key}"']
+    if extra_jql:
+        jql_parts.append(f"({extra_jql})")
+    if effective_mode == "incremental" and cursor_last_modified:
+        after = _jira_jql_updated_after(cursor_last_modified)
+        if after:
+            jql_parts.append(f'updated >= "{after}"')
+    return " AND ".join(jql_parts) + " ORDER BY updated ASC"
+
+
+def _build_jira_issue_info(*, base_url: str, issue: dict[str, Any]) -> JiraIssueInfo:
+    issue_key = issue["key"].strip()
+    issue_id = issue["id"].strip()
+    issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
+    updated = _jira_extract_issue_updated(issue)
+    return {
+        "issue_id": issue_id,
+        "issue_key": issue_key,
+        "issue_url": issue_url,
+        "updated": updated,
+    }
+
+
+def _resolve_jira_issue_acl(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    run_id: UUID,
+    requested_by: str,
+    run: ConnectorRun,
+    issue: dict[str, Any],
+    issue_info: JiraIssueInfo,
+    settings_map: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
+    effective_access = settings_map.get("access")
+    acl_provenance: dict[str, Any] | None = None
+    issue_url = issue_info["issue_url"]
+
+    if not settings_map.get("enable_source_acl") or not issue_url:
+        return (effective_access if isinstance(effective_access, dict) else None), None, 0
+
+    restricted, ext_ids = _jira_issue_acl_principal_keys(
+        issue if isinstance(issue, dict) else {},
+        include_comments=bool(settings_map.get("include_comments")),
+        max_comments=int(settings_map.get("max_comments_per_issue") or 0),
+    )
+    if not restricted:
+        return (effective_access if isinstance(effective_access, dict) else None), None, 0
+
+    mapped_groups: set[UUID] = set()
+    fallback_used = False
+    try:
+        source_acl_config = settings_map.get("source_acl")
+        if source_acl_config and source_acl_config.get("group_mappings"):
+            effective_access, mapped_groups = resolve_configured_source_access(
+                source_system="jira",
+                source_acl_config=source_acl_config,
+                principal_keys=ext_ids,
+            )
+            fallback_used = not bool(mapped_groups)
+        else:
+            mapped_groups = set(
+                _resolve_tenant_group_ids_by_external_id(
+                    db,
+                    tenant_id=tenant_id,
+                    external_ids=ext_ids,
+                )
+                or set()
+            )
+            if mapped_groups:
+                ordered = sorted(mapped_groups, key=lambda value: str(value))
+                effective_access = {
+                    "mode": "partial_members",
+                    "partial_group_list": [str(group_id) for group_id in ordered],
+                }
+            else:
+                effective_access = {"mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members")}
+                fallback_used = True
+    except Exception:
+        effective_access = {"mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members")}
+        fallback_used = True
+
+    with contextlib.suppress(Exception):
+        from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+        acl_provenance = build_document_acl_provenance(
+            connector_id="jira_project",
+            connector_run_id=str(run_id),
+            effective_access=effective_access,
+            source_acl_mode=str(settings_map.get("source_acl_mode") or "disabled"),
+            source_acl_fallback_mode=str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+            source_principal_external_ids=ext_ids,
+            mapped_group_ids=mapped_groups,
+            fallback_used=fallback_used,
+            restricted=restricted,
+        )
+
+    updated_existing = int(
+        _delta_sync_jira_documents_acl_by_issue_url(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=run.dataset_id,
+            base_url=settings_map["base_url"],
+            project_key=settings_map["project_key"],
+            issue_url=issue_url,
+            requested_by=requested_by,
+            access=effective_access,
+            acl_provenance=acl_provenance,
+        )
+    )
+    return (effective_access if isinstance(effective_access, dict) else None), acl_provenance, updated_existing
+
+
+def _jira_attachment_limits(cfg: dict) -> tuple[bool, int, int]:
+    include = bool(cfg.get("include_attachments", False))
+
+    per_issue = int(cfg.get("max_attachments_per_issue") or 10)
+    per_issue = max(1, min(per_issue, 50))
+
+    total = int(cfg.get("max_total_attachments") or 200)
+    total = max(1, min(total, 2000))
+
+    return include, per_issue, total
+
+
+def _jira_linked_artifact_limits(cfg: dict) -> tuple[bool, int, int]:
+    include = bool(cfg.get("include_linked_artifacts", False))
+
+    per_issue = int(cfg.get("max_linked_artifacts_per_issue") or 10)
+    per_issue = max(1, min(per_issue, 50))
+
+    total = int(cfg.get("max_total_linked_artifacts") or 200)
+    total = max(1, min(total, 2000))
+
+    return include, per_issue, total
+
+
+def _jira_effective_positive_limit(limit: int) -> int:
+    lim = int(limit or 0)
+    return lim if lim > 0 else 10_000
+
+
+def _jira_attachment_items(issue: dict) -> list[object]:
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    items = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+    return items
+
+
+def _jira_attachment_ref(raw: object) -> dict[str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    attachment_id = _optional_source_text(raw.get("id"))
+    if not attachment_id:
+        return None
+
+    filename = _optional_source_text(raw.get("filename"), raw.get("title"), raw.get("name"))
+    download_url = _optional_source_text(raw.get("content"), raw.get("downloadUrl"), raw.get("download_url"))
+    if not download_url:
+        return None
+
+    return {
+        "attachment_id": attachment_id,
+        "filename": filename or f"jira-attachment-{attachment_id}",
+        "download_url": download_url,
+    }
+
+
+def _jira_extract_attachments(issue: dict, *, limit: int) -> list[dict[str, str]]:
+    if not isinstance(issue, dict):
+        return []
+
+    lim = _jira_effective_positive_limit(limit)
+    out: list[dict[str, str]] = []
+
+    for raw in _jira_attachment_items(issue):
+        if len(out) >= lim:
+            break
+        attachment_ref = _jira_attachment_ref(raw)
+        if attachment_ref:
+            out.append(attachment_ref)
+
+    return out
+
+
+def _jira_extract_urls_from_text(value: object, *, limit: int) -> list[str]:
+    text = _optional_source_text(value)
+    if not text:
+        return []
+
+    lim = int(limit or 0)
+    if lim <= 0:
+        lim = 10_000
+
+    url_re = re.compile(r"https?://[^\s<>\")\]]+", flags=re.IGNORECASE)
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in url_re.finditer(text):
+        url = m.group(0).strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append(url)
+        if len(out) >= lim:
+            break
+    return out
+
+
+def _jira_push_unique_http_url(out: list[str], seen: set[str], raw: object, *, limit: int) -> None:
+    if len(out) >= limit:
+        return
+
+    url = _optional_source_text(raw)
+    if not url or url in seen:
+        return
+    if not _is_http_or_https_url(url):
+        return
+
+    seen.add(url)
+    out.append(url)
+
+
+def _jira_extract_adf_text_mark_urls(node: dict[str, Any], out: list[str], seen: set[str], *, limit: int) -> None:
+    marks = node.get("marks") if isinstance(node.get("marks"), list) else []
+    for mark in marks:
+        if not isinstance(mark, dict):
+            continue
+        if _optional_source_text(mark.get("type"), lower=True) != "link":
+            continue
+        attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
+        _jira_push_unique_http_url(out, seen, attrs.get("href"), limit=limit)
+
+
+def _jira_extract_adf_node_urls(node: dict[str, Any], out: list[str], seen: set[str], *, limit: int) -> None:
+    node_type = _optional_source_text(node.get("type"), lower=True)
+    if node_type == "text":
+        _jira_extract_adf_text_mark_urls(node, out, seen, limit=limit)
+        return
+    if node_type == "inlinecard":
+        attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+        _jira_push_unique_http_url(out, seen, attrs.get("url"), limit=limit)
+
+
+def _jira_walk_adf_urls(node: object, out: list[str], seen: set[str], *, limit: int, depth: int = 0) -> None:
+    if len(out) >= limit or depth > 60 or node is None:
+        return
+    if isinstance(node, str):
+        for url in _jira_extract_urls_from_text(node, limit=limit - len(out)):
+            _jira_push_unique_http_url(out, seen, url, limit=limit)
+        return
+    if isinstance(node, list):
+        for item in node:
+            _jira_walk_adf_urls(item, out, seen, limit=limit, depth=depth + 1)
+        return
+    if not isinstance(node, dict):
+        return
+
+    _jira_extract_adf_node_urls(node, out, seen, limit=limit)
+    content = node.get("content")
+    for item in content if isinstance(content, list) else []:
+        _jira_walk_adf_urls(item, out, seen, limit=limit, depth=depth + 1)
+
+
+def _jira_extract_urls_from_adf(value: object, *, limit: int) -> list[str]:
+    lim = _jira_effective_positive_limit(limit)
+    out: list[str] = []
+    seen: set[str] = set()
+    _jira_walk_adf_urls(value, out, seen, limit=lim)
+    return out
+
+
+def _jira_extract_urls_from_adf_or_text(value: object, *, limit: int) -> list[str]:
+    if _jira_adf_is_doc(value):
+        return _jira_extract_urls_from_adf(value, limit=limit)
+    return _jira_extract_urls_from_text(value, limit=limit)
+
+
+def _jira_extend_unique_urls(out: list[str], seen: set[str], urls: list[str], *, limit: int) -> None:
+    for url in urls:
+        if len(out) >= limit:
+            return
+        normalized_url = url.strip()
+        if not normalized_url or normalized_url in seen:
+            continue
+        seen.add(normalized_url)
+        out.append(normalized_url)
+
+
+def _jira_issue_comment_bodies(fields: dict[str, Any], *, max_comments: int) -> list[object]:
+    comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
+    comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
+    lim_comments = max(0, int(max_comments or 0))
+    return [comment.get("body") for comment in comment_items[:lim_comments] if isinstance(comment, dict)]
+
+
+def _jira_extract_linked_artifact_urls(
+    issue: dict, *, include_comments: bool, max_comments: int, limit: int
+) -> list[str]:
+    if not isinstance(issue, dict):
+        return []
+
+    lim = _jira_effective_positive_limit(limit)
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    out: list[str] = []
+    seen: set[str] = set()
+
+    desc_urls = _jira_extract_urls_from_adf_or_text(fields.get("description"), limit=lim - len(out))
+    _jira_extend_unique_urls(out, seen, desc_urls, limit=lim)
+
+    if include_comments:
+        for body in _jira_issue_comment_bodies(fields, max_comments=max_comments):
+            if len(out) >= lim:
+                break
+            body_urls = _jira_extract_urls_from_adf_or_text(body, limit=lim - len(out))
+            _jira_extend_unique_urls(out, seen, body_urls, limit=lim)
+
+    out_sorted = sorted(out)
+    return out_sorted[:lim]
+
+
+def _jira_attachment_connector_metadata(
+    *,
+    base_url: str,
+    project_key: str,
+    issue_id: str,
+    issue_key: str,
+    issue_url: str,
+    attachment_id: str,
+    filename: str,
+    download_url: str,
+    run_id: str,
+    mode: str,
+) -> dict[str, Any]:
+    return {
+        "connector_id": "jira_project",
+        "doc_kind": "attachment",
+        "base_url": base_url.strip(),
+        "project_key": project_key.strip().upper(),
+        "issue_id": issue_id,
+        "issue_key": issue_key,
+        "issue_url": issue_url.strip(),
+        "attachment_id": attachment_id.strip(),
+        "filename": filename.strip(),
+        "download_url": download_url.strip(),
+        "run_id": run_id.strip(),
+        "mode": mode.strip(),
+    }
+
+
+def _jira_linked_artifact_connector_metadata(
+    *,
+    base_url: str,
+    project_key: str,
+    issue_id: str,
+    issue_key: str,
+    issue_url: str,
+    link_url: str,
+    run_id: str,
+    mode: str,
+) -> dict[str, Any]:
+    return {
+        "connector_id": "jira_project",
+        "doc_kind": "linked_artifact",
+        "base_url": base_url.strip(),
+        "project_key": project_key.strip().upper(),
+        "issue_id": issue_id,
+        "issue_key": issue_key,
+        "issue_url": issue_url.strip(),
+        "link_url": link_url.strip(),
+        "run_id": run_id.strip(),
+        "mode": mode.strip(),
+    }
+
+
+def _jira_should_send_auth_headers(*, base_url: str, url: str) -> bool:
+    base = base_url.strip()
+    target = url.strip()
+    if not base or not target:
+        return False
+    try:
+        b = urlparse(base)
+        u = urlparse(target)
+    except Exception:
+        return False
+    if not b.scheme or not b.netloc or not u.scheme or not u.netloc:
+        return False
+    if u.scheme.lower() not in {"http", "https"}:
+        return False
+    return str(b.netloc).lower() == str(u.netloc).lower()
+
+
+def _patch_jira_linked_artifact_document_metadata(
+    db: Session,
+    *,
+    link_doc: DBDocument,
+    run: ConnectorRun,
+    issue_info: JiraIssueInfo,
+    link_url: str,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> None:
+    meta_link = dict(link_doc.doc_metadata or {})
+    updated = issue_info["updated"]
+    issue_id = issue_info["issue_id"]
+    issue_key = issue_info["issue_key"]
+    issue_url = issue_info["issue_url"]
+
+    if updated:
+        lm_iso = _normalize_datetime_utc_iso(updated) or updated
+        meta_link["source_last_modified_at"] = lm_iso
+        meta_link["source_last_modified_source"] = JIRA_UPDATED_SOURCE
+        meta_link["source_last_modified_raw"] = meta_link.get("source_last_modified_raw") or updated
+    if isinstance(acl_provenance, dict):
+        meta_link["acl_provenance"] = dict(acl_provenance)
+    meta_link["connector"] = _jira_linked_artifact_connector_metadata(
+        base_url=settings_map["base_url"],
+        project_key=settings_map["project_key"],
+        issue_id=issue_id,
+        issue_key=issue_key,
+        issue_url=issue_url,
+        link_url=link_url,
+        run_id=str(run.id),
+        mode=settings_map["effective_mode"],
+    )
+    link_doc.doc_metadata = meta_link
+    _apply_connector_identity_metadata(
+        doc=link_doc,
+        run=run,
+        connector_id="jira_project",
+        source_ref=link_url,
+        source_id=link_url,
+    )
+    db.commit()
+
+
+async def _ingest_single_jira_linked_artifact(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue_info: JiraIssueInfo,
+    link_url: str,
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> UUID:
+    fetch_headers = (
+        settings_map.get("auth_headers")
+        if _jira_should_send_auth_headers(
+            base_url=settings_map["base_url"],
+            url=link_url,
+        )
+        else None
+    )
+    link_body = UrlUploadRequest(
+        url=link_url,
+        dataset_id=run.dataset_id,
+        filename=None,
+        fetch_headers=fetch_headers,
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
+        pipeline=settings_map.get("pipeline"),
+    )
+    link_doc = await ingestion_service.ingest_url(
+        background_tasks=None,
+        body=link_body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=link_doc,
+        access=effective_access,
+        connector_id="jira_project",
+    )
+
+    with contextlib.suppress(Exception):
+        _patch_jira_linked_artifact_document_metadata(
+            db,
+            link_doc=link_doc,
+            run=run,
+            issue_info=issue_info,
+            link_url=link_url,
+            acl_provenance=acl_provenance,
+            settings_map=settings_map,
+        )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=link_doc.id,
+            source_ref=link_url[:1000],
+            status="created",
+        )
+    )
+    return link_doc.id
+
+
+async def _ingest_jira_issue_linked_artifacts(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue: dict[str, Any],
+    issue_info: JiraIssueInfo,
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+) -> dict[str, Any]:
+    issue_url = issue_info["issue_url"]
+    if (
+        not settings_map.get("include_linked_artifacts")
+        or not issue_url
+        or int(progress.get("linked_artifacts_processed") or 0)
+        >= int(settings_map.get("max_total_linked_artifacts") or 0)
+        or _jira_project_run_cancelled(db, run=run)
+    ):
+        return {
+            "linked_artifacts_processed": 0,
+            "linked_artifacts_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_linked_artifact_documents_disabled": 0,
+        }
+
+    remaining_total = int(settings_map.get("max_total_linked_artifacts") or 0) - int(
+        progress.get("linked_artifacts_processed") or 0
+    )
+    per_issue_limit_eff = int(
+        min(int(settings_map.get("max_linked_artifacts_per_issue") or 0), max(0, remaining_total))
+    )
+    if per_issue_limit_eff <= 0:
+        return {
+            "linked_artifacts_processed": 0,
+            "linked_artifacts_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_linked_artifact_documents_disabled": 0,
+        }
+
+    extract_limit = per_issue_limit_eff + 1
+    urls = _jira_extract_linked_artifact_urls(
+        issue if isinstance(issue, dict) else {},
+        include_comments=bool(settings_map.get("include_comments")),
+        max_comments=int(settings_map.get("max_comments_per_issue") or 0),
+        limit=extract_limit,
+    )
+    linked_listing_complete = bool(len(urls) <= per_issue_limit_eff)
+    urls = urls[:per_issue_limit_eff]
+
+    created_doc_ids: list[UUID] = []
+    linked_artifacts_processed = 0
+    linked_artifacts_created = 0
+    failed = 0
+    seen_link_urls: set[str] = set()
+
+    for link_url in urls:
+        if (int(progress.get("linked_artifacts_processed") or 0) + linked_artifacts_processed) >= int(
+            settings_map.get("max_total_linked_artifacts") or 0
+        ):
+            linked_listing_complete = False
+            break
+        if _jira_project_run_cancelled(db, run=run):
+            linked_listing_complete = False
+            break
+
+        link_url = link_url.strip()
+        if not link_url or link_url == issue_url or not _is_http_or_https_url(link_url):
+            continue
+
+        seen_link_urls.add(link_url)
+        linked_artifacts_processed += 1
+
+        try:
+            doc_id = await _ingest_single_jira_linked_artifact(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                issue_info=issue_info,
+                link_url=link_url,
+                effective_access=effective_access,
+                acl_provenance=acl_provenance,
+                settings_map=settings_map,
+            )
+            created_doc_ids.append(doc_id)
+            linked_artifacts_created += 1
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(
+                dict(run.stats or {}),
+                url=(link_url or "jira_linked_artifact"),
+                exc=exc,
+            )
+
+    removed_linked_artifact_documents_disabled = 0
+    if linked_listing_complete:
+        removed_linked_artifact_documents_disabled = int(
+            _soft_disable_jira_linked_artifact_documents_missing_from_issue(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                base_url=settings_map["base_url"],
+                project_key=settings_map["project_key"],
+                issue_url=issue_url,
+                seen_link_urls=seen_link_urls,
+            )
+        )
+
+    return {
+        "linked_artifacts_processed": linked_artifacts_processed,
+        "linked_artifacts_created": linked_artifacts_created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
+    }
+
+
+def _patch_jira_attachment_document_metadata(
+    db: Session,
+    *,
+    att_doc: DBDocument,
+    run: ConnectorRun,
+    issue_info: JiraIssueInfo,
+    attachment_ref: dict[str, str],
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> None:
+    attachment_id = attachment_ref["attachment_id"].strip()
+    filename = attachment_ref["filename"].strip()
+    download_url = attachment_ref["download_url"].strip()
+    meta_att = dict(att_doc.doc_metadata or {})
+    updated = issue_info["updated"]
+    issue_id = issue_info["issue_id"]
+    issue_key = issue_info["issue_key"]
+    issue_url = issue_info["issue_url"]
+
+    if updated:
+        lm_iso = _normalize_datetime_utc_iso(updated) or updated
+        meta_att["source_last_modified_at"] = lm_iso
+        meta_att["source_last_modified_source"] = JIRA_UPDATED_SOURCE
+        meta_att["source_last_modified_raw"] = meta_att.get("source_last_modified_raw") or updated
+    if isinstance(acl_provenance, dict):
+        meta_att["acl_provenance"] = dict(acl_provenance)
+    meta_att["connector"] = _jira_attachment_connector_metadata(
+        base_url=settings_map["base_url"],
+        project_key=settings_map["project_key"],
+        issue_id=issue_id,
+        issue_key=issue_key,
+        issue_url=issue_url,
+        attachment_id=attachment_id,
+        filename=filename,
+        download_url=download_url,
+        run_id=str(run.id),
+        mode=settings_map["effective_mode"],
+    )
+    att_doc.doc_metadata = meta_att
+    _apply_connector_identity_metadata(
+        doc=att_doc,
+        run=run,
+        connector_id="jira_project",
+        source_ref=(attachment_id or download_url),
+        source_id=(attachment_id or download_url),
+    )
+    db.commit()
+
+
+async def _ingest_single_jira_attachment(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue_info: JiraIssueInfo,
+    attachment_ref: dict[str, str],
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> UUID:
+    attachment_id = attachment_ref["attachment_id"].strip()
+    filename = attachment_ref["filename"].strip()
+    download_url = attachment_ref["download_url"].strip()
+    att_body = UrlUploadRequest(
+        url=download_url,
+        dataset_id=run.dataset_id,
+        filename=filename,
+        fetch_headers=settings_map.get("auth_headers"),
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
+        pipeline=settings_map.get("pipeline"),
+    )
+    att_doc = await ingestion_service.ingest_url(
+        background_tasks=None,
+        body=att_body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=att_doc,
+        access=effective_access,
+        connector_id="jira_project",
+    )
+
+    with contextlib.suppress(Exception):
+        _patch_jira_attachment_document_metadata(
+            db,
+            att_doc=att_doc,
+            run=run,
+            issue_info=issue_info,
+            attachment_ref=attachment_ref,
+            acl_provenance=acl_provenance,
+            settings_map=settings_map,
+        )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=att_doc.id,
+            source_ref=(attachment_id or download_url)[:1000],
+            status="created",
+        )
+    )
+    return att_doc.id
+
+
+async def _ingest_jira_issue_attachments(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue: dict[str, Any],
+    issue_info: JiraIssueInfo,
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+) -> dict[str, Any]:
+    issue_url = issue_info["issue_url"]
+    if (
+        not settings_map.get("include_attachments")
+        or not issue_url
+        or int(progress.get("attachments_processed") or 0) >= int(settings_map.get("max_total_attachments") or 0)
+        or _jira_project_run_cancelled(db, run=run)
+    ):
+        return {
+            "attachments_processed": 0,
+            "attachments_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_attachment_documents_disabled": 0,
+        }
+
+    remaining_total = int(settings_map.get("max_total_attachments") or 0) - int(
+        progress.get("attachments_processed") or 0
+    )
+    per_issue_limit_eff = int(min(int(settings_map.get("max_attachments_per_issue") or 0), max(0, remaining_total)))
+    if per_issue_limit_eff <= 0:
+        return {
+            "attachments_processed": 0,
+            "attachments_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_attachment_documents_disabled": 0,
+        }
+
+    fields = issue.get("fields") if isinstance(issue, dict) and isinstance(issue.get("fields"), dict) else {}
+    raw_attachments = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+    attachment_listing_complete = bool(per_issue_limit_eff >= len(raw_attachments))
+    attachment_refs = _jira_extract_attachments(
+        issue if isinstance(issue, dict) else {},
+        limit=per_issue_limit_eff,
+    )
+
+    attachments_processed = 0
+    attachments_created = 0
+    failed = 0
+    created_doc_ids: list[UUID] = []
+    seen_attachment_urls: set[str] = set()
+
+    for attachment_ref in attachment_refs:
+        if (int(progress.get("attachments_processed") or 0) + attachments_processed) >= int(
+            settings_map.get("max_total_attachments") or 0
+        ):
+            attachment_listing_complete = False
+            break
+        if _jira_project_run_cancelled(db, run=run):
+            attachment_listing_complete = False
+            break
+
+        attachment_id = attachment_ref["attachment_id"].strip()
+        filename = attachment_ref["filename"].strip()
+        download_url = attachment_ref["download_url"].strip()
+        attachments_processed += 1
+
+        if not attachment_id or not download_url:
+            continue
+        seen_attachment_urls.add(download_url)
+
+        ext = Path(filename).suffix.lower()
+        if ext and ext not in settings.allowed_extensions_list:
+            continue
+
+        try:
+            doc_id = await _ingest_single_jira_attachment(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                issue_info=issue_info,
+                attachment_ref=attachment_ref,
+                effective_access=effective_access,
+                acl_provenance=acl_provenance,
+                settings_map=settings_map,
+            )
+            created_doc_ids.append(doc_id)
+            attachments_created += 1
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(
+                dict(run.stats or {}),
+                url=(download_url or attachment_id),
+                exc=exc,
+            )
+
+    removed_attachment_documents_disabled = 0
+    if attachment_listing_complete:
+        removed_attachment_documents_disabled = int(
+            _soft_disable_jira_attachment_documents_missing_from_issue(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                base_url=settings_map["base_url"],
+                project_key=settings_map["project_key"],
+                issue_url=issue_url,
+                seen_attachment_urls=seen_attachment_urls,
+            )
+        )
+
+    return {
+        "attachments_processed": attachments_processed,
+        "attachments_created": attachments_created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
+    }
+
+
+def _initialize_jira_project_run_stats(*, run: ConnectorRun, settings_map: dict[str, Any]) -> dict[str, Any]:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": settings_map.get("effective_mode"),
+            "project_key": settings_map.get("project_key"),
+            "base_url": settings_map.get("base_url"),
+            "max_issues": int(settings_map.get("max_issues") or 0),
+            "page_size": int(settings_map.get("page_size") or 0),
+            "include_comments": bool(settings_map.get("include_comments")),
+            "max_comments_per_issue": int(settings_map.get("max_comments_per_issue") or 0),
+            "include_attachments": bool(settings_map.get("include_attachments")),
+            "max_attachments_per_issue": int(settings_map.get("max_attachments_per_issue") or 0),
+            "max_total_attachments": int(settings_map.get("max_total_attachments") or 0),
+            "include_linked_artifacts": bool(settings_map.get("include_linked_artifacts")),
+            "max_linked_artifacts_per_issue": int(settings_map.get("max_linked_artifacts_per_issue") or 0),
+            "max_total_linked_artifacts": int(settings_map.get("max_total_linked_artifacts") or 0),
+            "processed_issues": 0,
+            "processed_attachments": 0,
+            "cursor": 0,
+            "created": 0,
+            "created_attachments": 0,
+            "processed_linked_artifacts": 0,
+            "created_linked_artifacts": 0,
+            "removed_linked_artifact_documents_disabled": 0,
+            "failed": 0,
+            "skipped_boundary_duplicates": 0,
+            "failed_urls": [],
+            "errors": [],
+            "error_groups": [],
+            "removed_issues_reconciled": 0,
+            "removed_documents_disabled": 0,
+            "removed_attachment_documents_disabled": 0,
+        }
+    )
+    if settings_map.get("cursor_last_modified"):
+        stats["cursor_in"] = settings_map.get("cursor_last_modified")
+    return stats
+
+
+def _jira_project_progress_stats_patch(progress: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "processed_issues": int(progress.get("processed") or 0),
+        "processed_attachments": int(progress.get("attachments_processed") or 0),
+        "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
+        "cursor": int(progress.get("processed") or 0),
+        "created": int(progress.get("created") or 0),
+        "created_attachments": int(progress.get("attachments_created") or 0),
+        "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
+        "failed": int(progress.get("failed") or 0),
+        "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
+        "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+        "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+        "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+        "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
+        "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+        "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
+        "removed_linked_artifact_documents_disabled": int(
+            progress.get("removed_linked_artifact_documents_disabled") or 0
+        ),
+    }
+
+
+def _apply_jira_project_progress_cursor(stats: dict[str, Any], progress: dict[str, Any]) -> None:
+    if not progress.get("last_modified_seen"):
+        return
+    stats["last_modified"] = progress.get("last_modified_seen")
+    stats["last_modified_ids"] = sorted(progress.get("last_modified_ids_seen") or set())
+
+
+def _persist_jira_project_progress(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    progress: dict[str, Any],
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(_jira_project_progress_stats_patch(progress))
+    _apply_jira_project_progress_cursor(stats, progress)
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+def _finalize_jira_project_run(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+    observed_issue_urls: set[str],
+    listing_complete: bool,
+) -> None:
+    if settings_map["effective_mode"] == "full" and run.dataset_id and listing_complete:
+        try:
+            removed_issues_reconciled, removed_documents_disabled = _soft_disable_jira_documents_missing_from_full_sync(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                base_url=settings_map["base_url"],
+                project_key=settings_map["project_key"],
+                seen_issue_urls=observed_issue_urls,
+            )
+            progress["removed_issues_reconciled"] = int(removed_issues_reconciled)
+            progress["removed_documents_disabled"] = int(removed_documents_disabled)
+        except Exception as exc:  # noqa: BLE001
+            run.stats = _finalize_connector_stats(
+                _append_connector_error(
+                    dict(run.stats or {}),
+                    url=f"jira://{settings_map['project_key']}",
+                    exc=exc,
+                )
+            )
+            db.commit()
+
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+            "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+            "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+            "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
+            "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+            "processed_attachments": int(progress.get("attachments_processed") or 0),
+            "created_attachments": int(progress.get("attachments_created") or 0),
+            "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
+            "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
+            "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
+            "removed_linked_artifact_documents_disabled": int(
+                progress.get("removed_linked_artifact_documents_disabled") or 0
+            ),
+            "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
+        }
+    )
+    if progress.get("last_modified_seen"):
+        stats["last_modified"] = progress.get("last_modified_seen")
+        stats["last_modified_ids"] = sorted(progress.get("last_modified_ids_seen") or set())
+    run.stats = _finalize_connector_stats(stats)
+    run.finished_at = _now()
+    run.status = _connector_run_completion_status(
+        created=int(progress.get("created") or 0),
+        failed=int(progress.get("failed") or 0),
+    )
+    if settings_map.get("enable_source_acl"):
+        with contextlib.suppress(Exception):
+            from app.services.audit_log_service import audit_log_event as audit_log_event_fn
+
+            audit_log_event_fn(
+                db,
+                tenant_id=tenant_id,
+                actor_id=requested_by,
+                action="jira_project.source_acl.delta_sync",
+                resource_type="connector_run",
+                resource_id=str(run_id),
+                details={
+                    "dataset_id": str(run.dataset_id),
+                    "connector_id": "jira_project",
+                    "base_url": settings_map["base_url"],
+                    "project_key": settings_map["project_key"],
+                    "mode": settings_map["effective_mode"],
+                    "updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+                    "updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+                    "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+                },
+            )
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _persist_jira_project_skipped_boundary_duplicates(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    skipped_boundary_duplicates: int,
+) -> None:
+    stats = dict(run.stats or {})
+    stats["skipped_boundary_duplicates"] = int(skipped_boundary_duplicates)
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+async def _process_jira_project_issue(
+    db: Session,
+    *,
+    context: JiraProjectIssueContext,
+    issue: object,
+    progress: dict[str, Any],
+    observed_issue_urls: set[str],
+) -> None:
+    run = context.run
+    run_id = context.run_id
+    tenant_id = context.tenant_id
+    requested_by = context.requested_by
+    base_url = context.base_url
+    project_key = context.project_key
+    cursor_last_modified = context.cursor_last_modified
+    cursor_last_modified_ids = context.cursor_last_modified_ids
+    effective_mode = context.effective_mode
+    include_comments = context.include_comments
+    max_comments_per_issue = context.max_comments_per_issue
+    include_attachments = context.include_attachments
+    max_attachments_per_issue = context.max_attachments_per_issue
+    max_total_attachments = context.max_total_attachments
+    include_linked_artifacts = context.include_linked_artifacts
+    max_linked_artifacts_per_issue = context.max_linked_artifacts_per_issue
+    max_total_linked_artifacts = context.max_total_linked_artifacts
+    parser_backend = context.parser_backend
+    chunk_strategy = context.chunk_strategy
+    pipeline = context.pipeline
+    access = context.access
+    source_acl = context.source_acl
+    user_agent = context.user_agent
+    auth_headers = context.auth_headers
+    enable_source_acl = context.enable_source_acl
+    source_acl_mode = context.source_acl_mode
+    source_acl_fallback_mode = context.source_acl_fallback_mode
+
+    created = int(progress.get("created") or 0)
+    failed = int(progress.get("failed") or 0)
+    processed = int(progress.get("processed") or 0)
+    created_doc_ids = list(progress.get("created_doc_ids") or [])
+    delta_acl_docs_updated = int(progress.get("delta_acl_docs_updated") or 0)
+    delta_acl_sources_updated = int(progress.get("delta_acl_sources_updated") or 0)
+    last_modified_seen = progress.get("last_modified_seen")
+    last_modified_ids_seen = set(progress.get("last_modified_ids_seen") or set())
+    attachments_processed = int(progress.get("attachments_processed") or 0)
+    attachments_created = int(progress.get("attachments_created") or 0)
+    removed_attachment_documents_disabled = int(progress.get("removed_attachment_documents_disabled") or 0)
+    linked_artifacts_processed = int(progress.get("linked_artifacts_processed") or 0)
+    linked_artifacts_created = int(progress.get("linked_artifacts_created") or 0)
+    removed_linked_artifact_documents_disabled = int(progress.get("removed_linked_artifact_documents_disabled") or 0)
+    skipped_boundary_duplicates = int(progress.get("skipped_boundary_duplicates") or 0)
+
+    issue_info = _build_jira_issue_info(
+        base_url=base_url,
+        issue=issue if isinstance(issue, dict) else {},
+    )
+    issue_key = issue_info["issue_key"]
+    issue_id = issue_info["issue_id"]
+    issue_url = issue_info["issue_url"]
+    updated = issue_info["updated"]
+    label = issue_url or issue_key or issue_id or "jira_issue"
+
+    if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
+        item_id=issue_id,
+        item_timestamp=updated,
+        cursor_timestamp=cursor_last_modified,
+        boundary_ids=cursor_last_modified_ids,
+    ):
+        skipped_boundary_duplicates += 1
+        progress["skipped_boundary_duplicates"] = skipped_boundary_duplicates
+        _persist_jira_project_skipped_boundary_duplicates(
+            db,
+            run=run,
+            skipped_boundary_duplicates=skipped_boundary_duplicates,
+        )
+        return
+
+    if updated:
+        last_modified_seen, last_modified_ids_seen = _advance_timestamp_boundary(
+            last_timestamp=last_modified_seen,
+            boundary_ids=last_modified_ids_seen,
+            item_timestamp=updated,
+            item_id=issue_id,
+        )
+
+    try:
+        if not issue_url:
+            raise ValueError("missing issue url")
+
+        observed_issue_urls.add(issue_url)
+
+        effective_access, acl_provenance, updated_existing = _resolve_jira_issue_acl(
+            db,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            requested_by=requested_by,
+            run=run,
+            issue=issue if isinstance(issue, dict) else {},
+            issue_info=issue_info,
+            settings_map={
+                "access": access,
+                "source_acl": source_acl,
+                "enable_source_acl": enable_source_acl,
+                "include_comments": include_comments,
+                "max_comments_per_issue": max_comments_per_issue,
+                "source_acl_mode": source_acl_mode,
+                "source_acl_fallback_mode": source_acl_fallback_mode,
+                "base_url": base_url,
+                "project_key": project_key,
+            },
+        )
+        delta_acl_docs_updated += int(updated_existing)
+        if updated_existing:
+            delta_acl_sources_updated += 1
+
+        filename = f"{issue_key}.html" if issue_key else "jira-issue.html"
+        issue_html = _jira_render_issue_html(
+            base_url=base_url,
+            issue=issue if isinstance(issue, dict) else {},
+            include_comments=include_comments,
+            max_comments=max_comments_per_issue,
+        )
+        if not issue_html.strip():
+            raise ValueError("missing rendered issue html")
+
+        html_body = LocalHtmlIngestRequest(
+            html=issue_html,
+            source_url=issue_url,
+            dataset_id=run.dataset_id,
+            filename=filename,
+            parser_backend=str(parser_backend),
+            chunk_strategy=str(chunk_strategy),
+            pipeline=pipeline,
+        )
+        doc = await ingestion_service.ingest_html(
+            background_tasks=None,
+            body=html_body,
+            tenant_id=tenant_id,
+            account_id=requested_by,
+            db=db,
+            ingestion_kind="upload_url",
+        )
+
+        _apply_document_access_from_config(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=doc,
+            access=effective_access,
+            connector_id="jira_project",
+        )
+
+        with contextlib.suppress(Exception):
+            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+            if updated:
+                lm_iso = _normalize_datetime_utc_iso(updated) or updated
+                meta0["source_last_modified_at"] = lm_iso
+                meta0["source_last_modified_source"] = "connector:jira:updated"
+                meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or updated
+            if isinstance(acl_provenance, dict):
+                meta0["acl_provenance"] = dict(acl_provenance)
+            meta0["connector"] = {
+                "connector_id": "jira_project",
+                "base_url": base_url,
+                "project_key": project_key,
+                "issue_id": issue_id,
+                "issue_key": issue_key,
+                "issue_url": issue_url,
+                "last_modified": updated,
+                "run_id": str(run.id),
+                "mode": effective_mode,
+            }
+            doc.doc_metadata = meta0
+            _apply_connector_identity_metadata(
+                doc=doc,
+                run=run,
+                connector_id="jira_project",
+                source_ref=(issue_key or issue_id or issue_url),
+                source_id=(issue_id or issue_key or issue_url),
+            )
+            db.commit()
+
+        db.add(
+            ConnectorRunDocument(
+                tenant_id=tenant_id,
+                run_id=run.id,
+                document_id=doc.id,
+                source_ref=(issue_key or issue_id or issue_url)[:1000],
+                status="created",
+            )
+        )
+        created += 1
+        created_doc_ids.append(doc.id)
+
+        linked_artifacts = await _ingest_jira_issue_linked_artifacts(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            issue=issue if isinstance(issue, dict) else {},
+            issue_info=issue_info,
+            effective_access=effective_access,
+            acl_provenance=acl_provenance,
+            settings_map={
+                "base_url": base_url,
+                "project_key": project_key,
+                "include_linked_artifacts": include_linked_artifacts,
+                "max_total_linked_artifacts": max_total_linked_artifacts,
+                "max_linked_artifacts_per_issue": max_linked_artifacts_per_issue,
+                "include_comments": include_comments,
+                "max_comments_per_issue": max_comments_per_issue,
+                "auth_headers": auth_headers,
+                "user_agent": user_agent,
+                "parser_backend": parser_backend,
+                "chunk_strategy": chunk_strategy,
+                "pipeline": pipeline,
+                "effective_mode": effective_mode,
+            },
+            progress={
+                "linked_artifacts_processed": linked_artifacts_processed,
+            },
+        )
+        linked_artifacts_processed += int(linked_artifacts.get("linked_artifacts_processed") or 0)
+        linked_artifacts_created += int(linked_artifacts.get("linked_artifacts_created") or 0)
+        created += int(linked_artifacts.get("linked_artifacts_created") or 0)
+        failed += int(linked_artifacts.get("failed") or 0)
+        created_doc_ids.extend(linked_artifacts.get("created_doc_ids") or [])
+        removed_linked_artifact_documents_disabled += int(
+            linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0
+        )
+
+        attachments = await _ingest_jira_issue_attachments(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            issue=issue if isinstance(issue, dict) else {},
+            issue_info=issue_info,
+            effective_access=effective_access,
+            acl_provenance=acl_provenance,
+            settings_map={
+                "base_url": base_url,
+                "project_key": project_key,
+                "include_attachments": include_attachments,
+                "max_total_attachments": max_total_attachments,
+                "max_attachments_per_issue": max_attachments_per_issue,
+                "auth_headers": auth_headers,
+                "user_agent": user_agent,
+                "parser_backend": parser_backend,
+                "chunk_strategy": chunk_strategy,
+                "pipeline": pipeline,
+                "effective_mode": effective_mode,
+            },
+            progress={
+                "attachments_processed": attachments_processed,
+            },
+        )
+        attachments_processed += int(attachments.get("attachments_processed") or 0)
+        attachments_created += int(attachments.get("attachments_created") or 0)
+        created += int(attachments.get("attachments_created") or 0)
+        failed += int(attachments.get("failed") or 0)
+        created_doc_ids.extend(attachments.get("created_doc_ids") or [])
+        removed_attachment_documents_disabled += int(attachments.get("removed_attachment_documents_disabled") or 0)
+    except Exception as exc:  # noqa: BLE001
+        failed += 1
+        stats = dict(run.stats or {})
+        stats = _append_connector_error(stats, url=label, exc=exc)
+        run.stats = _finalize_connector_stats(stats)
+    finally:
+        processed += 1
+        progress.update(
+            {
+                "created": created,
+                "failed": failed,
+                "processed": processed,
+                "created_doc_ids": created_doc_ids,
+                "delta_acl_docs_updated": delta_acl_docs_updated,
+                "delta_acl_sources_updated": delta_acl_sources_updated,
+                "last_modified_seen": last_modified_seen,
+                "last_modified_ids_seen": last_modified_ids_seen,
+                "attachments_processed": attachments_processed,
+                "attachments_created": attachments_created,
+                "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
+                "linked_artifacts_processed": linked_artifacts_processed,
+                "linked_artifacts_created": linked_artifacts_created,
+                "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
+                "skipped_boundary_duplicates": skipped_boundary_duplicates,
+            }
+        )
+        _persist_jira_project_progress(db, run=run, progress=progress)
+
+
+def _jira_project_search_params(
+    *,
+    jql: str,
+    start_at: int,
+    max_results: int,
+    custom_fields: list[str],
+) -> dict[str, Any]:
+    fields = ",".join(
+        [
+            "summary",
+            "description",
+            "updated",
+            "issuetype",
+            "priority",
+            "status",
+            "labels",
+            "comment",
+            "security",
+            "attachment",
+            *custom_fields,
+        ]
+    )
+    return {
+        "jql": jql,
+        "startAt": int(start_at),
+        "maxResults": int(max_results),
+        "fields": fields,
+        "expand": "renderedFields",
+    }
+
+
+def _jira_project_parse_search_payload(payload: object) -> tuple[int | None, list[object]]:
+    total_issues_available: int | None = None
+    issues: list[object] = []
+
+    if not isinstance(payload, dict):
+        return total_issues_available, issues
+
+    total_raw = payload.get("total")
+    if isinstance(total_raw, (int, float)) and not isinstance(total_raw, bool):
+        total_issues_available = max(0, int(total_raw))
+
+    issues_raw = payload.get("issues")
+    if isinstance(issues_raw, list):
+        issues = issues_raw
+
+    return total_issues_available, issues
+
+
+async def _jira_project_fetch_issue_page(
+    pool: HTTPClientPool,
+    *,
+    search_url: str,
+    headers: dict[str, str],
+    jql: str,
+    start_at: int,
+    page_request_size: int,
+    custom_fields: list[str],
+) -> tuple[int | None, list[object]]:
+    params = _jira_project_search_params(
+        jql=jql,
+        start_at=start_at,
+        max_results=page_request_size,
+        custom_fields=custom_fields,
+    )
+    resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
+    payload = resp.json() if resp is not None else {}
+    return _jira_project_parse_search_payload(payload)
+
+
+def _initial_jira_project_progress() -> dict[str, Any]:
+    return {
+        "created": 0,
+        "failed": 0,
+        "processed": 0,
+        "created_doc_ids": [],
+        "delta_acl_docs_updated": 0,
+        "delta_acl_sources_updated": 0,
+        "last_modified_seen": None,
+        "last_modified_ids_seen": set(),
+        "attachments_processed": 0,
+        "attachments_created": 0,
+        "removed_attachment_documents_disabled": 0,
+        "linked_artifacts_processed": 0,
+        "linked_artifacts_created": 0,
+        "removed_linked_artifact_documents_disabled": 0,
+        "skipped_boundary_duplicates": 0,
+        "removed_issues_reconciled": 0,
+        "removed_documents_disabled": 0,
+    }
+
+
+def _build_jira_project_issue_context(
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+) -> JiraProjectIssueContext:
+    return JiraProjectIssueContext(
+        run=run,
+        run_id=run_id,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        base_url=settings_map["base_url"],
+        project_key=settings_map["project_key"],
+        cursor_last_modified=settings_map["cursor_last_modified"],
+        cursor_last_modified_ids=set(settings_map.get("cursor_last_modified_ids") or set()),
+        effective_mode=settings_map["effective_mode"],
+        include_comments=bool(settings_map.get("include_comments")),
+        max_comments_per_issue=int(settings_map.get("max_comments_per_issue") or 0),
+        include_attachments=bool(settings_map.get("include_attachments")),
+        max_attachments_per_issue=int(settings_map.get("max_attachments_per_issue") or 0),
+        max_total_attachments=int(settings_map.get("max_total_attachments") or 0),
+        include_linked_artifacts=bool(settings_map.get("include_linked_artifacts")),
+        max_linked_artifacts_per_issue=int(settings_map.get("max_linked_artifacts_per_issue") or 0),
+        max_total_linked_artifacts=int(settings_map.get("max_total_linked_artifacts") or 0),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "jira_ticket"),
+        pipeline=settings_map.get("pipeline"),
+        access=settings_map.get("access"),
+        source_acl=settings_map["source_acl"],
+        user_agent=settings_map.get("user_agent"),
+        auth_headers=dict(settings_map.get("auth_headers") or {}),
+        enable_source_acl=bool(settings_map.get("enable_source_acl")),
+        source_acl_mode=str(settings_map.get("source_acl_mode") or "disabled"),
+        source_acl_fallback_mode=str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+    )
+
+
+async def _process_jira_project_issue_batch(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    issues: list[object],
+    progress: dict[str, Any],
+    observed_issue_urls: set[str],
+    issue_context: JiraProjectIssueContext,
+    max_issues: int,
+) -> None:
+    for issue in issues:
+        if int(progress.get("processed") or 0) >= max_issues:
+            break
+        if _jira_project_run_cancelled(db, run=run):
+            break
+        await _process_jira_project_issue(
+            db,
+            context=issue_context,
+            issue=issue,
+            progress=progress,
+            observed_issue_urls=observed_issue_urls,
+        )
+
+
+async def _run_jira_project_issue_loop(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    issue_context: JiraProjectIssueContext,
+    search_url: str,
+    headers: dict[str, str],
+    jql: str,
+    custom_fields: list[str],
+    max_issues: int,
+    page_size: int,
+) -> tuple[dict[str, Any], set[str], bool]:
+    progress = _initial_jira_project_progress()
+    observed_issue_urls: set[str] = set()
+    listing_complete = False
+    total_issues_available: int | None = None
+    pool = get_http_client_pool()
+    start_at = 0
+
+    while int(progress.get("processed") or 0) < max_issues:
+        if _jira_project_run_cancelled(db, run=run):
+            break
+
+        processed = int(progress.get("processed") or 0)
+        page_request_size = int(min(page_size, max_issues - processed))
+        page_total, issues = await _jira_project_fetch_issue_page(
+            pool,
+            search_url=search_url,
+            headers=headers,
+            jql=jql,
+            start_at=start_at,
+            page_request_size=page_request_size,
+            custom_fields=custom_fields,
+        )
+        if page_total is not None:
+            total_issues_available = page_total
+        if not issues:
+            if total_issues_available is None or start_at >= total_issues_available:
+                listing_complete = True
+            break
+
+        await _process_jira_project_issue_batch(
+            db,
+            run=run,
+            issues=issues,
+            progress=progress,
+            observed_issue_urls=observed_issue_urls,
+            issue_context=issue_context,
+            max_issues=max_issues,
+        )
+        start_at += int(len(issues))
+        if total_issues_available is not None and start_at >= total_issues_available:
+            listing_complete = True
+        if len(issues) < page_request_size:
+            listing_complete = True
+            break
+
+    return progress, observed_issue_urls, listing_complete
+
+
+async def _process_jira_project_issues(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+) -> tuple[dict[str, Any], set[str], bool]:
+    max_issues = int(settings_map.get("max_issues") or 0)
+    page_size = int(settings_map.get("page_size") or 0)
+    custom_fields = list(settings_map.get("custom_fields") or [])
+    search_url = settings_map["search_url"]
+    headers = dict(settings_map.get("headers") or {})
+    jql = settings_map["jql"]
+    issue_context = _build_jira_project_issue_context(
+        run=run,
+        run_id=run_id,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        settings_map=settings_map,
+    )
+    return await _run_jira_project_issue_loop(
+        db,
+        run=run,
+        issue_context=issue_context,
+        search_url=search_url,
+        headers=headers,
+        jql=jql,
+        custom_fields=custom_fields,
+        max_issues=max_issues,
+        page_size=page_size,
+    )
+
+
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for jira_project connector.
+
+    Flow:
+    - List issues in a Jira project (full or incremental based on state/sync_mode)
+    - Render each issue into a structured local HTML document
+    - Apply best-effort Jira source ACL inheritance from security level / comment visibility
+    """
+    db = SessionLocal()
+    run: ConnectorRun | None = None
+    try:
+        run = _get_jira_project_run(db, run_id=run_id, tenant_id=tenant_id)
+        if run is None:
+            return
+
+        _mark_jira_project_run_running(db, run=run)
+
+        settings_map = _build_jira_project_run_settings(decrypt_connector_config_secrets(dict(run.config or {})))
+        settings_map["jql"] = _build_jira_project_search_jql(
+            project_key=settings_map["project_key"],
+            extra_jql=settings_map["extra_jql"],
+            effective_mode=settings_map["effective_mode"],
+            cursor_last_modified=settings_map["cursor_last_modified"],
+        )
+
+        run.stats = _finalize_connector_stats(_initialize_jira_project_run_stats(run=run, settings_map=settings_map))
+        db.commit()
+
+        progress, observed_issue_urls, listing_complete = await _process_jira_project_issues(
+            db,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+        )
+        if _jira_project_run_cancelled(db, run=run):
+            _finalize_cancelled_jira_project_run(db, run=run)
+            return
+
+        _finalize_jira_project_run(
+            db,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map={
+                "effective_mode": settings_map["effective_mode"],
+                "base_url": settings_map["base_url"],
+                "project_key": settings_map["project_key"],
+                "enable_source_acl": bool(settings_map.get("enable_source_acl")),
+                "source_acl_fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+            },
+            progress=progress,
+            observed_issue_urls=observed_issue_urls,
+            listing_complete=listing_complete,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _mark_jira_project_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
+    finally:
+        db.close()

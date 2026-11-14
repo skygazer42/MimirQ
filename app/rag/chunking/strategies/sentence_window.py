@@ -9,7 +9,6 @@ This is useful for long plain text where character-based overlap would cut
 sentences in half.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -26,16 +25,14 @@ class _Span:
     end: int
 
 
-_SENTENCE_RE = re.compile(r"[^。！？!?\.\\n]+[。！？!?\.\\n]?", flags=re.S)
+_SENTENCE_RE = re.compile(r"[^。！？!?\.\n]+[。！？!?\.\n]?", flags=re.S)
 
 
 def _iter_sentence_spans(text: str) -> list[_Span]:
     spans: list[_Span] = []
-    for m in _SENTENCE_RE.finditer(text or ""):
+    for m in _SENTENCE_RE.finditer(text):
         start, end = m.start(), m.end()
-        if end <= start:
-            continue
-        if not (text[start:end] or "").strip():
+        if not (text[start:end]).strip():
             continue
         spans.append(_Span(start=start, end=end))
     return spans
@@ -51,11 +48,12 @@ def _append_fallback_documents(
         abs_start = int(local_start)
         abs_end = abs_start + len(split_doc.page_content)
         meta: dict[str, Any] = dict(base_meta)
-        meta.update(split_doc.metadata or {})
+        meta.update(split_doc.metadata)
         meta["chunk_strategy"] = "sentence_window"
         meta["start_char"] = abs_start
         meta["end_char"] = abs_end
         meta["sentence_window_fallback"] = True
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=split_doc.page_content, metadata=meta))
 
 
@@ -68,7 +66,7 @@ def _find_chunk_end(spans: list[_Span], start_idx: int, chunk_size: int) -> int:
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else (start_idx + 1)
+    return end_idx
 
 
 def _next_span_start(spans: list[_Span], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -88,15 +86,8 @@ def _next_span_start(spans: list[_Span], start_idx: int, end_idx: int, chunk_ove
     return end_idx if next_start <= start_idx else next_start
 
 
-def _assign_chunk_indexes(chunks: list[Document]) -> None:
-    for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta["chunk_index"] = idx
-        chunk.metadata = meta
-
-
 class SentenceWindowChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -112,8 +103,8 @@ class SentenceWindowChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -134,11 +125,10 @@ class SentenceWindowChunker(BaseChunker):
                 meta["chunk_strategy"] = "sentence_window"
                 meta["start_char"] = chunk_start
                 meta["end_char"] = chunk_end
-                meta["sentence_count"] = int(end_idx - start_idx)
+                meta["sentence_count"] = end_idx - start_idx
+                meta["chunk_index"] = len(out)
                 out.append(Document(page_content=content, metadata=meta))
 
                 start_idx = _next_span_start(spans, start_idx, end_idx, self.chunk_overlap)
-
-        _assign_chunk_indexes(out)
 
         return out

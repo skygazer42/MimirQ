@@ -6,7 +6,6 @@ Why:
 - For RAG replay/debug/eval, we want deterministic IDs/keys when we fall back to hashing.
 """
 
-
 import hashlib
 import hmac
 import json
@@ -21,7 +20,7 @@ def stable_hash(text: str, *, length: int | None = 16) -> str:
     - Uses SHA-256 (cryptographic; stable).
     - `length` truncates the digest for short IDs (default: 16 hex chars).
     """
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     digest = hashlib.sha256(raw).hexdigest()
     if length is None:
         return digest
@@ -39,10 +38,10 @@ def stable_hmac(text: str, *, secret: str, length: int = 32) -> str:
     - Uses caller-provided secret (must be non-empty).
     - `length` truncates the digest for compact signatures.
     """
-    key = (secret or "").encode("utf-8", "ignore")
+    key = (secret).encode("utf-8", "ignore")
     if not key:
         return ""
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     digest = hmac.new(key, raw, hashlib.sha256).hexdigest()
     n = int(length or 0)
     if n <= 0:

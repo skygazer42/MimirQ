@@ -150,9 +150,9 @@ def coerce_case_bundle(obj: Any, *, allow_review_only: bool = False) -> tuple[st
 def _headers(args: argparse.Namespace) -> dict[str, str]:
     h: dict[str, str] = {"Content-Type": "application/json"}
     if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
+        h["X-Tenant-ID"] = args.tenant_id
     if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
+        h["X-User-ID"] = args.user_id
     if args.bearer:
         h["Authorization"] = f"Bearer {args.bearer}"
     return h
@@ -292,7 +292,7 @@ def summarize_plugin_golden_source_from_import_response(response: dict[str, Any]
         out["draft_items_total"] = 0
 
     bundle = draft.get("bundle") if isinstance(draft.get("bundle"), dict) else {}
-    items = bundle.get("items") if isinstance(bundle, dict) else []
+    items = bundle.get("items")
     if isinstance(items, list):
         for item in items:
             extra = item.get("extra") if isinstance(item, dict) else None
@@ -760,7 +760,7 @@ def summarize_multihop_diagnostics(items: list[dict[str, Any]] | None) -> dict[s
         return round(float(sum(values)) / float(len(values)), 4)
 
     return {
-        "cases_with_expectation": int(cases_with_expectation),
+        "cases_with_expectation": cases_with_expectation,
         "path_completeness": _mean(path_scores),
         "order_consistency": _mean(order_scores),
         "chain_hit_rate": _mean(hit_flags),
@@ -803,10 +803,10 @@ def build_regression_gate_report(
         "case_source": dict(case_source or {"kind": "case_bundle"}),
         "metrics": list(metrics or []),
         "summary": dict(summary or {}),
-        "retrieval_slices": dict(summary.get("retrieval_slices") or {}) if isinstance(summary, dict) else {},
+        "retrieval_slices": dict(summary.get("retrieval_slices") or {}),
         "failures": [str(msg) for msg in (failures or []) if str(msg or "").strip()],
         "run_status": str(run.get("status") or ""),
-        "error_message": str(run.get("error_message") or "") or None,
+        "error_message": (run.get("error_message")),
         "channel_attribution": summarize_channel_attribution(items),
         "multihop": summarize_multihop_diagnostics(items),
         "run_params": dict(run_payload or {}),
@@ -1172,7 +1172,7 @@ def _generate_metric_thresholds(
         if value is not None:
             out[key] = _as_bounds(
                 key,
-                baseline=float(value),
+                baseline=value,
                 rel_drop=rel_drop,
                 abs_slack=abs_slack,
             )
@@ -1301,7 +1301,7 @@ def generate_thresholds_from_summary(
         "options": {
             "rel_drop": float(rel_drop),
             "abs_slack": float(abs_slack),
-            "min_slice_items": int(min_slice_items),
+            "min_slice_items": min_slice_items,
         },
         "metrics": metrics_out,
         "slices": slices_out,
@@ -1647,14 +1647,14 @@ def normalize_run_overrides(raw: Any) -> dict[str, Any]:
 def _resolve_case_source_inputs(
     args: argparse.Namespace,
 ) -> tuple[str, list[dict[str, Any]], str, dict[str, Any]]:
-    cases_arg = str(args.cases or "").strip()
+    cases_arg = args.cases.strip()
     plugin_golden_ref = str(getattr(args, "plugin_golden_ref", "") or "").strip()
     _require(
         bool(cases_arg) != bool(plugin_golden_ref),
         "set exactly one case source: --cases or --plugin-golden-ref",
     )
     _require(
-        not (plugin_golden_ref and bool(args.skip_import)),
+        not (plugin_golden_ref and args.skip_import),
         "--skip-import cannot be used with --plugin-golden-ref",
     )
 
@@ -1666,7 +1666,7 @@ def _resolve_case_source_inputs(
         cases_path = Path(cases_arg)
         _require(cases_path.exists(), f"cases file not found: {cases_path}")
         try:
-            dataset_id, items = coerce_case_bundle(_load_json(cases_path), allow_review_only=bool(args.skip_import))
+            dataset_id, items = coerce_case_bundle(_load_json(cases_path), allow_review_only=args.skip_import)
         except ValueError as exc:
             _require(False, str(exc))
         _require(len(items) > 0, "cases file contains no items")
@@ -1678,14 +1678,14 @@ def _resolve_case_source_inputs(
             "max_items": int(getattr(args, "plugin_golden_max_items", 500) or 500),
             "max_chunks": int(getattr(args, "plugin_golden_max_chunks", 5000) or 5000),
             "include_unmarked_chunks": bool(getattr(args, "plugin_golden_include_unmarked_chunks", False)),
-            "overwrite": bool(args.overwrite),
+            "overwrite": args.overwrite,
         }
         if plugin_golden_ref
         else {
             "kind": "case_bundle",
             "path": cases_arg,
-            "skip_import": bool(args.skip_import),
-            "overwrite": bool(args.overwrite),
+            "skip_import": args.skip_import,
+            "overwrite": args.overwrite,
         }
     )
     return dataset_id, items, plugin_golden_ref, case_source
@@ -1734,7 +1734,7 @@ def _require_metrics_allowed(
             thresholds=thresholds,
             slice_thresholds=slice_thresholds,
             thresholds_file_provided=bool(args.thresholds),
-            generate_thresholds_out=str(args.generate_thresholds_out or ""),
+            generate_thresholds_out=args.generate_thresholds_out,
         ),
         "metrics list is empty (set --thresholds for gating or --generate-thresholds-out for baseline generation)",
     )
@@ -1763,7 +1763,7 @@ def _import_case_bundle_if_needed(
         f"{base_url}/evaluations/ragas/regression/cases/import",
         json={
             "dataset_id": dataset_id,
-            "overwrite": bool(args.overwrite),
+            "overwrite": args.overwrite,
             "max_items": min(2000, len(items)),
             "items": items,
         },
@@ -1852,7 +1852,7 @@ def _resolve_plugin_golden_case_ids(
         max_items=int(getattr(args, "plugin_golden_max_items", 500) or 500),
         max_chunks=int(getattr(args, "plugin_golden_max_chunks", 5000) or 5000),
         include_unmarked_chunks=bool(getattr(args, "plugin_golden_include_unmarked_chunks", False)),
-        overwrite=bool(args.overwrite),
+        overwrite=args.overwrite,
     )
     response = client.post(f"{base_url}/pipeline/plugins/golden-draft/import", json=payload)
     response.raise_for_status()
@@ -1910,7 +1910,7 @@ def _resolve_matched_case_ids(
 
 
 def _load_run_override_file(args: argparse.Namespace) -> dict[str, Any]:
-    path_text = str(args.run_overrides_json or "").strip()
+    path_text = args.run_overrides_json.strip()
     if not path_text:
         return {}
     overrides_path = Path(path_text).expanduser()
@@ -1986,7 +1986,7 @@ def _wait_for_completed_run_detail(
 
 
 def _write_run_detail_output(args: argparse.Namespace, detail: dict[str, Any]) -> None:
-    out_path = str(args.out_run_json or "").strip()
+    out_path = args.out_run_json.strip()
     if not out_path:
         return
     if out_path == "-":
@@ -2085,7 +2085,7 @@ def _write_generated_thresholds_output(
     summary: dict[str, Any],
     case_source: dict[str, Any],
 ) -> None:
-    out_path = str(args.generate_thresholds_out or "").strip()
+    out_path = args.generate_thresholds_out.strip()
     if not out_path:
         return
 
@@ -2095,9 +2095,9 @@ def _write_generated_thresholds_output(
         metrics=parse_metrics_list(args.gen_metrics),
         slice_dims=parse_metrics_list(args.gen_slice_dims),
         slice_metrics=parse_metrics_list(args.gen_slice_metrics),
-        rel_drop=float(args.gen_rel_drop),
-        abs_slack=float(args.gen_abs_slack),
-        min_slice_items=int(args.gen_min_slice_items),
+        rel_drop=args.gen_rel_drop,
+        abs_slack=args.gen_abs_slack,
+        min_slice_items=args.gen_min_slice_items,
         case_source=case_source,
     )
     out_json = json.dumps(generated_config, ensure_ascii=False, indent=2) + "\n"
@@ -2112,21 +2112,21 @@ def _write_generated_thresholds_output(
         if diff:
             print("[regression_gate] thresholds diff (existing -> generated):")
             sys.stdout.write(diff)
-        if not bool(args.gen_force):
+        if not args.gen_force:
             _require(False, f"thresholds output already exists: {path} (use --gen-force to overwrite)")
     path.write_text(out_json, encoding="utf-8")
     print(f"[regression_gate] wrote generated thresholds: {path}")
 
 
 def _write_report_artifacts(args: argparse.Namespace, report: dict[str, Any]) -> None:
-    out_report_json = str(args.out_report_json or "").strip()
+    out_report_json = args.out_report_json.strip()
     if out_report_json:
         json_path = Path(out_report_json)
         json_path.parent.mkdir(parents=True, exist_ok=True)
         write_json_file(json_path, report)
         print(f"[regression_gate] wrote report json: {json_path}")
 
-    out_report_md = str(args.out_report_md or "").strip()
+    out_report_md = args.out_report_md.strip()
     if out_report_md:
         md_path = Path(out_report_md)
         md_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2197,7 +2197,7 @@ def main() -> int:
         bool(headers.get("X-User-ID") or headers.get("Authorization")),
         "missing auth headers (use --user-id or --bearer)",
     )
-    base_url = str(args.base_url).rstrip("/")
+    base_url = args.base_url.rstrip("/")
     timeout = httpx.Timeout(30.0)
 
     with httpx.Client(headers=headers, timeout=timeout, trust_env=False) as client:
@@ -2227,7 +2227,7 @@ def main() -> int:
             case_ids=matched_ids,
             dataset_id=dataset_id,
             metrics=metrics,
-            use_llm_judge=bool(args.use_llm_judge),
+            use_llm_judge=args.use_llm_judge,
             skip_empty_contexts=True,
             max_cases=min(500, len(matched_ids)),
             retrieval_overrides=overrides,
@@ -2237,8 +2237,8 @@ def main() -> int:
             client,
             base_url=base_url,
             run_id=run_id,
-            timeout_sec=float(args.timeout_sec),
-            poll_sec=float(args.poll_sec),
+            timeout_sec=args.timeout_sec,
+            poll_sec=args.poll_sec,
         )
         if run_result is None:
             return 1
@@ -2284,7 +2284,7 @@ def main() -> int:
         matched_case_count=len(matched_ids),
         metrics=metrics,
         thresholds_enabled=bool(thresholds or slice_thresholds),
-        ok=bool(ok and not qs_failures),
+        ok=ok and not qs_failures,
         failures=failures,
         detail=detail,
         run_payload=run_payload,

@@ -9,7 +9,6 @@ Targets AsciiDoc-like documents with headings such as:
 The chunker splits by heading blocks and preserves character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,13 +16,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -49,7 +43,7 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").rstrip("\r\n")
+    raw = line.rstrip("\r\n")
     if not raw:
         return None
     s = raw.lstrip()
@@ -60,8 +54,6 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
     n = len(s)
     while i < n and i < 6 and s[i] == "=":
         i += 1
-    if i <= 0 or i > 6:
-        return None
     # Reject >6 leading '='.
     if i < n and s[i] == "=":
         return None
@@ -74,47 +66,25 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
     title = s[j:].strip()
     if not title:
         return None
-    return int(i), title
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
+    return i, title
 
 
 def _iter_headings(text: str) -> list[AsciidocHeading]:
     headings: list[AsciidocHeading] = []
     for ln in _iter_lines(text):
-        parsed = _parse_asciidoc_heading(ln.text)
+        parsed = _parse_asciidoc_heading(ln.plain)
         if not parsed:
             continue
         level, title = parsed
-        if not title:
-            continue
         headings.append(
             AsciidocHeading(
                 start=ln.start,
                 end=ln.end,
-                level=max(1, min(6, int(level))),
+                level=level,
                 title=title,
             )
         )
-    deduped: list[AsciidocHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[AsciidocHeading]) -> list[_Section]:
@@ -132,27 +102,20 @@ def _build_sections(text: str, headings: list[AsciidocHeading]) -> list[_Section
     return sections
 
 
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
-
-
 def looks_like_asciidoc(text: str) -> bool:
     if not text or len(text) < 120:
         return False
     headings = _iter_headings(text)
     if len(headings) >= 2:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(headings) == 1 and (":toc:" in lowered or ":doctype:" in lowered or "[source" in lowered):
         return True
     return False
 
 
 class AsciiDocSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -189,7 +152,7 @@ class AsciiDocSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["asciidoc_heading"] = section.heading.title
-                meta["asciidoc_level"] = int(section.heading.level)
+                meta["asciidoc_level"] = section.heading.level
             if path:
                 meta["asciidoc_path"] = path
             if path_str:
@@ -201,7 +164,7 @@ class AsciiDocSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

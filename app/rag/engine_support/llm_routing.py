@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
@@ -35,17 +34,16 @@ class LlmRoutingMixin:
         re.compile(r"\d+\.\s+"),  # numbered list
     )
 
-    def _build_llm(self, chat_cls: type[ChatOpenAI], model_name: str) -> Any:
+    def _build_llm(self, model_name: str) -> Any:
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients.
 
         In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
         """
-        _ = chat_cls
-        if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+        if bool(settings.LLM_MOCK_ENABLED):
             # Lazy import to keep default startup lightweight.
             from langchain_core.language_models.fake import FakeStreamingListLLM
 
-            response = str(getattr(settings, "LLM_MOCK_RESPONSE", "") or "Hello from mock LLM.")
+            response = str(settings.LLM_MOCK_RESPONSE)
             return FakeStreamingListLLM(responses=[response])
 
         return build_chat_model_from_config(
@@ -69,8 +67,10 @@ class LlmRoutingMixin:
         default_model_name: str,
     ) -> bool:
         """Avoid routing to stale fast/heavy model aliases after provider changes."""
-        route_model = str(route_model_name or "").strip()
-        default_model = str(default_model_name or "").strip()
+        if route_model_name is None:
+            return False
+        route_model = route_model_name.strip()
+        default_model = default_model_name.strip()
         if not route_model:
             return False
         if not default_model or route_model == default_model:
@@ -84,20 +84,20 @@ class LlmRoutingMixin:
         if ("/" in route_model) != ("/" in default_model):
             return False
 
-        api_base = str(getattr(settings, "LLM_API_BASE", "") or "").casefold()
+        api_base = str(settings.LLM_API_BASE).casefold()
         if "siliconflow" in api_base and "/" not in route_model:
             return False
         return True
 
     @staticmethod
     def _model_name_for_route(*, llm: Any, model_route: str) -> str:
-        route = str(model_route or "").strip().lower()
+        route = model_route.strip().lower()
         if route == "heavy" and settings.LLM_MODEL_HEAVY:
             return str(settings.LLM_MODEL_HEAVY)
         if route == "fast" and settings.LLM_MODEL_FAST:
             return str(settings.LLM_MODEL_FAST)
         value = getattr(llm, "model_name", None) or getattr(llm, "model", None) or settings.LLM_MODEL
-        return str(value or settings.LLM_MODEL or "gpt-5.4-mini")
+        return str(value or settings.LLM_MODEL)
 
     def _maybe_override_llm_for_request(
         self,
@@ -106,15 +106,15 @@ class LlmRoutingMixin:
         model_route: str,
         structured_output: bool,
     ) -> tuple[Any, dict[str, Any]]:
-        base_temperature = float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0)
-        target_temperature = float(getattr(settings, "LLM_STRUCTURED_TEMPERATURE", base_temperature) or 0.0)
+        base_temperature = float(settings.LLM_TEMPERATURE)
+        target_temperature = float(settings.LLM_STRUCTURED_TEMPERATURE)
         meta = {
             "structured_temperature": target_temperature,
             "base_temperature": base_temperature,
             "structured_temperature_override_applied": False,
         }
 
-        if not structured_output or bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+        if not structured_output or bool(settings.LLM_MOCK_ENABLED):
             return llm, meta
         if abs(target_temperature - base_temperature) < 1e-9:
             return llm, meta
@@ -146,10 +146,10 @@ class LlmRoutingMixin:
 
         This stays dependency-free and is only used for model routing heuristics.
         """
-        q = question or ""
+        q = question
 
         history = history or []
-        history_len = sum(len(msg.get("content", "")) for msg in history if isinstance(msg, dict))
+        history_len = sum(len(msg["content"]) for msg in history if isinstance(msg, dict))
         score = float(len(q)) + settings.MODEL_COMPLEXITY_HISTORY_WEIGHT * float(history_len)
 
         # If routing is enabled, treat certain patterns as "complex" even when the
@@ -161,7 +161,7 @@ class LlmRoutingMixin:
             pattern_matches = 0
 
         if pattern_matches > 0:
-            threshold = float(getattr(settings, "MODEL_COMPLEXITY_THRESHOLD", 160) or 160)
+            threshold = float(settings.MODEL_COMPLEXITY_THRESHOLD)
             bonus_per_match = max(0.0, threshold * 0.35)
             score += float(min(pattern_matches, 6)) * bonus_per_match
 
@@ -188,25 +188,25 @@ class LlmRoutingMixin:
 
     def _route_retrieval_params(self, complexity_score: float) -> dict[str, Any]:
         """Apply coarse retrieval overrides for simple vs. complex queries."""
-        if not bool(getattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", False)):
+        if not bool(settings.ADAPTIVE_RETRIEVAL_ROUTING_ENABLED):
             return {}
 
-        simple_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD", 80.0) or 80.0)
-        complex_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD", 200.0) or 200.0)
+        simple_threshold = float(settings.ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD)
+        complex_threshold = float(settings.ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD)
 
         if complexity_score < simple_threshold:
             return {
-                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K", 10) or 10)),
+                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K)),
                 "enable_multi_query": False,
             }
 
         if complexity_score >= complex_threshold:
             return {
-                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K", 40) or 40)),
+                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K)),
                 "enable_multi_query": True,
                 "multi_query_count": max(
                     1,
-                    int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT", 5) or 5),
+                    int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT),
                 ),
                 "retrieval_profile": "recall50",
             }
@@ -223,7 +223,7 @@ class LlmRoutingMixin:
         temperature: float,
         max_chars: int,
     ) -> tuple[list[str], float, str | None, dict[str, Any]]:
-        if not enabled or count <= 0 or max_chars <= 0 or len(query or "") > max_chars:
+        if not enabled or count <= 0 or max_chars <= 0 or len(query) > max_chars:
             return [], 0.0, None, {"ok": False, "method": None, "error": None}
 
         mq_llm = self.models.get("fast") or llm
@@ -239,16 +239,19 @@ class LlmRoutingMixin:
             elapsed = time.time() - mq_start
             mq_data, parse_meta = parse_json_from_text(mq_raw, expected="array")
 
-            if isinstance(mq_data, list):
+            if mq_data is not None:
+                query_key = query.strip().strip('"').strip()
+                if len(query_key) > 400:
+                    query_key = query_key[:400] + "..."
                 seen: set[str] = set()
                 for item in mq_data:
                     if not isinstance(item, str):
                         continue
-                    candidate = (item or "").strip().strip('"').strip()
-                    if not candidate or candidate == query or candidate in seen:
-                        continue
+                    candidate = item.strip().strip('"').strip()
                     if len(candidate) > 400:
                         candidate = candidate[:400] + "..."
+                    if not candidate or candidate == query_key or candidate in seen:
+                        continue
                     seen.add(candidate)
                     queries.append(candidate)
                     if len(queries) >= count:

@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/common-lines/a.html",
+      "name": "A 目录与规则",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 目录与规则"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/common-lines/b.html",
+      "name": "B 检查宽表",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 检查宽表"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/common-lines/c.html",
+      "name": "C 扫描报告",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 扫描报告"
+      ]
+    }
+  ]
+}

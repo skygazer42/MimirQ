@@ -12,14 +12,12 @@ Additional optional phases:
 - before_agent / after_agent: Agent/workflow lifecycle hooks
 """
 
-
 import asyncio
 import threading
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
 from enum import Enum
 from functools import wraps
-from typing import Any, Optional
+from typing import Any
 
 from app.rag.core.logging import get_logger
 
@@ -28,12 +26,13 @@ logger = get_logger("rag.middleware.base")
 # Type aliases
 StateDict = dict[str, Any]
 MiddlewareFunc = Callable[[StateDict], StateDict]
-AsyncMiddlewareFunc = Callable[[StateDict], "asyncio.Future[StateDict]"]
+AsyncMiddlewareFunc = Callable[[StateDict], Awaitable[StateDict]]
 WrapperFunc = Callable[[Callable], Callable]
 
 
 class MiddlewarePhase(str, Enum):
     """Middleware execution phases."""
+
     BEFORE_MODEL = "before_model"
     AFTER_MODEL = "after_model"
     WRAP_MODEL = "wrap_model"
@@ -45,16 +44,6 @@ class MiddlewarePhase(str, Enum):
     AFTER_AGENT = "after_agent"
 
 
-@dataclass
-class MiddlewareConfig:
-    """Configuration for a middleware."""
-    name: str
-    phase: MiddlewarePhase
-    priority: int = 100  # Lower = earlier execution
-    enabled: bool = True
-    async_mode: bool = False
-
-
 class MiddlewareRegistry:
     """
     Global registry for middlewares.
@@ -62,7 +51,7 @@ class MiddlewareRegistry:
     Middlewares are registered per phase and executed in priority order.
     """
 
-    _instance: Optional["MiddlewareRegistry"] = None
+    _instance: "MiddlewareRegistry | None" = None
     _lock: threading.Lock = threading.Lock()
 
     def __new__(cls) -> "MiddlewareRegistry":
@@ -71,7 +60,7 @@ class MiddlewareRegistry:
                 # Double-check locking pattern
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._middlewares: dict[MiddlewarePhase, list[tuple]] = {
+                    cls._instance._middlewares: dict[MiddlewarePhase, list[tuple[int, str, Callable]]] = {
                         phase: [] for phase in MiddlewarePhase
                     }
         return cls._instance
@@ -134,6 +123,7 @@ def before_model(
                 raise ValueError("Question is required")
             return state
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.BEFORE_MODEL, priority, name)
 
@@ -172,6 +162,7 @@ def after_model(
                 state["answer"] = "I could not generate a response."
             return state
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.AFTER_MODEL, priority, name)
 
@@ -209,6 +200,7 @@ def wrap_model_call(
                     return await func(state, *args, **kwargs)
             return wrapper
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.WRAP_MODEL, priority, name)
         return f
@@ -239,6 +231,7 @@ def dynamic_prompt(
             state["system_prompt"] = system + state.get("system_prompt", "")
             return state
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.DYNAMIC_PROMPT, priority, name)
 
@@ -270,6 +263,7 @@ def before_tool_call(
           "error": str | None,
         }
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.BEFORE_TOOL_CALL, priority, name)
 
@@ -291,6 +285,7 @@ def after_tool_call(
     name: str | None = None,
 ) -> Callable:
     """Decorator for post-tool hooks (runs after a tool call completes)."""
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.AFTER_TOOL_CALL, priority, name)
 
@@ -317,6 +312,7 @@ def wrap_tool_call(
     The decorated function should be a wrapper factory that takes the
     original tool-call function and returns a wrapped version.
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.WRAP_TOOL_CALL, priority, name)
         return f
@@ -333,6 +329,7 @@ def before_agent(
     name: str | None = None,
 ) -> Callable:
     """Decorator for agent/workflow lifecycle hooks (runs at agent start)."""
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.BEFORE_AGENT, priority, name)
 
@@ -354,6 +351,7 @@ def after_agent(
     name: str | None = None,
 ) -> Callable:
     """Decorator for agent/workflow lifecycle hooks (runs at agent end)."""
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.AFTER_AGENT, priority, name)
 
@@ -371,7 +369,7 @@ def after_agent(
 class ToolMiddlewareChain:
     """Tool-call middleware chain (before/after + wrapper)."""
 
-    def __init__(self, registry: MiddlewareRegistry | None = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None) -> None:
         self._registry = registry or _registry
         self._custom_before: list[Callable] = []
         self._custom_after: list[Callable] = []
@@ -433,7 +431,7 @@ class ToolMiddlewareChain:
 class AgentMiddlewareChain:
     """Agent lifecycle middleware chain (before/after)."""
 
-    def __init__(self, registry: MiddlewareRegistry | None = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None) -> None:
         self._registry = registry or _registry
         self._custom_before: list[Callable] = []
         self._custom_after: list[Callable] = []
@@ -487,7 +485,7 @@ class MiddlewareChain:
         state = chain.run_after(state)
     """
 
-    def __init__(self, registry: MiddlewareRegistry | None = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None) -> None:
         self._registry = registry or _registry
         self._custom_before: list[Callable] = []
         self._custom_after: list[Callable] = []
@@ -593,17 +591,17 @@ def apply_middlewares(
     """
     chain = MiddlewareChain()
 
-    for f in (before or []):
+    for f in before or []:
         chain.add_before(f)
 
-    for f in (after or []):
+    for f in after or []:
         chain.add_after(f)
 
-    for w in (wrappers or []):
+    for w in wrappers or []:
         chain.add_wrapper(w)
 
     @wraps(func)
-    async def async_wrapper(state: StateDict, *args, **kwargs) -> StateDict:
+    async def async_wrapper(state: StateDict, *args: Any, **kwargs: Any) -> StateDict:
         state = chain.run_before(state)
         wrapped_func = chain.wrap_call(func)
 
@@ -616,7 +614,7 @@ def apply_middlewares(
         return state
 
     @wraps(func)
-    def sync_wrapper(state: StateDict, *args, **kwargs) -> StateDict:
+    def sync_wrapper(state: StateDict, *args: Any, **kwargs: Any) -> StateDict:
         state = chain.run_before(state)
         wrapped_func = chain.wrap_call(func)
         state = wrapped_func(state, *args, **kwargs)

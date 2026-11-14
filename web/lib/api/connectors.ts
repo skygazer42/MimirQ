@@ -13,7 +13,7 @@ import type {
   IngestionRunCompareResponse,
   IngestionRunListResponse,
   IngestionRunOut,
-} from '@/types'
+} from '@/types/connectors'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
@@ -68,13 +68,12 @@ export const connectorApi = {
 
   async reconcileConfig(
     configId: string,
-    params?: { apply?: boolean; sample_limit?: number }
+    params?: { apply?: boolean; sample_limit?: number },
   ): Promise<Record<string, unknown>> {
-    const { data } = await apiClient.post(
-      `/connectors/configs/${encodeURIComponent(configId)}/reconcile`,
-      undefined,
-      { params, timeout: API_LONG_TIMEOUT_MS }
-    )
+    const { data } = await apiClient.post(`/connectors/configs/${encodeURIComponent(configId)}/reconcile`, undefined, {
+      params,
+      timeout: API_LONG_TIMEOUT_MS,
+    })
     return data
   },
 

@@ -17,6 +17,7 @@ from starlette.status import (
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
+from app.core.model_execution import RetiredModelProviderError
 from app.rag.core.logging import get_logger
 
 logger = get_logger("core.exceptions")
@@ -38,6 +39,20 @@ _HINT_BY_KEY: dict[str, str] = {
     "rate_limited": "You are being rate limited. Retry later, or reduce concurrent requests / embedding concurrency.",
 }
 
+_HTTP_ERROR_CODE_BY_STATUS: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "AUTHENTICATION_ERROR",
+    403: "AUTHORIZATION_ERROR",
+    404: "NOT_FOUND",
+    409: "CONFLICT",
+    416: "RANGE_NOT_SATISFIABLE",
+    422: "VALIDATION_ERROR",
+    413: "PAYLOAD_TOO_LARGE",
+    429: "RATE_LIMIT_EXCEEDED",
+    500: "INTERNAL_ERROR",
+    503: "SERVICE_UNAVAILABLE",
+}
+
 
 def _derive_hint(
     *,
@@ -47,7 +62,7 @@ def _derive_hint(
     detail: dict[str, Any] | None,
 ) -> str | None:
     # 1) Explicit hint takes precedence.
-    if isinstance(detail, dict):
+    if detail is not None:
         raw_hint = detail.get("hint")
         if isinstance(raw_hint, str) and raw_hint.strip():
             return raw_hint.strip()
@@ -59,23 +74,22 @@ def _derive_hint(
                 return mapped
 
     # 2) Heuristics for legacy string-only HTTPException details.
-    msg = str(message or "").strip()
-    norm = msg.lower()
+    norm = message.strip().lower()
 
     if status_code == HTTP_413_CONTENT_TOO_LARGE or "file too large" in norm:
-        return _HINT_BY_KEY.get("payload_too_large")
+        return _HINT_BY_KEY["payload_too_large"]
 
     if status_code == HTTP_429_TOO_MANY_REQUESTS or error_code == "RATE_LIMIT_EXCEEDED":
-        return _HINT_BY_KEY.get("rate_limited")
+        return _HINT_BY_KEY["rate_limited"]
 
     if "worker_timeout" in norm or "timeout" in norm:
-        return _HINT_BY_KEY.get("timeout")
+        return _HINT_BY_KEY["timeout"]
 
     if "preprocess_failed" in norm:
-        return _HINT_BY_KEY.get("preprocess_failed")
+        return _HINT_BY_KEY["preprocess_failed"]
 
     if "parse_failed" in norm or "failed to parse" in norm:
-        return _HINT_BY_KEY.get("parse_failed")
+        return _HINT_BY_KEY["parse_failed"]
 
     return None
 
@@ -131,23 +145,48 @@ class MimirQError(Exception):
         error_code: str = "INTERNAL_ERROR",
         status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
         detail: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         self.message = message
         self.error_code = error_code
         self.status_code = status_code
-        self.detail = detail or {}
+        self.detail = detail
         super().__init__(message)
 
     def to_response(self, request_id: str | None = None) -> ErrorResponse:
         return ErrorResponse(
             error=self.error_code,
             message=self.message,
-            detail=self.detail if self.detail else None,
+            detail=self.detail,
             request_id=request_id,
         )
 
 
 MimirQException = MimirQError
+
+
+class BadRequestError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="BAD_REQUEST", status_code=400)
+
+
+class AuthenticationError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="AUTHENTICATION_ERROR", status_code=401)
+
+
+class AuthorizationError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="AUTHORIZATION_ERROR", status_code=403)
+
+
+class NotFoundError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="NOT_FOUND", status_code=404)
+
+
+class ConflictError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="CONFLICT", status_code=409)
 
 
 class ValidationError(MimirQError):
@@ -156,20 +195,20 @@ class ValidationError(MimirQError):
         message: str,
         field: str | None = None,
         detail: dict[str, Any] | None = None,
-    ):
-        merged_detail: dict[str, Any] = dict(detail or {})
-        if field:
+    ) -> None:
+        merged_detail: dict[str, Any] = dict(detail) if detail is not None else {}
+        if field is not None:
             merged_detail["field"] = field
         super().__init__(
             message=message,
             error_code="VALIDATION_ERROR",
             status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=merged_detail or None,
+            detail=merged_detail,
         )
 
 
 class RateLimitError(MimirQError):
-    def __init__(self, retry_after: float = 60.0):
+    def __init__(self, retry_after: float = 60.0) -> None:
         super().__init__(
             message="Too many requests. Please try again later.",
             error_code="RATE_LIMIT_EXCEEDED",
@@ -179,15 +218,15 @@ class RateLimitError(MimirQError):
 
 
 class LLMError(MimirQError):
-    def __init__(self, message: str, provider: str | None = None):
+    def __init__(self, message: str, provider: str | None = None) -> None:
         detail: dict[str, Any] = {}
-        if provider:
+        if provider is not None:
             detail["provider"] = provider
         super().__init__(
             message=message,
             error_code="LLM_ERROR",
             status_code=HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail or None,
+            detail=detail,
         )
 
 
@@ -217,7 +256,7 @@ class ConfigError(Exception):
 class LLMTimeoutError(LLMError):
     """LLM timeout error."""
 
-    def __init__(self, message: str = "LLM request timed out", provider: str | None = None):
+    def __init__(self, message: str = "LLM request timed out", provider: str | None = None) -> None:
         super().__init__(message=message, provider=provider)
 
 
@@ -241,37 +280,23 @@ def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse
         exc.message,
         request_id,
     )
-    hint = _derive_hint(
-        status_code=int(exc.status_code),
-        error_code=str(exc.error_code or "INTERNAL_ERROR"),
-        message=str(exc.message or ""),
-        detail=exc.detail if isinstance(exc.detail, dict) else None,
+    response = exc.to_response(request_id)
+    response.hint = _derive_hint(
+        status_code=exc.status_code,
+        error_code=response.error,
+        message=response.message,
+        detail=response.detail,
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=exc.to_response(request_id).model_dump(exclude_none=True) | ({"hint": hint} if hint else {}),
+        content=response.model_dump(exclude_none=True),
     )
 
 
 def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = get_request_id(request)
 
-    error_code_map = {
-        400: "BAD_REQUEST",
-        401: "AUTHENTICATION_ERROR",
-        403: "AUTHORIZATION_ERROR",
-        404: "NOT_FOUND",
-        409: "CONFLICT",
-        416: "RANGE_NOT_SATISFIABLE",
-        422: "VALIDATION_ERROR",
-        413: "PAYLOAD_TOO_LARGE",
-        429: "RATE_LIMIT_EXCEEDED",
-        500: "INTERNAL_ERROR",
-        503: "SERVICE_UNAVAILABLE",
-    }
-
-    error_code = error_code_map.get(exc.status_code, "HTTP_ERROR")
-    message = ""
+    error_code = _HTTP_ERROR_CODE_BY_STATUS.get(exc.status_code, "HTTP_ERROR")
     detail: dict[str, Any] | None = None
     if isinstance(exc.detail, dict):
         detail = dict(exc.detail)
@@ -293,9 +318,9 @@ def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse
         detail = None
 
     hint = _derive_hint(
-        status_code=int(exc.status_code),
-        error_code=str(error_code),
-        message=str(message),
+        status_code=exc.status_code,
+        error_code=error_code,
+        message=message,
         detail=detail,
     )
 
@@ -353,7 +378,12 @@ def unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespons
     )
 
 
+def retired_model_provider_exception_handler(request: Request, exc: RetiredModelProviderError) -> JSONResponse:
+    return http_exception_handler(request, HTTPException(status_code=422, detail=str(exc)))
+
+
 def register_exception_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(RetiredModelProviderError, retired_model_provider_exception_handler)
     app.add_exception_handler(MimirQError, mimirq_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)

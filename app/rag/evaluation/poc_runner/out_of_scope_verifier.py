@@ -1,13 +1,7 @@
 from typing import Any, Callable, Mapping, Sequence
 
 from app.rag.core.logging import get_logger
-
-
-def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return text[: max(1, int(max_len or 1))]
+from app.rag.evaluation.poc_runner.telemetry import _safe_str
 
 
 def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
@@ -26,14 +20,14 @@ def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
 
 
 def _expand_query(query: str, glossary: Mapping[str, Sequence[str]] | None) -> str:
-    expanded: list[str] = [str(query or "").strip()]
+    expanded: list[str] = [query.strip()]
     q_norm = expanded[0]
     for key, values in (glossary or {}).items():
-        term = str(key or "").strip()
+        term = key.strip()
         if not term or term not in q_norm:
             continue
         for value in values or []:
-            alias = str(value or "").strip()
+            alias = value.strip()
             if alias and alias not in expanded:
                 expanded.append(alias)
     return " ".join(part for part in expanded if part)
@@ -61,7 +55,7 @@ def verify_out_of_scope_query(
     l2_top1_sim = _best_score(vector_hits) if enable_vector else None
 
     l3_hyde_query = _safe_str(hyde_generate(query)) if enable_hyde else None
-    hyde_hits = list(vector_search(l3_hyde_query or "")) if enable_hyde and l3_hyde_query else []
+    hyde_hits = list(vector_search(l3_hyde_query)) if enable_hyde and l3_hyde_query else []
     hyde_top1 = _best_score(hyde_hits) if enable_hyde and l3_hyde_query else None
     l3_hyde_hit = (
         None if not enable_hyde else bool(hyde_top1 is not None and hyde_top1 >= float(hyde_similarity_threshold))
@@ -81,7 +75,7 @@ def verify_out_of_scope_query(
             verdict = "ambiguous"
 
     return {
-        "query": str(query or "").strip(),
+        "query": query.strip(),
         "expanded_query": expanded_query,
         "l1_keyword_hit": l1_keyword_hit,
         "l2_top1_sim": l2_top1_sim,

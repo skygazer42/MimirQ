@@ -6,7 +6,6 @@ We treat dataset default selectors as *fallbacks*:
 - Otherwise, apply the dataset default (if present).
 """
 
-
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
@@ -51,13 +50,13 @@ def merge_rag_config_template_defaults_with_dataset(
             except Exception as exc:
                 logger.debug("Ignoring malformed default rag config template id: %s", exc)
 
-    if eff_id is None and "rag_config_template_key" not in provided and not (eff_key or "").strip():
+    if eff_id is None and "rag_config_template_key" not in provided and (eff_key is None or not eff_key.strip()):
         raw = meta.get("default_rag_config_template_key")
         if isinstance(raw, str) and raw.strip():
             eff_key = raw.strip()
             applied.append("rag_config_template_key")
 
-    if "rag_config_ab_experiment_key" not in provided and not (eff_ab or "").strip():
+    if "rag_config_ab_experiment_key" not in provided and (eff_ab is None or not eff_ab.strip()):
         raw = meta.get("default_rag_config_ab_experiment_key")
         if isinstance(raw, str) and raw.strip():
             eff_ab = raw.strip()

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · RAG 评测布局对比",
+  "round": "RAG 评测 01",
+  "nativeViewport": "1600x1000",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，保留 Ragvia 全局导航和状态语义色。五版共用一次已完成会话评测的设计数据：10 次运行、当前 8 个样本、3 项指标、2 个低分样本；分数和运行均为排版示例，不是本地实际评测结果。当前选中样本 05，对照回答和引用。候选是静态首屏，开始、筛选与导出尚未接入；保留 Golden 评测集与检索集健康度入口，本轮不扩展其子页。正式业务页面未修改，也没有执行评测或模型任务。",
+  "candidates": [
+    {
+      "id": "a-runs",
+      "name": "A · 运行宽表",
+      "source": "a-runs.html",
+      "concept": "先对照多次运行的状态和指标，当前样本证据在表格下方展开。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 操作与指标标签",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#31754D", "#805E18", "#476F8B"],
+      "traits": ["10 次运行同屏比较", "参数收成顶部一行", "下方展开样本与原文"]
+    },
+    {
+      "id": "b-directory",
+      "name": "B · 运行目录",
+      "source": "b-directory.html",
+      "concept": "在日期目录中找到一次运行，再集中阅读结果和低分样本。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 操作与指标标签",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#31754D", "#805E18", "#476F8B"],
+      "traits": ["260px 运行目录", "指标与样本同处主区", "适合重复查看评测记录"]
+    },
+    {
+      "id": "c-matrix",
+      "name": "C · 样本矩阵",
+      "source": "c-matrix.html",
+      "concept": "逐题对照三项指标，选中后在右侧核对回答与引用。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 操作与指标标签",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#31754D", "#805E18", "#476F8B"],
+      "traits": ["问题 × 指标矩阵", "360px 样本阅读面", "适合定位和复核低分"]
+    },
+    {
+      "id": "d-report",
+      "name": "D · 指标报告",
+      "source": "d-report.html",
+      "concept": "先读本次评测的均值和分布，再沿连续报告查看回答依据。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 操作与指标标签",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#31754D", "#805E18", "#476F8B"],
+      "traits": ["连续报告式结果", "按共同样本分数绘制分布", "低分索引辅助阅读"]
+    },
+    {
+      "id": "e-config",
+      "name": "E · 配置与结果",
+      "source": "e-config.html",
+      "concept": "配置保持可见，把更多空间留给本轮输出，便于调整后再次评测。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 操作与指标标签",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#31754D", "#805E18", "#476F8B"],
+      "traits": ["300px 连续配置栏", "右侧宽结果区", "开始操作固定在配置底部"]
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "source": "current.png",
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1280x720",
+      "concept": "真实页面目前有 1 条缺证据会话、0 次运行。仅比较配置／结果／历史的容器和空间，不将空态当作已执行评测。",
+      "traits": ["原版固定三栏", "真实空结果状态", "1280×720 原始视口"]
+    }
+  ]
+}

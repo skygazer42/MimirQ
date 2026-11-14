@@ -10,8 +10,12 @@ During KG search, we treat different predicates as having different usefulness f
 This keeps relation-driven expansion helpful for RAG recall while limiting query drift.
 """
 
-
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.config import Settings
+    from app.rag.kg.models import KgRelation
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,7 @@ def relation_multiplier(predicate: str, *, from_is_subject: bool) -> float:
     - 0.0 means "do not expand this edge" (e.g., unknown predicate).
     - Fallback (unknown but non-empty) is intentionally modest to reduce drift.
     """
-    pred = (predicate or "").strip()
+    pred = (predicate).strip()
     if not pred:
         return 0.0
 
@@ -90,4 +94,31 @@ def relation_multiplier(predicate: str, *, from_is_subject: bool) -> float:
     return max(0.0, float(prior.weight) * direction)
 
 
-__all__ = ["PredicatePrior", "relation_multiplier"]
+def relation_direction(rel: "KgRelation", entity_ids: set[str]) -> tuple[str | None, str | None, str | None]:
+    subject_id = str(rel.subject_entity_id)
+    object_id = str(rel.object_entity_id)
+    if not subject_id or not object_id:
+        return None, None, None
+    predicate = rel.predicate.strip()
+    if not predicate or predicate.casefold() == "unknown":
+        return None, None, None
+    if subject_id in entity_ids:
+        return subject_id, object_id, predicate
+    if object_id in entity_ids:
+        return object_id, subject_id, predicate
+    return None, None, None
+
+
+def relation_evidence(rel: "KgRelation", *, settings: "Settings") -> tuple[float, str]:
+    try:
+        refs = rel.references
+        evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
+        if evidence_source != "mention":
+            return 1.0, evidence_source
+        mention_mult = float(settings.KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER)
+        return max(0.0, min(1.0, mention_mult)), evidence_source
+    except Exception:
+        return 1.0, ""
+
+
+__all__ = ["PredicatePrior", "relation_multiplier", "relation_direction", "relation_evidence"]

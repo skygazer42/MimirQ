@@ -6,7 +6,6 @@ stable set of token + latency breakdown fields. Keep this module pure and
 dependency-light so it can be unit-tested without DB/LLM/vector backends.
 """
 
-
 from typing import Any
 
 from app.core.token_utils import num_tokens_from_string
@@ -32,10 +31,6 @@ def compute_prompt_preview_metrics(
     """
     metrics: dict[str, Any] = dict(base_metrics or {})
 
-    prompt_text = prompt_text or ""
-    context = context or ""
-    history = history or ""
-
     metrics["prompt_chars"] = len(prompt_text)
     metrics["prompt_tokens"] = num_tokens_from_string(prompt_text)
 
@@ -56,4 +51,3 @@ def compute_prompt_preview_metrics(
 
 
 __all__ = ["compute_prompt_preview_metrics"]
-

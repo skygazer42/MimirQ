@@ -5,11 +5,11 @@ sidebar_position: 5
 
 # 证据与可解释性
 
-MimirQ 提供完整的证据溯源链路，将 LLM 生成的每一个论断关联到检索到的原始文档片段，实现答案可验证、可审计。
+Ragvia 提供完整的证据溯源链路，将 LLM 生成的每一个论断关联到检索到的原始文档片段，实现答案可验证、可审计。
 
 ## Evidence Capsule 概念
 
-Evidence Capsule 是 MimirQ 的证据封装单元，将答案中的每个 claim 与其支撑证据绑定：
+Evidence Capsule 是 Ragvia 的证据封装单元，将答案中的每个 claim 与其支撑证据绑定：
 
 ```mermaid
 flowchart TB

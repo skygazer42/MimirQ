@@ -9,12 +9,12 @@ This is an optional second LLM pass designed to:
 All outputs are gated by deterministic evidence checks in the caller.
 """
 
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.rag.kg.extraction.parser import EntityValueParser
+from app.rag.kg.extraction.evidence import clamp_confidence
+from app.rag.kg.extraction.parser import normalize_entity_type
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
@@ -22,37 +22,23 @@ from app.rag.llm.models import LLMMessage, LLMRole
 logger = get_logger("kg.extract.entity_verify")
 
 
-def _clamp01(value: object, *, default: float) -> float:
-    try:
-        f = float(value)  # type: ignore[arg-type]
-    except Exception:
-        return float(default)
-    if math.isnan(f):
-        return float(default)
-    return max(0.0, min(1.0, float(f)))
-
-
 def _empty_verify_result() -> dict[str, list[dict[str, Any]]]:
     return {"kept": [], "aliases": []}
 
 
 def _verified_candidate_ids(candidates: Sequence["EntityCandidate"]) -> set[str]:
-    return {
-        str(candidate.cid).strip()
-        for candidate in (candidates or [])
-        if str(getattr(candidate, "cid", "") or "").strip()
-    }
+    return {str(candidate.cid).strip() for candidate in (candidates or []) if candidate.cid.strip()}
 
 
 def _build_candidate_lines(candidates: Sequence["EntityCandidate"]) -> list[str]:
     lines: list[str] = []
     for candidate in candidates:
         cid = str(candidate.cid).strip()
-        name = str(candidate.name or "").strip()
+        name = candidate.name.strip()
         if not cid or not name:
             continue
         etype = str(candidate.type or "unknown").strip() or "unknown"
-        desc = str(candidate.description or "").strip()
+        desc = candidate.description.strip()
         if desc:
             lines.append(f"{cid}: {name} ({etype}) - {desc[:120]}")
             continue
@@ -126,13 +112,7 @@ def _build_verification_prompt(
     )
 
 
-def _sanitize_kept_entities(
-    parser: EntityValueParser,
-    items: object,
-    *,
-    valid_ids: set[str],
-    keep_limit: int,
-) -> list[dict[str, Any]]:
+def _sanitize_kept_entities(items: object, *, valid_ids: set[str], keep_limit: int) -> list[dict[str, Any]]:
     kept: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     if not isinstance(items, list):
@@ -141,19 +121,27 @@ def _sanitize_kept_entities(
     for item in items:
         if not isinstance(item, dict):
             continue
-        cid = str(item.get("id") or "").strip()
+        cid = item.get("id")
+        if not isinstance(cid, str):
+            continue
+        cid = cid.strip()
         if not cid or cid not in valid_ids or cid in seen_ids:
             continue
+        desc = item.get("description")
+        evidence_quote = item.get("evidence_quote")
+        entity_type = item.get("type")
+        if any(value is not None and not isinstance(value, str) for value in (desc, evidence_quote, entity_type)):
+            continue
+        desc = (desc.strip() or None) if desc is not None else None
+        evidence_quote = (evidence_quote.strip() or None) if evidence_quote is not None else None
         seen_ids.add(cid)
-        desc = str(item.get("description") or "").strip() or None
-        evidence_quote = str(item.get("evidence_quote") or "").strip() or None
         kept.append(
             {
                 "id": cid,
-                "type": parser.normalize_type(str(item.get("type") or "unknown")),
+                "type": normalize_entity_type(entity_type if entity_type is not None else "unknown"),
                 "description": desc[:400] if desc else None,
                 "evidence_quote": evidence_quote[:300] if evidence_quote else None,
-                "confidence": _clamp01(item.get("confidence"), default=0.7),
+                "confidence": clamp_confidence(item.get("confidence"), default=0.7),
             }
         )
         if len(kept) >= keep_limit:
@@ -175,8 +163,12 @@ def _sanitize_aliases(
     for item in items:
         if not isinstance(item, dict):
             continue
-        alias_id = str(item.get("alias_id") or "").strip()
-        canonical_id = str(item.get("canonical_id") or "").strip()
+        alias_id = item.get("alias_id")
+        canonical_id = item.get("canonical_id")
+        if not isinstance(alias_id, str) or not isinstance(canonical_id, str):
+            continue
+        alias_id = alias_id.strip()
+        canonical_id = canonical_id.strip()
         if not alias_id or not canonical_id or alias_id == canonical_id:
             continue
         if alias_id not in valid_ids or canonical_id not in valid_ids:
@@ -184,14 +176,17 @@ def _sanitize_aliases(
         pair = (alias_id, canonical_id)
         if pair in seen_pairs:
             continue
+        evidence_quote = item.get("evidence_quote")
+        if evidence_quote is not None and not isinstance(evidence_quote, str):
+            continue
+        evidence_quote = (evidence_quote.strip() or None) if evidence_quote is not None else None
         seen_pairs.add(pair)
-        evidence_quote = str(item.get("evidence_quote") or "").strip() or None
         aliases.append(
             {
                 "alias_id": alias_id,
                 "canonical_id": canonical_id,
                 "evidence_quote": evidence_quote[:300] if evidence_quote else None,
-                "confidence": _clamp01(item.get("confidence"), default=0.9),
+                "confidence": clamp_confidence(item.get("confidence"), default=0.9),
             }
         )
         if len(aliases) >= alias_limit:
@@ -211,7 +206,6 @@ class EntityCandidate:
 class EntityVerifier:
     def __init__(self, llm_client: BaseLLMClient):
         self.llm_client = llm_client
-        self.parser = EntityValueParser()
 
     async def verify(
         self,
@@ -226,11 +220,11 @@ class EntityVerifier:
         - kept: [{id, type, description, evidence_quote, confidence}]
         - aliases: [{alias_id, canonical_id, confidence, evidence_quote}]
         """
-        clean_text = (text or "").strip()
+        clean_text = (text).strip()
         if not clean_text:
             return _empty_verify_result()
 
-        cand_list = [c for c in (candidates or []) if str(getattr(c, "cid", "") or "").strip()]
+        cand_list = [c for c in (candidates or []) if c.cid.strip()]
         if not cand_list:
             return _empty_verify_result()
 
@@ -268,7 +262,6 @@ class EntityVerifier:
         payload = raw if isinstance(raw, dict) else {}
         return {
             "kept": _sanitize_kept_entities(
-                self.parser,
                 payload.get("kept"),
                 valid_ids=valid_ids,
                 keep_limit=keep_lim,

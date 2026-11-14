@@ -28,13 +28,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from langchain_core.documents import Document  # noqa: E402
 
-from app.api.schemas.document import ChunkPreviewItem  # noqa: E402
+from app.api.schemas.documents import ChunkPreviewItem  # noqa: E402
 from app.core.token_utils import estimate_tokens, num_tokens_from_string  # noqa: E402
 from app.rag.chunking.factory import chunker_factory  # noqa: E402
-from app.services.document_preview_utils import (  # noqa: E402
-    _compute_chunk_coverage_metrics_from_ranges,
-    _compute_chunk_preview_quality,
-)
+from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges  # noqa: E402
+from app.services.document_preview_utils import _compute_chunk_preview_quality  # noqa: E402
 
 
 def _iter_files(paths: list[str]) -> Iterable[Path]:
@@ -91,7 +89,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _read_candidate(path: Path, *, max_chars: int) -> str | None:
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
-    except Exception:
+    except OSError:
         return None
     if not text.strip():
         return None
@@ -101,11 +99,11 @@ def _read_candidate(path: Path, *, max_chars: int) -> str | None:
 
 
 def _build_preview_items(text: str, chunks: list[Any], *, strategy: str) -> list[ChunkPreviewItem]:
-    chunk_texts = [chunk.page_content or "" for chunk in chunks]
+    chunk_texts = [chunk.page_content for chunk in chunks]
     offsets = _best_effort_offsets(text, chunk_texts)
     items: list[ChunkPreviewItem] = []
     for index, (chunk, (start, end)) in enumerate(zip(chunks, offsets, strict=False)):
-        content = chunk.page_content or ""
+        content = chunk.page_content
         tokens_est = num_tokens_from_string(content) if strategy == "langchain_token" else estimate_tokens(content)
         items.append(
             ChunkPreviewItem(
@@ -115,8 +113,8 @@ def _build_preview_items(text: str, chunks: list[Any], *, strategy: str) -> list
                 tokens_est=int(tokens_est or 0),
                 start_index=int(start),
                 end_index=int(end),
-                page_number=(chunk.metadata or {}).get("page") if isinstance(chunk.metadata, dict) else None,
-                metadata=dict(chunk.metadata or {}),
+                page_number=chunk.metadata.get("page"),
+                metadata=dict(chunk.metadata),
             )
         )
     return items
@@ -137,7 +135,7 @@ def _preview_stats(
         size = int(item.tokens_est or 0) if unit == "tokens" else int(item.length or 0)
         if 0 < size < threshold:
             short_count += 1
-        trimmed = (item.content or "").strip()
+        trimmed = item.content.strip()
         if not trimmed:
             continue
         digest = hashlib.sha256(trimmed.encode("utf-8", "ignore")).hexdigest()
@@ -147,11 +145,11 @@ def _preview_stats(
             seen_hashes.add(digest)
     return SimpleNamespace(
         count=len(items),
-        covered_chars=int(coverage.get("covered_chars", 0)),
-        coverage_ratio=float(coverage.get("coverage_ratio", 0.0)),
-        overlap_waste_ratio=float(coverage.get("overlap_waste_ratio", 0.0)),
-        gap_count=int(coverage.get("gap_count", 0)),
-        largest_gap=int(coverage.get("largest_gap", 0)),
+        covered_chars=int(coverage["covered_chars"]),
+        coverage_ratio=float(coverage["coverage_ratio"]),
+        overlap_waste_ratio=float(coverage["overlap_waste_ratio"]),
+        gap_count=int(coverage["gap_count"]),
+        largest_gap=int(coverage["largest_gap"]),
         short_count=short_count,
         duplicate_count=duplicate_count,
     )
@@ -164,26 +162,26 @@ def _evaluate_file(
     strategy: str,
     effective_overlap: int,
 ) -> dict[str, Any] | None:
-    text = _read_candidate(path, max_chars=int(args.max_chars or 0))
+    text = _read_candidate(path, max_chars=args.max_chars)
     if text is None:
         return None
 
-    chunker = chunker_factory.get_chunker(strategy, int(args.chunk_size), effective_overlap)
-    chunks = chunker.split_documents([Document(page_content=text, metadata={"page": 1, "start_char": 0})]) or []
-    items = _build_preview_items(text, list(chunks), strategy=strategy)
+    chunker = chunker_factory.get_chunker(strategy, args.chunk_size, effective_overlap)
+    chunks = chunker.split_documents([Document(page_content=text, metadata={"page": 1, "start_char": 0})])
+    items = _build_preview_items(text, chunks, strategy=strategy)
     total_chars = len(text)
     chunk_ranges = [(int(item.start_index or 0), int(item.end_index or 0)) for item in items]
-    coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_chars)
+    coverage = compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_chars)
     stats = _preview_stats(items, coverage, strategy=strategy)
     quality_gate, recommendations, patches = _compute_chunk_preview_quality(
         stats=stats,
         total_chunks=len(items),
         total_characters=total_chars,
-        chunk_size=int(args.chunk_size),
+        chunk_size=args.chunk_size,
         chunk_overlap=effective_overlap,
         original_text_included=True,
         original_text_truncated=False,
-        original_text_max_chars=max(0, int(args.max_chars or 0)),
+        original_text_max_chars=max(0, args.max_chars),
     )
     return {
         "file": str(path),
@@ -195,7 +193,7 @@ def _evaluate_file(
         "coverage": coverage,
         "quality_gate": _json_default(quality_gate),
         "recommendations": recommendations,
-        "recommendation_patches": [patch.model_dump() for patch in (patches or [])],
+        "recommendation_patches": [patch.model_dump() for patch in patches],
     }
 
 
@@ -203,9 +201,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     strategy = chunker_factory.resolve_strategy(args.strategy)
-    effective_overlap = 0 if strategy == "separator" else int(args.chunk_overlap)
+    effective_overlap = 0 if strategy == "separator" else args.chunk_overlap
 
-    out_fp = None
     if args.out:
         out_fp = Path(args.out)
         out_fp.parent.mkdir(parents=True, exist_ok=True)
@@ -214,8 +211,8 @@ def main(argv: list[str] | None = None) -> int:
         fh = sys.stdout
 
     processed = 0
-    for path in _iter_files(list(args.paths)):
-        if args.max_files and processed >= int(args.max_files):
+    for path in _iter_files(args.paths):
+        if args.max_files and processed >= args.max_files:
             break
         row = _evaluate_file(path, args, strategy=strategy, effective_overlap=effective_overlap)
         if row is None:

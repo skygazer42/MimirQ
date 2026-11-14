@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import dynamic from 'next/dynamic'
-import { Route } from 'lucide-react'
+import { Route } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,8 +13,8 @@ function RagTraceDialogLoading() {
 
   return (
     <PageLoading
-      message={t("dialog.loadingMessage")}
-      srMessage={t("dialog.loadingSrMessage")}
+      message={t('dialog.loadingMessage')}
+      srMessage={t('dialog.loadingSrMessage')}
       className="min-h-[50vh]"
     />
   )
@@ -41,7 +41,7 @@ export function RagTraceDialog({ open, onOpenChange, conversationId, title }: Re
         <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <Route className="h-5 w-5 text-info" />
-            <span>{t("dialog.title")}</span>
+            <span>{t('dialog.title')}</span>
             {title ? <span className="text-sm font-normal text-muted-foreground">· {title}</span> : null}
           </DialogTitle>
         </DialogHeader>

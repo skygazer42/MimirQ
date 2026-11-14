@@ -6,10 +6,9 @@ does not attempt to be a full document understanding pipeline. It provides stabl
 counts for common UI panels (parsing/governance/chunk-preview).
 """
 
-
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
@@ -41,14 +40,6 @@ class DocumentAnalytics:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 
-def _count_lines(text: str) -> int:
-    raw = text or ""
-    if not raw:
-        return 0
-    # splitlines() ignores trailing newline and handles mixed newlines.
-    return len(raw.splitlines())
-
-
 def compute_document_analytics(
     *,
     markdown: str,
@@ -57,40 +48,33 @@ def compute_document_analytics(
     detect_language: bool = False,
     language_min_chars: int = 40,
 ) -> DocumentAnalytics:
-    raw = (markdown or "")
-
     # Reuse existing artifact stats helper to keep table/image/page/block counting consistent.
     artifact = compute_parsing_artifact_stats(
         documents=documents,
-        original_markdown=raw,
-        markdown=raw,
+        original_markdown=markdown,
+        markdown=markdown,
         pdf_quality=pdf_quality,
     )
 
-    lang_val: str | None = None
-    lang_conf: float | None = None
-    cjk: int | None = None
-    latin: int | None = None
-    if detect_language:
-        out = detect_language_fn(raw, min_chars=int(language_min_chars or 0))
-        lang_val = str(getattr(out, "language", "") or "").strip() or None
-        lang_conf = float(getattr(out, "confidence", 0.0) or 0.0)
-        cjk = int(getattr(out, "cjk_chars", 0) or 0)
-        latin = int(getattr(out, "latin_chars", 0) or 0)
-
-    return DocumentAnalytics(
-        char_count=len(raw),
-        line_count=_count_lines(raw),
-        heading_count=len(_HEADING_RE.findall(raw)) if raw else 0,
-        page_count=int(artifact.get("page_count") or 0),
-        table_count=int(artifact.get("table_count") or 0),
-        image_count=int(artifact.get("image_count") or 0),
-        block_count=int(artifact.get("block_count") or 0),
-        language=lang_val,
-        language_confidence=lang_conf,
-        cjk_chars=cjk,
-        latin_chars=latin,
+    analytics = DocumentAnalytics(
+        char_count=len(markdown),
+        line_count=len(markdown.splitlines()),
+        heading_count=len(_HEADING_RE.findall(markdown)),
+        page_count=artifact["page_count"],
+        table_count=artifact["table_count"],
+        image_count=artifact["image_count"],
+        block_count=artifact["block_count"],
     )
+    if detect_language:
+        language = detect_language_fn(markdown, min_chars=language_min_chars)
+        analytics = replace(
+            analytics,
+            language=language.language,
+            language_confidence=language.confidence,
+            cjk_chars=language.cjk_chars,
+            latin_chars=language.latin_chars,
+        )
+    return analytics
 
 
 __all__ = [

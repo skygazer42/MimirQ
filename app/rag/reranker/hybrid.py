@@ -57,7 +57,7 @@ class WeightedReranker(DocumentReranker):
         tenant_id: str,
         weights: Weights,
         embedding_fn: Callable[[str], list[float]] | None = None,
-    ):
+    ) -> None:
         """
         Initialize the weighted reranker.
 
@@ -99,7 +99,7 @@ class WeightedReranker(DocumentReranker):
 
         # Compute scores.
         query_scores = self._calculate_keyword_score(query, documents)
-        query_vector_scores = self._calculate_cosine(query, documents, self.weights.vector_setting)
+        query_vector_scores = self._calculate_cosine(query, documents)
 
         # Fuse scores.
         rerank_documents = []
@@ -125,7 +125,7 @@ class WeightedReranker(DocumentReranker):
 
         keyword_table_handler = JiebaKeywordTableHandler()
         query_keywords = keyword_table_handler.extract_keywords(query, None)
-        documents_keywords = []
+        documents_keywords: list[set[str]] = []
 
         for document in documents:
             document_keywords = keyword_table_handler.extract_keywords(document.page_content, None)
@@ -143,7 +143,7 @@ class WeightedReranker(DocumentReranker):
         return [self._cosine_similarity(query_tfidf, document_tfidf) for document_tfidf in documents_tfidf]
 
     @staticmethod
-    def _keyword_idf(documents_keywords: list[list[str]], *, total_documents: int) -> dict[str, float]:
+    def _keyword_idf(documents_keywords: list[set[str]], *, total_documents: int) -> dict[str, float]:
         all_keywords: set[str] = set()
         for document_keywords in documents_keywords:
             all_keywords.update(document_keywords)
@@ -169,9 +169,8 @@ class WeightedReranker(DocumentReranker):
             return 0.0
         return float(numerator) / denominator
 
-    def _calculate_cosine(self, query: str, documents: list[Document], vector_setting: VectorSetting) -> list[float]:
+    def _calculate_cosine(self, query: str, documents: list[Document]) -> list[float]:
         """Compute cosine similarity scores using embeddings."""
-        _ = vector_setting
         query_vector_scores = []
 
         # Get the query vector.

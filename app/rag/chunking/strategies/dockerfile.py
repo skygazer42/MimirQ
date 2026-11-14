@@ -17,13 +17,7 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -49,19 +43,6 @@ _INSTR_RE = re.compile(
 _FROM_RE = re.compile(r"(?i)^\s*from\s+(?P<img>\S+)(?:\s+as\s+(?P<as>\S+))?\s*$")
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
-
-
 def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:
     lines = _iter_lines(text[start:end])
     instr_idx: list[int] = []
@@ -74,7 +55,7 @@ def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:
         m = _INSTR_RE.match(plain.lstrip())
         if not m:
             continue
-        kw = (m.group("kw") or "").upper()
+        kw = (m.group("kw")).upper()
         instr_idx.append(i)
         kws.append(kw)
 
@@ -89,26 +70,25 @@ def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:
 
 def _build_stages(text: str) -> list[_Stage]:
     lines = _iter_lines(text)
-    from_lines: list[int] = []
+    from_lines: list[tuple[int, re.Match[str]]] = []
     for i, ln in enumerate(lines):
-        if _FROM_RE.match(ln.plain):
-            from_lines.append(i)
+        if match := _FROM_RE.match(ln.plain):
+            from_lines.append((i, match))
     if not from_lines:
         return [_Stage(start=0, end=len(text), index=0, from_image=None, from_alias=None)]
 
     stages: list[_Stage] = []
-    for idx, i in enumerate(from_lines):
+    for idx, (i, match) in enumerate(from_lines):
         start = lines[i].start
-        end = lines[from_lines[idx + 1]].start if idx + 1 < len(from_lines) else len(text)
-        m = _FROM_RE.match(lines[i].plain)
-        img = (m.group("img") or "").strip() if m else ""
-        als = (m.group("as") or "").strip() if m else ""
+        end = lines[from_lines[idx + 1][0]].start if idx + 1 < len(from_lines) else len(text)
+        img = match.group("img").strip()
+        als = (match.group("as") or "").strip()
         stages.append(
             _Stage(
                 start=start,
                 end=end,
-                index=int(idx),
-                from_image=img or None,
+                index=idx,
+                from_image=img,
                 from_alias=als or None,
             )
         )
@@ -118,7 +98,7 @@ def _build_stages(text: str) -> list[_Stage]:
 def looks_like_dockerfile(text: str) -> bool:
     if not text or len(text) < 40:
         return False
-    lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    lines = [ln for ln in (text).splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if not lines:
         return False
     head = "\n".join(lines[:80])
@@ -135,7 +115,7 @@ def _docker_stage_meta(base_meta: dict[str, Any], *, stage: _Stage, start_char: 
     meta["start_char"] = start_char
     meta["end_char"] = end_char
     meta.setdefault("doc_type_kwd", "dockerfile")
-    meta["docker_stage_index"] = int(stage.index)
+    meta["docker_stage_index"] = stage.index
     if stage.from_image:
         meta["docker_from_image"] = stage.from_image
     if stage.from_alias:
@@ -151,13 +131,13 @@ def _instruction_window_end(instrs: list[_Instr], start_idx: int, chunk_size: in
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _window_instruction_keywords(instrs: list[_Instr], start_idx: int, end_idx: int) -> list[str]:
     uniq: list[str] = []
     for instr in instrs[start_idx:end_idx]:
-        if instr.keyword and instr.keyword not in uniq:
+        if instr.keyword not in uniq:
             uniq.append(instr.keyword)
     return uniq[:20]
 
@@ -175,11 +155,11 @@ def _next_instruction_start(instrs: list[_Instr], start_idx: int, end_idx: int, 
             continue
         break
     next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 class DockerfileChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -197,11 +177,11 @@ class DockerfileChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         chunks: list[Document] = []
         for stage in _build_stages(text):
             chunks.extend(self._split_stage(text, base_meta, stage))

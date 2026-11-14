@@ -43,7 +43,7 @@ class EmbeddingHTTPConcurrency:
 
     @staticmethod
     def _capacity() -> int:
-        return max(1, int(getattr(settings, "EMBEDDING_API_MAX_CONCURRENCY", 3) or 3))
+        return max(1, settings.EMBEDDING_API_MAX_CONCURRENCY)
 
     def _get_sync_semaphore(self) -> threading.BoundedSemaphore:
         cap = self._capacity()
@@ -97,8 +97,8 @@ def _parse_retry_after_seconds(value: str | None) -> float | None:
 
 
 def _sleep_seconds_for_attempt(*, attempt: int, retry_after_sec: float | None) -> float:
-    backoff = max(0.0, float(getattr(settings, "EMBEDDING_API_RETRY_BACKOFF_SEC", 0.5) or 0.5))
-    jitter = max(0.0, float(getattr(settings, "EMBEDDING_API_RETRY_JITTER_SEC", 0.0) or 0.0))
+    backoff = max(0.0, settings.EMBEDDING_API_RETRY_BACKOFF_SEC)
+    jitter = max(0.0, settings.EMBEDDING_API_RETRY_JITTER_SEC)
     delay = backoff * (2**attempt)
     if retry_after_sec is not None:
         delay = max(delay, retry_after_sec)
@@ -106,7 +106,7 @@ def _sleep_seconds_for_attempt(*, attempt: int, retry_after_sec: float | None) -
 
 
 def _max_retries() -> int:
-    return max(0, int(getattr(settings, "EMBEDDING_API_MAX_RETRIES", 0) or 0))
+    return max(0, settings.EMBEDDING_API_MAX_RETRIES)
 
 
 def _next_retry_delay(*, attempt: int, max_retries: int) -> float | None:
@@ -121,12 +121,12 @@ def _retry_delay_for_status_error(
     attempt: int,
     max_retries: int,
 ) -> float | None:
-    status = int(getattr(exc.response, "status_code", 0) or 0)
+    status = exc.response.status_code
     if status not in _RETRYABLE_HTTP_CODES or attempt >= max_retries:
         return None
     retry_after = None
     if status == 429:
-        retry_after = _parse_retry_after_seconds(getattr(exc.response, "headers", {}).get("Retry-After"))
+        retry_after = _parse_retry_after_seconds(exc.response.headers.get("Retry-After"))
     return _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=retry_after)
 
 
@@ -197,8 +197,6 @@ def post_with_retries_sync(
         finally:
             _close_response_sync(response)
 
-    if last_exc is None:
-        raise RuntimeError("Embedding request failed without an exception")
     raise last_exc
 
 
@@ -242,6 +240,4 @@ async def post_with_retries_async(
         finally:
             await _close_response_async(response)
 
-    if last_exc is None:
-        raise RuntimeError("Embedding request failed without an exception")
     raise last_exc

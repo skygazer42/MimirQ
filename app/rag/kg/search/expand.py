@@ -4,7 +4,7 @@ Expand stage: multi-hop entity -> event expansion.
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -12,9 +12,12 @@ from app.rag.core.logging import get_logger
 from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
-from app.rag.kg.search.relation_scoring import relation_multiplier
-from app.rag.kg.search.tracker import Tracker
+from app.rag.kg.search.relation_scoring import relation_direction, relation_evidence, relation_multiplier
+from app.rag.kg.search.tracker import Tracker, build_entity_node, build_event_node
 from app.rag.kg.search.utils import confidence_bucket
+
+if TYPE_CHECKING:
+    from app.rag.kg.models import KgEntity, KgRelation, KgSourceEvent
 
 logger = get_logger(__name__)
 
@@ -56,7 +59,7 @@ def _disabled_expand_result(recall_result: RecallResult) -> ExpandResult:
         event_ids=recall_result.event_ids,
         clues=recall_result.clues,
         event_scores=recall_result.event_scores,
-        event_hops=dict(getattr(recall_result, "event_hops", {}) or {}),
+        event_hops=dict(recall_result.event_hops or {}),
     )
 
 
@@ -74,7 +77,7 @@ def _entity_ids(items: list[dict[str, Any]], *, include_skills: bool) -> list[st
 
 def _build_expand_state(recall_result: RecallResult, *, include_skills: bool) -> _ExpandState:
     discovered_events = [str(event_id) for event_id in (recall_result.event_ids or []) if str(event_id)]
-    event_hops = dict(getattr(recall_result, "event_hops", {}) or {})
+    event_hops = dict(recall_result.event_hops or {})
     for event_id in discovered_events:
         if event_id not in event_hops:
             event_hops[event_id] = 2
@@ -106,9 +109,7 @@ def _resolve_expand_limit(
 def _relation_expansion_enabled(config: SearchConfig) -> bool:
     if config.relation_expansion_enabled is not None:
         return bool(config.relation_expansion_enabled)
-    return bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)) and bool(
-        getattr(settings, "KG_RELATION_ENABLED", False)
-    )
+    return bool(settings.KG_SEARCH_RELATION_EXPANSION_ENABLED) and bool(settings.KG_RELATION_ENABLED)
 
 
 def _tenant_uuid(value: object) -> UUID | None:
@@ -118,53 +119,26 @@ def _tenant_uuid(value: object) -> UUID | None:
         return None
 
 
-def _relation_direction(rel: Any, seed_set: set[str]) -> tuple[str | None, str | None, str | None]:
-    subject_id = str(getattr(rel, "subject_entity_id", "") or "")
-    object_id = str(getattr(rel, "object_entity_id", "") or "")
-    if not subject_id or not object_id:
-        return None, None, None
-    predicate = str(getattr(rel, "predicate", "") or "").strip()
-    if not predicate or predicate.casefold() == "unknown":
-        return None, None, None
-    if subject_id in seed_set:
-        return subject_id, object_id, predicate
-    if object_id in seed_set:
-        return object_id, subject_id, predicate
-    return None, None, None
-
-
-def _relation_evidence(rel: Any) -> tuple[float, str]:
-    try:
-        refs = getattr(rel, "references", None)
-        evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
-        if evidence_source != "mention":
-            return 1.0, evidence_source
-        mention_mult = float(getattr(settings, "KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER", 0.7) or 0.7)
-        return max(0.0, min(1.0, float(mention_mult))), evidence_source
-    except Exception:
-        return 1.0, ""
-
-
 def _relation_neighbor_candidate(
-    rel: Any,
+    rel: "KgRelation",
     *,
     seed_set: set[str],
     entity_weights: dict[str, float],
     weight_factor: float,
 ) -> tuple[str, str, str, float, float, float, str, float] | None:
-    from_id, to_id, predicate = _relation_direction(rel, seed_set)
+    from_id, to_id, predicate = relation_direction(rel, seed_set)
     if not from_id or not to_id or not predicate or to_id == from_id:
         return None
-    confidence = float(getattr(rel, "confidence", 0.0) or 0.0)
+    confidence = float(rel.confidence or 0.0)
     if confidence <= 0:
         return None
     pred_mult = relation_multiplier(
         predicate,
-        from_is_subject=bool(from_id == str(getattr(rel, "subject_entity_id", ""))),
+        from_is_subject=bool(from_id == str(rel.subject_entity_id)),
     )
     if pred_mult <= 0:
         return None
-    evidence_mult, evidence_source = _relation_evidence(rel)
+    evidence_mult, evidence_source = relation_evidence(rel, settings=settings)
     weight = (
         float(entity_weights.get(from_id, 0.0) or 0.0) * confidence * float(weight_factor) * pred_mult * evidence_mult
     )
@@ -176,7 +150,7 @@ def _relation_neighbor_candidate(
 def _add_relation_clue(
     tracker: Tracker,
     *,
-    rel: Any,
+    rel: "KgRelation",
     hop: int,
     from_id: str,
     to_id: str,
@@ -191,8 +165,8 @@ def _add_relation_clue(
     bucket = confidence_bucket(confidence, low_max=bucket_low, mid_max=bucket_mid)
     tracker.add_clue(
         stage=f"expand-hop-{hop + 1}",
-        from_node=Tracker.build_entity_node({"entity_id": from_id, "name": "", "type": "unknown", "hop": hop + 1}),
-        to_node=Tracker.build_entity_node({"entity_id": to_id, "name": "", "type": "unknown", "hop": hop + 1}),
+        from_node=build_entity_node({"entity_id": from_id, "name": "", "type": "unknown", "hop": hop + 1}),
+        to_node=build_entity_node({"entity_id": to_id, "name": "", "type": "unknown", "hop": hop + 1}),
         confidence=confidence,
         relation=f"entity->entity:{predicate}" if predicate else "entity->entity",
         metadata={
@@ -202,10 +176,10 @@ def _add_relation_clue(
             "evidence_multiplier": float(evidence_mult),
             "evidence_source": evidence_source,
             "confidence_bucket": bucket,
-            "relation_id": str(getattr(rel, "id", "") or "") or None,
-            "relation_document_id": str(getattr(rel, "document_id", "") or "") or None,
-            "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
-            "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
+            "relation_id": str(rel.id),
+            "relation_document_id": str(rel.document_id) if rel.document_id is not None else None,
+            "relation_chunk_id": str(rel.chunk_id) if rel.chunk_id is not None else None,
+            "relation_event_id": str(rel.event_id) if rel.event_id is not None else None,
             "step": f"hop-{hop + 1}",
         },
     )
@@ -223,7 +197,7 @@ def _filter_skill_neighbors(
     try:
         neighbor_ids = [entity_id for entity_id, _weight in neighbors]
         objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
-        allowed_ids = {str(obj.id) for obj in (objs or []) if not _is_skill_type(getattr(obj, "type", ""))}
+        allowed_ids = {str(obj.id) for obj in (objs or []) if not _is_skill_type(obj.type)}
         return [(entity_id, weight) for entity_id, weight in neighbors if entity_id in allowed_ids]
     except Exception as exc:
         logger.debug("Failed to filter KG expansion skill-like neighbors: %s", exc)
@@ -244,17 +218,17 @@ def _extend_seed_entities_with_relations(
 ) -> None:
     if not _relation_expansion_enabled(config) or not seed_entities:
         return
-    max_neighbors = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0))
+    max_neighbors = max(0, int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS))
     if max_neighbors <= 0:
         return
     tenant_uuid = _tenant_uuid(tenant_id)
     if tenant_uuid is None:
         return
-    min_confidence = float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0)
-    max_edges = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0)) or 500
-    weight_factor = float(getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7)
-    bucket_low = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.4) or 0.4)
-    bucket_mid = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.7) or 0.7)
+    min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
+    max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES)) or 500
+    weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR)
+    bucket_low = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX)
+    bucket_mid = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX)
     rel_rows = relation_repo.list_relations_for_entities(
         seed_entities,
         tenant_id=tenant_uuid,
@@ -305,7 +279,7 @@ def _extend_seed_entities_with_relations(
 
 
 def _record_new_events(
-    events: list[Any],
+    events: list["KgSourceEvent"],
     *,
     discovered_event_ids: set[str],
     event_hops: dict[str, int],
@@ -328,8 +302,8 @@ def _record_new_events(
 def _update_event_scores(
     recall_result: RecallResult,
     *,
-    events: list[Any],
-    assoc_map: dict[str, list[Any]],
+    events: list["KgSourceEvent"],
+    assoc_map: dict[str, list["KgEntity"]],
     entity_weights: dict[str, float],
 ) -> None:
     for event in events:
@@ -341,12 +315,12 @@ def _update_event_scores(
 
 def _collect_new_entities(
     *,
-    assoc_map: dict[str, list[Any]],
+    assoc_map: dict[str, list["KgEntity"]],
     known_entities: set[str],
     include_skills: bool,
     event_scores: dict[str, float],
     tracker: Tracker,
-    events_by_id: dict[str, Any],
+    events_by_id: dict[str, "KgSourceEvent"],
     hop: int,
 ) -> dict[str, float]:
     new_entities: dict[str, float] = {}
@@ -355,17 +329,17 @@ def _collect_new_entities(
             entity_id = str(entity.id)
             if entity_id in known_entities:
                 continue
-            if not include_skills and _is_skill_type(getattr(entity, "type", "")):
+            if not include_skills and _is_skill_type(entity.type):
                 continue
             new_entities[entity_id] = new_entities.get(entity_id, 0.0) + event_scores.get(event_id, 0.0)
             tracker.add_clue(
                 stage=f"expand-hop-{hop + 1}",
-                from_node=Tracker.build_event_node(
+                from_node=build_event_node(
                     events_by_id.get(event_id) or {"id": event_id},
                     stage=f"expand-hop-{hop + 1}",
                     hop=hop + 1,
                 ),
-                to_node=Tracker.build_entity_node(
+                to_node=build_entity_node(
                     {"entity_id": entity_id, "name": entity.name, "type": entity.type, "hop": hop + 1}
                 ),
                 confidence=0.3,
@@ -387,7 +361,7 @@ def _build_key_final(
     key_final: list[dict[str, Any]] = []
     ent_objects = entity_repo.get_entities_by_ids(list(known_entities), tenant_id=tenant_id)
     for entity in ent_objects:
-        if not include_skills and _is_skill_type(getattr(entity, "type", "")):
+        if not include_skills and _is_skill_type(entity.type):
             continue
         key_final.append(
             {
@@ -486,7 +460,7 @@ def _run_expand_hop(
         state.entity_weights[entity_id] = state.entity_weights.get(entity_id, 0.0) * 0.5 + weight * 0.5
         state.current_entities.append(entity_id)
 
-    min_events = int(getattr(config.expand, "min_events_per_hop", 0) or 0)
+    min_events = int(config.expand.min_events_per_hop or 0)
     return not (min_events > 0 and len(new_event_ids) < min_events)
 
 
@@ -520,55 +494,53 @@ def _run_expand_hops(
             break
 
 
-class ExpandSearcher:
-    def __init__(self): ...
+async def expand(config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
+    return await asyncio.to_thread(_expand_sync, config, recall_result)
 
-    async def expand(self, config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
-        return await asyncio.to_thread(self._expand_sync, config, recall_result)
 
-    def _expand_sync(self, config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
-        if config.document_ids is not None and not config.document_ids:
-            return _empty_scope_result(recall_result)
-        if not config.expand.enabled:
-            return _disabled_expand_result(recall_result)
+def _expand_sync(config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
+    if config.document_ids is not None and not config.document_ids:
+        return _empty_scope_result(recall_result)
+    if not config.expand.enabled:
+        return _disabled_expand_result(recall_result)
 
-        tracker = Tracker()
-        tracker.extend_clues(list(recall_result.clues or []))
-        session = get_session()
-        try:
-            entity_repo = EntityRepository(session)
-            event_repo = EventRepository(session)
-            relation_repo = RelationRepository(session)
-            tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
-            include_skills = bool(getattr(config, "include_skill_entities", True))
-            state = _build_expand_state(recall_result, include_skills=include_skills)
-            max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
-            _run_expand_hops(
-                config=config,
-                recall_result=recall_result,
-                tracker=tracker,
-                relation_repo=relation_repo,
-                entity_repo=entity_repo,
-                event_repo=event_repo,
+    tracker = Tracker()
+    tracker.extend_clues(list(recall_result.clues or []))
+    session = get_session()
+    try:
+        entity_repo = EntityRepository(session)
+        event_repo = EventRepository(session)
+        relation_repo = RelationRepository(session)
+        tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
+        include_skills = bool(config.include_skill_entities)
+        state = _build_expand_state(recall_result, include_skills=include_skills)
+        max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES))
+        _run_expand_hops(
+            config=config,
+            recall_result=recall_result,
+            tracker=tracker,
+            relation_repo=relation_repo,
+            entity_repo=entity_repo,
+            event_repo=event_repo,
+            tenant_id=tenant_id,
+            include_skills=include_skills,
+            max_candidates=max_candidates,
+            state=state,
+        )
+
+        return ExpandResult(
+            key_final=_build_key_final(
+                entity_repo,
                 tenant_id=tenant_id,
+                known_entities=state.known_entities,
                 include_skills=include_skills,
-                max_candidates=max_candidates,
-                state=state,
-            )
-
-            return ExpandResult(
-                key_final=_build_key_final(
-                    entity_repo,
-                    tenant_id=tenant_id,
-                    known_entities=state.known_entities,
-                    include_skills=include_skills,
-                    entity_weights=state.entity_weights,
-                    limit=config.recall.final_entity_count,
-                ),
-                event_ids=state.discovered_events,
-                clues=tracker.get_clues(),
-                event_scores=recall_result.event_scores,
-                event_hops=state.event_hops,
-            )
-        finally:
-            session.close()
+                entity_weights=state.entity_weights,
+                limit=config.recall.final_entity_count,
+            ),
+            event_ids=state.discovered_events,
+            clues=tracker.get_clues(),
+            event_scores=recall_result.event_scores,
+            event_hops=state.event_hops,
+        )
+    finally:
+        session.close()

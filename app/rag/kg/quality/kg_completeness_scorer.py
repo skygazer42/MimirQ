@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -33,8 +32,8 @@ class _UnionFind:
         rb = self.find(b)
         if ra == rb:
             return
-        sa = int(self.size.get(ra, 1))
-        sb = int(self.size.get(rb, 1))
+        sa = self.size.get(ra, 1)
+        sb = self.size.get(rb, 1)
         # Union by size.
         if sa < sb:
             ra, rb = rb, ra
@@ -93,7 +92,7 @@ def _connectivity_metrics(*, nodes: set[str], edges: list[tuple[str, str]]) -> d
     if not nodes:
         return {
             "nodes": 0,
-            "edges": int(len(edges or [])),
+            "edges": len(edges or []),
             "components": 0,
             "largest_component_size": 0,
             "largest_component_ratio": 0.0,
@@ -105,16 +104,16 @@ def _connectivity_metrics(*, nodes: set[str], edges: list[tuple[str, str]]) -> d
         if a in uf.parent and b in uf.parent and a != b:
             uf.union(a, b)
 
-    sizes = sorted([int(s) for s in uf.size.values()], reverse=True)
+    sizes = sorted(list(uf.size.values()), reverse=True)
     comp = len(sizes)
     largest = sizes[0] if sizes else 0
     return {
-        "nodes": int(len(nodes)),
-        "edges": int(len(edges or [])),
-        "components": int(comp),
-        "largest_component_size": int(largest),
-        "largest_component_ratio": float(largest / max(1, len(nodes))),
-        "components_top_sizes": [int(x) for x in sizes[:10]],
+        "nodes": len(nodes),
+        "edges": len(edges or []),
+        "components": comp,
+        "largest_component_size": largest,
+        "largest_component_ratio": largest / max(1, len(nodes)),
+        "components_top_sizes": sizes[:10],
     }
 
 
@@ -196,29 +195,23 @@ def build_kg_quality_report(
     relation_count = int(relation_count_q.scalar() or 0)
 
     # How many entities participate in at least one relation (degree>0).
-    rel_sub = (
-        db.query(KgRelation.subject_entity_id.label("eid"))
-        .filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id.in_(document_ids),
-        )
+    rel_sub = db.query(KgRelation.subject_entity_id.label("eid")).filter(
+        KgRelation.tenant_id == tenant_id,
+        KgRelation.document_id.in_(document_ids),
     )
-    rel_obj = (
-        db.query(KgRelation.object_entity_id.label("eid"))
-        .filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id.in_(document_ids),
-        )
+    rel_obj = db.query(KgRelation.object_entity_id.label("eid")).filter(
+        KgRelation.tenant_id == tenant_id,
+        KgRelation.document_id.in_(document_ids),
     )
     rel_sub = _apply_relation_pipeline_scope(rel_sub, pipeline_hash=pipeline_hash)
     rel_obj = _apply_relation_pipeline_scope(rel_obj, pipeline_hash=pipeline_hash)
     rel_union = union_all(rel_sub, rel_obj).subquery()
     rel_participants = int(db.query(func.count(func.distinct(rel_union.c.eid))).scalar() or 0)
 
-    isolated = max(0, int(entity_count) - int(rel_participants))
-    isolated_ratio = float(isolated / max(1, int(entity_count)))
+    isolated = max(0, entity_count - rel_participants)
+    isolated_ratio = isolated / max(1, entity_count)
 
-    avg_rel_per_entity = float((2 * relation_count) / max(1, int(entity_count)))
+    avg_rel_per_entity = (2 * relation_count) / max(1, entity_count)
 
     # Connected components over relation graph (best-effort; capped).
     edge_limit = int(settings.KG_QUALITY_RELATION_EDGES_LIMIT)
@@ -256,25 +249,25 @@ def build_kg_quality_report(
         tenant_id=tenant_id,
         document_ids=document_ids,
         pipeline_hash=pipeline_hash,
-        low_confidence_threshold=float(getattr(settings, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD", 0.30) or 0.30),
+        low_confidence_threshold=float(settings.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD),
     )
 
     return {
         "summary": {
-            "documents": int(len(document_ids)),
-            "events": int(event_count),
-            "entities": int(entity_count),
-            "relations": int(relation_count),
-            "event_entity_links": int(link_count),
-            "avg_relations_per_entity": float(round(avg_rel_per_entity, 4)),
-            "isolated_entities": int(isolated),
-            "isolated_entity_ratio": float(round(isolated_ratio, 4)),
+            "documents": len(document_ids),
+            "events": event_count,
+            "entities": entity_count,
+            "relations": relation_count,
+            "event_entity_links": link_count,
+            "avg_relations_per_entity": round(avg_rel_per_entity, 4),
+            "isolated_entities": isolated,
+            "isolated_entity_ratio": round(isolated_ratio, 4),
         },
         "components": components,
         "noise": noise,
         "truncation": {
-            "relation_edges_truncated": bool(rel_edges_truncated),
-            "relation_edges_limit": int(edge_limit),
+            "relation_edges_truncated": rel_edges_truncated,
+            "relation_edges_limit": edge_limit,
         },
     }
 

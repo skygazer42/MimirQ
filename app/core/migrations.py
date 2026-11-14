@@ -1,37 +1,33 @@
 """
 Database schema migration module.
 
-Uses `Base.metadata.create_all()` at startup, which does not modify existing tables.
-To maintain smooth deployments without immediately using Alembic, we apply a set of
-safe `ALTER TABLE ... IF NOT EXISTS` operations.
+Applies PostgreSQL schema updates when runtime migrations are enabled at startup.
+Each statement runs in its own transaction so a SQL failure cannot abort later
+updates. SQL failures are logged without blocking startup; invalid tenant
+configuration remains an explicit error.
 
-Only runs on PostgreSQL. Failures are ignored to avoid blocking startup.
 """
 
+import logging
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
 MigrationStatement = str | tuple[str, Mapping[str, object]]
+logger = logging.getLogger(__name__)
 
 
 def _default_tenant_uuid() -> str:
-    """
-    Resolve default tenant UUID for backfilling legacy rows.
+    """Validate the configured tenant UUID before backfilling legacy rows."""
+    from app.core.config import settings
 
-    Keep this best-effort and side-effect free: if settings are unavailable or invalid,
-    fall back to the well-known all-zero UUID.
-    """
-    fallback = "00000000-0000-0000-0000-000000000000"
-    try:
-        from app.core.config import settings
-
-        raw = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
-        return str(UUID(raw)) if raw else fallback
-    except Exception:  # noqa: BLE001
-        return fallback
+    return str(UUID(settings.DEFAULT_TENANT_ID.strip()))
 
 
 def _tenant_id_migrations(table: str, default_tenant: str) -> list[MigrationStatement]:
@@ -64,14 +60,14 @@ def _tenant_id_migrations(table: str, default_tenant: str) -> list[MigrationStat
     ]
 
 
-def apply_runtime_migrations(engine) -> None:
+def apply_runtime_migrations(engine: "Engine") -> None:
     """Apply small schema changes needed by newer code paths."""
     try:
         if engine.dialect.name != "postgresql":
             return
 
         default_tenant = _default_tenant_uuid()
-        ddl_statements = [
+        ddl_statements: list[MigrationStatement] = [
             # =========================
             # Multi-tenant columns (legacy DB compatibility)
             # =========================
@@ -440,10 +436,10 @@ def apply_runtime_migrations(engine) -> None:
         ]
         # Important: in PostgreSQL, once a statement errors inside a transaction,
         # the whole transaction is marked as failed until rollback. Since these
-        # migrations are intentionally best-effort (we swallow errors), each DDL
+        # migrations are intentionally best-effort, each DDL
         # must run in its own transaction so one failure doesn't block the rest.
         with engine.connect() as conn:
-            for ddl in ddl_statements:
+            for statement_index, ddl in enumerate(ddl_statements, start=1):
                 if isinstance(ddl, tuple):
                     statement, params = ddl
                 else:
@@ -451,8 +447,8 @@ def apply_runtime_migrations(engine) -> None:
                 try:
                     with conn.begin():
                         conn.execute(text(statement), params)
-                except SQLAlchemyError:
-                    # Best-effort migrations should never block startup.
+                except SQLAlchemyError as exc:
+                    logger.warning("Runtime migration statement %d failed: %s", statement_index, str(exc)[:200])
                     continue
-    except SQLAlchemyError:
-        return
+    except SQLAlchemyError as exc:
+        logger.warning("Runtime migrations failed: %s", str(exc)[:200])

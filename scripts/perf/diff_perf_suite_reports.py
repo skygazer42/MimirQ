@@ -12,7 +12,6 @@ Example:
     --strict
 """
 
-
 import argparse
 import json
 import sys
@@ -33,14 +32,14 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _render_markdown(diff: dict[str, Any]) -> str:
-    strict_gate = diff.get("strict_gate") if isinstance(diff.get("strict_gate"), dict) else {}
-    cases = diff.get("cases") if isinstance(diff.get("cases"), dict) else {}
-    regressions = [c for c in cases.values() if isinstance(c, dict) and bool(c.get("regressed"))]
+    strict_gate = diff["strict_gate"]
+    cases = diff["cases"]
+    regressions = [c for c in cases.values() if c["regressed"]]
     lines: list[str] = []
     lines.append("# Perf Suite Diff")
     lines.append("")
-    lines.append(f"- Strict Gate Passed: `{bool(strict_gate.get('passed'))}`")
-    lines.append(f"- Regressions: `{int(strict_gate.get('regressions', 0) or 0)}`")
+    lines.append(f"- Strict Gate Passed: `{strict_gate['passed']}`")
+    lines.append(f"- Regressions: `{strict_gate['regressions']}`")
     lines.append(f"- Baseline Suite: `{diff.get('baseline_suite')}`")
     lines.append(f"- Current Suite: `{diff.get('current_suite')}`")
     lines.append("")
@@ -48,9 +47,9 @@ def _render_markdown(diff: dict[str, Any]) -> str:
         lines.append("## Regressions")
         lines.append("")
         for row in regressions[:20]:
-            name = str(row.get("name") or "")
-            p95 = row.get("p95") if isinstance(row.get("p95"), dict) else {}
-            p99 = row.get("p99") if isinstance(row.get("p99"), dict) else {}
+            name = row["name"]
+            p95 = row["p95"]
+            p99 = row["p99"]
             lines.append(
                 f"- `{name}`: p95 `{p95.get('baseline_ms')}` → `{p95.get('current_ms')}`; "
                 f"p99 `{p99.get('baseline_ms')}` → `{p99.get('current_ms')}`"
@@ -78,18 +77,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         baseline = _load_json(Path(args.baseline))
         current = _load_json(Path(args.current))
-        policy = _load_json(Path(args.policy)) if str(args.policy or "").strip() else None
+        policy = _load_json(Path(args.policy)) if args.policy.strip() else None
 
         from app.services.perf_suite_diff_service import diff_perf_suite_reports
 
         diff = diff_perf_suite_reports(baseline=baseline, current=current, policy=policy)
 
-        if str(args.out or "").strip():
-            out = Path(str(args.out))
+        if args.out.strip():
+            out = Path(args.out)
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(json.dumps(diff, ensure_ascii=False, indent=2), encoding="utf-8")
-        if str(args.out_md or "").strip():
-            out_md = Path(str(args.out_md))
+        if args.out_md.strip():
+            out_md = Path(args.out_md)
             out_md.parent.mkdir(parents=True, exist_ok=True)
             out_md.write_text(_render_markdown(diff), encoding="utf-8")
     except Exception as exc:
@@ -101,12 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(json.dumps(diff, ensure_ascii=False, indent=2))
 
-    strict_gate = diff.get("strict_gate") if isinstance(diff.get("strict_gate"), dict) else {}
-    if bool(args.strict) and (not bool(strict_gate.get("passed"))):
+    strict_gate = diff["strict_gate"]
+    if args.strict and not strict_gate["passed"]:
         return 2
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -198,7 +198,7 @@ after fusion, without changing the retrieval stack itself.
 
 Environment variables:
 - `EVIDENCE_POST_RERANK_ENABLED=true|false`
-- `EVIDENCE_POST_RERANK_PROVIDER=ltr|colbert|...`
+- `EVIDENCE_POST_RERANK_PROVIDER=none|pc|colbert|openai|dashscope`
 - `EVIDENCE_POST_RERANK_TOP_N=30`
 - `EVIDENCE_POST_RERANK_CACHE_ENABLED=true|false`
 - `EVIDENCE_POST_RERANK_CACHE_BACKEND=memory|redis`
@@ -213,4 +213,4 @@ Cache notes:
 - `memory` keeps the post-rerank cache process-local and is suitable for single-replica deployments.
 - `redis` uses the shared Redis cluster configured by `REDIS_URL`, which keeps cache hits valid across API replicas.
 - Cache keys are PII-safe stable hashes; values store only ordered chunk ids plus numeric scores.
-- Cache keys also include provider-specific version identity (for example LTR model/manifest/spec or ColBERT mode/model/device), preventing stale cross-version reuse.
+- Cache keys also include provider-specific version identity (for example supported API model settings or the deterministic ColBERT mode), preventing stale cross-version reuse.

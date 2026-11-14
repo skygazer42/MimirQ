@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.evaluation.hard_negative_mining import HARD_NEGATIVES_SCHEMA_V1
 
 FEEDBACK_HARD_NEGATIVE_EXPORT_SCHEMA_V1 = "mimirq.feedback_hard_negative_export.v1"
@@ -11,7 +12,7 @@ DEFAULT_FEEDBACK_HARD_NEGATIVE_JSONL_PATH = "./runs/feedback_loop/hard_negatives
 def _safe_records(candidate_payload: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(candidate_payload, dict):
         return []
-    raw = candidate_payload.get("hard_negative_records") or []
+    raw = candidate_payload.get("hard_negative_records")
     if not isinstance(raw, list):
         return []
     return [dict(item) for item in raw if isinstance(item, dict) and item.get("schema") == HARD_NEGATIVES_SCHEMA_V1]
@@ -22,7 +23,9 @@ def _clean_str_list(value: Any, *, max_items: int = 100) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -39,7 +42,7 @@ def _export_record(record: dict[str, Any]) -> dict[str, Any]:
     out["source_feedback_ids"] = _clean_str_list(record.get("source_feedback_ids"))
     out["source_conversation_ids"] = _clean_str_list(record.get("source_conversation_ids"))
     out["source_message_ids"] = _clean_str_list(record.get("source_message_ids"))
-    dataset_id = str(record.get("dataset_id") or "").strip()
+    dataset_id = _stringified_metadata_text(record, "dataset_id")
     if dataset_id:
         out["dataset_id"] = dataset_id[:128]
     return out
@@ -60,7 +63,7 @@ def promote_hard_negatives_to_jsonl(
     """
     records = [_export_record(item) for item in _safe_records(candidate_payload)]
     hard_negative_total = sum(
-        len(item.get("hard_negatives") or []) for item in records if isinstance(item.get("hard_negatives"), list)
+        len(item["hard_negatives"]) for item in records if isinstance(item.get("hard_negatives"), list)
     )
     path = Path(output_path or DEFAULT_FEEDBACK_HARD_NEGATIVE_JSONL_PATH)
 
@@ -77,9 +80,9 @@ def promote_hard_negatives_to_jsonl(
         "output_path": str(path),
         "append": bool(append),
         "dry_run": bool(dry_run),
-        "candidate_records": int(len(records)),
-        "written_records": 0 if dry_run else int(len(records)),
-        "hard_negatives": int(hard_negative_total),
+        "candidate_records": len(records),
+        "written_records": 0 if dry_run else len(records),
+        "hard_negatives": hard_negative_total,
         "source_feedback_ids": sorted(
             {fid for record in records for fid in _clean_str_list(record.get("source_feedback_ids"))}
         ),

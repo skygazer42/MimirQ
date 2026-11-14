@@ -1,24 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { formatApiError } from '@/lib/api-errors'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionRevision } from '@/lib/auth-storage'
+import { metaApi, type BackendMetaDetails } from '@/lib/api/meta'
+import { settingsApi } from '@/lib/api/settings'
 import {
-  ltrApi,
-  metaApi,
-  settingsApi,
-  type BackendMetaDetails,
   type CacheConfig,
   type ChatConfig,
   type DifyExternalKnowledgeConfig,
   type Etl4LlmConfig,
   type FeatureFlags,
   type LangGraphConfig,
-  type LTRModelInfo,
   type MagicPDFConfig,
   type MarkerConfig,
-  type MinIOConfig,
   type MinerUConfig,
   type NavigationConfig,
   type ObservabilityConfig,
@@ -27,36 +24,15 @@ import {
   type SystemSettings,
   type SystemStatus,
   type TextInConfig,
-} from '@/lib/api'
-import {
-  MODEL_PROVIDERS,
-  type ModelProvider,
-  type ProviderCategory,
-  type ProviderConfig,
-} from '@/types/models'
+} from '@/types/settings'
+import { MODEL_PROVIDERS, type ModelProvider, type ProviderCategory, type ProviderConfig } from '@/types/models'
 
-type SaveMessage = {
-  type: 'success' | 'error'
-  text: string
-  detail?: string
-}
-
-const SETTINGS_SAVE_SUCCESS_DETAIL =
-  '大多数修改会影响后续请求；少量启动期能力才需要重启后端容器部署时通常只需重启后端服务，不需要重建镜像'
-
-function createSettingsSaveSuccessMessage(): SaveMessage {
-  return {
-    type: 'success',
-    text: '当前修改已写入系统配置',
-    detail: SETTINGS_SAVE_SUCCESS_DETAIL,
-  }
-}
+type EditableSettings = Partial<Omit<SystemSettings, 'url_ingest' | 'minio'>>
+const AUTOSAVE_DELAY_MS = 500
 
 type RagSettings = NonNullable<SystemSettings['rag']>
-type UrlIngestSettings = NonNullable<SystemSettings['url_ingest']>
 type GovernanceSettings = NonNullable<SystemSettings['governance']>
 type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
-type MinIOSettings = NonNullable<SystemSettings['minio']>
 type DoclingConfig = NonNullable<SystemSettings['docling']>
 
 function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
@@ -69,13 +45,25 @@ function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
 function mergeWithDefaults<T extends object>(
   defaults: T,
   current: Partial<T> | null | undefined,
-  edited: Partial<T> | null | undefined
+  edited: Partial<T> | null | undefined,
 ): T {
   return {
     ...defaults,
     ...current,
     ...edited,
   }
+}
+
+function retireSubmittedSettings(current: Partial<SystemSettings>, submitted: Partial<SystemSettings>) {
+  const next = { ...current }
+  for (const key of Object.keys(submitted) as Array<keyof SystemSettings>) {
+    if (current[key] === submitted[key]) delete next[key]
+  }
+  return next
+}
+
+function isCurrentPageSession(owner: { active: boolean }, revision: number): boolean {
+  return owner.active && revision === getAuthSessionRevision()
 }
 
 const DEFAULT_OBSERVABILITY: ObservabilityConfig = {
@@ -126,17 +114,6 @@ const DEFAULT_CACHE: CacheConfig = {
   chat_response_cache_require_empty_history: true,
 }
 
-const DEFAULT_MINIO: MinIOConfig = {
-  enabled: false,
-  endpoint: 'localhost:9000',
-  access_key: '',
-  secret_key: '',
-  bucket_name: 'mimirq',
-  use_ssl: false,
-  documents_enabled: false,
-  image_max_bytes: 0,
-}
-
 const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   kg_enabled: false,
   deepdoc_enabled: false,
@@ -167,14 +144,6 @@ const DEFAULT_RAG: RagSettings = {
   image_append_max: 3,
 }
 
-const DEFAULT_URL_INGEST: UrlIngestSettings = {
-  enabled: false,
-  max_bytes: 50_000_000,
-  timeout_sec: 30,
-  allow_private_ips: false,
-  follow_redirects: false,
-}
-
 const DEFAULT_GOVERNANCE: GovernanceSettings = {
   enabled: false,
   pii_anonymize: false,
@@ -183,6 +152,9 @@ const DEFAULT_GOVERNANCE: GovernanceSettings = {
 }
 
 const DEFAULT_MAGICPDF: MagicPDFConfig = {
+  api_url: '',
+  request_timeout_sec: 600,
+  max_concurrent_jobs: 1,
   cli: 'magic-pdf',
   method: 'auto',
   lang: '',
@@ -229,6 +201,8 @@ const DEFAULT_DOCLING: DoclingConfig = {
 const DEFAULT_PADDLE_VL: PaddleVLConfig = {
   api_url: '',
   timeout_sec: 600,
+  pipeline_version: 'v1.5',
+  mode: 'doc_parser',
 }
 
 const DEFAULT_TEXTIN: TextInConfig = {
@@ -253,61 +227,36 @@ function trimmedPrimitiveString(value: unknown): string {
   return ''
 }
 
-function formatBytes(value: unknown): string {
-  const n = typeof value === 'number' && Number.isFinite(value) ? value : Number(value)
-  if (!Number.isFinite(n) || n <= 0) return '-'
-
-  const units = ['B', 'KB', 'MB', 'GB']
-  let v = n
-  let u = 0
-  while (v >= 1024 && u < units.length - 1) {
-    v /= 1024
-    u += 1
-  }
-
-  const precision = v >= 100 ? 0 : v >= 10 ? 1 : 2
-  return `${v.toFixed(precision)} ${units[u]}`
-}
-
-function formatTime(value: unknown): string {
-  const raw = trimmedPrimitiveString(value)
-  if (!raw) return '-'
-  return raw.replaceAll('T', ' ').replaceAll('Z', '').slice(0, 19)
-}
-
-function shortId(value: unknown, keep: number = 8): string {
-  const s = trimmedPrimitiveString(value)
-  if (!s) return '-'
-  const k = Math.max(4, Math.min(32, keep))
-  return s.length <= k ? s : `${s.slice(0, k)}…`
-}
-
 function normalizeApiBase(value: unknown): string {
   return trimmedPrimitiveString(value).toLowerCase()
 }
 
 function providerHasModel(provider: ModelProvider, modelName: string): boolean {
-  const target = String(modelName || '').trim().toLowerCase()
+  const target = String(modelName || '')
+    .trim()
+    .toLowerCase()
   if (!target) return false
-  return provider.models.some((model) => String(model.name || '').trim().toLowerCase() === target)
+  return provider.models.some(
+    (model) =>
+      String(model.name || '')
+        .trim()
+        .toLowerCase() === target,
+  )
 }
 
 function findProviderIdByModel(
   providers: ModelProvider[],
   category: ProviderCategory,
-  modelName: string
+  modelName: string,
 ): string | null {
   return (
-    providers.find(
-      (provider) =>
-        provider.category === category && providerHasModel(provider, modelName)
-    )?.id ?? null
+    providers.find((provider) => provider.category === category && providerHasModel(provider, modelName))?.id ?? null
   )
 }
 
 function resolveLlmProviderId(
   providers: ModelProvider[],
-  llm: SystemSettings['llm'] | null | undefined
+  llm: SystemSettings['llm'] | null | undefined,
 ): string | null {
   if (!llm) return null
   const base = normalizeApiBase(llm.api_base)
@@ -332,28 +281,27 @@ function resolveLlmProviderId(
 
 function resolveEmbeddingProviderId(
   providers: ModelProvider[],
-  embedding: SystemSettings['embedding'] | null | undefined
+  embedding: SystemSettings['embedding'] | null | undefined,
 ): string | null {
   if (!embedding) return null
   const base = normalizeApiBase(embedding.api_base)
   const provider = trimmedPrimitiveString(embedding.provider).toLowerCase()
   const model = trimmedPrimitiveString(embedding.model)
 
+  if (provider === 'local') return null
+  if (provider === 'ollama') return 'ollama-embedding'
   if (provider === 'dashscope' || base.includes('dashscope.aliyuncs.com')) {
     return 'qwen-embedding'
   }
-  if (provider === 'local' || /bge|text2vec|nomic|mxbai/i.test(model)) {
-    return 'local-embedding'
-  }
   if (base.includes('api.openai.com')) return 'openai-embedding'
 
-  return findProviderIdByModel(providers, 'embedding', model)
+  return (
+    findProviderIdByModel(providers, 'embedding', model) ??
+    (provider === 'openai' || provider === 'openai_compatible' ? 'openai-embedding' : null)
+  )
 }
 
-function hydrateProvidersFromSettings(
-  providers: ModelProvider[],
-  settings: SystemSettings | null
-): ModelProvider[] {
+function hydrateProvidersFromSettings(providers: ModelProvider[], settings: SystemSettings | null): ModelProvider[] {
   const next: ModelProvider[] = providers.map((provider) => ({
     ...provider,
     isConfigured: false,
@@ -387,9 +335,7 @@ function hydrateProvidersFromSettings(
     }
     const provider = next.find((item) => item.id === embeddingProviderId)
     if (provider) {
-      provider.isConfigured = Boolean(
-        embeddingConfig.model || embeddingConfig.apiBase || embeddingConfig.apiKey
-      )
+      provider.isConfigured = Boolean(embeddingConfig.model || embeddingConfig.apiBase || embeddingConfig.apiKey)
       provider.config = embeddingConfig
     }
   }
@@ -398,9 +344,12 @@ function hydrateProvidersFromSettings(
 }
 
 function resolveEmbeddingProvider(providerId: string): string {
-  const pid = String(providerId || '').trim().toLowerCase()
+  const pid = String(providerId || '')
+    .trim()
+    .toLowerCase()
   if (pid === 'qwen-embedding') return 'dashscope'
-  if (pid === 'local-embedding') return 'local'
+  if (pid === 'ollama-embedding') return 'ollama'
+  if (pid === 'local-embedding') throw new Error('本地模型推理已停用，请选择向量模型服务')
   return 'openai_compatible'
 }
 
@@ -417,96 +366,83 @@ export function useSettingsPageState() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null)
-  const [lastUpdatedKeys, setLastUpdatedKeys] = useState<string[]>([])
-  const [editedSettings, setEditedSettings] = useState<Partial<SystemSettings>>({})
-
-  const [ltrModels, setLtrModels] = useState<LTRModelInfo[]>([])
-  const [ltrLoading, setLtrLoading] = useState(false)
-  const [ltrError, setLtrError] = useState<string | null>(null)
-  const [ltrMessage, setLtrMessage] = useState<SaveMessage | null>(null)
-  const [ltrUploading, setLtrUploading] = useState(false)
-  const [ltrUploadModelFile, setLtrUploadModelFile] = useState<File | null>(null)
-  const [ltrUploadManifestFile, setLtrUploadManifestFile] = useState<File | null>(null)
-  const [ltrUploadResetKey, setLtrUploadResetKey] = useState(0)
-  const [ltrBusyModelId, setLtrBusyModelId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [editedSettings, setEditedSettings] = useState<EditableSettings>({})
+  const pendingSettings = useRef<EditableSettings>({})
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestRunning = useRef<symbol | null>(null)
+  const saveFailed = useRef(false)
+  const pageOwnerRef = useRef({ active: false })
+  const settingsLoadRef = useRef<symbol | null>(null)
 
   const ragMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_RAG, settings?.rag, editedSettings.rag),
-    [settings?.rag, editedSettings.rag]
-  )
-  const urlIngestMerged = useMemo(
-    () => mergeWithDefaults(DEFAULT_URL_INGEST, settings?.url_ingest, editedSettings.url_ingest),
-    [settings?.url_ingest, editedSettings.url_ingest]
+    [settings?.rag, editedSettings.rag],
   )
   const governanceMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_GOVERNANCE, settings?.governance, editedSettings.governance),
-    [settings?.governance, editedSettings.governance]
+    [settings?.governance, editedSettings.governance],
   )
   const observabilityMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_OBSERVABILITY, settings?.observability, editedSettings.observability),
-    [settings?.observability, editedSettings.observability]
+    [settings?.observability, editedSettings.observability],
   )
   const safetyMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_SAFETY, settings?.safety, editedSettings.safety),
-    [settings?.safety, editedSettings.safety]
+    [settings?.safety, editedSettings.safety],
   )
   const chatMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_CHAT, settings?.chat, editedSettings.chat),
-    [settings?.chat, editedSettings.chat]
+    [settings?.chat, editedSettings.chat],
   )
   const langGraphMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, editedSettings.langgraph),
-    [settings?.langgraph, editedSettings.langgraph]
+    [settings?.langgraph, editedSettings.langgraph],
   )
   const navigationMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, editedSettings.navigation),
-    [settings?.navigation, editedSettings.navigation]
+    [settings?.navigation, editedSettings.navigation],
   )
   const difyExternalKnowledgeMerged = useMemo(
     () =>
       mergeWithDefaults(
         DEFAULT_DIFY_EXTERNAL_KNOWLEDGE,
         settings?.dify_external_knowledge,
-        editedSettings.dify_external_knowledge
+        editedSettings.dify_external_knowledge,
       ),
-    [settings?.dify_external_knowledge, editedSettings.dify_external_knowledge]
+    [settings?.dify_external_knowledge, editedSettings.dify_external_knowledge],
   )
   const cacheMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_CACHE, settings?.cache, editedSettings.cache),
-    [settings?.cache, editedSettings.cache]
-  )
-  const minioMerged = useMemo(
-    () => mergeWithDefaults(DEFAULT_MINIO, settings?.minio, editedSettings.minio),
-    [settings?.minio, editedSettings.minio]
+    [settings?.cache, editedSettings.cache],
   )
   const etl4llmMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_ETL4LLM, settings?.etl4llm, editedSettings.etl4llm),
-    [settings?.etl4llm, editedSettings.etl4llm]
+    [settings?.etl4llm, editedSettings.etl4llm],
   )
   const markerMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MARKER, settings?.marker, editedSettings.marker),
-    [settings?.marker, editedSettings.marker]
+    [settings?.marker, editedSettings.marker],
   )
   const doclingMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, editedSettings.docling),
-    [settings?.docling, editedSettings.docling]
+    [settings?.docling, editedSettings.docling],
   )
   const paddleVlMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, editedSettings.paddle_vl),
-    [settings?.paddle_vl, editedSettings.paddle_vl]
+    [settings?.paddle_vl, editedSettings.paddle_vl],
   )
   const textInMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, editedSettings.textin),
-    [settings?.textin, editedSettings.textin]
+    [settings?.textin, editedSettings.textin],
   )
   const magicPdfMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, editedSettings.magicpdf),
-    [settings?.magicpdf, editedSettings.magicpdf]
+    [settings?.magicpdf, editedSettings.magicpdf],
   )
   const mineruMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, editedSettings.mineru),
-    [settings?.mineru, editedSettings.mineru]
+    [settings?.mineru, editedSettings.mineru],
   )
 
   const isGovernanceEnabled = governanceMerged.enabled
@@ -514,7 +450,13 @@ export function useSettingsPageState() {
   const isSecretsRedactEnabled = governanceMerged.secrets_redact
   const isQuarantineOnDropEnabled = governanceMerged.quarantine_on_drop
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
+    const owner = pageOwnerRef.current
+    if (!owner.active) return
+    const revision = getAuthSessionRevision()
+    const load = Symbol()
+    settingsLoadRef.current = load
+    const isCurrent = () => settingsLoadRef.current === load && isCurrentPageSession(owner, revision)
     setLoading(true)
     setLoadError(null)
     try {
@@ -523,117 +465,153 @@ export function useSettingsPageState() {
         settingsApi.getStatus().catch(() => null),
         metaApi.details().catch(() => null),
       ])
+      if (!isCurrent()) return
       setSettings(settingsData)
       setStatus(statusData)
       setBackendMeta(metaData)
-      setEditedSettings({})
     } catch (error) {
-      setLoadError(formatApiError(error, '加载失败'))
+      if (isCurrent()) setLoadError(formatApiError(error, '加载失败'))
     } finally {
-      setLoading(false)
+      if (owner.active && settingsLoadRef.current === load) {
+        settingsLoadRef.current = null
+        setLoading(false)
+      }
     }
-  }
-
-  const loadLtrModels = async () => {
-    setLtrLoading(true)
-    setLtrError(null)
-    try {
-      const res = await ltrApi.listModels()
-      setLtrModels(Array.isArray(res.items) ? res.items : [])
-    } catch (error) {
-      setLtrError(formatApiError(error, '加载失败'))
-    } finally {
-      setLtrLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void loadSettings()
-    void loadLtrModels()
   }, [])
 
   useEffect(() => {
     setProviders(hydrateProvidersFromSettings(MODEL_PROVIDERS, settings))
   }, [settings])
 
-  const registerLtrModel = async () => {
-    if (!ltrUploadModelFile || !ltrUploadManifestFile) return
-    setLtrUploading(true)
-    setLtrMessage(null)
-    try {
-      await ltrApi.registerModel({
-        modelFile: ltrUploadModelFile,
-        manifestFile: ltrUploadManifestFile,
-      })
-      setLtrMessage({ type: 'success', text: '已注册 LTR 模型' })
-      setLtrUploadModelFile(null)
-      setLtrUploadManifestFile(null)
-      setLtrUploadResetKey((key) => key + 1)
-      await loadLtrModels()
-    } catch (error) {
-      setLtrMessage({ type: 'error', text: formatApiError(error, '注册失败') })
-    } finally {
-      setLtrUploading(false)
+  const flushSettings = useCallback(async () => {
+    if (requestRunning.current || Object.keys(pendingSettings.current).length === 0) return
+    const owner = pageOwnerRef.current
+    const revision = getAuthSessionRevision()
+    const write = Symbol()
+    requestRunning.current = write
+    const canPersist = () =>
+      requestRunning.current === write && pageOwnerRef.current === owner && getAuthSessionRevision() === revision
+    const canPublish = () => canPersist() && owner.active
+    saveFailed.current = false
+    if (canPublish()) {
+      setSaving(true)
+      setSaveError(null)
     }
-  }
-
-  const activateLtrModel = async (modelId: string) => {
-    const mid = String(modelId || '').trim()
-    if (!mid) return
-    setLtrBusyModelId(mid)
-    setLtrMessage(null)
     try {
-      await ltrApi.activateModel(mid)
-      setLtrMessage({ type: 'success', text: `已激活模型: ${shortId(mid, 12)}` })
-      await loadLtrModels()
+      while (Object.keys(pendingSettings.current).length > 0) {
+        const submitted = pendingSettings.current
+        const result = await settingsApi.update(submitted)
+        if (!canPersist()) return
+        if (!result.success) throw new Error(result.message || '保存失败')
+        const confirmed = owner.active ? await settingsApi.get() : null
+        if (!canPersist()) return
+
+        // A newer edit creates a new group object. Acknowledge only the groups
+        // that still match this request, leaving later edits in the queue.
+        const remaining = retireSubmittedSettings(pendingSettings.current, submitted)
+        pendingSettings.current = remaining
+        if (canPublish() && confirmed) {
+          setSettings(confirmed)
+          setEditedSettings(remaining)
+        }
+        if (saveTimer.current) break
+      }
+      if (canPublish()) {
+        void settingsApi
+          .getStatus()
+          .then((value) => {
+            if (isCurrentPageSession(owner, revision)) setStatus(value)
+          })
+          .catch(() => null)
+        void refreshCapabilities().catch(() => null)
+      }
     } catch (error) {
-      setLtrMessage({ type: 'error', text: formatApiError(error, '激活失败') })
+      if (!canPersist()) return
+      saveFailed.current = true
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = null
+      if (canPublish()) setSaveError(formatApiError(error, '保存失败'))
     } finally {
-      setLtrBusyModelId(null)
+      if (requestRunning.current === write) {
+        requestRunning.current = null
+        if (owner.active) setSaving(false)
+      }
     }
-  }
+  }, [refreshCapabilities])
 
-  const rollbackLtrModel = async () => {
-    setLtrBusyModelId('__rollback__')
-    setLtrMessage(null)
-    try {
-      await ltrApi.rollbackActiveModel()
-      setLtrMessage({ type: 'success', text: '已回滚到上一版本' })
-      await loadLtrModels()
-    } catch (error) {
-      setLtrMessage({ type: 'error', text: formatApiError(error, '回滚失败') })
-    } finally {
-      setLtrBusyModelId(null)
-    }
-  }
-
-  const saveSettings = async () => {
-    if (Object.keys(editedSettings).length === 0) return
-
-    setSaving(true)
-    setSaveMessage(null)
-    setLastUpdatedKeys([])
-    try {
-      const result = await settingsApi.update(editedSettings)
-      setSaveMessage(createSettingsSaveSuccessMessage())
-      setLastUpdatedKeys(result.updated_keys || [])
-      await loadSettings()
-      refreshCapabilities().catch(() => null)
-    } catch (error) {
-      setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
-    } finally {
+  useEffect(() => {
+    pageOwnerRef.current = { active: true }
+    void loadSettings()
+    const onScopeChanged = () => {
+      pageOwnerRef.current.active = false
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = null
+      settingsLoadRef.current = null
+      requestRunning.current = null
+      pendingSettings.current = {}
+      saveFailed.current = false
+      setSettings(null)
+      setStatus(null)
+      setBackendMeta(null)
+      setEditedSettings({})
       setSaving(false)
-      setTimeout(() => setSaveMessage(null), 5000)
+      setSaveError(null)
+      setSelectedProvider(null)
+      setDialogOpen(false)
+      pageOwnerRef.current = { active: true }
+      void loadSettings()
     }
+    window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, onScopeChanged)
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = null
+      if (!saveFailed.current) void flushSettings()
+      pageOwnerRef.current.active = false
+      window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, onScopeChanged)
+    }
+  }, [flushSettings, loadSettings])
+
+  const queueSettingsEdit = (edit: (current: EditableSettings) => EditableSettings, immediate: boolean) => {
+    const next = edit(pendingSettings.current)
+    pendingSettings.current = next
+    setEditedSettings(next)
+    setSaveError(null)
+    saveFailed.current = false
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = null
+    if (immediate) {
+      void flushSettings()
+    } else {
+      saveTimer.current = setTimeout(() => {
+        saveTimer.current = null
+        void flushSettings()
+      }, AUTOSAVE_DELAY_MS)
+    }
+  }
+
+  function updateSection<K extends keyof EditableSettings>(
+    key: K,
+    defaults: SystemSettings[K],
+    patch: Partial<SystemSettings[K]>,
+  ) {
+    queueSettingsEdit(
+      (prev) => ({
+        ...prev,
+        [key]: mergeConfig(mergeWithDefaults(defaults, settings?.[key], prev[key]), patch),
+      }),
+      Object.values(patch).some((value) => typeof value === 'boolean' || Array.isArray(value)),
+    )
+  }
+
+  const retrySave = () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = null
+    return flushSettings()
   }
 
   const toggleFeature = (key: keyof FeatureFlags) => {
-    setEditedSettings((prev) => {
-      const currentFlags = mergeWithDefaults(
-        DEFAULT_FEATURE_FLAGS,
-        settings?.feature_flags,
-        prev.feature_flags
-      )
+    queueSettingsEdit((prev) => {
+      const currentFlags = mergeWithDefaults(DEFAULT_FEATURE_FLAGS, settings?.feature_flags, prev.feature_flags)
       return {
         ...prev,
         feature_flags: {
@@ -641,7 +619,7 @@ export function useSettingsPageState() {
           [key]: !currentFlags[key],
         },
       }
-    })
+    }, true)
   }
 
   const getFeatureValue = (key: keyof FeatureFlags): boolean => {
@@ -652,172 +630,67 @@ export function useSettingsPageState() {
   }
 
   const updateObservability = (patch: Partial<ObservabilityConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      observability: mergeConfig(
-        mergeWithDefaults(DEFAULT_OBSERVABILITY, settings?.observability, prev.observability),
-        patch
-      ),
-    }))
+    updateSection('observability', DEFAULT_OBSERVABILITY, patch)
   }
 
   const updateSafety = (patch: Partial<SafetyConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      safety: mergeConfig(
-        mergeWithDefaults(DEFAULT_SAFETY, settings?.safety, prev.safety),
-        patch
-      ),
-    }))
+    updateSection('safety', DEFAULT_SAFETY, patch)
   }
 
   const updateLangGraph = (patch: Partial<LangGraphConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      langgraph: mergeConfig(
-        mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, prev.langgraph),
-        patch
-      ),
-    }))
+    updateSection('langgraph', DEFAULT_LANGGRAPH, patch)
   }
 
   const updateNavigation = (patch: Partial<NavigationConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      navigation: mergeConfig(
-        mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, prev.navigation),
-        patch
-      ),
-    }))
+    updateSection('navigation', DEFAULT_NAVIGATION, patch)
   }
 
   const updateDifyExternalKnowledge = (patch: Partial<DifyExternalKnowledgeSettings>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      dify_external_knowledge: mergeConfig(
-        mergeWithDefaults(
-          DEFAULT_DIFY_EXTERNAL_KNOWLEDGE,
-          settings?.dify_external_knowledge,
-          prev.dify_external_knowledge
-        ),
-        patch
-      ),
-    }))
+    updateSection('dify_external_knowledge', DEFAULT_DIFY_EXTERNAL_KNOWLEDGE, patch)
   }
 
   const updateChat = (patch: Partial<ChatConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      chat: mergeConfig(mergeWithDefaults(DEFAULT_CHAT, settings?.chat, prev.chat), patch),
-    }))
+    updateSection('chat', DEFAULT_CHAT, patch)
   }
 
   const updateCache = (patch: Partial<CacheConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      cache: mergeConfig(mergeWithDefaults(DEFAULT_CACHE, settings?.cache, prev.cache), patch),
-    }))
-  }
-
-  const updateMinIO = (patch: Partial<MinIOSettings>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      minio: mergeConfig(mergeWithDefaults(DEFAULT_MINIO, settings?.minio, prev.minio), patch),
-    }))
+    updateSection('cache', DEFAULT_CACHE, patch)
   }
 
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      magicpdf: mergeConfig(
-        mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, prev.magicpdf),
-        patch
-      ),
-    }))
+    updateSection('magicpdf', DEFAULT_MAGICPDF, patch)
   }
 
   const updateMinerU = (patch: Partial<MinerUConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      mineru: mergeConfig(
-        mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, prev.mineru),
-        patch
-      ),
-    }))
+    updateSection('mineru', DEFAULT_MINERU, patch)
   }
 
   const updateEtl4Llm = (patch: Partial<Etl4LlmConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      etl4llm: mergeConfig(
-        mergeWithDefaults(DEFAULT_ETL4LLM, settings?.etl4llm, prev.etl4llm),
-        patch
-      ),
-    }))
+    updateSection('etl4llm', DEFAULT_ETL4LLM, patch)
   }
 
   const updateMarker = (patch: Partial<MarkerConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      marker: mergeConfig(mergeWithDefaults(DEFAULT_MARKER, settings?.marker, prev.marker), patch),
-    }))
+    updateSection('marker', DEFAULT_MARKER, patch)
   }
 
   const updateDocling = (patch: Partial<DoclingConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      docling: mergeConfig(
-        mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, prev.docling),
-        patch
-      ),
-    }))
+    updateSection('docling', DEFAULT_DOCLING, patch)
   }
 
   const updatePaddleVL = (patch: Partial<PaddleVLConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      paddle_vl: mergeConfig(
-        mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, prev.paddle_vl),
-        patch
-      ),
-    }))
+    updateSection('paddle_vl', DEFAULT_PADDLE_VL, patch)
   }
 
   const updateTextIn = (patch: Partial<TextInConfig>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      textin: mergeConfig(
-        mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, prev.textin),
-        patch
-      ),
-    }))
+    updateSection('textin', DEFAULT_TEXTIN, patch)
   }
 
   const updateRag = (patch: Partial<RagSettings>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      rag: mergeConfig(mergeWithDefaults(DEFAULT_RAG, settings?.rag, prev.rag), patch),
-    }))
-  }
-
-  const updateUrlIngest = (patch: Partial<UrlIngestSettings>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      url_ingest: mergeConfig(
-        mergeWithDefaults(DEFAULT_URL_INGEST, settings?.url_ingest, prev.url_ingest),
-        patch
-      ),
-    }))
+    updateSection('rag', DEFAULT_RAG, patch)
   }
 
   const updateGovernance = (patch: Partial<GovernanceSettings>) => {
-    setEditedSettings((prev) => ({
-      ...prev,
-      governance: mergeConfig(
-        mergeWithDefaults(DEFAULT_GOVERNANCE, settings?.governance, prev.governance),
-        patch
-      ),
-    }))
+    updateSection('governance', DEFAULT_GOVERNANCE, patch)
   }
 
   const hasChanges = Object.keys(editedSettings).length > 0
@@ -834,46 +707,89 @@ export function useSettingsPageState() {
   }, [hasChanges])
 
   const handleConfigure = (provider: ModelProvider) => {
+    if (requestRunning.current) {
+      setSaveError('配置正在保存，请完成后再修改模型配置。')
+      return
+    }
+    if (provider.category === 'reranker') {
+      setSaveError('请在「检索与生成」中选择重排服务与数量。')
+      setDialogOpen(false)
+      return
+    }
     setSelectedProvider(provider)
     setDialogOpen(true)
   }
 
   const handleSaveConfig = async (providerId: string, config: ProviderConfig) => {
     const provider = providers.find((item) => item.id === providerId)
-    if (!provider) return
+    if (!provider || requestRunning.current || !pageOwnerRef.current.active) return
 
     if (provider.category === 'model' || provider.category === 'embedding') {
-      setSaving(true)
-      setSaveMessage(null)
-      try {
-        const payload =
-          provider.category === 'model'
-            ? {
-                llm: {
-                  api_key: config.apiKey || '',
-                  api_base: config.apiBase || '',
-                  model: config.model || '',
-                  temperature: config.temperature ?? 0.7,
-                  timeout: config.timeout ?? 60,
-                  max_retries: 3,
-                },
-              }
-            : {
-                embedding: {
-                  provider: resolveEmbeddingProvider(provider.id),
-                  model: config.model || '',
-                  api_key: config.apiKey || '',
-                  api_base: config.apiBase || '',
-                },
-              }
+      const payload: EditableSettings =
+        provider.category === 'model'
+          ? {
+              llm: {
+                api_key: config.apiKey || '',
+                api_base: config.apiBase || '',
+                model: config.model || '',
+                temperature: config.temperature ?? 0.7,
+                timeout: config.timeout ?? 60,
+                max_retries: 3,
+              },
+            }
+          : {
+              embedding: {
+                provider: resolveEmbeddingProvider(provider.id),
+                model: config.model || '',
+                api_key: config.apiKey || '',
+                api_base: config.apiBase || '',
+              },
+            }
 
-        await settingsApi.update(payload)
-        setSaveMessage(createSettingsSaveSuccessMessage())
-        await loadSettings()
+      const owner = pageOwnerRef.current
+      const revision = getAuthSessionRevision()
+      const operation = Symbol()
+      requestRunning.current = operation
+      const isCurrent = () => requestRunning.current === operation && isCurrentPageSession(owner, revision)
+      setSaving(true)
+      setSaveError(null)
+      let failed = false
+      try {
+        const result = await settingsApi.update(payload)
+        if (!isCurrent()) return
+        if (!result.success) throw new Error(result.message || '保存失败')
+        const confirmed = await settingsApi.get()
+        if (!isCurrent()) return
+        setSettings(confirmed)
+        void settingsApi
+          .getStatus()
+          .then((value) => {
+            if (isCurrentPageSession(owner, revision)) setStatus(value)
+          })
+          .catch(() => null)
+        void refreshCapabilities().catch(() => null)
       } catch (error) {
-        setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
+        if (!isCurrent()) return
+        failed = true
+        saveFailed.current = true
+        if (saveTimer.current) clearTimeout(saveTimer.current)
+        saveTimer.current = null
+        pendingSettings.current = { ...payload, ...pendingSettings.current }
+        setEditedSettings(pendingSettings.current)
+        setSaveError(formatApiError(error, '保存失败'))
       } finally {
-        setSaving(false)
+        if (requestRunning.current === operation) {
+          requestRunning.current = null
+          if (owner.active) setSaving(false)
+          if (
+            !failed &&
+            !saveFailed.current &&
+            !saveTimer.current &&
+            pageOwnerRef.current === owner &&
+            getAuthSessionRevision() === revision
+          )
+            void flushSettings()
+        }
       }
     }
   }
@@ -890,30 +806,19 @@ export function useSettingsPageState() {
     return groups
   }, [providers])
 
-  const refreshAll = () => {
-    void loadSettings()
-    void loadLtrModels()
-  }
-
-  const refreshLtrModels = () => {
-    void loadLtrModels()
-  }
-
   return {
-    activateLtrModel,
     backendMeta,
     cacheMerged,
     chatMerged,
     dialogOpen,
     difyExternalKnowledgeMerged,
     doclingMerged,
-    editedFeatureFlags: editedSettings.feature_flags,
     etl4llmMerged,
-    formatBytes,
-    formatTime,
     getFeatureValue,
     governanceMerged,
     groupedProviders,
+    retiredEmbeddingModel:
+      settings?.embedding.provider.trim().toLowerCase() === 'local' ? settings.embedding.model || '未指定模型' : null,
     handleConfigure,
     handleSaveConfig,
     hasChanges,
@@ -922,38 +827,21 @@ export function useSettingsPageState() {
     isQuarantineOnDropEnabled,
     isSecretsRedactEnabled,
     langGraphMerged,
-    lastUpdatedKeys,
     loadError,
     loading,
-    ltrBusyModelId,
-    ltrError,
-    ltrLoading,
-    ltrMessage,
-    ltrModels,
-    ltrUploadReady: Boolean(ltrUploadModelFile && ltrUploadManifestFile),
-    ltrUploadResetKey,
-    ltrUploading,
     magicPdfMerged,
     markerMerged,
-    minioMerged,
     mineruMerged,
     navigationMerged,
     observabilityMerged,
     paddleVlMerged,
     textInMerged,
     ragMerged,
-    refreshAll,
-    refreshLtrModels,
-    registerLtrModel,
-    rollbackLtrModel,
-    saveMessage,
-    saveSettings,
+    saveError,
+    retrySave,
     saving,
     selectedProvider,
     setDialogOpen,
-    setLtrUploadManifestFile,
-    setLtrUploadModelFile,
-    shortId,
     status,
     toggleFeature,
     updateCache,
@@ -966,15 +854,12 @@ export function useSettingsPageState() {
     updateNavigation,
     updateMagicPDF,
     updateMarker,
-    updateMinIO,
     updateMinerU,
     updateObservability,
     updatePaddleVL,
     updateTextIn,
     updateRag,
     updateSafety,
-    updateUrlIngest,
-    urlIngestMerged,
     safetyMerged,
   }
 }

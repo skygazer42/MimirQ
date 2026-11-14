@@ -1,9 +1,21 @@
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.rag.policy.must_recall import normalize_source_keys
 
 RECALL_OBLIGATION_LEDGER_SCHEMA_V1 = "mimirq.recall_obligation_ledger.v1"
 MUST_RECALL_PROOF_SCHEMA_V1 = "mimirq.must_recall_proof.v1"
+
+
+class SourceKeyObligation(TypedDict):
+    source_key: str
+    status: Literal["matched", "missing"]
+    matched_source_key: str | None
+
+
+class AnchorObligation(TypedDict):
+    field: str
+    status: Literal["matched", "missing"]
+    missing_count: int
 
 
 def _to_int(value: Any, *, default: int = 0) -> int:
@@ -19,23 +31,20 @@ def _build_source_key_obligations(
     *,
     required_source_keys: list[str],
     source_eval: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
+) -> list[SourceKeyObligation]:
     matched_by_required = (
         source_eval.get("matched_by_required_source_key")
         if isinstance(source_eval, dict) and isinstance(source_eval.get("matched_by_required_source_key"), dict)
         else {}
     )
-    obligations: list[dict[str, Any]] = []
+    obligations: list[SourceKeyObligation] = []
     for key in required_source_keys:
-        key_norm = str(key or "").strip()
-        if not key_norm:
-            continue
-        matched = str(matched_by_required.get(key_norm) or "").strip()
+        matched = matched_by_required.get(key)
         obligations.append(
             {
-                "source_key": key_norm,
+                "source_key": key,
                 "status": ("matched" if matched else "missing"),
-                "matched_source_key": (matched or None),
+                "matched_source_key": matched,
             }
         )
     return obligations
@@ -45,23 +54,20 @@ def _build_anchor_obligations(
     *,
     required_anchor_fields: list[str],
     anchor_eval: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
+) -> list[AnchorObligation]:
     missing_counts = (
         anchor_eval.get("missing_counts")
         if isinstance(anchor_eval, dict) and isinstance(anchor_eval.get("missing_counts"), dict)
         else {}
     )
-    obligations: list[dict[str, Any]] = []
-    for field in required_anchor_fields:
-        name = str(field or "").strip()
-        if not name:
-            continue
+    obligations: list[AnchorObligation] = []
+    for name in required_anchor_fields:
         missing = max(0, _to_int(missing_counts.get(name), default=0))
         obligations.append(
             {
                 "field": name,
                 "status": ("matched" if missing <= 0 else "missing"),
-                "missing_count": int(missing),
+                "missing_count": missing,
             }
         )
     return obligations
@@ -79,53 +85,51 @@ def build_recall_obligation_ledger(
 
     source_obligations = _build_source_key_obligations(
         required_source_keys=source_keys,
-        source_eval=(source_eval if isinstance(source_eval, dict) else None),
+        source_eval=source_eval,
     )
     anchor_obligations = _build_anchor_obligations(
         required_anchor_fields=anchor_fields,
-        anchor_eval=(anchor_eval if isinstance(anchor_eval, dict) else None),
+        anchor_eval=anchor_eval,
     )
 
-    source_missing = len([o for o in source_obligations if str(o.get("status") or "") == "missing"])
-    anchor_missing_fields = len([o for o in anchor_obligations if str(o.get("status") or "") == "missing"])
+    source_missing = sum(obligation["status"] == "missing" for obligation in source_obligations)
+    anchor_missing_fields = sum(obligation["status"] == "missing" for obligation in anchor_obligations)
     anchor_missing_any = max(
         0,
-        _to_int((anchor_eval or {}).get("missing_any"), default=0) if isinstance(anchor_eval, dict) else 0,
+        _to_int(anchor_eval.get("missing_any"), default=0) if isinstance(anchor_eval, dict) else 0,
     )
     anchor_considered = (
-        _to_int((anchor_eval or {}).get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+        _to_int(anchor_eval.get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
     )
-    anchor_skipped = (
-        _to_int((anchor_eval or {}).get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
-    )
+    anchor_skipped = _to_int(anchor_eval.get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
     anchor_skipped_by_role = (
-        dict((anchor_eval or {}).get("skipped_by_role") or {})
-        if isinstance(anchor_eval, dict) and isinstance((anchor_eval or {}).get("skipped_by_role"), dict)
+        dict(anchor_eval["skipped_by_role"])
+        if isinstance(anchor_eval, dict) and isinstance(anchor_eval.get("skipped_by_role"), dict)
         else {}
     )
-    required_total = int(len(source_obligations) + len(anchor_obligations))
-    missing_total = int(source_missing + anchor_missing_fields)
+    required_total = len(source_obligations) + len(anchor_obligations)
+    missing_total = source_missing + anchor_missing_fields
     matched_total = max(0, required_total - missing_total)
-    coverage_ratio = (float(matched_total) / float(required_total)) if required_total > 0 else 1.0
+    coverage_ratio = matched_total / required_total if required_total > 0 else 1.0
 
     return {
         "schema": RECALL_OBLIGATION_LEDGER_SCHEMA_V1,
         "required_total": required_total,
         "matched_total": matched_total,
         "missing_total": missing_total,
-        "coverage_ratio": round(float(coverage_ratio), 6),
+        "coverage_ratio": round(coverage_ratio, 6),
         "source_keys": {
-            "required": int(len(source_obligations)),
-            "missing": int(source_missing),
+            "required": len(source_obligations),
+            "missing": source_missing,
             "obligations": source_obligations,
         },
         "anchors": {
-            "required": int(len(anchor_obligations)),
-            "missing_fields": int(anchor_missing_fields),
-            "missing_any": int(anchor_missing_any),
-            "considered_citations": int(max(0, anchor_considered)),
-            "skipped_citations": int(max(0, anchor_skipped)),
-            "skipped_by_role": dict(anchor_skipped_by_role),
+            "required": len(anchor_obligations),
+            "missing_fields": anchor_missing_fields,
+            "missing_any": anchor_missing_any,
+            "considered_citations": max(0, anchor_considered),
+            "skipped_citations": max(0, anchor_skipped),
+            "skipped_by_role": anchor_skipped_by_role,
             "obligations": anchor_obligations,
         },
     }
@@ -162,7 +166,9 @@ def build_must_recall_proof(
     raw_matched = source_eval_obj.get("matched_source_keys")
     if isinstance(raw_matched, list):
         for v in raw_matched:
-            s = str(v or "").strip()
+            if v is None:
+                continue
+            s = str(v).strip()
             if not s:
                 continue
             matched_source_keys.append(s)
@@ -171,19 +177,20 @@ def build_must_recall_proof(
     # Best-effort fallback: derive matched_source_keys from the required->matched map.
     if not matched_source_keys and matched_by_required:
         for key in required_source_keys_norm:
-            s = str(matched_by_required.get(key) or "").strip()
+            matched = matched_by_required.get(key)
+            s = str(matched).strip() if matched is not None else None
             if not s:
                 continue
             matched_source_keys.append(s)
             if len(matched_source_keys) >= 200:
                 break
     reasons = [str(v) for v in (fail_reasons or []) if str(v).strip()][:16]
-    proof = {
+    return {
         "schema": MUST_RECALL_PROOF_SCHEMA_V1,
         "enabled": bool(enabled),
-        "status": str(status or ""),
+        "status": status,
         "passed": bool(passed),
-        "contract_fail_reason_taxonomy": str(contract_fail_reason_taxonomy or ""),
+        "contract_fail_reason_taxonomy": contract_fail_reason_taxonomy,
         "required_source_keys": required_source_keys_norm,
         "matched_source_keys": matched_source_keys,
         "matched_by_required_source_key": dict(matched_by_required),
@@ -206,9 +213,8 @@ def build_must_recall_proof(
         ),
         "fail_reasons": reasons,
         "obligation_ledger": ledger,
-        "second_pass": (dict(second_pass or {}) if isinstance(second_pass, dict) else {}),
+        "second_pass": (dict(second_pass) if isinstance(second_pass, dict) else {}),
     }
-    return proof
 
 
 __all__ = [

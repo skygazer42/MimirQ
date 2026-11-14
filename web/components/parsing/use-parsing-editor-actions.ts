@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { useRouter } from '@/i18n/navigation'
-import { parsingApi } from '@/lib/api'
+import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import {
   applyBlockEditToMarkdown,
@@ -19,13 +19,13 @@ import type { ParsingBlock } from '@/lib/parsing-positions'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
 
 import type { ParsedFile, ParseRun } from './parsing-types'
+import { countMarkdownHeadings } from './parsing-page-utils'
 
 function applyEditedMarkdown(
   prev: ParsedFile[],
   fileId: string,
   targetRunId: string | undefined,
   editedContent: string,
-  countMarkdownHeadings: (markdown: string) => number
 ): ParsedFile[] {
   return prev.map((file) => {
     if (file.id !== fileId) return file
@@ -40,7 +40,7 @@ function applyEditedMarkdown(
                   rawMarkdown: editedContent,
                   blocks: [],
                 }
-              : run
+              : run,
           )
         : file.runs
 
@@ -70,7 +70,7 @@ function getParsedMarkdown(file: ParsedFile): string {
 function buildGovernanceLibraryPayload(
   file: ParsedFile,
   markdown: string,
-  governanceStatus: 'ready' | 'submitted'
+  governanceStatus: 'ready' | 'submitted',
 ): Omit<ParsedFileData, 'id' | 'parsedAt'> {
   return {
     filename: file.file.name,
@@ -93,7 +93,6 @@ type UseParsingEditorActionsOptions = {
   activeMarkdown: string
   activeRun: ParseRun | null
   addParsedFile: (file: Omit<ParsedFileData, 'id' | 'parsedAt'>) => string
-  countMarkdownHeadings: (markdown: string) => number
   editSession: ParsingEditSession | null
   editedContent: string
   files: ParsedFile[]
@@ -118,7 +117,6 @@ export function useParsingEditorActions({
   activeMarkdown,
   activeRun,
   addParsedFile,
-  countMarkdownHeadings,
   editSession,
   editedContent,
   files,
@@ -161,7 +159,7 @@ export function useParsingEditorActions({
     const blockEditTarget = buildParsingBlockEditTarget(
       activeMarkdown,
       buildParsingLayoutEntries(activeBlocksWithPositions),
-      activeBlockId
+      activeBlockId,
     )
 
     if (blockEditTarget) {
@@ -196,26 +194,25 @@ export function useParsingEditorActions({
           ? editedContent
           : activeMarkdown
 
-    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown, countMarkdownHeadings))
-    setRightPanelMode('markdown')
-    setActiveBlockId(null)
-    setEditSession(null)
-    setHoveredBlockId(null)
-    setIsEditing(false)
-
     const libId = (activeFile.libraryId || '').trim()
-    if (!libId) return
-
     try {
-      const saved = await parsingApi.updateContent(libId, { markdown_content: nextMarkdown })
-      await updateParsedFile(libId, {
-        markdownContent: saved.markdown_content || nextMarkdown,
-        originalMarkdownContent: saved.original_markdown_content || nextMarkdown,
-        status: 'parsed',
-        error: undefined,
-        parser: getParserLabel(saved.parser_backend || 'auto'),
-        governanceStatus: 'ready',
-      })
+      if (libId) {
+        const saved = await parsingApi.updateContent(libId, { markdown_content: nextMarkdown })
+        await updateParsedFile(libId, {
+          markdownContent: saved.markdown_content || nextMarkdown,
+          originalMarkdownContent: saved.original_markdown_content || nextMarkdown,
+          status: 'parsed',
+          error: undefined,
+          parser: getParserLabel(saved.parser_backend || 'auto'),
+          governanceStatus: 'ready',
+        })
+      }
+      setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown))
+      setRightPanelMode('markdown')
+      setActiveBlockId(null)
+      setEditSession(null)
+      setHoveredBlockId(null)
+      setIsEditing(false)
       toast.success(t('toasts.saveSuccess'))
     } catch (err: unknown) {
       toast.error(formatApiError(err, t('toasts.saveFailed')))
@@ -224,7 +221,6 @@ export function useParsingEditorActions({
     activeFile,
     activeMarkdown,
     activeRun,
-    countMarkdownHeadings,
     editSession,
     editedContent,
     setActiveBlockId,
@@ -252,9 +248,7 @@ export function useParsingEditorActions({
     } else {
       const libraryId = addParsedFile(buildGovernanceLibraryPayload(activeFile, activeMarkdown, 'submitted'))
       setFiles((prev) =>
-        prev.map((file) =>
-          file.id === activeFile.id ? { ...file, governanceStatus: 'submitted', libraryId } : file
-        )
+        prev.map((file) => (file.id === activeFile.id ? { ...file, governanceStatus: 'submitted', libraryId } : file)),
       )
     }
 
@@ -320,8 +314,8 @@ export function useParsingEditorActions({
                 governanceStatus: 'submitted',
                 libraryId: newLibraryIdsByFileId.get(file.id) || file.libraryId,
               }
-            : file
-        )
+            : file,
+        ),
       )
       setSelectedGovernanceFileIds(new Set())
       toast.success(`已提交 ${submittedCount} 个文档到数据治理`)

@@ -13,7 +13,9 @@ _WELL_KNOWN_METADATA_NETWORKS = (
 
 
 def _split_cidr_tokens(raw: str | None) -> list[str]:
-    text = str(raw or "").replace(",", " ")
+    if raw is None:
+        return []
+    text = raw.replace(",", " ")
     return [token.strip() for token in text.split() if token.strip()]
 
 
@@ -28,7 +30,7 @@ def _parse_allow_networks(raw: str | None) -> tuple[ipaddress._BaseNetwork, ...]
 
 
 def _normalize_ip_literal(value: str) -> ipaddress._BaseAddress | None:
-    candidate = str(value or "").strip()
+    candidate = value.strip()
     if candidate.startswith("[") and candidate.endswith("]"):
         candidate = candidate[1:-1].strip()
     try:
@@ -48,7 +50,7 @@ def _resolved_addresses(host: str) -> list[str]:
         sockaddr = row[4]
         if not isinstance(sockaddr, tuple) or not sockaddr:
             continue
-        address = str(sockaddr[0] or "").strip()
+        address = sockaddr[0].strip()
         if not address or address in seen:
             continue
         seen.add(address)
@@ -79,7 +81,7 @@ def _address_allowed(address: ipaddress._BaseAddress, allow_networks: Iterable[i
 
 
 def validate_db_connector_destination(host: str, *, allow_cidrs: str | None = None) -> list[str]:
-    normalized_host = str(host or "").strip()
+    normalized_host = host.strip()
     if not normalized_host:
         raise ValueError("DB host is required")
 
@@ -105,7 +107,7 @@ def validate_db_connector_destination(host: str, *, allow_cidrs: str | None = No
 def validate_db_connector_config(config: dict | object) -> list[str]:
     host = ""
     if isinstance(config, dict):
-        host = str(config.get("host") or "").strip()
+        host = config["host"].strip()
     else:
-        host = str(getattr(config, "host", "") or "").strip()
+        host = config.host.strip()
     return validate_db_connector_destination(host)

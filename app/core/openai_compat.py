@@ -9,7 +9,6 @@ Why:
 These helpers normalize URLs so we keep consistent, provider-compatible behavior.
 """
 
-
 _STRIP_SUFFIXES = (
     "/chat/completions",
     "/completions",
@@ -27,7 +26,9 @@ def normalize_openai_compatible_base_url(base_url: str | None) -> str:
       - "http://localhost:8000/v1/embeddings" -> "http://localhost:8000/v1"
       - "https://dashscope.aliyuncs.com/compatible-mode/v1/" -> "https://dashscope.aliyuncs.com/compatible-mode/v1"
     """
-    raw = str(base_url or "").strip()
+    if base_url is None:
+        return ""
+    raw = base_url.strip()
     if not raw:
         return ""
 

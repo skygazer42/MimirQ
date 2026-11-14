@@ -1,8 +1,7 @@
-
 from collections.abc import Sequence
 from typing import TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def reorder_docs_for_generation(items: Sequence[T]) -> list[T]:
@@ -15,4 +14,4 @@ def reorder_docs_for_generation(items: Sequence[T]) -> list[T]:
     return front + back
 
 
-__all__ = ['reorder_docs_for_generation']
+__all__ = ["reorder_docs_for_generation"]

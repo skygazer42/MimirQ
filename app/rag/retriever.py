@@ -9,77 +9,54 @@ import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
 
-from langchain_community.retrievers.bm25 import BM25Retriever
 from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field, PrivateAttr
 from sqlalchemy.orm import Session
 
-from app.config.rerank_profile import resolve_rerank_search_k
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.stream_events import emit_stream_event
 from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.embedding.utils import current_embedding_space_hash
-from app.rag.reranker.factory import get_reranker
-from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.corpus_index import get_corpus_index, is_milvus_bm25_enabled
+from app.rag.retrieval.hybrid import candidate_ranking, candidate_retrieval, channel_collection, corpus_channels
 from app.rag.retrieval.hybrid.bm25_index import Bm25IndexMixin
-from app.rag.retrieval.hybrid.cache_scope import prepare_hybrid_cache_scope
-from app.rag.retrieval.hybrid.channel_diagnostics import update_hybrid_channel_diagnostics
-from app.rag.retrieval.hybrid.channel_health import RetrievalChannelHealth
-from app.rag.retrieval.hybrid.channel_results import prepare_hybrid_channel_results
+from app.rag.retrieval.hybrid.channel_diagnostics import empty_channel_metrics
 from app.rag.retrieval.hybrid.colbert_index import ColbertIndexMixin
 from app.rag.retrieval.hybrid.common import (
     _RETRIEVAL_DISPLAY_CONTENT_KEY,
     _RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY,
-    LEXICAL_DB_SEARCH_FAILED_LOG,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
-    _apply_metadata_exact_anchor_to_result,
     _float_or_default,
     _log_retriever_fallback,
-    _query_looks_like_cjk_metadata_anchor,
-    _results_contain_metadata_exact_anchor,
 )
 from app.rag.retrieval.hybrid.dedup import DedupDiversityMixin
 from app.rag.retrieval.hybrid.fusion import FusionMixin
 from app.rag.retrieval.hybrid.lexical import LexicalDBMixin
 from app.rag.retrieval.hybrid.post_process import PostProcessMixin
+from app.rag.retrieval.hybrid.runtime_scope import ResolvedRetrievalScope, RetrievalScope, resolve_runtime_scope
 from app.rag.retrieval.hybrid.sparse_index import SparseIndexMixin
-from app.rag.retrieval.hybrid.text_preparation import (
-    augment_retrieval_corpus_text,
-    normalize_document_questions,
-    prepare_retrieval_document,
-    question_channel_overlap_score,
-    rerank_text_from_result,
-)
 from app.rag.retrieval.retriever_options import (
     HybridSearchOptions,
     _build_retrieval_cache_behavior_hash,
     _dataset_scoped_runtime_lookup_error,
     _metadata_filter_has_dataset_scope,
     _resolve_hybrid_search_options,
+    normalize_rerank_profile,
+    resolve_rerank_search_k,
 )
 from app.rag.retrieval.retriever_policy import RetrievalPolicyMixin
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
-    RetrievalCandidateSingleflightTimeoutError,
-    acquire_inflight_retrieval_candidates,
-    acquire_or_wait_for_distributed_inflight_retrieval_candidates,
-    build_retrieval_candidate_cache_key,
-    get_cached_retrieval_candidates,
-    publish_distributed_inflight_retrieval_candidates,
     reject_current_inflight_retrieval_candidates,
     release_current_distributed_inflight_retrieval_candidates,
-    release_distributed_inflight_retrieval_candidates,
-    resolve_inflight_retrieval_candidates,
-    set_cached_retrieval_candidates,
-    wait_for_inflight_retrieval_candidates,
 )
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 from app.services.dataset_embedding_config import (
@@ -88,12 +65,13 @@ from app.services.dataset_embedding_config import (
     resolve_dataset_embedding_runtime,
 )
 from app.services.rag_runtime_limiter import (
-    RetrievalAdmissionTimeoutError,
     run_blocking_retrieval_call,
     run_with_retrieval_backend_budget_sync,
 )
-from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
+
+if TYPE_CHECKING:
+    from app.query.normalize import NormalizedQuery
 
 logger = get_logger("rag.retriever")
 
@@ -125,7 +103,7 @@ class HybridRetriever(
     vector_weight: float = 0.6
     keyword_weight: float = 0.4
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA
-    mmr_fetch_k_multiplier: int = getattr(settings, "RETRIEVAL_MMR_FETCH_K_MULTIPLIER", 4)
+    mmr_fetch_k_multiplier: int = settings.RETRIEVAL_MMR_FETCH_K_MULTIPLIER
     enable_reranker: bool = settings.ENABLE_RERANKER
     reranker_provider: str = settings.RERANKER_PROVIDER
     reranker_top_n: int = settings.RERANKER_TOP_N
@@ -147,8 +125,8 @@ class HybridRetriever(
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
     max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
-    max_chunks_per_record_identity: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 2)
-    max_chunks_per_page: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0)
+    max_chunks_per_record_identity: int = settings.RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY
+    max_chunks_per_page: int = settings.RETRIEVAL_MAX_CHUNKS_PER_PAGE
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: UUID | None = None
     # Optional: used for candidate-level ACL trimming when retrieval is not pre-scoped
@@ -163,7 +141,7 @@ class HybridRetriever(
     entity_key: str | None = None
     partition_keys: list[str] | None = None
     entity_candidates: list[str] | None = None
-    metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
+    metadata_filter_enabled: bool = settings.RETRIEVAL_METADATA_FILTER_ENABLED
     retrieval_profile: str | None = None
     context_neighbor_window: int | None = None
     context_neighbor_max_added: int | None = None
@@ -173,25 +151,15 @@ class HybridRetriever(
     context_neighbor_high_span: int | None = None
     context_neighbor_mid_span: int | None = None
     enable_hierarchy_recall: bool = False
-    hierarchy_family_collapse: bool = getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", True)
-    hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
+    hierarchy_family_collapse: bool = settings.HIERARCHY_RECALL_FAMILY_COLLAPSE
+    hierarchy_overfetch_factor: int = max(1, int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR))
     lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
     metadata_exact_db_fallback_enabled: bool | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    _bm25_retrievers: dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
-    _bm25_docs: dict[str, list[Document]] = PrivateAttr(default_factory=dict)
-    _bm25_doc_ids: dict[str, set[str]] = PrivateAttr(default_factory=dict)
-    _chunk_id_lookup: dict[str, dict[str, str]] = PrivateAttr(default_factory=dict)
-    _bm25_deferred_scopes: set[str] = PrivateAttr(default_factory=set)
-    _bm25_build_locks: dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
-    # LRU order for per-tenant BM25 caches (prevents unbounded growth in multi-tenant deployments).
-    _bm25_cache_order: "OrderedDict[str, None]" = PrivateAttr(default_factory=OrderedDict)
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.RLock)
-    # Cache versions per BM25 scope key (used to invalidate dataset-scoped indices after ingest).
-    _bm25_cache_versions: dict[str, str] = PrivateAttr(default_factory=dict)
     _corpus_token_cache: "OrderedDict[tuple[str, str, tuple[str, ...], tuple[str, ...]], tuple[float, str]]" = (
         PrivateAttr(default_factory=OrderedDict)
     )
@@ -228,27 +196,26 @@ class HybridRetriever(
     def _effective_sparse_enabled(self) -> bool:
         if self.sparse_enabled is not None:
             return bool(self.sparse_enabled)
-        return bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
+        return bool(settings.SPARSE_RETRIEVAL_ENABLED)
 
     def _resolve_sparse_provider_status(self, *, sparse_enabled: bool) -> dict[str, Any]:
         from app.rag.retrieval.sparse import resolve_sparse_provider_capability
 
         return resolve_sparse_provider_capability(
-            requested_provider=str(self.sparse_provider or ""),
+            requested_provider=self.sparse_provider,
             sparse_enabled=bool(sparse_enabled),
-            splade_model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
             default_provider="deterministic",
         )
 
     def _tenant_key(self, tenant_id: UUID | None) -> str:
-        return str(tenant_id or settings.DEFAULT_TENANT_ID)
+        return str((tenant_id if tenant_id else settings.DEFAULT_TENANT_ID))
 
     @staticmethod
     def _resolve_tenant_uuid(tenant_id: UUID | None) -> UUID | None:
         if tenant_id is not None:
             return tenant_id
         try:
-            return UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            return UUID(str(settings.DEFAULT_TENANT_ID))
         except (TypeError, ValueError, AttributeError):
             return None
 
@@ -274,7 +241,7 @@ class HybridRetriever(
         dataset_ids = self._explicit_dataset_scope_ids()
         if not dataset_ids:
             return metadata_filter
-        scoped_filter = dict(metadata_filter or {})
+        scoped_filter = dict((metadata_filter if metadata_filter is not None else {}))
         scoped_filter.setdefault("dataset_id", self._dataset_scope_filter_value(dataset_ids))
         return scoped_filter
 
@@ -290,10 +257,7 @@ class HybridRetriever(
         *,
         embedding_space: str,
         dataset_ids: tuple[UUID, ...] | None = None,
-    ) -> dict[str, Any] | None:
-        if not metadata_filter and not embedding_space and not dataset_ids:
-            return None
-
+    ) -> dict[str, Any]:
         vector_allowed = {
             "tenant_id",
             "dataset_id",
@@ -312,7 +276,7 @@ class HybridRetriever(
             "partition_keys",
         }
         vf: dict[str, Any] = {}
-        for k, v in (metadata_filter or {}).items():
+        for k, v in (metadata_filter if metadata_filter is not None else {}).items():
             if not isinstance(k, str):
                 continue
             if "." in k:
@@ -330,7 +294,7 @@ class HybridRetriever(
             vf["dataset_id"] = HybridRetriever._dataset_scope_filter_value(dataset_ids)
         if embedding_space:
             vf["embedding_space_hash"] = {"$in": [embedding_space, ""]}
-        return vf or None
+        return vf
 
     @staticmethod
     def _tag_vector_hits_with_expected_space(
@@ -365,7 +329,7 @@ class HybridRetriever(
             try:
                 shard_filter = self._build_vector_filter(
                     metadata_filter,
-                    embedding_space=str(shard_runtime.embedding_space_hash or "").strip(),
+                    embedding_space=shard_runtime.embedding_space_hash.strip(),
                     dataset_ids=shard_dataset_ids,
                 )
                 if shard_runtime.dataset_scoped:
@@ -389,7 +353,7 @@ class HybridRetriever(
                     )
                 return (
                     self._tag_vector_hits_with_expected_space(
-                        hits, expected_space=str(shard_runtime.embedding_space_hash or "").strip()
+                        hits, expected_space=shard_runtime.embedding_space_hash.strip()
                     ),
                     None,
                 )
@@ -417,7 +381,7 @@ class HybridRetriever(
 
         max_workers = min(
             len(runtime_shards),
-            max(1, int(getattr(settings, "RAG_VECTOR_SHARD_MAX_CONCURRENCY", 4) or 1)),
+            max(1, int(settings.RAG_VECTOR_SHARD_MAX_CONCURRENCY)),
         )
         if max_workers <= 1:
             outcomes = [search_shard(shard) for shard in runtime_shards]
@@ -442,7 +406,9 @@ class HybridRetriever(
             raw_items = []
 
         for raw in raw_items:
-            text = str(raw or "").strip()
+            if raw is None:
+                continue
+            text = str(raw).strip()
             if not text:
                 continue
             norm = text.casefold()
@@ -466,7 +432,7 @@ class HybridRetriever(
         if explicit_keys:
             return explicit_keys
 
-        explicit_entity = str(entity_key or "").strip()
+        explicit_entity = str((entity_key if entity_key is not None else "")).strip()
         if explicit_entity:
             return [explicit_entity]
 
@@ -500,57 +466,46 @@ class HybridRetriever(
         if not keys:
             return metadata_filter, None
 
-        merged = dict(metadata_filter or {})
+        merged = dict((metadata_filter if metadata_filter is not None else {}))
         existing = merged.get("partition_keys")
         if existing is None:
             merged["partition_keys"] = {"$in": list(keys)}
         elif isinstance(existing, dict) and isinstance(existing.get("$in"), (list, tuple, set)):
-            allowed = {str(v or "").strip() for v in existing.get("$in") or [] if str(v or "").strip()}
+            allowed = set()
+            for value in existing["$in"]:
+                if value is None:
+                    continue
+                text = str(value).strip()
+                if text:
+                    allowed.add(text)
             merged["partition_keys"] = {"$in": [k for k in keys if k in allowed]}
         else:
-            existing_text = str(existing or "").strip()
+            existing_text = str(existing).strip()
             merged["partition_keys"] = {"$in": [k for k in keys if k == existing_text]}
 
+        routing_entity_key = entity_key
+        if not routing_entity_key:
+            routing_entity_key = self.entity_key
+        routing_entity_key = routing_entity_key.strip() if routing_entity_key is not None else None
+        if not routing_entity_key:
+            routing_entity_key = None
+        routing_candidates = entity_candidates
+        if not routing_candidates:
+            routing_candidates = self.entity_candidates
         meta = {
-            "entity_key": (str(entity_key or self.entity_key or "").strip() or None),
+            "entity_key": routing_entity_key,
             "partition_keys": list(keys),
-            "candidates_count": int(len(entity_candidates or self.entity_candidates or [])),
+            "candidates_count": len(routing_candidates) if routing_candidates else 0,
         }
         return merged, meta
 
     @staticmethod
     def _result_content_from_doc(doc: Document) -> str:
-        meta = doc.metadata or {}
+        meta = doc.metadata
         preserved = meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY)
         if isinstance(preserved, str) and preserved:
             return preserved
-        return str(doc.page_content or "")
-
-    @staticmethod
-    def _normalize_document_questions(value: Any, *, max_items: int = 5) -> list[str]:
-        return normalize_document_questions(value, max_items=max_items)
-
-    @staticmethod
-    def _rerank_text_from_result(result: dict[str, Any]) -> str:
-        return rerank_text_from_result(result)
-
-    def _augment_retrieval_corpus_text(self, *, content: str, metadata: dict[str, Any]) -> tuple[str, bool]:
-        return augment_retrieval_corpus_text(content=content, metadata=metadata)
-
-    def _prepare_retrieval_document(self, doc: Document) -> Document:
-        return prepare_retrieval_document(doc, log_fallback=_log_retriever_fallback)
-
-    def _question_channel_overlap_score(
-        self,
-        *,
-        query_tokens: list[str],
-        metadata: dict[str, Any],
-    ) -> float:
-        return question_channel_overlap_score(
-            query_tokens=query_tokens,
-            metadata=metadata,
-            tokenize=self._bm25_tokenize,
-        )
+        return doc.page_content
 
     def _resolve_embedding_runtime(self, *, tenant_id: UUID | None) -> DatasetEmbeddingRuntimeConfig:
         dataset_ids = self._explicit_dataset_scope_ids()
@@ -564,10 +519,7 @@ class HybridRetriever(
     @staticmethod
     def _default_embedding_runtime() -> DatasetEmbeddingRuntimeConfig:
         runtime = resolve_dataset_embedding_runtime(None)
-        return cast(
-            DatasetEmbeddingRuntimeConfig,
-            replace(runtime, embedding_space_hash=current_embedding_space_hash()),
-        )
+        return replace(runtime, embedding_space_hash=current_embedding_space_hash())
 
     def _runtime_from_dataset_shards(
         self,
@@ -628,7 +580,7 @@ class HybridRetriever(
                 dataset_ids=(dataset_id,),
                 reason="unavailable",
             )
-        meta = row[0] if row else None
+        meta = row[0]
         if meta is not None and not isinstance(meta, dict):
             raise _dataset_scoped_runtime_lookup_error(
                 tenant_id=tenant_id,
@@ -644,7 +596,9 @@ class HybridRetriever(
         tenant_id: UUID | None,
         dataset_ids: tuple[UUID, ...] | None = None,
     ) -> list[tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]]]:
-        scope_dataset_ids = self._normalize_dataset_scope_ids(dataset_ids or self._explicit_dataset_scope_ids())
+        scope_dataset_ids = self._normalize_dataset_scope_ids(
+            (dataset_ids if dataset_ids else self._explicit_dataset_scope_ids())
+        )
         if tenant_id is None or not scope_dataset_ids:
             return []
 
@@ -714,12 +668,9 @@ class HybridRetriever(
         current_space = current_embedding_space_hash()
         grouped: "OrderedDict[DatasetEmbeddingRuntimeConfig, list[UUID]]" = OrderedDict()
         for dataset_id in scope_dataset_ids:
-            runtime = resolve_dataset_embedding_runtime(metadata_by_id.get(str(dataset_id)))
+            runtime = resolve_dataset_embedding_runtime(metadata_by_id[str(dataset_id)])
             if not runtime.dataset_scoped:
-                runtime = cast(
-                    DatasetEmbeddingRuntimeConfig,
-                    replace(runtime, embedding_space_hash=current_space),
-                )
+                runtime = replace(runtime, embedding_space_hash=current_space)
             grouped.setdefault(runtime, []).append(dataset_id)
         return [(runtime, tuple(group_ids)) for runtime, group_ids in grouped.items()]
 
@@ -771,21 +722,21 @@ class HybridRetriever(
     ) -> list[dict[str, Any]]:
         embeddings = create_embeddings_for_runtime(embedding_runtime)
         query_vector = embeddings.embed_query(query)
-        scoped_filter = dict(metadata_filter or {})
+        scoped_filter = dict((metadata_filter if metadata_filter is not None else {}))
         if tenant_id is not None:
             scoped_filter.setdefault("tenant_id", str(tenant_id))
         if document_ids:
             scoped_filter["document_id"] = {"$in": [str(doc_id) for doc_id in document_ids]}
         adapter = get_milvus_adapter(resolve_collection_name(embedding_runtime.collection_name))
         native_hybrid_meta: dict[str, Any] = {
-            "enabled": bool(getattr(settings, "MILVUS_NATIVE_HYBRID", False)),
+            "enabled": bool(settings.MILVUS_NATIVE_HYBRID),
             "used": False,
             "fallback_reason": None,
         }
         results: list[dict[str, Any]] = []
         can_try_native_hybrid = bool(
             native_hybrid_meta["enabled"]
-            and str(getattr(settings, "VECTOR_BACKEND", "") or "").strip().lower() == "milvus"
+            and str(settings.VECTOR_BACKEND).strip().lower() == "milvus"
             and self._effective_sparse_enabled()
         )
         if can_try_native_hybrid:
@@ -799,17 +750,11 @@ class HybridRetriever(
                     .lower()
                     or "deterministic"
                 )
-                synonyms = parse_synonyms(str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or ""))
+                synonyms = parse_synonyms(str(settings.SPARSE_RETRIEVAL_SYNONYMS))
                 encoder = get_sparse_encoder(
                     provider=sparse_provider,
                     synonyms=synonyms,
-                    synonyms_raw=str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or ""),
-                    model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-                    device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-                    batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-                    max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-                    top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-                    min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+                    synonyms_raw=str(settings.SPARSE_RETRIEVAL_SYNONYMS),
                 )
                 sparse_query_vector = self._sparse_query_vector(encoder, query)
                 if not getattr(sparse_query_vector, "weights", None):
@@ -819,7 +764,7 @@ class HybridRetriever(
                         query_vector=query_vector,
                         sparse_query_vector=sparse_query_vector,
                         top_k=max(1, top_k * 2),
-                        metadata_filter=scoped_filter or None,
+                        metadata_filter=(scoped_filter),
                     )
                     native_hybrid_meta["used"] = True
                     native_hybrid_meta["provider"] = sparse_provider
@@ -832,7 +777,7 @@ class HybridRetriever(
             results = adapter.search(
                 query_vector=query_vector,
                 top_k=max(1, top_k * 2),
-                metadata_filter=scoped_filter or None,
+                metadata_filter=(scoped_filter),
             )
             if can_try_native_hybrid and native_hybrid_meta.get("fallback_reason") is None:
                 native_hybrid_meta["fallback_reason"] = "empty_result_fallback"
@@ -848,7 +793,7 @@ class HybridRetriever(
         document_ids: list[UUID] | None,
         dataset_ids: list[UUID] | tuple[UUID, ...] | None = None,
     ) -> str | None:
-        tenant_uuid = tenant_id or self.tenant_id
+        tenant_uuid = tenant_id if tenant_id else self.tenant_id
         if tenant_uuid is None:
             return None
 
@@ -857,11 +802,11 @@ class HybridRetriever(
         )
         dataset_id = scope_dataset_ids[0] if len(scope_dataset_ids) == 1 else None
         multi_dataset_scope = scope_dataset_ids if len(scope_dataset_ids) > 1 else ()
-        normalized_document_ids = list(dict.fromkeys(document_ids or []))
+        normalized_document_ids = list(dict.fromkeys((document_ids if document_ids is not None else [])))
         document_scope = tuple(sorted(str(document_id) for document_id in normalized_document_ids))
         scope_key = (
             str(tenant_uuid),
-            str(dataset_id or ""),
+            str(dataset_id) if dataset_id is not None else None,
             tuple(str(dataset_scope_id) for dataset_scope_id in multi_dataset_scope),
             document_scope,
         )
@@ -944,11 +889,11 @@ class HybridRetriever(
             score = float(item.get("score", 0.0) or 0.0)
             meta = dict(item.get("metadata") or {})
             meta.setdefault("visual_parser", "colpali")
-            meta["colpali_score"] = float(score)
+            meta["colpali_score"] = score
             item["metadata"] = meta
-            item["colpali_score"] = float(score)
+            item["colpali_score"] = score
             # Piggyback on lexical score so existing fusion logic can merge the channel.
-            item["lexical_score"] = float(score)
+            item["lexical_score"] = score
             item["hit_type"] = "colpali_retriever"
             out.append(item)
         return out
@@ -1004,6 +949,21 @@ class HybridRetriever(
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
         **legacy_overrides: Any,
     ) -> list[dict[str, Any]]:
+        return self._hybrid_search_batch(
+            query,
+            options=options,
+            embedding_runtime=embedding_runtime,
+            **legacy_overrides,
+        ).candidates
+
+    def _hybrid_search_batch(
+        self,
+        query: str,
+        *,
+        options: HybridSearchOptions | None = None,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
+        **legacy_overrides: Any,
+    ) -> candidate_retrieval.CandidateBatch:
         try:
             return self._hybrid_search_impl(
                 query,
@@ -1023,1526 +983,134 @@ class HybridRetriever(
         options: HybridSearchOptions | None = None,
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
         **legacy_overrides: Any,
-    ) -> list[dict[str, Any]]:
-        """Hybrid search: vector retrieval + BM25, optional reranking."""
+    ) -> candidate_retrieval.CandidateBatch:
+        """Resolve the request contract and delegate candidate retrieval."""
+        self._last_channel_metrics = empty_channel_metrics()
+        self._last_diversity_caps = {}
         search_options = _resolve_hybrid_search_options(options=options, legacy_overrides=legacy_overrides)
-        state = self._prepare_hybrid_search_state(
+        resolved_scope = self._resolve_hybrid_runtime_scope(
             query=query,
-            search_options=search_options,
+            options=search_options,
             embedding_runtime=embedding_runtime,
         )
-        cached = self._resolve_hybrid_search_cache(state)
-        if cached is not None:
-            return cached
-        self._run_hybrid_search_channels(state)
-        self._raise_vector_shard_timeout_if_needed(state)
-        merged_results = self._merge_hybrid_search_results(state)
-        out = self._finalize_hybrid_search_output(state, merged_results)
-        self._persist_hybrid_search_output(state, out)
-        return out
+        cache_enabled = bool(
+            settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED
+            or settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED
+            or settings.SEMANTIC_CACHE_ENABLED
+        )
+        request = candidate_retrieval.CandidateRequest(
+            query=query,
+            options=search_options,
+            resolved_scope=resolved_scope,
+            behavior_hash=(
+                _build_retrieval_cache_behavior_hash(retriever=self, options=search_options) if cache_enabled else None
+            ),
+        )
+        batch = candidate_retrieval.retrieve_candidates(
+            request,
+            channel_policy=self._hybrid_channel_policy(),
+            ranking_policy=self._hybrid_ranking_policy(),
+            corpus_index=get_corpus_index(),
+        )
+        self._last_channel_metrics = batch.channel_metrics
+        self._last_diversity_caps = batch.ranking.diversity if batch.ranking is not None else {}
+        if batch.collection is not None:
+            self._last_bm25_status = batch.collection.keyword.bm25.status
+            self._last_sparse_provider_status = batch.collection.auxiliary.sparse.status
+            self._lexical_pg_trgm_available = batch.collection.keyword.lexical.pg_trgm_available
+        if batch.failure is not None:
+            raise batch.failure
+        return batch
 
-    def _prepare_hybrid_search_state(
+    def _resolve_hybrid_runtime_scope(
         self,
         *,
         query: str,
-        search_options: HybridSearchOptions,
+        options: HybridSearchOptions,
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
-    ) -> dict[str, Any]:
-        state = self._base_hybrid_search_state(query=query, search_options=search_options)
-        self._configure_hybrid_runtime_filters(state, embedding_runtime=embedding_runtime)
-        self._configure_hybrid_channel_strategy(state)
-        self._configure_hybrid_cache_state(state)
-        return state
-
-    def _base_hybrid_search_state(self, *, query: str, search_options: HybridSearchOptions) -> dict[str, Any]:
-        cache_enabled = bool(
-            getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
-            or getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)
-            or getattr(settings, "SEMANTIC_CACHE_ENABLED", False)
-        )
-        channel_metrics: dict[str, Any] = {
-            "timing": {"vector_ms": 0.0, "colbert_ms": 0.0, "bm25_ms": 0.0, "lexical_ms": 0.0, "fusion_ms": 0.0},
-            "counts": {
-                "vector_candidates": 0,
-                "colbert_candidates": 0,
-                "colpali_candidates": 0,
-                "bm25_candidates": 0,
-                "lexical_candidates": 0,
-                "sparse_candidates": 0,
-            },
-            "retrieval_degraded": False,
-            "degraded_reasons": [],
-            "all_retrieval_channels_failed": False,
-        }
-        self._last_channel_metrics = channel_metrics
-        self._last_diversity_caps = {}
-        return {
-            "query": query,
-            "search_options": search_options,
-            "top_k": search_options.top_k,
-            "score_threshold": search_options.score_threshold,
-            "document_ids": search_options.document_ids,
-            "tenant_id": search_options.tenant_id,
-            "tenant_uuid": search_options.tenant_id or self.tenant_id,
-            "alpha": search_options.alpha,
-            "enable_weight_rerank": search_options.enable_weight_rerank,
-            "vector_weight": search_options.vector_weight,
-            "keyword_weight": search_options.keyword_weight,
-            "retrieval_mode": str(search_options.retrieval_mode or "hybrid").lower(),
-            "mmr_lambda": search_options.mmr_lambda,
-            "mmr_fetch_k_multiplier": search_options.mmr_fetch_k_multiplier,
-            "behavior_hash": (
-                _build_retrieval_cache_behavior_hash(retriever=self, options=search_options) if cache_enabled else None
-            ),
-            "requested_k": search_options.requested_k,
-            "metadata_filter": search_options.metadata_filter,
-            "entity_key": search_options.entity_key,
-            "partition_keys": search_options.partition_keys,
-            "entity_candidates": search_options.entity_candidates,
-            "channel_metrics": channel_metrics,
-            "channel_health": RetrievalChannelHealth(),
-            "vector_elapsed_ms": 0.0,
-            "colbert_elapsed_ms": 0.0,
-            "bm25_elapsed_ms": 0.0,
-            "lexical_elapsed_ms": 0.0,
-            "colbert_used": False,
-            "colbert_candidates": 0,
-            "metadata_exact_protected_results": [],
-            "colpali_results": [],
-            "want_colpali": False,
-            "colpali_reason": "disabled",
-            "vector_results": [],
-            "bm25_results": [],
-            "lexical_results": [],
-            "sparse_results": [],
-            "vector_shard_failed": False,
-            "vector_shard_admission_timeout": None,
-            "lexical_run_reason": "not_run",
-            "singleflight_leader": False,
-            "distributed_singleflight_lease": None,
-            "cache_key": None,
-            "cache_hit": False,
-            "semantic_cache_hit": False,
-            "corpus_cache_token": None,
-        }
-
-    def _configure_hybrid_runtime_filters(
-        self,
-        state: dict[str, Any],
-        *,
-        embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
-    ) -> None:
-        full_metadata_filter = (
-            state["metadata_filter"] if (state["metadata_filter"] and self.metadata_filter_enabled) else None
-        )
+    ) -> ResolvedRetrievalScope:
+        metadata_filter = options.metadata_filter if options.metadata_filter and self.metadata_filter_enabled else None
         if self.metadata_filter_enabled:
-            full_metadata_filter, _entity_routing_meta = self._merge_entity_partition_metadata_filter(
-                query=state["query"],
-                metadata_filter=full_metadata_filter,
-                entity_key=state["entity_key"],
-                partition_keys=state["partition_keys"],
-                entity_candidates=state["entity_candidates"],
+            metadata_filter, _entity_routing = self._merge_entity_partition_metadata_filter(
+                query=query,
+                metadata_filter=metadata_filter,
+                entity_key=options.entity_key,
+                partition_keys=options.partition_keys,
+                entity_candidates=options.entity_candidates,
             )
-        full_metadata_filter = self._with_dataset_scope_filter(full_metadata_filter)
-        dataset_scope_ids = self._explicit_dataset_scope_ids()
-        runtime_scope_ids = dataset_scope_ids
-        document_scope_resolution_failed = False
-        has_unscoped_document_runtime = False
-        if not runtime_scope_ids:
-            if state["document_ids"]:
-                document_scope = self._resolve_document_dataset_scope(
-                    tenant_id=state["tenant_uuid"],
-                    document_ids=state["document_ids"],
-                )
-                if document_scope is None:
-                    document_scope_resolution_failed = True
-                else:
-                    runtime_scope_ids, has_unscoped_document_runtime = document_scope
-            else:
-                runtime_scope_ids = self._normalize_dataset_scope_ids(
-                    self._collect_lexical_dataset_scope(full_metadata_filter),
-                )
-        runtime_shards = (
-            self._resolve_dataset_runtime_shards(tenant_id=state["tenant_uuid"], dataset_ids=runtime_scope_ids)
-            if runtime_scope_ids
-            else []
-        )
-        if has_unscoped_document_runtime:
-            default_runtime = self._resolve_embedding_runtime(tenant_id=None)
-            runtime_shards_by_runtime = OrderedDict(runtime_shards)
-            runtime_shards_by_runtime[default_runtime] = ()
-            runtime_shards = list(runtime_shards_by_runtime.items())
-        runtime_shard_dataset_ids = {
-            dataset_id
-            for runtime, shard_dataset_ids in runtime_shards
-            for dataset_id in shard_dataset_ids
-            if runtime is not None
-        }
-        runtime_scope_missing_dataset_ids = tuple(
-            dataset_id for dataset_id in runtime_scope_ids if dataset_id not in runtime_shard_dataset_ids
-        )
-        runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=state["tenant_uuid"])
-        if len(runtime_shards) == 1:
-            runtime = runtime_shards[0][0]
-        embedding_space = str(runtime.embedding_space_hash or "").strip()
-        bm25_filter = None
-        vector_filter = None
-        if full_metadata_filter and isinstance(full_metadata_filter, dict):
-            bm25_filter = {
-                key: value
-                for key, value in full_metadata_filter.items()
-                if isinstance(key, str) and not str(key).startswith("document_user.")
-            }
-            vector_filter = self._build_vector_filter(bm25_filter, embedding_space=embedding_space)
-        state.update(
-            {
-                "full_metadata_filter": full_metadata_filter,
-                "dataset_scope_ids": dataset_scope_ids,
-                "runtime_scope_ids": runtime_scope_ids,
-                "document_scope_resolution_failed": document_scope_resolution_failed,
-                "runtime_shards": runtime_shards,
-                "runtime_scope_missing_dataset_ids": runtime_scope_missing_dataset_ids,
-                "embedding_runtime": runtime,
-                "embedding_space": embedding_space,
-                "bm25_filter": bm25_filter,
-                "vector_filter": vector_filter,
-            }
-        )
-
-    def _configure_hybrid_channel_strategy(self, state: dict[str, Any]) -> None:
-        state["colpali_reason"], state["want_colpali"] = self._colpali_strategy(state["query"])
-        lexical_db_enabled = bool(getattr(settings, "LEXICAL_DB_ENABLED", True))
-        bm25_index_enabled = bool(getattr(settings, "BM25_INDEX_ENABLED", True))
-        keyword_bm25_secondary_enabled = bool(getattr(settings, "RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED", False))
-        retrieval_mode = state["retrieval_mode"]
-        want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
-        want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
-        want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr") and lexical_db_enabled
-        want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and self._effective_sparse_enabled()
-        keyword_strategy = None
-        if retrieval_mode == "keyword":
-            want_bm25, keyword_strategy = self._keyword_mode_strategy(
-                lexical_db_enabled=lexical_db_enabled,
-                keyword_bm25_secondary_enabled=keyword_bm25_secondary_enabled,
-            )
-        if want_bm25 and not bm25_index_enabled:
-            want_bm25 = False
-            if keyword_strategy is not None:
-                keyword_strategy["bm25_index_enabled"] = False
-        elif keyword_strategy is not None:
-            keyword_strategy["bm25_index_enabled"] = bool(bm25_index_enabled)
-        state.update(
-            {
-                "lexical_db_enabled": lexical_db_enabled,
-                "bm25_index_enabled": bm25_index_enabled,
-                "want_vector": want_vector,
-                "want_bm25": want_bm25,
-                "want_lexical": want_lexical,
-                "want_sparse": want_sparse,
-                "keyword_strategy": keyword_strategy,
-                "lexical_hybrid_fallback_only": (
-                    bool(self.lexical_db_hybrid_fallback_only)
-                    if self.lexical_db_hybrid_fallback_only is not None
-                    else bool(getattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True))
-                ),
-            }
-        )
-
-    def _colpali_strategy(self, query: str) -> tuple[str, bool]:
-        if not bool(getattr(settings, "COLPALI_RETRIEVAL_ENABLED", False)):
-            return "COLPALI_RETRIEVAL_ENABLED=false", False
-        try:
-            from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
-
-            modality, _reasons = classify_query_modality(query)
-            if str(modality or "").strip().lower() == "image":
-                return "image_query", True
-        except Exception as exc:
-            _log_retriever_fallback("_hybrid_search", exc)
-            return "router_exception", False
-        return "disabled", False
-
-    @staticmethod
-    def _keyword_mode_strategy(
-        *,
-        lexical_db_enabled: bool,
-        keyword_bm25_secondary_enabled: bool,
-    ) -> tuple[bool, dict[str, Any]]:
-        if lexical_db_enabled:
-            return keyword_bm25_secondary_enabled, {
-                "primary": "lexical_db",
-                "secondary": "bm25" if keyword_bm25_secondary_enabled else None,
-                "bm25_secondary_enabled": bool(keyword_bm25_secondary_enabled),
-                "lexical_db_enabled": True,
-            }
-        return True, {
-            "primary": "bm25",
-            "secondary": None,
-            "bm25_secondary_enabled": False,
-            "lexical_db_enabled": False,
-            "fallback_reason": "lexical_db_disabled",
-        }
-
-    def _configure_hybrid_cache_state(self, state: dict[str, Any]) -> None:
-        metadata_filter_dataset_scoped = bool(
-            self.metadata_filter_enabled
-            and _metadata_filter_has_dataset_scope(
-                state["full_metadata_filter"] if isinstance(state["full_metadata_filter"], dict) else None
-            )
-        )
-        cache_scope = prepare_hybrid_cache_scope(
-            cache_enabled=bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)),
-            distributed_singleflight_enabled=bool(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)),
-            semantic_cache_enabled=bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)),
-            semantic_cache_dataset_scoped=bool(state["embedding_runtime"].dataset_scoped),
-            tenant_id=state["tenant_uuid"],
+        metadata_filter = self._with_dataset_scope_filter(metadata_filter)
+        scope = RetrievalScope(
+            tenant_id=options.tenant_id or self.tenant_id,
             account_id=self.account_id,
-            dataset_scope_ids=state["dataset_scope_ids"],
-            document_ids=state["document_ids"],
-            metadata_filter_dataset_scoped=metadata_filter_dataset_scoped,
-            document_scope_resolution_failed=state["document_scope_resolution_failed"],
-            runtime_scope_ids=state["runtime_scope_ids"],
-            runtime_shard_count=len(state["runtime_shards"]),
-            runtime_scope_missing_dataset_ids=state["runtime_scope_missing_dataset_ids"],
-            runtime_pipeline_values=[
-                str(runtime.embedding_space_hash or "").strip()
-                for runtime, _shard_dataset_ids in state["runtime_shards"]
-            ],
-            embedding_space=state["embedding_space"] or None,
-            cache_ttl=int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0),
-            semantic_cache_ttl=int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 0) or 0),
+            dataset_ids=self._explicit_dataset_scope_ids(),
+            document_ids=tuple(options.document_ids or ()),
+            metadata_filter=metadata_filter,
         )
-        state.update(
-            {
-                "cache_scope": cache_scope,
-                "account_id0": cache_scope.account_id,
-                "dataset_id0": cache_scope.dataset_id,
-                "pipeline_key": cache_scope.pipeline_key,
-                "doc_ids": cache_scope.document_ids,
-                "cache_eligible": cache_scope.cache_eligible,
-                "distributed_singleflight_eligible": cache_scope.distributed_singleflight_eligible,
-                "semantic_cache_eligible": cache_scope.semantic_cache_eligible,
-                "cache_meta": cache_scope.cache_meta,
-            }
-        )
-        if isinstance(self._last_channel_metrics, dict):
-            self._last_channel_metrics["cache"] = cache_scope.cache_meta
-
-    def _resolve_hybrid_search_cache(self, state: dict[str, Any]) -> list[dict[str, Any]] | None:
-        self._raise_hybrid_scope_failure_if_needed(state)
-        self._populate_candidate_corpus_token(state)
-        self._lookup_candidate_cache(state)
-        cached = self._cached_candidate_payload(state)
-        if cached is not None:
-            return cached
-        self._lookup_semantic_candidate_cache(state)
-        semantic_cached = self._cached_semantic_payload(state)
-        if semantic_cached is not None:
-            return semantic_cached
-        return self._acquire_hybrid_singleflight(state)
-
-    def _raise_hybrid_scope_failure_if_needed(self, state: dict[str, Any]) -> None:
-        scope_failure_reason = state["cache_scope"].scope_failure_reason
-        if scope_failure_reason == "missing_document_runtime":
-            exc = _dataset_scoped_runtime_lookup_error(
-                tenant_id=state["tenant_uuid"],
-                document_ids=state["document_ids"],
-                reason="unavailable",
-            )
-            state["channel_health"].failed("scope", exc)
-            state["channel_health"].publish(state["channel_metrics"])
-            raise exc
-        if scope_failure_reason == "missing_dataset_runtime":
-            exc = _dataset_scoped_runtime_lookup_error(
-                tenant_id=state["tenant_uuid"],
-                dataset_ids=state["runtime_scope_missing_dataset_ids"] or state["runtime_scope_ids"],
-                document_ids=state["document_ids"],
-                reason="unavailable",
-            )
-            state["channel_health"].failed("scope", exc)
-            state["channel_health"].publish(state["channel_metrics"])
-            raise exc
-
-    def _populate_candidate_corpus_token(self, state: dict[str, Any]) -> None:
-        if not (
-            state["cache_eligible"] or state["distributed_singleflight_eligible"] or state["semantic_cache_eligible"]
-        ):
-            return
+        db = SessionLocal()
         try:
-            state["corpus_cache_token"] = self._resolve_candidate_cache_corpus_token(
-                tenant_id=state["tenant_uuid"],
-                document_ids=state["document_ids"],
-                dataset_ids=state["runtime_scope_ids"],
-            )
-        except Exception as exc:
-            _log_retriever_fallback("_hybrid_search", exc)
-            state["corpus_cache_token"] = None
-        if state["corpus_cache_token"]:
-            return
-        if state["cache_eligible"]:
-            state["cache_eligible"] = False
-            state["cache_meta"]["skip_reason"] = "missing_corpus_cache_token"
-        if state["distributed_singleflight_eligible"]:
-            state["distributed_singleflight_eligible"] = False
-        if state["semantic_cache_eligible"]:
-            state["semantic_cache_eligible"] = False
-            state["cache_meta"]["semantic"]["skip_reason"] = "missing_corpus_cache_token"
-        state["cache_meta"]["enabled"] = bool(state["cache_eligible"])
-        state["cache_meta"]["singleflight_enabled"] = bool(state["distributed_singleflight_eligible"])
-        state["cache_meta"]["semantic"]["enabled"] = bool(state["semantic_cache_eligible"])
-
-    def _lookup_candidate_cache(self, state: dict[str, Any]) -> None:
-        state["cache_meta"]["enabled"] = bool(state["cache_eligible"])
-        state["cache_meta"]["singleflight_enabled"] = bool(state["distributed_singleflight_eligible"])
-        state["cache_meta"]["semantic"]["enabled"] = bool(state["semantic_cache_eligible"])
-        if not (state["cache_eligible"] or state["distributed_singleflight_eligible"]):
-            return
-        try:
-            state["cache_key"] = build_retrieval_candidate_cache_key(
-                tenant_id=str(state["tenant_uuid"]),
-                account_id=state["account_id0"],
-                dataset_id=state["dataset_id0"],
-                pipeline_key=state["pipeline_key"],
-                corpus_cache_token=state["corpus_cache_token"],
-                behavior_hash=state["behavior_hash"],
-                query=state["query"],
-                top_k=int(state["top_k"] or 0),
-                score_threshold=float(state["score_threshold"] or 0.0),
-                retrieval_mode=state["retrieval_mode"],
-                metadata_filter=state["full_metadata_filter"]
-                if isinstance(state["full_metadata_filter"], dict)
-                else None,
-                document_ids=state["doc_ids"],
-            )
-            state["cached"] = (
-                get_cached_retrieval_candidates(state["cache_key"])
-                if (state["cache_eligible"] and state["cache_key"])
-                else None
-            )
-        except Exception as exc:
-            _log_retriever_fallback("_hybrid_search", exc)
-            state["cached"] = None
-            state["cache_eligible"] = False
-            state["distributed_singleflight_eligible"] = False
-            state["cache_meta"]["skip_reason"] = "lookup_error"
-
-    def _cached_candidate_payload(self, state: dict[str, Any]) -> list[dict[str, Any]] | None:
-        if not state.get("cached"):
-            return None
-        state["cache_hit"] = True
-        try:
-            if isinstance(self._last_channel_metrics, dict):
-                self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
-                self._last_channel_metrics["cache"]["hit"] = True
-                self._last_channel_metrics["cache"].pop("skip_reason", None)
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-        return state["cached"][: state["top_k"]]
-
-    def _lookup_semantic_candidate_cache(self, state: dict[str, Any]) -> None:
-        if not (state["semantic_cache_eligible"] and state["corpus_cache_token"]):
-            return
-        try:
-            from app.services.semantic_cache import get_cached_semantic_payload
-
-            state["semantic_cached"], sem_meta = get_cached_semantic_payload(
-                tenant_id=str(state["tenant_uuid"]),
-                account_id=state["account_id0"],
-                dataset_id=state["dataset_id0"],
-                corpus_cache_token=str(state["corpus_cache_token"]),
-                behavior_hash=state["behavior_hash"],
-                query=state["query"],
-                top_k=int(state["top_k"] or 0),
-                score_threshold=float(state["score_threshold"] or 0.0),
-                retrieval_mode=state["retrieval_mode"],
-                metadata_filter=state["full_metadata_filter"]
-                if isinstance(state["full_metadata_filter"], dict)
-                else None,
-                document_ids=state["doc_ids"],
-            )
-            if isinstance(sem_meta, dict):
-                state["cache_meta"]["semantic"].update(sem_meta)
-        except Exception as exc:
-            _log_retriever_fallback("_hybrid_search", exc)
-            state["semantic_cached"] = None
-            state["cache_meta"]["semantic"]["skip_reason"] = "lookup_error"
-
-    def _cached_semantic_payload(self, state: dict[str, Any]) -> list[dict[str, Any]] | None:
-        if not state.get("semantic_cached"):
-            return None
-        state["semantic_cache_hit"] = True
-        try:
-            if isinstance(self._last_channel_metrics, dict):
-                self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
-                self._last_channel_metrics["cache"]["semantic"]["hit"] = True
-                self._last_channel_metrics["cache"]["semantic"].pop("skip_reason", None)
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-        return state["semantic_cached"][: state["top_k"]]
-
-    def _acquire_hybrid_singleflight(self, state: dict[str, Any]) -> list[dict[str, Any]] | None:
-        if not (state["distributed_singleflight_eligible"] and state["cache_key"] and not state["cache_hit"]):
-            return None
-        local_singleflight_leader = False
-        try:
-            state["singleflight_leader"], inflight_future = acquire_inflight_retrieval_candidates(state["cache_key"])
-            local_singleflight_leader = bool(state["singleflight_leader"])
-            if not state["singleflight_leader"]:
-                follower = self._wait_for_local_singleflight(state, inflight_future)
-                if follower is not None:
-                    return follower
-            state["cache_meta"]["singleflight_role"] = "leader"
-            follower = self._wait_for_distributed_singleflight(state)
-            if follower is not None:
-                return follower
-        except RetrievalCandidateSingleflightTimeoutError:
-            raise
-        except Exception as exc:
-            _log_retriever_fallback("_hybrid_search", exc)
-            state["singleflight_leader"] = local_singleflight_leader
-            state["distributed_singleflight_lease"] = None
-        return None
-
-    def _wait_for_local_singleflight(self, state: dict[str, Any], inflight_future: Any) -> list[dict[str, Any]] | None:
-        wait_started_at = time.perf_counter()
-        try:
-            shared_payload = wait_for_inflight_retrieval_candidates(
-                state["cache_key"],
-                inflight_future,
-                timeout_sec=max(
-                    1.0,
-                    float(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 60.0),
-                ),
-            )
+            return resolve_runtime_scope(db, scope=scope, embedding_runtime=embedding_runtime)
         finally:
-            state["cache_meta"]["local_singleflight_wait_ms"] = round(
-                max(0.0, (time.perf_counter() - wait_started_at) * 1000.0),
-                1,
-            )
-        if isinstance(shared_payload, list):
-            state["cache_meta"]["singleflight_hit"] = True
-            state["cache_meta"]["singleflight_role"] = "follower"
-            return shared_payload[: state["top_k"]]
-        return None
+            db.close()
 
-    def _wait_for_distributed_singleflight(self, state: dict[str, Any]) -> list[dict[str, Any]] | None:
-        distributed_wait_started_at = time.perf_counter()
-        try:
-            distributed_leader, distributed_payload, state["distributed_singleflight_lease"] = (
-                acquire_or_wait_for_distributed_inflight_retrieval_candidates(state["cache_key"])
-            )
-        finally:
-            state["cache_meta"]["distributed_singleflight_wait_ms"] = round(
-                max(0.0, (time.perf_counter() - distributed_wait_started_at) * 1000.0),
-                1,
-            )
-        if distributed_leader:
-            return None
-        if isinstance(distributed_payload, list):
-            state["cache_meta"]["singleflight_hit"] = True
-            state["cache_meta"]["singleflight_role"] = "follower"
-            state["cache_meta"]["distributed_singleflight_hit"] = True
-            resolve_inflight_retrieval_candidates(state["cache_key"], distributed_payload)
-            return distributed_payload[: state["top_k"]]
-        state["singleflight_leader"] = False
-        return None
-
-    def _run_hybrid_search_channels(self, state: dict[str, Any]) -> None:
-        emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
-        state["fetch_k"] = self._hybrid_fetch_k(state)
-        self._run_vector_channel_for_state(state)
-        self._run_keyword_channels_for_state(state)
-        self._run_sparse_and_colpali_channels_for_state(state)
-        self._run_single_mode_fallback_channels_for_state(state)
-        state["channel_health"].publish(state["channel_metrics"])
-
-    def _hybrid_fetch_k(self, state: dict[str, Any]) -> int:
-        fetch_k = state["top_k"] * 2
-        if state["retrieval_mode"] == "mmr":
-            fetch_k = state["top_k"] * max(1, state["mmr_fetch_k_multiplier"])
-        return fetch_k
-
-    def _run_vector_channel_for_state(self, state: dict[str, Any]) -> None:
-        if not state["want_vector"]:
-            return
-        self._run_vector_primary_search(state)
-        self._run_colbert_fallback_if_needed(state)
-
-    def _run_vector_primary_search(self, state: dict[str, Any]) -> None:
-        vector_store = get_vector_store()
-        state["channel_health"].started("vector")
-        try:
-            t0 = time.perf_counter()
-            try:
-                state["vector_results"] = self._vector_results_for_state(state, vector_store=vector_store)
-            finally:
-                state["vector_elapsed_ms"] += (time.perf_counter() - t0) * 1000
-        except Exception as exc:
-            state["channel_health"].failed("vector", exc)
-            logger.warning("Vector search failed: %s", exc)
-            state["vector_results"] = []
-
-    def _vector_results_for_state(self, state: dict[str, Any], *, vector_store: Any) -> list[dict[str, Any]]:
-        if state["runtime_scope_ids"] and not state["runtime_shards"]:
-            state["channel_health"].failed("vector", LookupError("MissingDatasetRuntime"))
-            return []
-        if state["runtime_shards"]:
-            return self._vector_results_from_runtime_shards(state, vector_store=vector_store)
-        if state["embedding_runtime"].dataset_scoped:
-            return self._vector_results_from_dataset_runtime(state)
-        results = self._vector_results_from_store_search(state, vector_store=vector_store)
-        state["channel_health"].succeeded("vector")
-        return results
-
-    def _vector_results_from_runtime_shards(self, state: dict[str, Any], *, vector_store: Any) -> list[dict[str, Any]]:
-        vector_results, shard_failures = self._search_vector_runtime_shards(
-            query=state["query"],
-            top_k=state["fetch_k"],
-            score_threshold=state["score_threshold"],
-            document_ids=state["document_ids"],
-            tenant_id=state["tenant_uuid"],
-            metadata_filter=state["bm25_filter"],
-            runtime_shards=state["runtime_shards"],
-            vector_store=vector_store,
+    def _hybrid_channel_policy(self) -> channel_collection.ChannelPolicy:
+        lexical_hybrid_fallback_only = (
+            bool(self.lexical_db_hybrid_fallback_only)
+            if self.lexical_db_hybrid_fallback_only is not None
+            else bool(settings.LEXICAL_DB_HYBRID_FALLBACK_ONLY)
         )
-        for exc in shard_failures:
-            state["channel_health"].failed("vector", exc)
-            if state["vector_shard_admission_timeout"] is None and isinstance(exc, RetrievalAdmissionTimeoutError):
-                state["vector_shard_admission_timeout"] = exc
-        state["vector_shard_failed"] = bool(shard_failures)
-        if state["runtime_scope_missing_dataset_ids"]:
-            state["channel_health"].failed("vector", LookupError("MissingDatasetRuntime"))
-            state["vector_shard_failed"] = True
-        if len(shard_failures) < len(state["runtime_shards"]):
-            state["channel_health"].succeeded("vector")
-        return vector_results
-
-    def _vector_results_from_dataset_runtime(self, state: dict[str, Any]) -> list[dict[str, Any]]:
-        vector_results = self._search_dataset_scoped_vectors(
-            query=state["query"],
-            top_k=state["fetch_k"],
-            score_threshold=state["score_threshold"],
-            document_ids=state["document_ids"],
-            tenant_id=state["tenant_uuid"],
-            metadata_filter=state["vector_filter"],
-            embedding_runtime=state["embedding_runtime"],
-        )
-        return self._tag_vector_hits_with_expected_space(
-            vector_results,
-            expected_space=str(state["embedding_runtime"].embedding_space_hash or "").strip(),
-        )
-
-    def _vector_results_from_store_search(self, state: dict[str, Any], *, vector_store: Any) -> list[dict[str, Any]]:
-        search_kwargs = {
-            "query": state["query"],
-            "top_k": state["fetch_k"],
-            "score_threshold": state["score_threshold"],
-            "document_ids": state["document_ids"],
-            "tenant_id": state["tenant_uuid"],
-        }
-        if state["vector_filter"]:
-            search_kwargs["metadata_filter"] = state["vector_filter"]
-        return vector_store.search(**search_kwargs)
-
-    def _run_colbert_fallback_if_needed(self, state: dict[str, Any]) -> None:
-        if state["vector_results"] or not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
-            return
-        state["channel_health"].started("colbert")
-        try:
-            t0 = time.perf_counter()
-            try:
-                state["vector_results"] = self._search_colbert_ann(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                )
-                state["colbert_used"] = True
-                state["colbert_candidates"] = int(len(state["vector_results"] or []))
-                state["channel_health"].succeeded("colbert")
-            finally:
-                delta_ms = (time.perf_counter() - t0) * 1000
-                state["vector_elapsed_ms"] += delta_ms
-                state["colbert_elapsed_ms"] += delta_ms
-        except Exception as exc:
-            state["channel_health"].failed("colbert", exc)
-            logger.warning("ColBERT ANN search failed: %s", exc)
-            state["vector_results"] = []
-
-    def _run_keyword_channels_for_state(self, state: dict[str, Any]) -> None:
-        if state["retrieval_mode"] == "keyword":
-            self._run_keyword_mode_channels(state)
-            return
-        self._run_hybrid_keyword_channels(state)
-
-    def _run_keyword_mode_channels(self, state: dict[str, Any]) -> None:
-        if state["want_lexical"]:
-            state["lexical_results"] = self._timed_search_channel(
-                state,
-                channel="lexical_db",
-                search_fn=lambda: self._search_lexical_db(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                ),
-                warning_message=LEXICAL_DB_SEARCH_FAILED_LOG,
-                timing_key="lexical_elapsed_ms",
-                success_reason="keyword_primary",
-            )
-        if state["want_bm25"] or (not state["lexical_results"] and state["bm25_index_enabled"]):
-            state["bm25_results"] = self._timed_search_channel(
-                state,
-                channel="bm25",
-                search_fn=lambda: self._search_bm25(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                ),
-                warning_message="BM25 search failed: %s",
-                timing_key="bm25_elapsed_ms",
-            )
-
-    def _run_hybrid_keyword_channels(self, state: dict[str, Any]) -> None:
-        if state["want_bm25"]:
-            state["bm25_results"] = self._timed_search_channel(
-                state,
-                channel="bm25",
-                search_fn=lambda: self._search_bm25(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                ),
-                warning_message="BM25 search failed: %s",
-                timing_key="bm25_elapsed_ms",
-            )
-        self._run_lexical_fallback_channels(state)
-
-    def _timed_search_channel(
-        self,
-        state: dict[str, Any],
-        *,
-        channel: str,
-        search_fn,
-        warning_message: str,
-        timing_key: str,
-        success_reason: str | None = None,
-    ) -> list[dict[str, Any]]:
-        state["channel_health"].started(channel)
-        t0 = time.perf_counter()
-        try:
-            results = search_fn()
-            state["channel_health"].succeeded(channel)
-            if success_reason is not None:
-                state["lexical_run_reason"] = success_reason
-            return results
-        except Exception as exc:
-            state["channel_health"].failed(channel, exc)
-            logger.warning(warning_message, exc)
-            if channel == "lexical_db":
-                state["lexical_run_reason"] = "error"
-            return []
-        finally:
-            state[timing_key] += (time.perf_counter() - t0) * 1000
-
-    def _run_lexical_fallback_channels(self, state: dict[str, Any]) -> None:
-        primary_candidate_count = len(state["vector_results"] or []) + len(state["bm25_results"] or [])
-        metadata_exact_fallback_enabled = (
+        lexical_metadata_exact_fallback_enabled = (
             bool(self.lexical_db_hybrid_metadata_exact_fallback_enabled)
             if self.lexical_db_hybrid_metadata_exact_fallback_enabled is not None
-            else bool(getattr(settings, "LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED", True))
+            else bool(settings.LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED)
         )
-        metadata_exact_anchor_like_query = bool(
-            metadata_exact_fallback_enabled and _query_looks_like_cjk_metadata_anchor(state["query"])
-        )
-        primary_has_metadata_exact_anchor = False
-        if metadata_exact_anchor_like_query:
-            primary_has_metadata_exact_anchor = _results_contain_metadata_exact_anchor(
-                state["query"],
-                list(state["vector_results"] or []) + list(state["bm25_results"] or []),
-                limit=max(1, int(state["top_k"] or 0)),
-            )
-        metadata_exact_fallback = bool(state["lexical_hybrid_fallback_only"] and metadata_exact_anchor_like_query)
-        should_run_lexical = bool(state["want_lexical"]) and (
-            not state["lexical_hybrid_fallback_only"]
-            or primary_candidate_count < max(1, int(state["top_k"] or 0))
-            or metadata_exact_fallback
-        )
-        if should_run_lexical:
-            success_reason = (
-                "hybrid_parallel"
-                if not state["lexical_hybrid_fallback_only"]
-                else ("hybrid_metadata_exact_fallback" if metadata_exact_fallback else "hybrid_fallback")
-            )
-            state["lexical_results"] = self._timed_search_channel(
-                state,
-                channel="lexical_db",
-                search_fn=lambda: self._search_lexical_db(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                ),
-                warning_message=LEXICAL_DB_SEARCH_FAILED_LOG,
-                timing_key="lexical_elapsed_ms",
-                success_reason=success_reason,
-            )
-        elif state["want_lexical"]:
-            state["lexical_run_reason"] = "skipped_primary_candidates_sufficient"
-        self._run_metadata_exact_db_fallback(
-            state, metadata_exact_fallback_enabled, metadata_exact_fallback, primary_has_metadata_exact_anchor
-        )
-
-    def _run_metadata_exact_db_fallback(
-        self,
-        state: dict[str, Any],
-        metadata_exact_fallback_enabled: bool,
-        metadata_exact_fallback: bool,
-        primary_has_metadata_exact_anchor: bool,
-    ) -> None:
-        metadata_exact_db_results: list[dict[str, Any]] = []
         metadata_exact_db_enabled = (
             bool(self.metadata_exact_db_fallback_enabled)
             if self.metadata_exact_db_fallback_enabled is not None
-            else bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True))
+            else bool(settings.RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED)
         )
-        metadata_exact_db_reason = "not_run"
-        if metadata_exact_db_enabled and metadata_exact_fallback:
-            lexical_has_metadata_exact_anchor = _results_contain_metadata_exact_anchor(
-                state["query"],
-                state["lexical_results"],
-                limit=max(1, int(state["top_k"] or 0)),
-            )
-            t0 = time.perf_counter()
-            try:
-                metadata_exact_db_results = self._search_metadata_exact_anchor_db(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                )
-                metadata_exact_db_reason = (
-                    "hybrid_metadata_exact_fallback_enrich"
-                    if lexical_has_metadata_exact_anchor
-                    else "hybrid_metadata_exact_fallback"
-                )
-            except Exception as exc:
-                logger.debug("Metadata exact DB fallback failed: %s", exc)
-                metadata_exact_db_results = []
-                metadata_exact_db_reason = "error"
-            finally:
-                state["lexical_elapsed_ms"] += (time.perf_counter() - t0) * 1000
-            self._append_metadata_exact_results(state, metadata_exact_db_results)
-        elif not metadata_exact_db_enabled:
-            metadata_exact_db_reason = "disabled"
-        if state["want_lexical"] and isinstance(self._last_channel_metrics, dict):
-            self._last_channel_metrics["lexical_metadata_exact_fallback"] = {
-                "enabled": bool(metadata_exact_fallback_enabled),
-                "query_anchor_like": bool(
-                    metadata_exact_fallback_enabled and _query_looks_like_cjk_metadata_anchor(state["query"])
-                ),
-                "primary_has_exact_anchor": bool(primary_has_metadata_exact_anchor),
-                "triggered": bool(metadata_exact_fallback),
-            }
-            self._last_channel_metrics["metadata_exact_db"] = {
-                "enabled": bool(metadata_exact_db_enabled),
-                "used": bool(metadata_exact_db_results),
-                "candidates": int(len(metadata_exact_db_results or [])),
-                "run_reason": metadata_exact_db_reason,
-            }
-
-    def _append_metadata_exact_results(
-        self, state: dict[str, Any], metadata_exact_db_results: list[dict[str, Any]]
-    ) -> None:
-        if not metadata_exact_db_results:
-            return
-        seen_chunk_ids = {
-            str((item.get("metadata") or {}).get("chunk_id") or item.get("chunk_id") or "")
-            for item in state["lexical_results"]
-            if isinstance(item, dict)
-        }
-        for item in metadata_exact_db_results:
-            cid = str((item.get("metadata") or {}).get("chunk_id") or item.get("chunk_id") or "")
-            if cid and cid in seen_chunk_ids:
-                continue
-            if cid:
-                seen_chunk_ids.add(cid)
-            state["lexical_results"].append(item)
-            state["metadata_exact_protected_results"].append(item)
-
-    def _run_sparse_and_colpali_channels_for_state(self, state: dict[str, Any]) -> None:
-        self._last_sparse_provider_status = self._resolve_sparse_provider_status(
-            sparse_enabled=self._effective_sparse_enabled()
-        )
-        if not state["want_sparse"]:
-            self._last_sparse_provider_status = {
-                **(self._last_sparse_provider_status or {}),
-                "outcome": "skipped",
-                "candidates": 0,
-            }
-        if state["want_sparse"]:
-            state["channel_health"].started("sparse")
-            try:
-                state["sparse_results"] = self._search_sparse(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                )
-                state["channel_health"].succeeded("sparse")
-            except Exception as exc:
-                state["channel_health"].failed("sparse", exc)
-                logger.warning("Sparse search failed: %s", exc)
-                state["sparse_results"] = []
-        if state["want_colpali"]:
-            state["channel_health"].started("colpali")
-            try:
-                state["colpali_results"] = self._search_colpali_retriever(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                )
-                state["channel_health"].succeeded("colpali")
-            except Exception as exc:
-                state["channel_health"].failed("colpali", exc)
-                logger.warning("ColPali retriever failed: %s", exc)
-                state["colpali_results"] = []
-
-    def _run_single_mode_fallback_channels_for_state(self, state: dict[str, Any]) -> None:
-        if state["retrieval_mode"] == "vector" and (not state["vector_results"] or state["vector_shard_failed"]):
-            self._run_vector_fallback_channels(state)
-        elif (
-            state["retrieval_mode"] == "keyword"
-            and not state["bm25_results"]
-            and not state["lexical_results"]
-            and not state["sparse_results"]
-        ):
-            self._run_keyword_vector_fallback(state)
-
-    def _run_vector_fallback_channels(self, state: dict[str, Any]) -> None:
-        state["bm25_results"] = self._timed_search_channel(
-            state,
-            channel="bm25",
-            search_fn=lambda: self._search_bm25(
-                query=state["query"],
-                top_k=state["fetch_k"],
-                document_ids=state["document_ids"],
-                tenant_id=state["tenant_uuid"],
-                metadata_filter=state["bm25_filter"],
+        return channel_collection.ChannelPolicy(
+            sparse=corpus_channels.SparseSearchPolicy(
+                enabled=self._effective_sparse_enabled(),
+                provider=self.sparse_provider,
             ),
-            warning_message="BM25 search failed: %s",
-            timing_key="bm25_elapsed_ms",
+            native_hybrid_enabled=bool(settings.MILVUS_NATIVE_HYBRID),
+            colbert_enabled=bool(settings.COLBERT_RETRIEVAL_ENABLED),
+            colpali_enabled=bool(settings.COLPALI_RETRIEVAL_ENABLED),
+            bm25_enabled=is_milvus_bm25_enabled(),
+            lexical_enabled=bool(settings.LEXICAL_DB_ENABLED),
+            keyword_bm25_secondary_enabled=bool(settings.RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED),
+            lexical_hybrid_fallback_only=lexical_hybrid_fallback_only,
+            lexical_metadata_exact_fallback_enabled=lexical_metadata_exact_fallback_enabled,
+            metadata_exact_db_enabled=metadata_exact_db_enabled,
+            pg_trgm_available=self._lexical_pg_trgm_available,
         )
-        state["lexical_results"] = self._timed_search_channel(
-            state,
-            channel="lexical_db",
-            search_fn=lambda: self._search_lexical_db(
-                query=state["query"],
-                top_k=state["fetch_k"],
-                document_ids=state["document_ids"],
-                tenant_id=state["tenant_uuid"],
-                metadata_filter=state["bm25_filter"],
+
+    def _hybrid_ranking_policy(self) -> candidate_ranking.RankingPolicy:
+        return candidate_ranking.RankingPolicy(
+            fusion=candidate_ranking.FusionPolicy(
+                strategy=self.fusion_strategy,
+                rrf_k=self.rrf_k,
+                budgets=self.fusion_budgets,
+                min_scores=self.fusion_min_scores,
+                weights=self.fusion_weights,
             ),
-            warning_message=LEXICAL_DB_SEARCH_FAILED_LOG,
-            timing_key="lexical_elapsed_ms",
-            success_reason="vector_fallback",
-        )
-        if state["want_sparse"]:
-            state["channel_health"].started("sparse")
-            try:
-                state["sparse_results"] = self._search_sparse(
-                    query=state["query"],
-                    top_k=state["fetch_k"],
-                    document_ids=state["document_ids"],
-                    tenant_id=state["tenant_uuid"],
-                    metadata_filter=state["bm25_filter"],
-                )
-                state["channel_health"].succeeded("sparse")
-            except Exception as exc:
-                state["channel_health"].failed("sparse", exc)
-                logger.warning("Sparse search failed: %s", exc)
-                state["sparse_results"] = []
-
-    def _run_keyword_vector_fallback(self, state: dict[str, Any]) -> None:
-        vector_store = get_vector_store()
-        state["channel_health"].started("vector")
-        try:
-            t0 = time.perf_counter()
-            try:
-                if state["runtime_scope_ids"] and not state["runtime_shards"]:
-                    state["channel_health"].failed("vector", LookupError("MissingDatasetRuntime"))
-                    state["vector_results"] = []
-                elif state["runtime_shards"]:
-                    state["vector_results"], shard_failures = self._search_vector_runtime_shards(
-                        query=state["query"],
-                        top_k=state["fetch_k"],
-                        score_threshold=state["score_threshold"],
-                        document_ids=state["document_ids"],
-                        tenant_id=state["tenant_uuid"],
-                        metadata_filter=state["bm25_filter"],
-                        runtime_shards=state["runtime_shards"],
-                        vector_store=vector_store,
-                    )
-                    for exc in shard_failures:
-                        state["channel_health"].failed("vector", exc)
-                        if state["vector_shard_admission_timeout"] is None and isinstance(
-                            exc, RetrievalAdmissionTimeoutError
-                        ):
-                            state["vector_shard_admission_timeout"] = exc
-                    if state["runtime_scope_missing_dataset_ids"]:
-                        state["channel_health"].failed("vector", LookupError("MissingDatasetRuntime"))
-                    if len(shard_failures) < len(state["runtime_shards"]):
-                        state["channel_health"].succeeded("vector")
-                elif state["embedding_runtime"].dataset_scoped:
-                    state["vector_results"] = self._search_dataset_scoped_vectors(
-                        query=state["query"],
-                        top_k=state["fetch_k"],
-                        score_threshold=state["score_threshold"],
-                        document_ids=state["document_ids"],
-                        tenant_id=state["tenant_uuid"],
-                        metadata_filter=state["vector_filter"],
-                        embedding_runtime=state["embedding_runtime"],
-                    )
-                    state["vector_results"] = self._tag_vector_hits_with_expected_space(
-                        state["vector_results"],
-                        expected_space=str(state["embedding_runtime"].embedding_space_hash or "").strip(),
-                    )
-                    state["channel_health"].succeeded("vector")
-                else:
-                    fallback_kwargs = {
-                        "query": state["query"],
-                        "top_k": state["fetch_k"],
-                        "score_threshold": state["score_threshold"],
-                        "document_ids": state["document_ids"],
-                        "tenant_id": state["tenant_uuid"],
-                    }
-                    if state["vector_filter"]:
-                        fallback_kwargs["metadata_filter"] = state["vector_filter"]
-                    state["vector_results"] = vector_store.search(**fallback_kwargs)
-                    state["channel_health"].succeeded("vector")
-            finally:
-                state["vector_elapsed_ms"] += (time.perf_counter() - t0) * 1000
-        except Exception as exc:
-            state["channel_health"].failed("vector", exc)
-            logger.warning("Vector search failed: %s", exc)
-            state["vector_results"] = []
-
-    def _raise_vector_shard_timeout_if_needed(self, state: dict[str, Any]) -> None:
-        if not (
-            state["vector_shard_admission_timeout"] is not None
-            and not state["vector_results"]
-            and not state["bm25_results"]
-            and not state["lexical_results"]
-            and not state["sparse_results"]
-            and not state["colpali_results"]
-        ):
-            return
-        if state["singleflight_leader"] and state["cache_key"]:
-            reject_current_inflight_retrieval_candidates(state["vector_shard_admission_timeout"])
-        release_distributed_inflight_retrieval_candidates(state["distributed_singleflight_lease"])
-        raise state["vector_shard_admission_timeout"]
-
-    def _merge_hybrid_search_results(self, state: dict[str, Any]) -> list[dict[str, Any]]:
-        self._prepare_channel_results_for_merge(state)
-        self._record_channel_diagnostics_from_state(state)
-        merged_results = self._merge_results_for_state(state)
-        merged_results = self._apply_hybrid_rerank_stack(state, merged_results)
-        return self._apply_hybrid_result_postprocessing(state, merged_results)
-
-    def _prepare_channel_results_for_merge(self, state: dict[str, Any]) -> None:
-        prepared_channel_results = prepare_hybrid_channel_results(
-            query=state["query"],
-            vector_results=state["vector_results"],
-            bm25_results=state["bm25_results"],
-            lexical_results=state["lexical_results"],
-            sparse_results=state["sparse_results"],
-            document_ids=state["document_ids"],
-            vector_filter=state["vector_filter"],
-            runtime_shards_present=bool(state["runtime_shards"]),
-            chunk_id_lookup=self._chunk_id_lookup.get(self._tenant_key(state["tenant_id"])) or {},
-            match_metadata_filter=self._match_metadata_filter,
-            metadata_exact_pre_fusion_enabled=bool(
-                getattr(settings, "RETRIEVAL_METADATA_EXACT_PRE_FUSION_ENABLED", False)
+            dedup=candidate_ranking.DedupPolicy(
+                enabled=self.dedup_enabled,
+                jaccard_threshold=self.dedup_jaccard_threshold,
+                max_compare=self.dedup_max_compare,
+                max_chunks_per_record_identity=self.max_chunks_per_record_identity,
             ),
-            phrase_boost_weight=max(
-                0.0,
-                float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+            diversity=candidate_ranking.DiversityPolicy(
+                max_chunks_per_doc=self.max_chunks_per_doc,
+                max_chunks_per_page=self.max_chunks_per_page,
+                min_distinct_docs=self.min_distinct_docs,
+            ),
+            rerank=candidate_ranking.RerankPolicy(
+                enabled=self.enable_reranker,
+                provider=self.reranker_provider,
+                top_n=self.reranker_top_n,
             ),
         )
-        state["vector_results"] = prepared_channel_results.vector_results
-        state["bm25_results"] = prepared_channel_results.bm25_results
-        state["lexical_results"] = prepared_channel_results.lexical_results
-        state["sparse_results"] = prepared_channel_results.sparse_results
-        state["metadata_exact_pre_fusion_stats"] = prepared_channel_results.metadata_exact_pre_fusion_stats
-
-    def _record_channel_diagnostics_from_state(self, state: dict[str, Any]) -> None:
-        try:
-            update_hybrid_channel_diagnostics(
-                channel_metrics=state["channel_metrics"],
-                vector_results=state["vector_results"],
-                bm25_results=state["bm25_results"],
-                lexical_results=state["lexical_results"],
-                sparse_results=state["sparse_results"],
-                colpali_results=state["colpali_results"],
-                vector_elapsed_ms=state["vector_elapsed_ms"],
-                colbert_elapsed_ms=state["colbert_elapsed_ms"],
-                bm25_elapsed_ms=state["bm25_elapsed_ms"],
-                lexical_elapsed_ms=state["lexical_elapsed_ms"],
-                colbert_candidates=state["colbert_candidates"],
-                colbert_used=state["colbert_used"],
-                colbert_retrieval_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-                colbert_provider=str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
-                retrieval_mode=state["retrieval_mode"],
-                fusion_strategy=str(self.fusion_strategy or ""),
-                rrf_k=int(self.rrf_k or 0),
-                fusion_weights=(
-                    dict(getattr(self, "fusion_weights", None))
-                    if isinstance(getattr(self, "fusion_weights", None), dict)
-                    else None
-                ),
-                vector_backend=str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-                want_vector=bool(state["want_vector"]),
-                want_bm25=bool(state["want_bm25"]),
-                want_lexical=bool(state["want_lexical"]),
-                want_sparse=bool(state["want_sparse"]),
-                want_colpali=bool(state["want_colpali"]),
-                vector_filter_applied=bool(state["vector_filter"]),
-                bm25_filter_applied=bool(state["bm25_filter"]),
-                bm25_index_enabled=bool(state["bm25_index_enabled"]),
-                last_bm25_status=dict(self._last_bm25_status or {}),
-                lexical_run_reason=state["lexical_run_reason"],
-                lexical_hybrid_fallback_only=bool(state["lexical_hybrid_fallback_only"]),
-                lexical_db_enabled=bool(state["lexical_db_enabled"]),
-                lexical_db_fts_config=str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple"),
-                lexical_db_trgm_enabled=bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)),
-                lexical_pg_trgm_available=self._lexical_pg_trgm_available,
-                metadata_exact_pre_fusion_stats=dict(state["metadata_exact_pre_fusion_stats"]),
-                colpali_reason=state["colpali_reason"],
-                sparse_provider_status=dict(self._last_sparse_provider_status or {}),
-                sparse_provider=self.sparse_provider,
-                keyword_strategy=state["keyword_strategy"],
-            )
-        except Exception:
-            try:
-                timing = state["channel_metrics"].get("timing")
-                if isinstance(timing, dict):
-                    timing["vector_ms"] = round(float(state["vector_elapsed_ms"]), 2)
-                    timing["colbert_ms"] = round(float(state["colbert_elapsed_ms"]), 2)
-                    timing["bm25_ms"] = round(float(state["bm25_elapsed_ms"]), 2)
-                    timing["lexical_ms"] = round(float(state["lexical_elapsed_ms"]), 2)
-                counts = state["channel_metrics"].get("counts")
-                if isinstance(counts, dict):
-                    counts["vector_candidates"] = int(len(state["vector_results"] or []))
-                    counts["colbert_candidates"] = int(state["colbert_candidates"] or 0)
-                    counts["colpali_candidates"] = int(len(state["colpali_results"] or []))
-                    counts["bm25_candidates"] = int(len(state["bm25_results"] or []))
-                    counts["lexical_candidates"] = int(len(state["lexical_results"] or []))
-                    counts["sparse_candidates"] = int(len(state["sparse_results"] or []))
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-    def _merge_results_for_state(self, state: dict[str, Any]) -> list[dict[str, Any]]:
-        t_fusion0 = time.perf_counter()
-        merged_results = self._merge_results(
-            state["vector_results"],
-            state["bm25_results"],
-            list(state["lexical_results"] or []) + list(state["colpali_results"] or []),
-            state["sparse_results"],
-            query=state["query"],
-            alpha=state["alpha"],
-            fusion_strategy=self.fusion_strategy,
-            rrf_k=self.rrf_k,
-            top_k=state["top_k"],
-        )
-        merged_results = self._append_protected_metadata_exact_results(merged_results, state, before_diversity=True)
-        self._set_channel_metric("merged_pre_dedup", len(merged_results or []))
-        exact_anchor_pre_dedup_stats: dict[str, Any] = {}
-        merged_results = self._apply_metadata_exact_anchor_post_ordering(
-            state["query"],
-            merged_results,
-            stats=exact_anchor_pre_dedup_stats,
-        )
-        if exact_anchor_pre_dedup_stats:
-            self._set_channel_metric("metadata_exact_pre_dedup_ordering", exact_anchor_pre_dedup_stats)
-        merged_results = self._deduplicate_results(merged_results)
-        self._set_channel_metric("merged_post_dedup", len(merged_results or []))
-        try:
-            timing = state["channel_metrics"].get("timing")
-            if isinstance(timing, dict):
-                timing["fusion_ms"] = round(float((time.perf_counter() - t_fusion0) * 1000), 2)
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-        return merged_results
-
-    def _append_protected_metadata_exact_results(
-        self,
-        merged_results: list[dict[str, Any]],
-        state: dict[str, Any],
-        *,
-        before_diversity: bool,
-    ) -> list[dict[str, Any]]:
-        protected_results = state["metadata_exact_protected_results"]
-        if not protected_results:
-            return merged_results
-        merged_keys = {self._result_key(item) for item in merged_results if isinstance(item, dict)}
-        protected_added = 0
-        for item in protected_results:
-            if not isinstance(item, dict):
-                continue
-            key = self._result_key(item)
-            if key in merged_keys:
-                continue
-            merged_keys.add(key)
-            merged_results.append(dict(item))
-            protected_added += 1
-        if protected_added and isinstance(self._last_channel_metrics, dict):
-            metadata_exact_meta = self._last_channel_metrics.setdefault("metadata_exact_db", {})
-            if isinstance(metadata_exact_meta, dict):
-                metric_key = "protected_added" if before_diversity else "protected_after_diversity_added"
-                metadata_exact_meta[metric_key] = int(protected_added)
-        return merged_results
-
-    def _set_channel_metric(self, key: str, value: Any) -> None:
-        try:
-            if isinstance(self._last_channel_metrics, dict):
-                self._last_channel_metrics[key] = value
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-    def _apply_hybrid_rerank_stack(
-        self,
-        state: dict[str, Any],
-        merged_results: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        if merged_results:
-            emit_stream_event("event", {"message": "候选召回完成，正在重排…"}, dedupe_key="retrieval.rerank")
-        if state["retrieval_mode"] == "mmr" and merged_results:
-            merged_results = self._mmr_rerank(
-                merged_results,
-                query=state["query"],
-                top_k=state["top_k"],
-                lambda_mult=state["mmr_lambda"],
-            )
-        elif state["enable_weight_rerank"] and merged_results:
-            merged_results = self._weight_rerank(
-                query=state["query"],
-                documents=merged_results,
-                vector_weight=state["vector_weight"],
-                keyword_weight=state["keyword_weight"],
-            )
-        if merged_results and bool(self.enable_reranker):
-            merged_results = self._apply_optional_llm_reranker(state, merged_results)
-        return merged_results
-
-    def _apply_optional_llm_reranker(
-        self,
-        state: dict[str, Any],
-        merged_results: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        rerank_meta: dict[str, Any] = {
-            "enabled": True,
-            "provider": None,
-            "top_n_config": int(self.reranker_top_n or 0),
-            "candidates_n": 0,
-            "used": False,
-            "elapsed_sec": 0.0,
-            "model_used": None,
-            "error": None,
-            "skip_reason": None,
-            "skip_top_score": None,
-            "skip_score_gap": None,
-        }
-        provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
-        rerank_meta["provider"] = provider
-        if provider in ("none", "off", "false", "0"):
-            rerank_meta["skip_reason"] = "provider_off"
-            self._set_channel_metric("rerank", rerank_meta)
-            return merged_results
-        final_k = max(1, int(state["requested_k"]) if state["requested_k"] is not None else int(state["top_k"] or 0))
-        candidates_n = max(int(self.reranker_top_n or settings.RERANKER_TOP_N or 20), final_k)
-        candidates_n = min(candidates_n, len(merged_results))
-        rerank_meta["candidates_n"] = int(candidates_n)
-        conditional_rerank_enabled = bool(getattr(settings, "RERANK_CONDITIONAL_ENABLED", False))
-        top_score = float(merged_results[0].get("score", 0.0) or 0.0)
-        second_score = float(merged_results[1].get("score", 0.0) or 0.0) if len(merged_results) > 1 else 0.0
-        score_gap = top_score - second_score
-        rerank_meta["skip_top_score"] = round(float(top_score), 6)
-        rerank_meta["skip_score_gap"] = round(float(score_gap), 6)
-        skip_threshold = float(getattr(settings, "RERANK_SKIP_THRESHOLD", 0.85) or 0.85)
-        skip_gap = float(getattr(settings, "RERANK_SKIP_GAP", 0.15) or 0.15)
-        if conditional_rerank_enabled and top_score >= skip_threshold and score_gap >= skip_gap:
-            rerank_meta["skip_reason"] = "high_confidence"
-            self._set_channel_metric("rerank", rerank_meta)
-            self._set_channel_metric("merged_post_rerank", len(merged_results or []))
-            return merged_results
-        merged_results = self._run_llm_reranker(
-            query=state["query"],
-            merged_results=merged_results,
-            candidates_n=candidates_n,
-            provider=provider,
-            rerank_meta=rerank_meta,
-        )
-        self._set_channel_metric("rerank", rerank_meta)
-        return merged_results
-
-    def _run_llm_reranker(
-        self,
-        *,
-        query: str,
-        merged_results: list[dict[str, Any]],
-        candidates_n: int,
-        provider: str,
-        rerank_meta: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        reranker = get_reranker(provider)
-        candidates: list[RerankCandidate] = []
-        id_to_doc: dict[str, dict[str, Any]] = {}
-        for doc in merged_results[:candidates_n]:
-            rid = self._result_key(doc)
-            text = self._rerank_text_from_result(doc)
-            if not rid or not text:
-                continue
-            meta = dict(doc.get("metadata") or {})
-            meta["score"] = float(doc.get("score", 0.0) or 0.0)
-            candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
-            id_to_doc[rid] = doc
-        if not candidates:
-            rerank_meta["skip_reason"] = "no_candidates"
-            return merged_results
-        try:
-            start = time.time()
-            result = reranker.rerank(
-                query=query,
-                candidates=candidates,
-                top_n=candidates_n,
-                tenant_id=str(self.tenant_id or "").strip() or None,
-                query_type=None,
-            )
-            rerank_elapsed = result.elapsed_sec or (time.time() - start)
-            rerank_provider = result.provider or provider
-            rerank_meta["used"] = True
-            rerank_meta["elapsed_sec"] = round(float(rerank_elapsed), 3)
-            rerank_meta["model_used"] = result.model_used
-            rerank_meta["provider"] = rerank_provider
-            ordered = self._reranked_documents(
-                query=query,
-                merged_results=merged_results,
-                candidates_n=candidates_n,
-                id_to_doc=id_to_doc,
-                ordered_ids=result.ordered_ids,
-                score_map=result.score_map,
-                rerank_provider=rerank_provider,
-                rerank_elapsed=rerank_elapsed,
-                model_used=result.model_used,
-                rerank_meta=rerank_meta,
-            )
-            return ordered + merged_results[candidates_n:]
-        except Exception as exc:
-            rerank_meta["used"] = False
-            rerank_meta["error"] = str(exc)[:200]
-            rerank_meta["skip_reason"] = "error"
-            logger.warning("Reranker failed (%s): %s", provider, exc)
-            for doc in merged_results[:candidates_n]:
-                meta = dict(doc.get("metadata") or {})
-                meta.setdefault("reranker_provider", provider)
-                meta.setdefault("reranker_error", str(exc)[:200])
-                doc["metadata"] = meta
-            return merged_results
-
-    def _reranked_documents(
-        self,
-        *,
-        query: str,
-        merged_results: list[dict[str, Any]],
-        candidates_n: int,
-        id_to_doc: dict[str, dict[str, Any]],
-        ordered_ids: list[str],
-        score_map: dict[str, float],
-        rerank_provider: str,
-        rerank_elapsed: float,
-        model_used: str | None,
-        rerank_meta: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        ordered: list[dict[str, Any]] = []
-        used: set[str] = set()
-        boosted_after_rerank = 0
-        phrase_boost_weight = max(
-            0.0,
-            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
-        )
-        for rid in ordered_ids:
-            doc = id_to_doc.get(rid)
-            if not doc or rid in used:
-                continue
-            used.add(rid)
-            new_doc = dict(doc)
-            new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
-            if rid in score_map:
-                rerank_score = float(score_map[rid])
-                new_doc["rerank_score"] = rerank_score
-                phrase_boost = float(new_doc.get("exact_phrase_boost") or 0.0)
-                metadata_boost = 0.0
-                if _apply_metadata_exact_anchor_to_result(
-                    query=query,
-                    result=new_doc,
-                    phrase_boost_weight=phrase_boost_weight,
-                ):
-                    metadata_boost = float(new_doc.get("metadata_exact_match_boost") or 0.0)
-                final_score = min(1.0, float(rerank_score) + float(phrase_boost) + float(metadata_boost))
-                new_doc["score"] = float(final_score)
-                if phrase_boost > 0.0 or metadata_boost > 0.0:
-                    new_doc["rerank_score_final"] = float(final_score)
-                    boosted_after_rerank += 1
-            new_doc["reranker_provider"] = rerank_provider
-            new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
-            new_doc["rerank_model_used"] = model_used
-            ordered.append(new_doc)
-        if boosted_after_rerank > 0:
-            ordered = sorted(ordered, key=lambda item: (-float(item.get("score", 0.0) or 0.0), self._result_key(item)))
-            rerank_meta["post_rerank_exact_boosted"] = int(boosted_after_rerank)
-        for doc in merged_results[:candidates_n]:
-            rid = self._result_key(doc)
-            if rid in used:
-                continue
-            new_doc = dict(doc)
-            new_doc.setdefault("reranker_provider", rerank_provider)
-            new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
-            new_doc.setdefault("rerank_model_used", model_used)
-            ordered.append(new_doc)
-        return ordered
-
-    def _apply_hybrid_result_postprocessing(
-        self,
-        state: dict[str, Any],
-        merged_results: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        self._set_channel_metric("merged_post_rerank", len(merged_results or []))
-        self._set_channel_metric("attribution", self._hybrid_result_attribution(merged_results))
-        before_diversity = len(merged_results or [])
-        div_caps: dict[str, Any] = {}
-        merged_results = self._apply_document_diversity(merged_results, top_k=state["top_k"], stats=div_caps)
-        self._last_diversity_caps = div_caps
-        merged_results = self._append_protected_metadata_exact_results(merged_results, state, before_diversity=False)
-        after_diversity = len(merged_results or [])
-        self._set_channel_metric(
-            "diversity",
-            {
-                "before": int(before_diversity),
-                "after": int(after_diversity),
-                "dropped": int(max(0, before_diversity - after_diversity)),
-            },
-        )
-        self._set_channel_metric("returned_top_k", int(min(int(state["top_k"] or 0), after_diversity)))
-        metadata_exact_final_stats: dict[str, Any] = {}
-        merged_results = self._apply_metadata_exact_anchor_post_ordering(
-            state["query"],
-            merged_results,
-            stats=metadata_exact_final_stats,
-        )
-        if metadata_exact_final_stats:
-            self._set_channel_metric("metadata_exact_final_ordering", metadata_exact_final_stats)
-        return merged_results
-
-    @staticmethod
-    def _hybrid_result_attribution(merged_results: list[dict[str, Any]]) -> dict[str, int]:
-        attribution = {"vector": 0, "bm25": 0, "lexical_db": 0, "multi": 0}
-        for doc in merged_results or []:
-            has_v = float(doc.get("vector_score", 0.0) or 0.0) > 0.0
-            has_b = float(doc.get("bm25_score", 0.0) or 0.0) > 0.0
-            has_l = float(doc.get("lexical_score", 0.0) or 0.0) > 0.0
-            n = int(has_v) + int(has_b) + int(has_l)
-            if has_v:
-                attribution["vector"] += 1
-            if has_b:
-                attribution["bm25"] += 1
-            if has_l:
-                attribution["lexical_db"] += 1
-            if n > 1:
-                attribution["multi"] += 1
-        return attribution
-
-    def _finalize_hybrid_search_output(
-        self,
-        state: dict[str, Any],
-        merged_results: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        out = merged_results[: state["top_k"]]
-        cache_store_allowed = not bool(state["channel_metrics"].get("retrieval_degraded", False))
-        state["cache_store_allowed"] = cache_store_allowed
-        if not cache_store_allowed:
-            state["cache_meta"]["store_skip_reason"] = "retrieval_degraded"
-            state["cache_meta"]["semantic"]["store_skip_reason"] = "retrieval_degraded"
-        return out
-
-    def _persist_hybrid_search_output(self, state: dict[str, Any], out: list[dict[str, Any]]) -> None:
-        if (
-            state["cache_store_allowed"]
-            and state["cache_eligible"]
-            and (not state["cache_hit"])
-            and state["cache_key"]
-            and out
-        ):
-            try:
-                stored = bool(set_cached_retrieval_candidates(state["cache_key"], out))
-                if isinstance(self._last_channel_metrics, dict):
-                    self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
-                    self._last_channel_metrics["cache"]["store_ok"] = stored
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-        if state["singleflight_leader"] and state["cache_key"]:
-            if state["cache_store_allowed"]:
-                publish_distributed_inflight_retrieval_candidates(state["cache_key"], out)
-                resolve_inflight_retrieval_candidates(state["cache_key"], out)
-            else:
-                reject_current_inflight_retrieval_candidates(RuntimeError("retrieval degraded"))
-            release_distributed_inflight_retrieval_candidates(state["distributed_singleflight_lease"])
-        if (
-            state["cache_store_allowed"]
-            and state["semantic_cache_eligible"]
-            and (not state["semantic_cache_hit"])
-            and state["corpus_cache_token"]
-            and out
-        ):
-            try:
-                from app.services.semantic_cache import set_cached_semantic_payload
-
-                stored = bool(
-                    set_cached_semantic_payload(
-                        tenant_id=str(state["tenant_uuid"]),
-                        account_id=state["account_id0"],
-                        dataset_id=state["dataset_id0"],
-                        corpus_cache_token=str(state["corpus_cache_token"]),
-                        behavior_hash=state["behavior_hash"],
-                        query=state["query"],
-                        top_k=int(state["top_k"] or 0),
-                        score_threshold=float(state["score_threshold"] or 0.0),
-                        retrieval_mode=state["retrieval_mode"],
-                        metadata_filter=state["full_metadata_filter"]
-                        if isinstance(state["full_metadata_filter"], dict)
-                        else None,
-                        document_ids=state["doc_ids"],
-                        payload=out,
-                    )
-                )
-                if isinstance(self._last_channel_metrics, dict):
-                    self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
-                    self._last_channel_metrics["cache"].setdefault("semantic", {})  # type: ignore[call-arg]
-                    self._last_channel_metrics["cache"]["semantic"]["store_ok"] = stored
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-    # ---- LangChain Retriever API ----
 
     def _get_relevant_documents(
         self,
@@ -2568,30 +1136,29 @@ class HybridRetriever(
         )
         effective_metadata_filter = self._effective_retrieval_metadata_filter(query=query, debug=debug)
         self._record_milvus_pushdown_debug(debug)
-        embedding_runtime = self._resolve_embedding_runtime(tenant_id=self.tenant_id)
-        results = self._invoke_hybrid_retrieval(
+        candidate_batch = self._invoke_hybrid_retrieval(
             query=query,
-            embedding_runtime=embedding_runtime,
+            embedding_runtime=None,
             effective_metadata_filter=effective_metadata_filter,
             requested_k=requested_k,
             search_k=search_k,
         )
-        self._record_hybrid_debug_metrics(debug, results)
+        self._record_hybrid_debug_metrics(debug, candidate_batch)
         results = self._post_process_retrieval_results(
             query=query,
-            results=results,
+            results=candidate_batch.candidates,
             debug=debug,
             effective_metadata_filter=effective_metadata_filter,
-            embedding_runtime=embedding_runtime,
+            embedding_runtime=candidate_batch.resolved_scope.runtime,
             requested_k=requested_k,
         )
         docs = self._results_to_documents(results, debug=debug, requested_k=requested_k)
         self._last_debug_metrics = debug
         return docs
 
-    def _normalize_retrieval_query(self, query: str) -> tuple[str, str, Any]:
-        max_query_chars = int(getattr(settings, "RETRIEVAL_QUERY_MAX_CHARS", 8_000) or 8_000)
-        if len(str(query or "")) > max_query_chars:
+    def _normalize_retrieval_query(self, query: str) -> tuple[str, str, "NormalizedQuery"]:
+        max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS)
+        if len(query) > max_query_chars:
             raise ValueError(f"retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
         from app.query.normalize import normalize_query
 
@@ -2605,7 +1172,7 @@ class HybridRetriever(
         dataset_scope_ids = self._explicit_dataset_scope_ids()
         if dataset_scope_ids or (self.document_ids or []) or metadata_filter_dataset_scoped:
             return metadata_filter_dataset_scoped, dataset_scope_ids
-        if not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+        if not settings.CHAT_ALLOW_OPEN_SCOPE:
             raise ValueError("dataset_id is required when document_ids is empty")
         return metadata_filter_dataset_scoped, dataset_scope_ids
 
@@ -2616,10 +1183,10 @@ class HybridRetriever(
     ) -> tuple[int, int, int, list[str]]:
         requested_k = max(1, int(self.k or 0))
         search_k = requested_k
-        if bool(self.enable_reranker):
+        if self.enable_reranker:
             search_k = resolve_rerank_search_k(
                 requested_k=search_k,
-                profile=str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
+                profile=str(settings.RERANK_PROFILE),
             )
         hierarchy_family_collapse_enabled = self._should_apply_hierarchy_family_collapse()
         hierarchy_overfetch_factor = max(1, int(self.hierarchy_overfetch_factor or 1))
@@ -2628,9 +1195,9 @@ class HybridRetriever(
         overfetch_reasons = self._retrieval_overfetch_reasons(dataset_scope_ids=dataset_scope_ids)
         if overfetch_reasons:
             search_k = self._apply_retrieval_overfetch_bounds(requested_k=requested_k, search_k=search_k)
-        fetch_k = int(search_k) * 2
-        if str(self.retrieval_mode or "").strip().lower() == "mmr":
-            fetch_k = int(search_k) * max(1, int(self.mmr_fetch_k_multiplier or 0))
+        fetch_k = search_k * 2
+        if self.retrieval_mode.strip().lower() == "mmr":
+            fetch_k = search_k * max(1, int(self.mmr_fetch_k_multiplier or 0))
         return requested_k, search_k, fetch_k, overfetch_reasons
 
     def _retrieval_overfetch_reasons(self, *, dataset_scope_ids: tuple[UUID, ...]) -> list[str]:
@@ -2640,9 +1207,9 @@ class HybridRetriever(
         metadata_filter_requested = bool(
             self.metadata_filter_enabled and isinstance(self.metadata_filter, dict) and self.metadata_filter
         )
-        if not dataset_scope_ids and self.tenant_id and (self.account_id or "").strip():
+        if not dataset_scope_ids and self.tenant_id and (self.account_id is not None and self.account_id.strip()):
             reasons.append("open_scope_acl")
-        if dataset_scope_ids or (self.tenant_id and (self.account_id or "").strip()):
+        if dataset_scope_ids or (self.tenant_id and (self.account_id is not None and self.account_id.strip())):
             reasons.append("active_pipeline")
         if metadata_filter_requested:
             reasons.append("metadata_filter")
@@ -2652,7 +1219,7 @@ class HybridRetriever(
         mult_source = (
             self.retrieval_overfetch_multiplier
             if self.retrieval_overfetch_multiplier is not None
-            else getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1)
+            else settings.RETRIEVAL_OVERFETCH_MULTIPLIER
         )
         mult = max(1, int(mult_source or 1))
         if mult > 1:
@@ -2660,7 +1227,7 @@ class HybridRetriever(
         cap_source = (
             self.retrieval_overfetch_max_k
             if self.retrieval_overfetch_max_k is not None
-            else getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0)
+            else settings.RETRIEVAL_OVERFETCH_MAX_K
         )
         cap = int(cap_source or 0)
         if cap > 0:
@@ -2672,7 +1239,7 @@ class HybridRetriever(
         *,
         original_query: str,
         normalized_query: str,
-        query_norm: Any,
+        query_norm: "NormalizedQuery",
         dataset_scope_ids: tuple[UUID, ...],
         metadata_filter_dataset_scoped: bool,
         requested_k: int,
@@ -2680,35 +1247,38 @@ class HybridRetriever(
         fetch_k: int,
         overfetch_reasons: list[str],
     ) -> dict[str, Any]:
+        retrieval_profile = self.retrieval_profile.strip().lower() if self.retrieval_profile is not None else None
+        if not retrieval_profile:
+            retrieval_profile = None
         return {
-            "requested_k": int(requested_k),
-            "search_k": int(search_k),
-            "fetch_k": int(fetch_k),
-            "overfetch_enabled": bool(search_k > requested_k),
+            "requested_k": requested_k,
+            "search_k": search_k,
+            "fetch_k": fetch_k,
+            "overfetch_enabled": search_k > requested_k,
             "overfetch_reasons": overfetch_reasons,
-            "retrieval_profile": str(self.retrieval_profile or "").strip().lower() or None,
-            "rerank_profile": str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
-            "hierarchy_family_collapse_enabled": bool(self._should_apply_hierarchy_family_collapse()),
-            "hierarchy_overfetch_factor": int(max(1, int(self.hierarchy_overfetch_factor or 1))),
+            "retrieval_profile": retrieval_profile,
+            "rerank_profile": normalize_rerank_profile(str(settings.RERANK_PROFILE)),
+            "hierarchy_family_collapse_enabled": self._should_apply_hierarchy_family_collapse(),
+            "hierarchy_overfetch_factor": max(1, int(self.hierarchy_overfetch_factor or 1)),
             "overfetch_multiplier": int(
                 self.retrieval_overfetch_multiplier
                 if self.retrieval_overfetch_multiplier is not None
-                else getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1
+                else settings.RETRIEVAL_OVERFETCH_MULTIPLIER
             ),
             "overfetch_cap_k": int(
                 self.retrieval_overfetch_max_k
                 if self.retrieval_overfetch_max_k is not None
-                else getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0
+                else settings.RETRIEVAL_OVERFETCH_MAX_K
             ),
             "query_normalization": {
                 "original": original_query,
                 "normalized": normalized_query,
-                "applied_rules": list(query_norm.applied_rules or []),
+                "applied_rules": list(query_norm.applied_rules),
             },
             "scope": {
-                "tenant_id": str(self.tenant_id or ""),
-                "account_id_present": bool((self.account_id or "").strip()),
-                "dataset_id": str(self.dataset_id or ""),
+                "tenant_id": str(self.tenant_id) if self.tenant_id is not None else None,
+                "account_id_present": bool((self.account_id is not None and self.account_id.strip())),
+                "dataset_id": str(self.dataset_id) if self.dataset_id is not None else None,
                 "dataset_ids_count": len(dataset_scope_ids),
                 "document_ids_count": len(self.document_ids or []),
                 "kind": self._retrieval_scope_kind(
@@ -2752,14 +1322,14 @@ class HybridRetriever(
 
     def _record_milvus_pushdown_debug(self, debug: dict[str, Any]) -> None:
         try:
-            max_doc_ids = int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0)
+            max_doc_ids = int(settings.MILVUS_EXPR_MAX_DOC_IDS)
             debug["milvus_doc_id_pushdown_skipped"] = bool(
                 settings.VECTOR_BACKEND == "milvus"
                 and max_doc_ids > 0
                 and self.document_ids
                 and len(self.document_ids) > max_doc_ids
             )
-            debug["milvus_expr_max_doc_ids"] = int(max_doc_ids)
+            debug["milvus_expr_max_doc_ids"] = max_doc_ids
         except (TypeError, ValueError, AttributeError):
             debug["milvus_doc_id_pushdown_skipped"] = None
 
@@ -2767,12 +1337,12 @@ class HybridRetriever(
         self,
         *,
         query: str,
-        embedding_runtime: DatasetEmbeddingRuntimeConfig,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
         effective_metadata_filter: dict[str, Any] | None,
         requested_k: int,
         search_k: int,
-    ) -> list[dict[str, Any]]:
-        return self._hybrid_search(
+    ) -> candidate_retrieval.CandidateBatch:
+        return self._hybrid_search_batch(
             query=query,
             embedding_runtime=embedding_runtime,
             top_k=search_k,
@@ -2793,24 +1363,17 @@ class HybridRetriever(
             requested_k=requested_k,
         )
 
-    def _record_hybrid_debug_metrics(self, debug: dict[str, Any], results: list[dict[str, Any]]) -> None:
-        debug["hybrid_results"] = len(results or [])
-        try:
-            debug["channels"] = dict(self._last_channel_metrics or {})
-        except (TypeError, ValueError, AttributeError):
-            debug["channels"] = {}
-        channels_debug = debug["channels"] if isinstance(debug.get("channels"), dict) else {}
+    def _record_hybrid_debug_metrics(self, debug: dict[str, Any], batch: candidate_retrieval.CandidateBatch) -> None:
+        debug["hybrid_results"] = len(batch.candidates)
+        debug["channels"] = dict(batch.channel_metrics)
+        channels_debug = debug["channels"]
         debug["retrieval_degraded"] = bool(channels_debug.get("retrieval_degraded", False))
         debug["retrieval_degraded_reasons"] = list(channels_debug.get("degraded_reasons") or [])
         debug["all_retrieval_channels_failed"] = bool(channels_debug.get("all_retrieval_channels_failed", False))
         debug["timing"] = self._safe_retrieval_timing_debug(channels_debug)
         debug["counts"] = self._safe_retrieval_count_debug(channels_debug)
-        try:
-            diversity = dict(self._last_diversity_caps or {})
-            if diversity:
-                debug["diversity"] = diversity
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        if batch.ranking is not None and batch.ranking.diversity:
+            debug["diversity"] = dict(batch.ranking.diversity)
 
     @staticmethod
     def _safe_retrieval_timing_debug(channels_debug: dict[str, Any]) -> dict[str, float]:
@@ -2878,19 +1441,13 @@ class HybridRetriever(
         embedding_runtime: DatasetEmbeddingRuntimeConfig,
     ) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
         enrich_stats: dict[str, Any] = {}
-        try:
-            results = self._enrich_results_with_db_metadata(
-                results,
-                stats=enrich_stats,
-                metadata_filter_override=effective_metadata_filter,
-                embedding_runtime=embedding_runtime,
-            )
-        except TypeError as exc:
-            message = str(exc)
-            if "metadata_filter_override" not in message and "embedding_runtime" not in message:
-                raise
-            results = self._enrich_results_with_db_metadata(results, stats=enrich_stats)
-        return results, enrich_stats, len(results or [])
+        results = self._enrich_results_with_db_metadata(
+            results,
+            stats=enrich_stats,
+            metadata_filter_override=effective_metadata_filter,
+            embedding_runtime=embedding_runtime,
+        )
+        return results, enrich_stats, len(results)
 
     def _record_late_filter_collapse(
         self,
@@ -2976,7 +1533,7 @@ class HybridRetriever(
         results = self._compact_high_confidence_results(results, top_k=requested_k, stats=compact_stats)
         if compact_stats:
             debug["context_compaction"] = compact_stats
-        debug["stitching_enabled"] = bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False))
+        debug["stitching_enabled"] = bool(settings.RAG_CONTEXT_STITCHING_ENABLED)
         return results
 
     def _results_to_documents(
@@ -2987,7 +1544,7 @@ class HybridRetriever(
         requested_k: int,
     ) -> list[Document]:
         prefix = list(results[:requested_k]) if results else []
-        if prefix and bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)):
+        if prefix and settings.RAG_CONTEXT_STITCHING_ENABLED:
             try:
                 prefix = self._stitch_results_for_continuity(prefix)
             except Exception as exc:
@@ -3030,7 +1587,7 @@ class HybridRetriever(
         ):
             if key in result:
                 meta[key] = result.get(key)
-        return Document(page_content=result.get("content", ""), metadata=meta, id=result.get("chunk_id"))
+        return Document(page_content=result["content"], metadata=meta, id=result.get("chunk_id"))
 
     def _apply_governance_policy(
         self,
@@ -3059,7 +1616,7 @@ class HybridRetriever(
 
         enabled = bool(prefer_authority or prefer_latest or filter_superseded)
         if stats is not None:
-            stats["enabled"] = bool(enabled)
+            stats["enabled"] = enabled
             stats["prefer_authority"] = bool(prefer_authority)
             stats["prefer_latest"] = bool(prefer_latest)
             stats["filter_superseded"] = bool(filter_superseded)
@@ -3107,9 +1664,9 @@ class HybridRetriever(
     @staticmethod
     def _governance_policy_flags() -> tuple[bool, bool, bool]:
         return (
-            bool(getattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY", False)),
-            bool(getattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_LATEST", False)),
-            bool(getattr(settings, "RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED", False)),
+            bool(settings.RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY),
+            bool(settings.RETRIEVAL_GOVERNANCE_PREFER_LATEST),
+            bool(settings.RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED),
         )
 
     def _collect_governance_features(
@@ -3129,7 +1686,7 @@ class HybridRetriever(
             doc_features[doc_id] = features
             if features["publication_status"] != "published":
                 unpublished_doc_ids.add(doc_id)
-            supersedes_id = str(features.get("supersedes_document_id") or "").strip()
+            supersedes_id = _stringified_metadata_text(features, "supersedes_document_id")
             if filter_superseded and features["publication_status"] == "published" and supersedes_id:
                 superseded_doc_ids.add(supersedes_id)
         return doc_features, unpublished_doc_ids, superseded_doc_ids
@@ -3155,9 +1712,9 @@ class HybridRetriever(
             "authority_level": max(0, min(100, authority)),
             "updated_ts": updated_ts,
             "publication_status": publication_status,
-            "supersedes_document_id": str(
-                meta.get("_governance_supersedes_document_id", meta.get("supersedes_document_id", "")) or ""
-            ).strip(),
+            "supersedes_document_id": _stringified_metadata_text(meta, "_governance_supersedes_document_id")
+            if "_governance_supersedes_document_id" in meta
+            else _stringified_metadata_text(meta, "supersedes_document_id"),
         }
 
     def _filter_governance_results(
@@ -3208,16 +1765,16 @@ class HybridRetriever(
         prefer_authority: bool,
         prefer_latest: bool,
     ) -> tuple[list[tuple[float, int, dict[str, Any]]], list[float]]:
-        auth_boost_max = float(getattr(settings, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX", 0.0) or 0.0)
-        latest_boost_max = float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0)
-        window_days = max(1, int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180))
+        auth_boost_max = float(settings.RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX)
+        latest_boost_max = float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX)
+        window_days = max(1, int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS))
         now_ts = time.time()
         boosts: list[float] = []
         scored: list[tuple[float, int, dict[str, Any]]] = []
         for index, result in enumerate(results):
             base_score = self._governance_base_score(result)
             doc_id = self._get_doc_id(result)
-            features = doc_features.get(doc_id or "", {})
+            features = doc_features.get(doc_id, {})
             boost = self._governance_score_boost(
                 features,
                 prefer_authority=prefer_authority,
@@ -3266,20 +1823,11 @@ class HybridRetriever(
 
     @staticmethod
     def _average_boost(boosts: list[float]) -> float:
-        if not boosts:
-            return 0.0
-        try:
-            return float(sum(boosts)) / float(len(boosts))
-        except Exception as exc:
-            _log_retriever_fallback("_apply_governance_policy", exc)
-            return 0.0
+        return sum(boosts) / len(boosts) if boosts else 0.0
 
     @staticmethod
     def _max_boost(boosts: list[float]) -> float:
-        try:
-            return float(max(boosts)) if boosts else 0.0
-        except (TypeError, ValueError, AttributeError):
-            return 0.0
+        return max(boosts, default=0.0)
 
     async def _aget_relevant_documents(
         self,

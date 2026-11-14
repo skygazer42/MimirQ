@@ -2,17 +2,22 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import case, literal
+from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
+from app.core.pipeline_versions import get_selected_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document_index_channel import DocumentIndexChannel
 from app.services.pipeline_config import resolve_pipeline_effective
+
+if TYPE_CHECKING:
+    from app.types.pipeline import PipelineEffective
 
 logger = logging.getLogger(__name__)
 
@@ -52,49 +57,43 @@ class DocumentIndexChannelSummary:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _session_dialect_name(db: Session) -> str:
-    get_bind = getattr(db, "get_bind", None)
-    bind = get_bind() if callable(get_bind) else getattr(db, "bind", None)
-    dialect = getattr(bind, "dialect", None)
-    return str(getattr(dialect, "name", "") or "").strip().lower()
+    return datetime.now(UTC)
 
 
 def _supports_atomic_postgresql_upsert(db: Session) -> bool:
-    return _session_dialect_name(db) == "postgresql"
+    return db.get_bind().dialect.name.strip().lower() == "postgresql"
 
 
 def normalize_document_index_channel(channel: str) -> str:
-    normalized = str(channel or "").strip().lower()
+    normalized = channel.strip().lower()
     if normalized not in DOCUMENT_INDEX_CHANNELS:
         raise ValueError(f"unsupported document index channel: {channel}")
     return normalized
 
 
 def _pipeline_hash_from_document(document: DBDocument, pipeline_hash: str | None = None) -> str | None:
-    if pipeline_hash:
-        return str(pipeline_hash).strip() or None
-    meta = dict(getattr(document, "doc_metadata", None) or {})
-    return str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip() or None
+    return get_selected_pipeline_hash(document.doc_metadata, pipeline_hash)
 
 
-def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
-    meta = dict(getattr(document, "doc_metadata", None) or {})
-    effective = resolve_pipeline_effective(document_metadata=meta)
+def document_index_channel_flags(effective: "PipelineEffective") -> dict[str, bool]:
     return {
-        "vector": bool(getattr(effective, "chunk_vector_enabled", False)),
-        "bm25": bool(getattr(effective, "bm25_index_enabled", False)),
-        "kg": bool(getattr(effective, "kg_enabled", False)),
-        "event_vector": bool(getattr(effective, "event_vector_enabled", False)),
-        "entity_vector": bool(getattr(effective, "entity_vector_enabled", False)),
+        "vector": effective.chunk_vector_enabled,
+        "bm25": effective.bm25_index_enabled,
+        "kg": effective.kg_enabled,
+        "event_vector": effective.event_vector_enabled,
+        "entity_vector": effective.entity_vector_enabled,
     }
 
 
-def _legacy_channel_status(document: DBDocument, *, channel: str, enabled: bool) -> dict[str, Any]:
-    status_raw = str(getattr(document, "status", "") or "").strip().lower()
-    meta = dict(getattr(document, "doc_metadata", None) or {})
+def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
+    meta = dict(document.doc_metadata or {})
+    effective = resolve_pipeline_effective(document_metadata=meta)
+    return document_index_channel_flags(effective)
+
+
+def legacy_document_index_channel_status(document: DBDocument, *, channel: str, enabled: bool) -> dict[str, Any]:
+    status_raw = document.status.strip().lower()
+    meta = dict(document.doc_metadata or {})
     active_ready = bool(meta.get("active_pipeline_ready")) or status_raw == "completed"
 
     if not enabled:
@@ -110,7 +109,7 @@ def _legacy_channel_status(document: DBDocument, *, channel: str, enabled: bool)
 
     error = None
     if status == "error":
-        error = str(getattr(document, "error_message", "") or meta.get("error_message") or "").strip() or None
+        error = document.error_message if document.error_message is not None else meta.get("error_message")
 
     return {
         "channel": channel,
@@ -123,20 +122,29 @@ def _legacy_channel_status(document: DBDocument, *, channel: str, enabled: bool)
     }
 
 
-def _row_to_dict(row: DocumentIndexChannel) -> dict[str, Any]:
-    return {
-        "channel": str(getattr(row, "channel", "") or ""),
-        "required": bool(getattr(row, "required", False)),
-        "enabled": bool(getattr(row, "enabled", False)),
-        "status": str(getattr(row, "status", "pending") or "pending").strip().lower(),
-        "error": str(getattr(row, "error", "") or "").strip() or None,
-        "attempt_count": int(getattr(row, "attempt_count", 0) or 0),
-        "last_attempted_at": getattr(row, "last_attempted_at", None),
-        "last_succeeded_at": getattr(row, "last_succeeded_at", None),
-        "last_failed_at": getattr(row, "last_failed_at", None),
-        "last_status_changed_at": getattr(row, "last_status_changed_at", None),
-        "legacy": False,
+def document_index_channel_status(row: DocumentIndexChannel) -> dict[str, Any]:
+    """Serialize the channel state shared by detail and audit responses."""
+    payload = {
+        "channel": row.channel,
+        "required": row.required,
+        "enabled": row.enabled,
+        "status": row.status,
+        "error": row.error,
     }
+    return payload
+
+
+def _row_to_dict(row: DocumentIndexChannel) -> dict[str, Any]:
+    payload = document_index_channel_status(row)
+    payload.update(
+        attempt_count=row.attempt_count,
+        last_attempted_at=row.last_attempted_at,
+        last_succeeded_at=row.last_succeeded_at,
+        last_failed_at=row.last_failed_at,
+        last_status_changed_at=row.last_status_changed_at,
+        legacy=False,
+    )
+    return payload
 
 
 def _normalized_transition_state(
@@ -152,7 +160,7 @@ def _normalized_transition_state(
     normalized_hash = _pipeline_hash_from_document(document, pipeline_hash=pipeline_hash)
     if not normalized_hash:
         return None
-    enabled = bool(_effective_channel_flags(document).get(normalized_channel, False))
+    enabled = _effective_channel_flags(document)[normalized_channel]
     normalized_status = str(status or DOCUMENT_INDEX_CHANNEL_PENDING).strip().lower() or DOCUMENT_INDEX_CHANNEL_PENDING
     if not enabled:
         return normalized_channel, normalized_hash, enabled, DOCUMENT_INDEX_CHANNEL_DISABLED, None, False
@@ -165,6 +173,12 @@ def _transition_error_value(status: str, error: str | None) -> str | None:
         if status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED, DOCUMENT_INDEX_CHANNEL_DISABLED}
         else error
     )
+
+
+def _normalize_channel_error(error: str | None) -> str | None:
+    if error is None:
+        return None
+    return error.strip()[:2000]
 
 
 def _existing_document_index_channel(
@@ -184,7 +198,7 @@ def _existing_document_index_channel(
                     document_id=document.id,
                     pipeline_hash=normalized_hash,
                 )
-                if str(getattr(row, "channel", "") or "") == normalized_channel
+                if row.channel == normalized_channel
             ),
             None,
         )
@@ -205,7 +219,7 @@ def _transition_upsert_kwargs(
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "tenant_id": document.tenant_id,
-        "dataset_id": getattr(document, "dataset_id", None),
+        "dataset_id": document.dataset_id,
         "document_id": document.id,
         "pipeline_hash": normalized_hash,
         "channel": normalized_channel,
@@ -229,16 +243,16 @@ def _transition_upsert_kwargs(
             kwargs["attempt_count"] = 1 if increment_attempt else 0
         return kwargs
 
-    attempt_count = int(getattr(existing, "attempt_count", 0) or 0) + (1 if increment_attempt else 0)
+    attempt_count = int(existing.attempt_count or 0) + (1 if increment_attempt else 0)
     kwargs["attempt_count"] = attempt_count
-    kwargs["last_attempted_at"] = occurred_at if increment_attempt else getattr(existing, "last_attempted_at", None)
+    kwargs["last_attempted_at"] = occurred_at if increment_attempt else existing.last_attempted_at
     kwargs["last_succeeded_at"] = (
         occurred_at
         if normalized_status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED}
-        else getattr(existing, "last_succeeded_at", None)
+        else existing.last_succeeded_at
     )
     kwargs["last_failed_at"] = (
-        occurred_at if normalized_status == DOCUMENT_INDEX_CHANNEL_ERROR else getattr(existing, "last_failed_at", None)
+        occurred_at if normalized_status == DOCUMENT_INDEX_CHANNEL_ERROR else existing.last_failed_at
     )
     return kwargs
 
@@ -250,25 +264,6 @@ def _finish_document_index_channel_write(
         db.commit()
         db.refresh(row)
     return row
-
-
-def _log_document_index_channel_transition_failure(
-    *,
-    document: DBDocument,
-    normalized_channel: str,
-    normalized_status: str,
-    exc: Exception,
-    used_savepoint: bool,
-) -> None:
-    logger.warning(
-        "Failed to persist document index channel transition%s tenant=%s document=%s channel=%s status=%s: %s",
-        "" if used_savepoint else " without savepoint",
-        getattr(document, "tenant_id", None),
-        getattr(document, "id", None),
-        normalized_channel,
-        normalized_status,
-        str(exc)[:200],
-    )
 
 
 def transition_document_index_channel(
@@ -295,70 +290,48 @@ def transition_document_index_channel(
     normalized_channel, normalized_hash, enabled, normalized_status, error, increment_attempt = normalized
     occurred_at = _utcnow()
 
-    def _persist() -> DocumentIndexChannel:
-        if _supports_atomic_postgresql_upsert(db):
-            kwargs = _transition_upsert_kwargs(
-                document=document,
-                normalized_hash=normalized_hash,
-                normalized_channel=normalized_channel,
-                enabled=enabled,
-                normalized_status=normalized_status,
-                error=error,
-                increment_attempt=increment_attempt,
-                occurred_at=occurred_at,
-                atomic=True,
-            )
-            return upsert_document_index_channel(db, **kwargs)
-        existing = _existing_document_index_channel(
-            db,
-            document=document,
-            normalized_hash=normalized_hash,
-            normalized_channel=normalized_channel,
-        )
-        kwargs = _transition_upsert_kwargs(
-            document=document,
-            normalized_hash=normalized_hash,
-            normalized_channel=normalized_channel,
-            enabled=enabled,
-            normalized_status=normalized_status,
-            error=error,
-            increment_attempt=increment_attempt,
-            occurred_at=occurred_at,
-            existing=existing,
-        )
-        return upsert_document_index_channel(db, **kwargs)
-
-    begin_nested = getattr(db, "begin_nested", None)
-    if callable(begin_nested):
-        try:
-            with begin_nested():
-                row = _persist()
-            return _finish_document_index_channel_write(db, row, commit=commit)
-        except Exception as exc:  # noqa: BLE001
-            _log_document_index_channel_transition_failure(
-                document=document,
-                normalized_channel=normalized_channel,
-                normalized_status=normalized_status,
-                exc=exc,
-                used_savepoint=True,
-            )
-            return None
-
     try:
-        row = _persist()
+        with db.begin_nested():
+            if _supports_atomic_postgresql_upsert(db):
+                kwargs = _transition_upsert_kwargs(
+                    document=document,
+                    normalized_hash=normalized_hash,
+                    normalized_channel=normalized_channel,
+                    enabled=enabled,
+                    normalized_status=normalized_status,
+                    error=error,
+                    increment_attempt=increment_attempt,
+                    occurred_at=occurred_at,
+                    atomic=True,
+                )
+            else:
+                existing = _existing_document_index_channel(
+                    db,
+                    document=document,
+                    normalized_hash=normalized_hash,
+                    normalized_channel=normalized_channel,
+                )
+                kwargs = _transition_upsert_kwargs(
+                    document=document,
+                    normalized_hash=normalized_hash,
+                    normalized_channel=normalized_channel,
+                    enabled=enabled,
+                    normalized_status=normalized_status,
+                    error=error,
+                    increment_attempt=increment_attempt,
+                    occurred_at=occurred_at,
+                    existing=existing,
+                )
+            row = upsert_document_index_channel(db, **kwargs)
         return _finish_document_index_channel_write(db, row, commit=commit)
     except Exception as exc:  # noqa: BLE001
-        if hasattr(db, "rollback"):
-            try:
-                db.rollback()
-            except Exception:  # noqa: BLE001
-                logger.debug("Rollback after direct channel transition failure also failed", exc_info=True)
-        _log_document_index_channel_transition_failure(
-            document=document,
-            normalized_channel=normalized_channel,
-            normalized_status=normalized_status,
-            exc=exc,
-            used_savepoint=False,
+        logger.warning(
+            "Failed to persist document index channel transition tenant=%s document=%s channel=%s status=%s: %s",
+            document.tenant_id,
+            document.id,
+            normalized_channel,
+            normalized_status,
+            str(exc)[:200],
         )
         return None
 
@@ -370,7 +343,7 @@ def list_document_index_channels(
     document_id: UUID,
     pipeline_hash: str | None,
 ) -> list[DocumentIndexChannel]:
-    normalized_hash = str(pipeline_hash or "").strip()
+    normalized_hash = str((pipeline_hash if pipeline_hash is not None else "")).strip()
     query = (
         db.query(DocumentIndexChannel)
         .filter(
@@ -405,14 +378,14 @@ def upsert_document_index_channel(
     commit: bool = False,
 ) -> DocumentIndexChannel:
     normalized_channel = normalize_document_index_channel(channel)
-    normalized_hash = str(pipeline_hash or "").strip()
+    normalized_hash = pipeline_hash.strip()
     normalized_status = str(status or "pending").strip().lower() or "pending"
     if not normalized_hash:
         raise ValueError("pipeline_hash is required")
 
     normalized_attempt_increment = max(0, int(attempt_count_increment or 0))
     normalized_attempt_count = max(0, int(attempt_count)) if attempt_count is not None else None
-    occurred_at = last_status_changed_at or _utcnow()
+    occurred_at = last_status_changed_at if last_status_changed_at is not None else _utcnow()
 
     if _supports_atomic_postgresql_upsert(db):
         insert_values = _document_index_channel_insert_values(
@@ -464,7 +437,7 @@ def upsert_document_index_channel(
         )
         .first()
     )
-    previous_status = str(getattr(row, "status", "") or "").strip().lower() if row is not None else None
+    previous_status = row.status.strip().lower() if row is not None else None
     if row is None:
         row = DocumentIndexChannel(
             tenant_id=tenant_id,
@@ -525,7 +498,7 @@ def _document_index_channel_insert_values(
         "required": bool(required),
         "enabled": bool(enabled),
         "status": normalized_status,
-        "error": str(error or "").strip()[:2000] or None,
+        "error": _normalize_channel_error(error),
         "attempt_count": normalized_attempt_count
         if normalized_attempt_count is not None
         else normalized_attempt_increment,
@@ -538,7 +511,7 @@ def _document_index_channel_insert_values(
 
 def _document_index_channel_update_values(
     *,
-    stmt: Any,
+    stmt: Insert,
     normalized_attempt_count: int | None,
     normalized_attempt_increment: int,
     last_attempted_at: datetime | None,
@@ -589,7 +562,7 @@ def _apply_document_index_channel_values(
     row.required = bool(required)
     row.enabled = bool(enabled)
     row.status = normalized_status
-    row.error = str(error or "").strip()[:2000] or None
+    row.error = _normalize_channel_error(error)
     if normalized_attempt_count is not None:
         row.attempt_count = normalized_attempt_count
     if last_attempted_at is not None:
@@ -626,11 +599,16 @@ def reconcile_document_index_channels(
     }
     rows: list[DocumentIndexChannel] = []
     for channel in DOCUMENT_INDEX_CHANNELS:
-        enabled = bool(flags.get(channel, False))
+        enabled = flags[channel]
         row = existing.get(channel)
-        status = str(getattr(row, "status", "") or "").strip().lower() if row is not None else ""
-        error = str(getattr(row, "error", "") or "").strip() or None if row is not None else None
-        attempt_count = int(getattr(row, "attempt_count", 0) or 0) if row is not None else 0
+        if row is None:
+            status = ""
+            error = None
+            attempt_count = 0
+        else:
+            status = row.status.strip().lower()
+            error = row.error
+            attempt_count = int(row.attempt_count)
         if not enabled:
             status = "disabled"
             error = None
@@ -641,7 +619,7 @@ def reconcile_document_index_channels(
             upsert_document_index_channel(
                 db,
                 tenant_id=document.tenant_id,
-                dataset_id=getattr(document, "dataset_id", None),
+                dataset_id=document.dataset_id,
                 document_id=document.id,
                 pipeline_hash=normalized_hash,
                 channel=channel,
@@ -695,9 +673,7 @@ def summarize_document_index_channels(
         statuses[str(row.channel)] = _row_to_dict(row)
     for channel in DOCUMENT_INDEX_CHANNELS:
         if channel not in statuses:
-            statuses[channel] = _legacy_channel_status(
-                document, channel=channel, enabled=bool(flags.get(channel, False))
-            )
+            statuses[channel] = legacy_document_index_channel_status(document, channel=channel, enabled=flags[channel])
 
     required_channels = [channel for channel, payload in statuses.items() if bool(payload.get("required"))]
     enabled_channels = [channel for channel, payload in statuses.items() if bool(payload.get("enabled"))]
@@ -705,18 +681,16 @@ def summarize_document_index_channels(
         channel
         for channel, payload in statuses.items()
         if bool(payload.get("enabled"))
-        and str(payload.get("status") or "").strip().lower()
+        and payload["status"].strip().lower()
         not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
     ]
     error_channels = [
         channel
         for channel, payload in statuses.items()
-        if str(payload.get("status") or "").strip().lower() in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
+        if payload["status"].strip().lower() in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
     ]
     disabled_channels = [
-        channel
-        for channel, payload in statuses.items()
-        if str(payload.get("status") or "").strip().lower() == "disabled"
+        channel for channel, payload in statuses.items() if payload["status"].strip().lower() == "disabled"
     ]
     ready = not pending_channels and not error_channels
     return DocumentIndexChannelSummary(

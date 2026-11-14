@@ -15,7 +15,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,14 +89,14 @@ _CN_SECTIONS: dict[str, str] = {
     "补充材料": "supplementary",
 }
 
+
 def _normalize_section(title: str) -> str | None:
-    raw = (title or "").strip()
+    raw = (title).strip()
     if not raw:
         return None
     if raw in _CN_SECTIONS:
         return _CN_SECTIONS[raw]
-    lower = raw.lower().strip()
-    lower = " ".join(lower.split())
+    lower = " ".join(raw.lower().split())
     return _EN_SECTIONS.get(lower)
 
 
@@ -109,7 +108,7 @@ def _strip_leading_number_prefix(line: str) -> str:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").lstrip()
+    s = line.lstrip()
     if not s or not s[:1].isdigit():
         return s
 
@@ -119,9 +118,6 @@ def _strip_leading_number_prefix(line: str) -> str:
     while i < len(s) and digits < 2 and s[i].isdigit():
         i += 1
         digits += 1
-    if digits == 0:
-        return s
-
     # Optional ".<digits>" groups (up to 3).
     groups = 0
     while groups < 3 and i < len(s) and s[i] == ".":
@@ -175,15 +171,7 @@ def _iter_headings(text: str) -> list[PaperHeading]:
             )
         )
 
-    # Best-effort de-dup.
-    deduped: list[PaperHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[PaperHeading]) -> list[_Section]:
@@ -213,7 +201,7 @@ def looks_like_paper(text: str) -> bool:
 
 
 class PaperChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -229,7 +217,7 @@ class PaperChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

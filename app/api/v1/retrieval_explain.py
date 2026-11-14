@@ -12,25 +12,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
-from app.api.v1.rag import _enforce_non_empty_retrieval_scope
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import ChatRAGConfig, HistoryMessage
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.pipelines.langgraph import build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
-from app.services.dataset_service import DatasetService
-from app.services.document_access import filter_allowed_document_ids
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
+from app.services import dataset_service
+from app.services.rag_runtime_limiter import (
+    run_blocking_call_with_managed_session,
+    run_blocking_retrieval_call_with_managed_session,
+)
+from app.services.retrieval_scope import _resolve_retrieval_scope
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
@@ -68,43 +62,24 @@ class RetrievalExplainResponse(BaseModel):
 
     @property
     def schema(self) -> str:
-        return str(self.schema_)
+        return self.schema_
 
 
-def _trim_top_citation(row: Any) -> dict[str, Any]:
-    item = row if isinstance(row, dict) else {}
-    out = {
-        "chunk_id": item.get("chunk_id"),
-        "document_id": item.get("document_id"),
-        "source": item.get("source"),
-        "retrieval_role": item.get("retrieval_role"),
-        "relevance_score": item.get("relevance_score"),
-        "retrieval_score": item.get("retrieval_score"),
-        "rerank_score": item.get("rerank_score"),
-        "rerank_score_calibrated": item.get("rerank_score_calibrated"),
+def _trim_top_citation(citation: dict[str, Any]) -> dict[str, Any]:
+    public_fields = {
+        "chunk_id": citation.get("chunk_id"),
+        "document_id": citation.get("document_id"),
+        "source": citation.get("source"),
+        "retrieval_role": citation.get("retrieval_role"),
+        "relevance_score": citation.get("relevance_score"),
+        "retrieval_score": citation.get("retrieval_score"),
+        "rerank_score": citation.get("rerank_score"),
+        "rerank_score_calibrated": citation.get("rerank_score_calibrated"),
     }
-    return {k: v for k, v in out.items() if v is not None}
+    return {name: value for name, value in public_fields.items() if value is not None}
 
 
-def _as_history_dicts(history: list[HistoryMessage]) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
-    for msg in history or []:
-        if hasattr(msg, "model_dump"):
-            payload = msg.model_dump()
-        elif isinstance(msg, dict):
-            payload = dict(msg)
-        else:
-            payload = {}
-        out.append(
-            {
-                "role": str(payload.get("role") or ""),
-                "content": str(payload.get("content") or ""),
-            }
-        )
-    return out
-
-
-@router.post("/explain", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/explain")
 async def explain_retrieval(
     body: RetrievalExplainRequest,
     *,
@@ -112,90 +87,74 @@ async def explain_retrieval(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RetrievalExplainResponse:
-    if not bool(body.retrieval_only):
+    if not body.retrieval_only:
         raise HTTPException(status_code=400, detail="retrieval_only must be true for this endpoint")
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    rag_config = body.rag_config
 
-    scope_dataset_id: UUID | None = None
-    scope_document_ids: list[UUID] = []
-    if body.document_ids:
-        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    elif body.dataset_id is not None:
-        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        scope_dataset_id = body.dataset_id
-    elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
-        raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")
+    def prepare_request(worker_db: Session) -> dict[str, Any]:
+        dataset_service.ensure_member(worker_db, tenant_id, account_id)
+        scope_dataset_id, _scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+            db=worker_db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            document_ids=body.document_ids,
+            dataset_id=body.dataset_id,
+        )
+        return build_rag_state(
+            question=body.query,
+            history=[{"role": message.role, "content": message.content} for message in body.history],
+            document_ids=scope_document_ids,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=scope_dataset_id,
+            top_k=rag_config.top_k,
+            score_threshold=rag_config.score_threshold,
+            retrieval_mode=rag_config.retrieval_mode,
+            retrieval_profile=rag_config.retrieval_profile,
+            intent_router=rag_config.intent_router,
+            intent_router_policy=rag_config.intent_router_policy,
+            enable_query_alias_expansion=rag_config.enable_query_alias_expansion,
+            query_aliases=rag_config.query_aliases,
+            query_alias_max_queries=rag_config.query_alias_max_queries,
+            enable_multi_query=rag_config.enable_multi_query,
+            multi_query_count=rag_config.multi_query_count,
+            multi_query_temperature=rag_config.multi_query_temperature,
+            multi_query_max_chars=rag_config.multi_query_max_chars,
+            enable_hyde=rag_config.enable_hyde,
+            enable_query_decomposition=rag_config.enable_query_decomposition,
+            enable_hierarchy_recall=rag_config.enable_hierarchy_recall,
+            hierarchy_family_collapse=rag_config.hierarchy_family_collapse,
+            hierarchy_family_aggregation=rag_config.hierarchy_family_aggregation,
+            hierarchy_tree_dedup=rag_config.hierarchy_tree_dedup,
+            hierarchy_parent_depth=rag_config.hierarchy_parent_depth,
+            hierarchy_sibling_window=rag_config.hierarchy_sibling_window,
+            hierarchy_overfetch_factor=rag_config.hierarchy_overfetch_factor,
+            enable_kg_query_expansion=rag_config.enable_kg_query_expansion,
+            enable_kg_chunk_injection=rag_config.enable_kg_chunk_injection,
+            kg_chunk_injection_max_chunks=rag_config.kg_chunk_injection_max_chunks,
+            enable_kg_chunk_boost=rag_config.enable_kg_chunk_boost,
+            kg_chunk_boost_weight=rag_config.kg_chunk_boost_weight,
+            kg_chunk_boost_max_promoted=rag_config.kg_chunk_boost_max_promoted,
+            sparse_retrieval_enabled=rag_config.sparse_retrieval_enabled,
+            sparse_retrieval_provider=rag_config.sparse_retrieval_provider,
+            alpha=rag_config.alpha,
+            fusion_strategy=rag_config.fusion_strategy,
+            fusion_budgets=rag_config.fusion_budgets,
+            fusion_min_scores=rag_config.fusion_min_scores,
+            fusion_weights=rag_config.fusion_weights,
+            enable_weight_rerank=rag_config.enable_weight_rerank,
+            vector_weight=rag_config.vector_weight,
+            keyword_weight=rag_config.keyword_weight,
+            mmr_lambda=rag_config.mmr_lambda,
+            enable_reranker=rag_config.enable_reranker,
+            reranker_provider=rag_config.reranker_provider,
+            reranker_top_n=rag_config.reranker_top_n,
+            metadata_filter=rag_config.metadata_filter,
+            visible_evidence_only=rag_config.visible_evidence_only,
+        )
 
-    _enforce_non_empty_retrieval_scope(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        scope_document_ids=scope_document_ids,
-        scope_dataset_id=scope_dataset_id,
-    )
-
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
-    rag_config_provided = "rag_config" in request_fields_set
-    effective_rag_config = body.rag_config if rag_config_provided else ChatRAGConfig()
-
-    state = build_rag_state(
-        question=body.query,
-        history=_as_history_dicts(body.history),
-        document_ids=scope_document_ids,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=scope_dataset_id,
-        top_k=effective_rag_config.top_k,
-        score_threshold=effective_rag_config.score_threshold,
-        retrieval_mode=effective_rag_config.retrieval_mode,
-        retrieval_profile=effective_rag_config.retrieval_profile,
-        intent_router=effective_rag_config.intent_router,
-        intent_router_policy=effective_rag_config.intent_router_policy,
-        enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
-        query_aliases=effective_rag_config.query_aliases,
-        query_alias_max_queries=effective_rag_config.query_alias_max_queries,
-        enable_multi_query=effective_rag_config.enable_multi_query,
-        multi_query_count=effective_rag_config.multi_query_count,
-        multi_query_temperature=effective_rag_config.multi_query_temperature,
-        multi_query_max_chars=effective_rag_config.multi_query_max_chars,
-        enable_hyde=effective_rag_config.enable_hyde,
-        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
-        enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
-        hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
-        hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
-        hierarchy_tree_dedup=effective_rag_config.hierarchy_tree_dedup,
-        hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
-        hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
-        hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
-        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
-        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
-        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
-        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
-        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
-        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
-        enable_query_rewrite=getattr(effective_rag_config, "enable_query_rewrite", None),
-        query_rewrite_strategy=getattr(effective_rag_config, "query_rewrite_strategy", None),
-        query_rewrite_temperature=getattr(effective_rag_config, "query_rewrite_temperature", None),
-        query_rewrite_max_chars=getattr(effective_rag_config, "query_rewrite_max_chars", None),
-        sparse_retrieval_enabled=getattr(effective_rag_config, "sparse_retrieval_enabled", None),
-        sparse_retrieval_provider=getattr(effective_rag_config, "sparse_retrieval_provider", None),
-        alpha=effective_rag_config.alpha,
-        fusion_strategy=effective_rag_config.fusion_strategy,
-        fusion_budgets=effective_rag_config.fusion_budgets,
-        fusion_min_scores=effective_rag_config.fusion_min_scores,
-        fusion_weights=effective_rag_config.fusion_weights,
-        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
-        vector_weight=effective_rag_config.vector_weight,
-        keyword_weight=effective_rag_config.keyword_weight,
-        mmr_lambda=effective_rag_config.mmr_lambda,
-        enable_reranker=effective_rag_config.enable_reranker,
-        reranker_provider=effective_rag_config.reranker_provider,
-        reranker_top_n=effective_rag_config.reranker_top_n,
-        metadata_filter=effective_rag_config.metadata_filter,
-        visible_evidence_only=effective_rag_config.visible_evidence_only,
-    )
+    state = await run_blocking_call_with_managed_session(prepare_request, request_db=None)
     offload_metrics: dict[str, Any] = {}
     out = await run_blocking_retrieval_call_with_managed_session(
         lambda worker_db: run_retrieval({**state, "db": worker_db}),
@@ -203,65 +162,52 @@ async def explain_retrieval(
         runtime_metrics=offload_metrics,
     )
 
-    citations = out.get("citations") if isinstance(out.get("citations"), list) else []
-    metrics = dict(out.get("metrics")) if isinstance(out.get("metrics"), dict) else {}
+    citations = out["citations"]
+    metrics = dict(out["metrics"])
     metrics.update(offload_metrics)
-    query_debug = out.get("query_debug") if isinstance(out.get("query_debug"), dict) else {}
-    retrieval_trace = out.get("retrieval_trace") if isinstance(out.get("retrieval_trace"), dict) else {}
+    query_debug = out["query_debug"]
+    retrieval_trace = out["retrieval_trace"]
 
-    channels = query_debug.get("channels") if isinstance(query_debug.get("channels"), dict) else {}
-    channel_health = out.get("channel_health") if isinstance(out.get("channel_health"), dict) else {}
+    # Retrieval bypass omits these diagnostics and explicitly sets channels to None.
+    channels = query_debug.get("channels")
+    channel_health = out.get("channel_health")
     if not channel_health:
-        channel_health = (
-            metrics.get("retrieval_channel_health") if isinstance(metrics.get("retrieval_channel_health"), dict) else {}
-        )
-    hierarchy_recall = (
-        query_debug.get("hierarchy_recall") if isinstance(query_debug.get("hierarchy_recall"), dict) else {}
-    )
+        channel_health = metrics.get("retrieval_channel_health", {})
+    hierarchy_recall = query_debug.get("hierarchy_recall")
     if not hierarchy_recall:
-        hierarchy_recall = (
-            retrieval_trace.get("hierarchy_recall") if isinstance(retrieval_trace.get("hierarchy_recall"), dict) else {}
-        )
-    query_count = int(metrics.get("retrieval_query_count") or len(metrics.get("retrieval_per_query") or []))
-    top_limit = max(1, int(body.top_citations_limit or 1))
+        hierarchy_recall = retrieval_trace.get("hierarchy_recall", {})
 
     stage_timings = {
-        "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
-        "rewrite_elapsed_sec": float(metrics.get("rewrite_elapsed_sec") or 0.0),
-        "multi_query_elapsed_sec": float(metrics.get("multi_query_elapsed_sec") or 0.0),
-        "decompose_elapsed_sec": float(metrics.get("decompose_elapsed_sec") or 0.0),
-        "post_rerank_elapsed_sec": float(metrics.get("evidence_post_rerank_elapsed_sec") or 0.0),
+        "retrieval_elapsed_sec": metrics.get("retrieval_elapsed_sec", 0.0),
+        "rewrite_elapsed_sec": metrics.get("rewrite_elapsed_sec", 0.0),
+        "multi_query_elapsed_sec": metrics.get("multi_query_elapsed_sec", 0.0),
+        "decompose_elapsed_sec": metrics.get("decompose_elapsed_sec", 0.0),
+        "post_rerank_elapsed_sec": metrics.get("evidence_post_rerank_elapsed_sec", 0.0),
     }
 
     rerank_meta = {
         "provider": metrics.get("evidence_post_rerank_provider"),
-        "used": bool(metrics.get("evidence_post_rerank_used")),
-        "candidates_n": int(metrics.get("evidence_post_rerank_candidates_n") or 0),
-        "pipeline_stages": (
-            list(metrics.get("evidence_post_rerank_pipeline_stages") or [])
-            if isinstance(metrics.get("evidence_post_rerank_pipeline_stages"), list)
-            else []
-        ),
-        "cache_hits": int(metrics.get("evidence_post_rerank_cache_hits") or 0),
-        "cache_misses": int(metrics.get("evidence_post_rerank_cache_misses") or 0),
+        "used": metrics.get("evidence_post_rerank_used", False),
+        "candidates_n": metrics.get("evidence_post_rerank_candidates_n", 0),
+        "pipeline_stages": metrics.get("evidence_post_rerank_pipeline_stages", []),
+        "cache_hits": metrics.get("evidence_post_rerank_cache_hits", 0),
+        "cache_misses": metrics.get("evidence_post_rerank_cache_misses", 0),
     }
 
     return RetrievalExplainResponse(
         schema=_SCHEMA,
         retrieval_only=True,
-        query_for_retrieval=str(out.get("query_for_retrieval") or body.query),
-        retrieval_degraded=bool(out.get("retrieval_degraded") or metrics.get("retrieval_degraded")),
-        fallback_reason=(
-            str(out.get("fallback_reason") or metrics.get("retrieval_fallback_reason") or "").strip() or None
-        ),
+        query_for_retrieval=out["query_for_retrieval"] or body.query,
+        retrieval_degraded=out.get("retrieval_degraded", False) or metrics.get("retrieval_degraded", False),
+        fallback_reason=out.get("fallback_reason"),
         channel_health=channel_health,
-        channels=channels,
+        channels=channels if channels is not None else {},
         hierarchy_recall=hierarchy_recall,
         candidate_counts={
-            "query_count": query_count,
+            "query_count": metrics.get("retrieval_query_count", 0),
             "citations": len(citations),
         },
-        top_citations=[_trim_top_citation(row) for row in citations[:top_limit]],
+        top_citations=[_trim_top_citation(citation) for citation in citations[: body.top_citations_limit]],
         rerank=rerank_meta,
         stage_timings=stage_timings,
         metrics=metrics,

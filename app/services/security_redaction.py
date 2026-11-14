@@ -1,9 +1,8 @@
 """
 Security redaction helpers for API-safe responses.
 
-Best-effort and fail-open: helpers should not raise for malformed payloads.
+Connector payload shapes are validated by their owning input boundary.
 """
-
 
 import re
 from typing import Any
@@ -30,10 +29,9 @@ def redact_sql_literals(sql: str) -> str:
     """
     Mask sensitive SQL literal values while preserving query structure.
     """
-    raw = str(sql or "")
-    if not raw:
+    if not sql:
         return ""
-    redacted = _SQL_STRING_LITERAL_RE.sub("'<redacted>'", raw)
+    redacted = _SQL_STRING_LITERAL_RE.sub("'<redacted>'", sql)
     return _SQL_LONG_NUMBER_RE.sub("<redacted_num>", redacted)
 
 
@@ -41,14 +39,12 @@ def redact_connection_info(config: dict[str, Any], *, enabled: bool) -> dict[str
     """
     Mask DB-connection fields inside a connector config payload.
     """
-    if not isinstance(config, dict):
-        return {}
     out: dict[str, Any] = dict(config)
     if not enabled:
         return out
 
     for key, value in list(out.items()):
-        lowered = str(key or "").strip().lower()
+        lowered = key.strip().lower()
         if lowered in _CONNECTION_KEYS and value not in (None, ""):
             out[key] = "<redacted_conn>"
             continue

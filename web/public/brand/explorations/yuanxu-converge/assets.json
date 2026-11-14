@@ -1,0 +1,305 @@
+[
+  {
+    "file": "mark.svg",
+    "width": 64,
+    "height": 64,
+    "label": "原序标志"
+  },
+  {
+    "file": "logo.svg",
+    "width": 184,
+    "height": 72,
+    "label": "原序中英组合标志"
+  },
+  {
+    "file": "mark-inverse.svg",
+    "width": 64,
+    "height": 64,
+    "label": "原序标志-inverse"
+  },
+  {
+    "file": "logo-inverse.svg",
+    "width": 184,
+    "height": 72,
+    "label": "原序中英组合标志-inverse"
+  },
+  {
+    "file": "mark-ink.svg",
+    "width": 64,
+    "height": 64,
+    "label": "原序标志-ink"
+  },
+  {
+    "file": "logo-ink.svg",
+    "width": 184,
+    "height": 72,
+    "label": "原序中英组合标志-ink"
+  },
+  {
+    "file": "mark-white.svg",
+    "width": 64,
+    "height": 64,
+    "label": "原序标志-white"
+  },
+  {
+    "file": "logo-white.svg",
+    "width": 184,
+    "height": 72,
+    "label": "原序中英组合标志-white"
+  },
+  {
+    "file": "mark-rust.svg",
+    "width": 64,
+    "height": 64,
+    "label": "原序标志-rust"
+  },
+  {
+    "file": "logo-rust.svg",
+    "width": 184,
+    "height": 72,
+    "label": "原序中英组合标志-rust"
+  },
+  {
+    "file": "wordmark-zh.svg",
+    "width": 104,
+    "height": 56,
+    "label": "原序中文字标"
+  },
+  {
+    "file": "wordmark-en.svg",
+    "width": 176,
+    "height": 44,
+    "label": "YUANXU 英文字标"
+  },
+  {
+    "file": "logo-en.svg",
+    "width": 272,
+    "height": 72,
+    "label": "原序英文组合标志"
+  },
+  {
+    "file": "logo-compact.svg",
+    "width": 184,
+    "height": 64,
+    "label": "原序紧凑组合标志"
+  },
+  {
+    "file": "logo-compact-inverse.svg",
+    "width": 184,
+    "height": 64,
+    "label": "原序紧凑组合标志反白"
+  },
+  {
+    "file": "logo-stacked.svg",
+    "width": 192,
+    "height": 200,
+    "label": "原序纵向组合标志"
+  },
+  {
+    "file": "app-icon.svg",
+    "width": 512,
+    "height": 512,
+    "label": "原序深色应用图标"
+  },
+  {
+    "file": "app-icon-light.svg",
+    "width": 512,
+    "height": 512,
+    "label": "原序浅色应用图标"
+  },
+  {
+    "file": "app-icon-maskable.svg",
+    "width": 512,
+    "height": 512,
+    "label": "原序可遮罩应用图标"
+  },
+  {
+    "file": "favicon.svg",
+    "width": 16,
+    "height": 16,
+    "label": "原序自适应标签页图标"
+  },
+  {
+    "file": "favicon-tile.svg",
+    "width": 16,
+    "height": 16,
+    "label": "归点标签页图标"
+  },
+  {
+    "file": "icons/knowledge.svg",
+    "width": 24,
+    "height": 24,
+    "label": "原序 · 知识库"
+  },
+  {
+    "file": "icons/governance.svg",
+    "width": 24,
+    "height": 24,
+    "label": "原序 · 数据治理"
+  },
+  {
+    "file": "icons/retrieval.svg",
+    "width": 24,
+    "height": 24,
+    "label": "原序 · 检索"
+  },
+  {
+    "file": "icons/citation.svg",
+    "width": 24,
+    "height": 24,
+    "label": "原序 · 引用"
+  },
+  {
+    "file": "icons/evaluation.svg",
+    "width": 24,
+    "height": 24,
+    "label": "原序 · 回归评测"
+  },
+  {
+    "file": "icons/trace.svg",
+    "width": 24,
+    "height": 24,
+    "label": "原序 · 链路追踪"
+  },
+  {
+    "file": "brand-overview.svg",
+    "width": 1600,
+    "height": 1060,
+    "label": "原序品牌识别总览"
+  },
+  {
+    "file": "symbol-comparison.svg",
+    "width": 1400,
+    "height": 620,
+    "label": "原版方折符号与归点图形比较"
+  },
+  {
+    "file": "social-card.svg",
+    "width": 1200,
+    "height": 630,
+    "label": "原序分享封面"
+  },
+  {
+    "file": "mark-256.png",
+    "width": 256,
+    "height": 256,
+    "label": "mark-256.png"
+  },
+  {
+    "file": "mark-512.png",
+    "width": 512,
+    "height": 512,
+    "label": "mark-512.png"
+  },
+  {
+    "file": "mark-white-512.png",
+    "width": 512,
+    "height": 512,
+    "label": "mark-white-512.png"
+  },
+  {
+    "file": "logo@2x.png",
+    "width": 368,
+    "height": 144,
+    "label": "logo@2x.png"
+  },
+  {
+    "file": "logo-inverse@2x.png",
+    "width": 368,
+    "height": 144,
+    "label": "logo-inverse@2x.png"
+  },
+  {
+    "file": "logo-white@2x.png",
+    "width": 368,
+    "height": 144,
+    "label": "logo-white@2x.png"
+  },
+  {
+    "file": "logo-en@2x.png",
+    "width": 544,
+    "height": 144,
+    "label": "logo-en@2x.png"
+  },
+  {
+    "file": "app-icon-1024.png",
+    "width": 1024,
+    "height": 1024,
+    "label": "app-icon-1024.png"
+  },
+  {
+    "file": "app-icon-light-1024.png",
+    "width": 1024,
+    "height": 1024,
+    "label": "app-icon-light-1024.png"
+  },
+  {
+    "file": "icon-192.png",
+    "width": 192,
+    "height": 192,
+    "label": "icon-192.png"
+  },
+  {
+    "file": "icon-512.png",
+    "width": 512,
+    "height": 512,
+    "label": "icon-512.png"
+  },
+  {
+    "file": "icon-maskable-512.png",
+    "width": 512,
+    "height": 512,
+    "label": "icon-maskable-512.png"
+  },
+  {
+    "file": "apple-touch-icon.png",
+    "width": 180,
+    "height": 180,
+    "label": "apple-touch-icon.png"
+  },
+  {
+    "file": "brand-overview.png",
+    "width": 1600,
+    "height": 1060,
+    "label": "brand-overview.png"
+  },
+  {
+    "file": "social-card.png",
+    "width": 1200,
+    "height": 630,
+    "label": "social-card.png"
+  },
+  {
+    "file": "symbol-comparison.png",
+    "width": 1400,
+    "height": 620,
+    "label": "symbol-comparison.png"
+  },
+  {
+    "file": "favicon-16.png",
+    "width": 16,
+    "height": 16,
+    "label": "标签页图标 16px"
+  },
+  {
+    "file": "favicon-32.png",
+    "width": 32,
+    "height": 32,
+    "label": "标签页图标 32px"
+  },
+  {
+    "file": "favicon-48.png",
+    "width": 48,
+    "height": 48,
+    "label": "标签页图标 48px"
+  },
+  {
+    "file": "favicon.ico",
+    "sizes": [
+      16,
+      32,
+      48
+    ],
+    "label": "多尺寸标签页图标"
+  }
+]

@@ -20,7 +20,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas.dataset_profile import (
+from app.api.schemas.datasets import (
     DatasetProfileDocumentListResponse,
     DatasetProfileDocumentOut,
     DatasetProfileFindingListResponse,
@@ -41,6 +41,7 @@ from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
+from app.services import dataset_service
 from app.services.dataset_profile_utils import (
     AVG_CHUNK_CHARS_BINS,
     AVG_CHUNK_TOKENS_BINS,
@@ -59,7 +60,6 @@ from app.services.dataset_profile_utils import (
     safe_float,
     safe_int,
 )
-from app.services.dataset_service import DatasetService
 
 logger = get_logger(__name__)
 
@@ -158,7 +158,9 @@ def normalize_language_bucket(value: object) -> str:
     - Keep in sync with retrieval/eval slice taxonomy.
     """
 
-    s = str(value or "").strip()
+    if value is None:
+        return "unknown"
+    s = str(value).strip()
     if not s:
         return "unknown"
     lowered = s.lower()
@@ -181,7 +183,9 @@ def directory_bucket_from_source_path(value: object) -> str:
     and to align with eval slice taxonomy.
     """
 
-    raw = str(value or "").replace("\\", "/").strip()
+    if value is None:
+        return "root"
+    raw = str(value).replace("\\", "/").strip()
     if not raw or raw in {".", "/"}:
         return "root"
     raw = raw.lstrip("/")
@@ -238,10 +242,10 @@ def extract_language_bucket(meta: dict[str, Any]) -> str:
 
 
 def _normalize_file_type(file_type: object, filename: object) -> str:
-    explicit = str(file_type or "").strip().lower()
+    explicit = file_type.strip().lower()
     if explicit:
         return explicit
-    name = str(filename or "").strip()
+    name = filename.strip()
     if "." in name:
         ext = name.rsplit(".", 1)[-1].strip().lower()
         if ext:
@@ -255,12 +259,12 @@ def _extract_pii_hits(meta: dict) -> dict[str, int]:
         return {}
     out: dict[str, int] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        key = str(k).strip()
         if not key:
             continue
         n = safe_int(v, default=0)
         if n > 0:
-            out[key] = int(n)
+            out[key] = n
     return out
 
 
@@ -270,12 +274,12 @@ def _extract_secrets_hits(meta: dict) -> dict[str, int]:
         return {}
     out: dict[str, int] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        key = str(k).strip()
         if not key:
             continue
         n = safe_int(v, default=0)
         if n > 0:
-            out[key] = int(n)
+            out[key] = n
     return out
 
 
@@ -323,9 +327,9 @@ def build_dataset_documents_query(
     - Dataset read permission is enforced first
     - Then document-level ACL ("security trimming") is applied
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,
@@ -440,9 +444,9 @@ def _accumulate_basic_profile_metrics(
 
     chunk_count_val = safe_int(chunk_count, default=0)
     if chunk_count_val > 0:
-        state.chunk_counts.append(int(chunk_count_val))
+        state.chunk_counts.append(chunk_count_val)
         if length_val > 0:
-            avg_chunk_chars = int(max(1, length_val // max(1, int(chunk_count_val))))
+            avg_chunk_chars = max(1, length_val // chunk_count_val)
             state.avg_chunk_chars.append(avg_chunk_chars)
     return length_val
 
@@ -452,16 +456,19 @@ def _accumulate_parse_provenance(state: _ProfileAggregateState, *, meta_dict: di
     if not isinstance(prov, dict) or not prov:
         return
     state.provenance_docs += 1
-    backend = str(prov.get("resolved_backend") or "").strip() or "unknown"
+    backend = prov.get("resolved_backend")
+    if backend is not None:
+        backend = backend.strip()
+    backend = backend or "unknown"
     state.provenance_by_backend[backend] += 1
 
     elapsed = safe_int(prov.get("elapsed_ms"), default=0)
     if elapsed > 0:
-        state.provenance_elapsed_ms.append(int(elapsed))
+        state.provenance_elapsed_ms.append(elapsed)
 
     attempts = prov.get("attempts")
     if isinstance(attempts, list) and len(attempts) >= 2:
-        first = attempts[0] if attempts else None
+        first = attempts[0]
         if isinstance(first, dict) and first.get("ok") is False:
             state.provenance_fallback_docs += 1
 
@@ -476,7 +483,7 @@ def _accumulate_chunk_length_histogram(state: _ProfileAggregateState, *, meta_di
     for bucket in hist:
         if not isinstance(bucket, dict):
             continue
-        label = str(bucket.get("label") or "").strip()
+        label = bucket["label"].strip()
         if not label:
             continue
         idx = state.chunk_length_label_to_idx.get(label)
@@ -484,8 +491,8 @@ def _accumulate_chunk_length_histogram(state: _ProfileAggregateState, *, meta_di
             continue
         count = safe_int(bucket.get("count"), default=0)
         if count > 0:
-            state.chunk_length_bins[idx] += int(count)
-            state.chunk_length_total += int(count)
+            state.chunk_length_bins[idx] += count
+            state.chunk_length_total += count
 
 
 def _accumulate_chunk_token_histogram(state: _ProfileAggregateState, *, meta_dict: dict[str, Any]) -> None:
@@ -500,7 +507,7 @@ def _accumulate_chunk_token_histogram(state: _ProfileAggregateState, *, meta_dic
     for bucket in hist:
         if not isinstance(bucket, dict):
             continue
-        label = str(bucket.get("label") or "").strip()
+        label = bucket["label"].strip()
         if not label:
             continue
         idx = state.chunk_token_label_to_idx.get(label)
@@ -508,8 +515,8 @@ def _accumulate_chunk_token_histogram(state: _ProfileAggregateState, *, meta_dic
             continue
         count = safe_int(bucket.get("count"), default=0)
         if count > 0:
-            state.chunk_token_bins[idx] += int(count)
-            state.chunk_token_total += int(count)
+            state.chunk_token_bins[idx] += count
+            state.chunk_token_total += count
 
 
 def _append_avg_chunk_token(
@@ -523,9 +530,9 @@ def _append_avg_chunk_token(
             total = safe_int(chunking_stats_tokens.get("total"), default=0)
             count = safe_int(chunking_stats_tokens.get("count"), default=0)
             if total > 0 and count > 0:
-                avg_tok = int(max(1, total // max(1, count)))
+                avg_tok = max(1, total // count)
         if avg_tok > 0:
-            state.avg_chunk_tokens.append(int(avg_tok))
+            state.avg_chunk_tokens.append(avg_tok)
     except Exception as exc:
         logger.debug("Ignoring malformed chunking token stats: %s", exc)
 
@@ -536,7 +543,7 @@ def _accumulate_chunk_coverage(state: _ProfileAggregateState, *, meta_dict: dict
         return
     ratio = safe_float(cov.get("coverage_ratio"), default=-1.0)
     if ratio >= 0.0:
-        clamped = min(1.0, max(0.0, float(ratio)))
+        clamped = min(1.0, max(0.0, ratio))
         pct = int(round(clamped * 100.0))
         state.coverage_pcts.append(pct)
         if clamped < 0.98:
@@ -544,7 +551,7 @@ def _accumulate_chunk_coverage(state: _ProfileAggregateState, *, meta_dict: dict
 
     waste = safe_float(cov.get("overlap_waste_ratio"), default=-1.0)
     if waste >= 0.0:
-        clamped = min(1.0, max(0.0, float(waste)))
+        clamped = min(1.0, max(0.0, waste))
         pct = int(round(clamped * 100.0))
         state.overlap_waste_pcts.append(pct)
 
@@ -553,7 +560,9 @@ def _accumulate_chunk_quality_findings(state: _ProfileAggregateState, *, meta_di
     gate = meta_dict.get("chunk_quality_gate")
     if not isinstance(gate, dict):
         return
-    grade = str(gate.get("grade") or "").strip().lower()
+    grade = gate.get("grade")
+    if grade is not None:
+        grade = grade.strip().lower()
     if grade == "fail":
         state.finding_counts["chunk_quality_fail"] += 1
     reason_items = gate.get("reason_items")
@@ -562,7 +571,7 @@ def _accumulate_chunk_quality_findings(state: _ProfileAggregateState, *, meta_di
     for item in reason_items:
         if not isinstance(item, dict):
             continue
-        code = str(item.get("code") or "").strip().lower()
+        code = item["code"].strip().lower()
         if code not in {"many_duplicates", "too_many_duplicates"}:
             continue
         state.duplicate_like_docs += 1
@@ -576,7 +585,7 @@ def _accumulate_page_count(state: _ProfileAggregateState, *, meta_dict: dict[str
         if isinstance(pdf_quality, dict):
             page_count = safe_int(pdf_quality.get("page_count"), default=0)
     if page_count > 0:
-        state.page_counts.append(int(page_count))
+        state.page_counts.append(page_count)
 
 
 def _accumulate_pdf_scan_findings(
@@ -611,8 +620,7 @@ def _accumulate_document_findings(
 ) -> None:
     if status == "failed":
         state.finding_counts["parse_failed"] += 1
-        err = str(error_message or "")
-        if err.strip().lower().startswith("preprocess_failed"):
+        if error_message is not None and str(error_message).strip().lower().startswith("preprocess_failed"):
             state.finding_counts["preprocess_failed"] += 1
 
     if _is_low_density(meta_dict, density_threshold=float(density_threshold)):
@@ -645,18 +653,20 @@ def _accumulate_security_and_dedup(state: _ProfileAggregateState, *, meta_dict: 
     if pii:
         state.finding_counts["pii"] += 1
         for key, value in pii.items():
-            state.pii_totals[key] += int(value)
+            state.pii_totals[key] += value
 
     secrets = _extract_secrets_hits(meta_dict)
     if secrets:
         state.finding_counts["secrets"] += 1
         for key, value in secrets.items():
-            state.secrets_totals[key] += int(value)
+            state.secrets_totals[key] += value
 
     if _has_near_dedup(meta_dict):
         state.finding_counts["near_dedup"] += 1
 
-    sha = str(meta_dict.get("file_sha256") or "").strip().lower()
+    sha = meta_dict.get("file_sha256")
+    if sha is not None:
+        sha = sha.strip().lower()
     if sha:
         state.sha_counts[sha] += 1
 
@@ -670,7 +680,7 @@ def _accumulate_profile_row(
 ) -> None:
     _doc_id, filename, file_type, file_size, status, chunk_count, total_chars, error_message, meta = row
     file_type_norm = _normalize_file_type(file_type, filename)
-    status_norm = str(status or "").strip().lower() or "unknown"
+    status_norm = status.strip().lower() or "unknown"
     state.by_status[status_norm] += 1
     state.by_type[file_type_norm] += 1
 
@@ -708,9 +718,9 @@ def _finalize_exact_dup_count(state: _ProfileAggregateState) -> None:
         return
     dup_total = 0
     for count in state.sha_counts.values():
-        if int(count) > 1:
-            dup_total += int(count)
-    state.finding_counts["exact_dup"] = int(dup_total)
+        if count > 1:
+            dup_total += count
+    state.finding_counts["exact_dup"] = dup_total
 
 
 def _build_percentiles(values: list[int]) -> DatasetProfilePercentiles:
@@ -763,17 +773,12 @@ def _build_parse_quality_histogram(parse_quality_bins: list[int]) -> list[dict[s
     for idx, count in enumerate(parse_quality_bins):
         lower = idx / 10.0
         upper = (idx + 1) / 10.0
-        out.append({"label": f"{lower:.1f}-{upper:.1f}", "count": int(count)})
+        out.append({"label": f"{lower:.1f}-{upper:.1f}", "count": count})
     return out
 
 
 def _build_language_mix(language_counts: Counter[str]) -> dict[str, int]:
-    return {
-        "zh": int(language_counts.get("zh", 0) or 0),
-        "en": int(language_counts.get("en", 0) or 0),
-        "mixed": int(language_counts.get("mixed", 0) or 0),
-        "unknown": int(language_counts.get("unknown", 0) or 0),
-    }
+    return {language: language_counts[language] for language in ("zh", "en", "mixed", "unknown")}
 
 
 def _build_findings_out(finding_counts: dict[str, int]) -> list[DatasetProfileFindingSummary]:
@@ -782,9 +787,9 @@ def _build_findings_out(finding_counts: dict[str, int]) -> list[DatasetProfileFi
         out.append(
             DatasetProfileFindingSummary(
                 key=key,
-                label=str(info.get("label") or key),
-                severity=str(info.get("severity") or "info"),
-                count=int(finding_counts.get(key, 0) or 0),
+                label=info["label"],
+                severity=info["severity"],
+                count=finding_counts[key],
                 description=info.get("description"),
             )
         )
@@ -871,7 +876,7 @@ def _build_chunk_token_target_checks(
             )
         ]
 
-    tok_p50 = int(getattr(chunk_token_percentiles, "p50", 0) or 0)
+    tok_p50 = int(chunk_token_percentiles.p50 or 0)
     status = "pass"
     if tok_p50 <= 0:
         status = "warn"
@@ -956,7 +961,7 @@ def _build_chunk_coverage_check(
                 suggestions=["开启 backfill_chunk_coverage 或在入库时持久化 chunk offsets。"],
             )
         ]
-    cov_p50 = int(getattr(chunk_coverage_percentiles, "p50", 0) or 0)
+    cov_p50 = int(chunk_coverage_percentiles.p50 or 0)
     cov_status = "pass"
     if cov_p50 <= 0:
         cov_status = "warn"
@@ -999,7 +1004,7 @@ def _build_chunk_overlap_waste_check(
                 suggestions=["开启 backfill_chunk_coverage 或在入库时持久化 chunk offsets。"],
             )
         ]
-    waste_p50 = int(getattr(chunk_overlap_waste_percentiles, "p50", 0) or 0)
+    waste_p50 = int(chunk_overlap_waste_percentiles.p50 or 0)
     waste_status = "pass"
     if waste_p50 >= int(thresholds["waste_fail"]):
         waste_status = "fail"
@@ -1269,10 +1274,10 @@ def compute_dataset_profile_summary(
         account_id=account_id,
         dataset_id=dataset_id,
     )
-    dataset_meta = dict(getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    dataset_meta = dict(dataset.dataset_metadata or {})
 
     # Optional pipeline version filter: use active_pipeline_hash when present (fallback to pipeline_hash).
-    pipeline_hash_norm = str(pipeline_hash or "").strip() or None
+    pipeline_hash_norm = pipeline_hash
     if pipeline_hash_norm:
         active_expr = func.coalesce(
             DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
@@ -1289,12 +1294,12 @@ def compute_dataset_profile_summary(
             .enable_eagerloads(False)
             .scalar()
         )
-        latest_doc_key = latest_doc_ts.isoformat() if hasattr(latest_doc_ts, "isoformat") else str(latest_doc_ts or "")
+        latest_doc_key = latest_doc_ts.isoformat() if latest_doc_ts is not None else None
         cache_key = (
             str(tenant_id),
             str(account_id),
             str(dataset_id),
-            str(pipeline_hash_norm or ""),
+            pipeline_hash_norm,
             float(density_threshold),
             int(image_threshold),
             latest_doc_key,
@@ -1319,14 +1324,14 @@ def compute_dataset_profile_summary(
         if row is not None:
             latest_run = DatasetProfileScanRunSummary(
                 id=row.id,
-                kind=str(getattr(row, "kind", "") or "deep"),
-                status=str(getattr(row, "status", "") or "pending"),
-                progress=int(getattr(row, "progress", 0) or 0),
-                requested_by=getattr(row, "requested_by", None),
-                created_at=getattr(row, "created_at", None),
-                started_at=getattr(row, "started_at", None),
-                finished_at=getattr(row, "finished_at", None),
-                error_message=getattr(row, "error_message", None),
+                kind=str(row.kind or "deep"),
+                status=str(row.status or "pending"),
+                progress=int(row.progress or 0),
+                requested_by=row.requested_by,
+                created_at=row.created_at,
+                started_at=row.started_at,
+                finished_at=row.finished_at,
+                error_message=row.error_message,
             )
     except Exception:
         latest_run = None
@@ -1478,12 +1483,10 @@ def apply_finding_filter(
     NOTE: For JSONB fields, we only use predicates that work on PostgreSQL.
     For sqlite/local dev, callers can fall back to Python-side filtering (not ideal).
     """
-    key = str(finding_key or "").strip().lower()
+    key = finding_key.strip().lower()
     if key not in FINDING_KEY_REASONS:
         raise ValueError("Unknown finding_key")
-    builder = _FINDING_FILTER_BUILDERS.get(key)
-    if builder is None:
-        return query
+    builder = _FINDING_FILTER_BUILDERS[key]
     return builder(
         query,
         density_threshold=float(density_threshold),
@@ -1528,15 +1531,15 @@ def list_finding_documents(
             DatasetProfileDocumentOut(
                 id=doc.id,
                 dataset_id=doc.dataset_id,
-                filename=str(doc.filename or ""),
-                file_type=str(doc.file_type or ""),
+                filename=doc.filename,
+                file_type=doc.file_type,
                 file_size=int(doc.file_size or 0),
-                status=str(doc.status or ""),
+                status=doc.status,
                 chunk_count=int(doc.chunk_count or 0),
                 total_characters=int(doc.total_characters or 0),
-                created_at=getattr(doc, "created_at", None),
-                updated_at=getattr(doc, "updated_at", None),
-                error_message=getattr(doc, "error_message", None),
+                created_at=doc.created_at,
+                updated_at=doc.updated_at,
+                error_message=doc.error_message,
                 metadata=dict(doc.doc_metadata or {}),
             )
         )
@@ -1546,11 +1549,11 @@ def list_finding_documents(
 _WS_RE = re.compile(r"\s+")
 
 
-def _collapse_ws(text: object) -> str:
-    return _WS_RE.sub(" ", str(text or "").strip())
+def _collapse_ws(text: str) -> str:
+    return _WS_RE.sub(" ", text.strip())
 
 
-def _safe_preview(text: str, *, max_chars: int) -> tuple[str | None, bool]:
+def _safe_preview(text: str | None, *, max_chars: int) -> tuple[str | None, bool]:
     """
     Produce a short, PII-safe preview snippet from markdown.
 
@@ -1560,7 +1563,9 @@ def _safe_preview(text: str, *, max_chars: int) -> tuple[str | None, bool]:
     """
 
     max_chars = max(80, min(int(max_chars or 0), 2000))
-    raw = str(text or "").strip()
+    if text is None:
+        return None, False
+    raw = text.strip()
     if not raw:
         return None, False
 
@@ -1581,7 +1586,7 @@ def _resolve_bucket_total(
     dimension: str,
     bucket: str,
 ) -> tuple[str, int]:
-    raw_bucket = str(bucket or "").strip() or "unknown"
+    raw_bucket = bucket.strip() or "unknown"
     if dimension == "file_type":
         bucket_key = raw_bucket.lower() or "unknown"
         total = int((summary.by_file_type or {}).get(bucket_key, 0) or 0)
@@ -1671,7 +1676,7 @@ def _load_bucket_previews(
         if doc_id and isinstance(markdown, str) and markdown.strip():
             by_id[doc_id] = markdown
     for doc_id in ids:
-        previews[doc_id] = _safe_preview(by_id.get(doc_id) or "", max_chars=int(preview_max_chars or 0))
+        previews[doc_id] = _safe_preview(by_id.get(doc_id), max_chars=int(preview_max_chars or 0))
     return previews
 
 
@@ -1699,10 +1704,10 @@ def _build_bucket_document_out(
     return DatasetProfileDocumentOut(
         id=doc_id,
         dataset_id=ds_id,
-        filename=str(filename or ""),
-        file_type=str(file_type or ""),
+        filename=filename,
+        file_type=file_type,
         file_size=int(file_size or 0),
-        status=str(status or ""),
+        status=status,
         chunk_count=int(chunk_count or 0),
         total_characters=int(total_chars or 0),
         created_at=created_at,
@@ -1737,7 +1742,7 @@ def list_bucket_documents(
     - quality_bucket (derived from metadata.governance_quality)
     """
 
-    dim = str(dimension or "").strip().lower()
+    dim = dimension.strip().lower()
     if dim not in {"file_type", "language", "directory", "quality_bucket"}:
         raise ValueError("Unknown dimension")
 

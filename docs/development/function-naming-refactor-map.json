@@ -1,0 +1,135 @@
+[
+  {
+    "file": "app/api/schemas/settings.py",
+    "old": "UpdateSettingsRequest._validate_reranker_execution",
+    "new": "UpdateSettingsRequest._validate_rag_execution",
+    "before_line": 398,
+    "after_line": 398
+  },
+  {
+    "file": "app/core/health_checks.py",
+    "old": "check_minio",
+    "new": "check_object_storage",
+    "before_line": 222,
+    "after_line": 222
+  },
+  {
+    "file": "app/core/model_execution.py",
+    "old": "reject_retired_model_provider",
+    "new": "reject_retired_provider",
+    "before_line": 34,
+    "after_line": 34
+  },
+  {
+    "file": "app/core/model_execution.py",
+    "old": "validate_rerank_pipeline_execution",
+    "new": "reject_retired_rerank_providers",
+    "before_line": 49,
+    "after_line": 49
+  },
+  {
+    "file": "app/rag/chunking/strategies/rst_sections.py",
+    "old": "_is_adornment",
+    "new": "_detect_adornment_character",
+    "before_line": 69,
+    "after_line": 69
+  },
+  {
+    "file": "app/rag/evaluation/synthetic/critic.py",
+    "old": "should_keep_synthetic_sample",
+    "new": "evaluate_synthetic_sample_acceptance",
+    "before_line": 14,
+    "after_line": 14
+  },
+  {
+    "file": "app/rag/kg/search/searcher.py",
+    "old": "_should_run_community_detection",
+    "new": "_evaluate_community_detection_gate",
+    "before_line": 44,
+    "after_line": 44
+  },
+  {
+    "file": "app/rag/kg/search/searcher.py",
+    "old": "_should_skip_expand_for_latency",
+    "new": "_evaluate_expansion_skip_policy",
+    "before_line": 65,
+    "after_line": 65
+  },
+  {
+    "file": "app/rag/preprocessing/tokenization.py",
+    "old": "_tokenize_for_bm25_cached",
+    "new": "_tokenize_lexical_text_cached",
+    "before_line": 22,
+    "after_line": 23
+  },
+  {
+    "file": "app/rag/preprocessing/tokenization.py",
+    "old": "_normalize_for_bm25",
+    "new": "_normalize_lexical_text",
+    "before_line": 34,
+    "after_line": 35
+  },
+  {
+    "file": "app/rag/preprocessing/tokenization.py",
+    "old": "_tokenize_for_bm25_ascii",
+    "new": "_tokenize_ascii_text",
+    "before_line": 181,
+    "after_line": 182
+  },
+  {
+    "file": "app/rag/preprocessing/tokenization.py",
+    "old": "_tokenize_for_bm25_impl",
+    "new": "_tokenize_lexical_text_impl",
+    "before_line": 258,
+    "after_line": 259
+  },
+  {
+    "file": "app/rag/preprocessing/tokenization.py",
+    "old": "tokenize_for_bm25",
+    "new": "tokenize_lexical_text",
+    "before_line": 299,
+    "after_line": 300
+  },
+  {
+    "file": "app/rag/preprocessing/tokenization.py",
+    "old": "warmup_bm25_tokenizer",
+    "new": "warmup_lexical_tokenizer",
+    "before_line": 316,
+    "after_line": 317
+  },
+  {
+    "file": "app/rag/retrieval/corpus_index.py",
+    "old": "CorpusIndex.clear_bm25_cache",
+    "new": "CorpusIndex.clear_derived_index_caches",
+    "before_line": 174,
+    "after_line": 174
+  },
+  {
+    "file": "app/rag/retrieval/hybrid/bm25_index.py",
+    "old": "Bm25IndexMixin.clear_bm25_cache",
+    "new": "Bm25IndexMixin.clear_derived_index_caches",
+    "before_line": 26,
+    "after_line": 26
+  },
+  {
+    "file": "app/rag/retrieval/hybrid/bm25_index.py",
+    "old": "Bm25IndexMixin._bm25_scope_docs",
+    "new": "Bm25IndexMixin._resolve_derived_corpus_snapshot",
+    "before_line": 70,
+    "after_line": 70
+  },
+  {
+    "file": "app/services/document_lifecycle_service.py",
+    "old": "_delete_minio_document_object",
+    "new": "_delete_document_object",
+    "before_line": 442,
+    "after_line": 442
+  },
+  {
+    "file": "tests/test_health_meta_exposure.py",
+    "old": "test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store._check_minio",
+    "new": "test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store._check_object_storage",
+    "before_line": 352,
+    "after_line": 352
+  }
+]

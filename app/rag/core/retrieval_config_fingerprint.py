@@ -5,11 +5,10 @@ Used to compare retrieval runs across environments without persisting raw querie
 or scope identifiers (tenant/dataset/document ids).
 """
 
-import json
 from typing import Any
 
 from app.rag.core.filters import summarize_metadata_filter
-from app.rag.core.hashing import stable_hash
+from app.rag.core.hashing import stable_json_hash
 
 _BANNED_KEYS = {
     # Text-like (potential PII / content leakage)
@@ -44,7 +43,7 @@ def _normalize_value(value: Any) -> Any:
 def _normalize_mapping(value: dict[Any, Any]) -> dict[str, Any] | None:
     normalized: dict[str, Any] = {}
     for raw_key, raw_value in value.items():
-        key = str(raw_key or "").strip()
+        key = raw_key.strip()
         if not key or key in _BANNED_KEYS:
             continue
         item = _normalize_value(raw_value)
@@ -76,22 +75,17 @@ def build_retrieval_config_fingerprint(
     - The hash is stable across restarts (SHA-256 via stable_hash()).
     """
     raw = config if isinstance(config, dict) else {}
-    cleaned = _normalize_value(raw)
-    cleaned = cleaned if isinstance(cleaned, dict) else {}
+    cleaned = _normalize_mapping(raw) or {}
     metadata_filter = raw.get("metadata_filter")
     if isinstance(metadata_filter, dict) and metadata_filter:
-        metadata_payload = json.dumps(
-            metadata_filter, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
-        )
-        cleaned["metadata_filter_hash"] = stable_hash(metadata_payload, length=32)
+        cleaned["metadata_filter_hash"] = stable_json_hash(metadata_filter, length=32)
         metadata_summary = summarize_metadata_filter(metadata_filter)
         if metadata_summary:
             cleaned["metadata_filter_summary"] = metadata_summary
 
-    payload = json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
-    digest = stable_hash(payload, length=32)
+    digest = stable_json_hash(cleaned, length=32)
     return {
-        "schema": str(schema or "").strip() or "mimirq.retrieval_config.v1",
+        "schema": schema.strip() or "mimirq.retrieval_config.v1",
         "hash": digest,
         "config": cleaned,
     }

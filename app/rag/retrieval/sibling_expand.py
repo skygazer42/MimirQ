@@ -1,5 +1,6 @@
-
 from typing import Any
+
+from app.rag.core.metadata import _stringified_metadata_text
 
 
 def select_document_expansion_mode(*, total_chunks: int, short_doc_max_chunks: int) -> str:
@@ -17,15 +18,14 @@ def select_document_expansion_mode(*, total_chunks: int, short_doc_max_chunks: i
 
 
 def _result_chunk_id(result: dict[str, Any]) -> str:
-    metadata = result.get("metadata") or {}
-    return str(result.get("chunk_id") or metadata.get("chunk_id") or "").strip()
+    return str(result["chunk_id"]).strip()
 
 
 def _original_results_map(
     results: list[dict[str, Any]],
     supplied: dict[str, dict[str, Any]] | None,
 ) -> dict[str, dict[str, Any]]:
-    original_map = dict(supplied or {})
+    original_map = dict((supplied if supplied is not None else {}))
     if original_map:
         return original_map
     for item in results or []:
@@ -37,10 +37,16 @@ def _original_results_map(
     return original_map
 
 
+def _metadata_header_path(metadata: dict[str, Any]) -> str | None:
+    header_path = _stringified_metadata_text(metadata, "header_path") or _stringified_metadata_text(
+        metadata, "header_context"
+    )
+    return header_path if header_path else None
+
+
 def _row_header_path(row: Any) -> tuple[dict[str, Any], str | None]:
     stored_meta = dict(getattr(row, "doc_metadata", None) or {})
-    header_path = str(stored_meta.get("header_path") or stored_meta.get("header_context") or "").strip()
-    return stored_meta, header_path or None
+    return stored_meta, _metadata_header_path(stored_meta)
 
 
 def _sibling_metadata(
@@ -50,8 +56,8 @@ def _sibling_metadata(
     stored_meta: dict[str, Any],
     anchor_chunk_id: str,
 ) -> dict[str, Any]:
-    stored_meta.setdefault("tenant_id", str(getattr(row, "tenant_id", "") or ""))
-    stored_meta.setdefault("document_id", str(getattr(row, "document_id", "") or ""))
+    stored_meta.setdefault("tenant_id", str(row.tenant_id))
+    stored_meta.setdefault("document_id", str(row.document_id))
     stored_meta.setdefault("chunk_index", int(getattr(row, "chunk_index", 0) or 0))
     stored_meta.setdefault("chunk_id", chunk_id)
     if getattr(row, "page_number", None) is not None:
@@ -60,7 +66,7 @@ def _sibling_metadata(
         stored_meta.setdefault("start_char", row.start_char)
     if getattr(row, "end_char", None) is not None:
         stored_meta.setdefault("end_char", row.end_char)
-    stored_meta["sibling_of"] = anchor_chunk_id or None
+    stored_meta["sibling_of"] = anchor_chunk_id
     stored_meta["retrieval_role"] = "sibling"
     return stored_meta
 
@@ -81,9 +87,9 @@ def _sibling_result(
     )
     return {
         "chunk_id": chunk_id,
-        "content": str(getattr(row, "content", "") or ""),
+        "content": row.content,
         "metadata": metadata,
-        "score": float(anchor_score * 0.8) if anchor_score else 0.0,
+        "score": anchor_score * 0.8 if anchor_score else 0.0,
     }
 
 
@@ -101,7 +107,7 @@ def _append_document_siblings(
 ) -> int:
     ordered_rows = sorted(rows, key=lambda item: int(getattr(item, "chunk_index", 0) or 0))
     for row in ordered_rows:
-        chunk_id = str(getattr(row, "id", "") or "").strip()
+        chunk_id = str(row.id).strip()
         if not chunk_id or chunk_id in seen:
             continue
         stored_meta, row_header_path = _row_header_path(row)
@@ -146,9 +152,9 @@ def expand_document_siblings(
         if not isinstance(result, dict):
             continue
         meta = result.get("metadata") or {}
-        doc_key = str(meta.get("document_id") or "").strip()
+        doc_key = _stringified_metadata_text(meta, "document_id")
         anchor_cid = _result_chunk_id(result)
-        anchor_header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
+        anchor_header_path = _metadata_header_path(meta)
         anchor_score = float(result.get("score") or 0.0) if result.get("score") is not None else 0.0
 
         if not doc_key or doc_key not in short_doc_ids:

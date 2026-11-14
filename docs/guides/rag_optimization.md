@@ -1,6 +1,6 @@
 # RAG Optimization Guide
 
-This guide summarizes the most impactful knobs for improving retrieval quality and answer grounding in MimirQ.
+This guide summarizes the most impactful knobs for improving retrieval quality and answer grounding in Ragvia.
 
 > All settings are defined in `app/core/config.py` and can be set via `.env`.
 
@@ -64,7 +64,7 @@ When to use:
 
 ## 3.5) Sparse Retrieval (Optional)
 
-MimirQ supports an additional **sparse** candidate source (SPLADE-style scaffolding) that can improve recall on:
+Ragvia supports an additional **sparse** candidate source (SPLADE-style scaffolding) that can improve recall on:
 - acronyms (`k8s` vs `kubernetes`)
 - domain synonyms / abbreviations
 
@@ -79,11 +79,11 @@ Guide:
 ## 4) Reranking
 
 Key settings:
-- `RERANKER_PROVIDER` (`llm` | `pc` | `colbert` | `ltr` | `openai` | `dashscope` | `none`)
+- `RERANKER_PROVIDER` (`llm` | `pc` | `colbert` | `openai` | `dashscope` | `none`)
 
 Tradeoffs:
 - `llm` rerank improves precision but increases latency/cost.
-- `colbert`/`ltr` are intended for deterministic/fast reranking (local providers; see guides below).
+- `colbert` retains its deterministic offline scaffold; local XGBoost LTR has been retired.
 - `none` is fastest; rely on better chunking + retrieval thresholds.
 
 Guides:
@@ -134,7 +134,7 @@ enable **visible-evidence-only** mode:
 - Per-dataset default:
   - set dataset `rag_defaults.visible_evidence_only=true`
 
-When enabled, MimirQ will:
+When enabled, Ragvia will:
 - **Abstain early** when evidence is weak/empty (instead of "best effort" guessing)
 - **Post-check generated claims** against the retrieved evidence and drop unsupported ones
 - Apply the same scrubbing to **structured_output** JSON (keeps JSON parseable)
@@ -182,7 +182,7 @@ Rollout recommendation:
 
 ## 6) Evaluation (Measure, Don’t Guess)
 
-MimirQ includes RAGAS evaluation and regression helpers. See:
+Ragvia includes RAGAS evaluation and regression helpers. See:
 - `docs/guides/regression_gate.md`
 
 ## 7) Metadata Filtering (Scope + Precision)

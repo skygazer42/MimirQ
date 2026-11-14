@@ -228,7 +228,7 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
 _RISKY_FINDING_KEYS = {
     str(key).strip().lower()
     for key, reason in FINDING_KEY_REASONS.items()
-    if str((reason or {}).get("severity") or "").strip().lower() in {"warning", "error"}
+    if reason["severity"].strip().lower() in {"warning", "error"}
 }
 
 
@@ -270,7 +270,7 @@ TEXTLIKE_EXTS = {
 
 def _hash64(text: str) -> int:
     # Stable 64-bit hash for SimHash features (blake2b is fast and deterministic).
-    h = hashlib.blake2b((text or "").encode("utf-8", errors="ignore"), digest_size=8).digest()
+    h = hashlib.blake2b((text).encode("utf-8", errors="ignore"), digest_size=8).digest()
     return int.from_bytes(h, byteorder="big", signed=False)
 
 
@@ -282,7 +282,7 @@ def _simhash64(text: str, *, max_tokens: int = 2000) -> int:
     - tokenize by simple regex (latin alnum + CJK)
     - cap token count to avoid large CPU spikes during scans
     """
-    s = (text or "").strip()
+    s = (text).strip()
     if not s:
         return 0
 
@@ -312,7 +312,7 @@ def _simhash64(text: str, *, max_tokens: int = 2000) -> int:
 
 
 def _hamming_distance64(a: int, b: int) -> int:
-    return int((int(a) ^ int(b)).bit_count())
+    return (a ^ b).bit_count()
 
 
 def _bucket_file_size_label(size: int) -> str:
@@ -330,11 +330,11 @@ def _bucket_file_size_label(size: int) -> str:
 def _stable_sample_key(item: dict[str, Any], *, salt: str) -> str:
     raw = "|".join(
         [
-            str(salt or ""),
-            str(item.get("name") or ""),
-            str(item.get("file_type") or ""),
-            str(item.get("file_size") or ""),
-            str(item.get("file_mtime") or ""),
+            salt,
+            item["name"],
+            item["file_type"],
+            str(item["file_size"]),
+            str(item["file_mtime"]),
         ]
     )
     return hashlib.blake2b(raw.encode("utf-8", errors="ignore"), digest_size=8).hexdigest()
@@ -358,9 +358,9 @@ def _resolve_precheck_sample_target(
 
     present_type_count = len(
         [
-            str(key or "").strip().lower()
+            key.strip().lower()
             for key, count in dict(file_type_counts or {}).items()
-            if str(key or "").strip() and int(count or 0) > 0
+            if key.strip() and int(count or 0) > 0
         ]
     )
 
@@ -381,7 +381,7 @@ def _resolve_precheck_sample_target(
 def _iter_jsonl_objects(jsonl_path: Path) -> Iterable[dict[str, Any]]:
     with jsonl_path.open("r", encoding="utf-8") as f:
         for line in f:
-            s = (line or "").strip()
+            s = line.strip()
             if not s:
                 continue
             try:
@@ -436,7 +436,7 @@ def _collect_sample_payload_buckets(
         findings = obj.get("findings")
         if isinstance(findings, list):
             for fk in findings:
-                fkey = str(fk or "").strip().lower()
+                fkey = fk.strip().lower()
                 if fkey:
                     findings_buckets.setdefault(fkey, []).append(obj)
 
@@ -447,7 +447,7 @@ def _collect_sample_payload_buckets(
 
 
 def _pick_representative_sample(items: list[dict[str, Any]], *, salt: str) -> dict[str, Any] | None:
-    keyed_items = [(_stable_sample_key(item, salt=salt), str(item.get("name") or ""), item) for item in items]
+    keyed_items = [(_stable_sample_key(item, salt=salt), item["name"], item) for item in items]
     if not keyed_items:
         return None
     return min(keyed_items, key=lambda entry: (entry[0], entry[1]))[2]
@@ -465,19 +465,19 @@ def _build_representative_samples(
 
     for file_type, items in sorted(type_groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:type_minimum]:
         item = _pick_representative_sample(items, salt=f"type:{file_type}")
-        name = str((item or {}).get("name") or "")
-        if item is not None and name and name not in picked_names:
+        if item is None:
+            continue
+        name = item["name"]
+        if name and name not in picked_names:
             picked_names.add(name)
             rep.append(item)
         if len(rep) >= target_size:
             return target_size, rep
 
-    remaining = [
-        item for items in type_groups.values() for item in items if str(item.get("name") or "") not in picked_names
-    ]
-    remaining.sort(key=lambda o: (_stable_sample_key(o, salt="ratio-fill"), str(o.get("name") or "")))
+    remaining = [item for items in type_groups.values() for item in items if item["name"] not in picked_names]
+    remaining.sort(key=lambda o: (_stable_sample_key(o, salt="ratio-fill"), o["name"]))
     for item in remaining:
-        name = str(item.get("name") or "")
+        name = item["name"]
         if name and name not in picked_names:
             picked_names.add(name)
             rep.append(item)
@@ -525,12 +525,12 @@ def _now_utc() -> datetime:
 
 
 def _upload_root_path() -> Path:
-    upload_dir = getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK
+    upload_dir = settings.UPLOAD_DIR
     return Path(upload_dir).resolve(strict=False)
 
 
 def _parse_csv(raw: str) -> list[str]:
-    parts = [p.strip() for p in str(raw or "").split(",")]
+    parts = [p.strip() for p in raw.split(",")]
     return [p for p in parts if p]
 
 
@@ -543,7 +543,7 @@ def _is_local_scan_allowed_for_root(*, cfg: dict[str, Any], root: Path) -> bool:
     Internal mode (used by "precheck-first ingest") can allow scans of server-managed staging
     folders under UPLOAD_DIR even when LOCAL_SCAN_ENABLED=false.
     """
-    if bool(getattr(settings, "LOCAL_SCAN_ENABLED", False)):
+    if bool(settings.LOCAL_SCAN_ENABLED):
         return True
 
     # Internal allowlist: must be explicitly set by server code (not exposed in API schema)
@@ -568,7 +568,7 @@ def _assert_scan_root_allowed(root: Path) -> None:
     """
     upload_root = _upload_root_path()
     allowed: list[Path] = [upload_root]
-    for p in _parse_csv(str(getattr(settings, "LOCAL_SCAN_ROOTS", "") or "")):
+    for p in _parse_csv(settings.LOCAL_SCAN_ROOTS):
         try:
             allowed.append(Path(p).expanduser().resolve(strict=False))
         except Exception:
@@ -709,7 +709,7 @@ def _build_pdf_page_breakdown(
 
 def _sanitize_display_name(rel_path: str) -> str:
     # Keep it stable and safe for HTML/JSON; do not allow control chars.
-    s = str(rel_path or "").replace("\\", "/").strip()
+    s = rel_path.replace("\\", "/").strip()
     s = re.sub(r"[\x00-\x1f\x7f]+", "", s)
     return s[:1024] if len(s) > 1024 else s
 
@@ -825,8 +825,8 @@ def _mask_cn_id_value(raw: str) -> str:
 
 
 def _mask_pii_value(kind: str, raw: str) -> str:
-    k = (kind or "").strip().lower()
-    s = (raw or "").strip()
+    k = (kind).strip().lower()
+    s = (raw).strip()
     if not s:
         return REDACTED_MASK
     maskers = {
@@ -842,8 +842,8 @@ def _mask_pii_value(kind: str, raw: str) -> str:
 
 
 def _mask_secret_value(kind: str, raw: str) -> str:
-    k = (kind or "").strip().lower()
-    s = (raw or "").strip()
+    k = (kind).strip().lower()
+    s = (raw).strip()
     if not s:
         return SECRET_MASK
     if k == "openai_key":
@@ -962,12 +962,14 @@ class _ScanAccumulator:
 
 
 def _normalize_language_bucket(value: object) -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return "unknown"
+    s = str(value).strip().lower()
     return s if s in _LANGUAGE_BUCKETS else "unknown"
 
 
 def _dir_key(name: str) -> str:
-    s = str(name or "").replace("\\", "/").strip()
+    s = name.replace("\\", "/").strip()
     d = os.path.dirname(s)
     return d if d else "."
 
@@ -982,7 +984,7 @@ def _mark_run_running(db: Session, run: DBDatasetPrecheckScanRun) -> None:
 
 
 def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
-    max_files_cap = safe_int(getattr(settings, "PRECHECK_SCAN_MAX_FILES", 20_000), default=20_000)
+    max_files_cap = safe_int(settings.PRECHECK_SCAN_MAX_FILES, default=20_000)
     requested_max_files = cfg.get("max_files")
     max_files_req = safe_int(requested_max_files, default=0)
     max_files = max_files_cap if max_files_req <= 0 else min(max_files_cap, max_files_req)
@@ -997,39 +999,39 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
             "sample_size": cfg.get("sample_size"),
         }
     )
-    configured_default_sample_size = safe_int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 0), default=0)
+    configured_default_sample_size = safe_int(settings.PRECHECK_SAMPLE_SIZE, default=0)
     raw_sample_size = cfg.get("sample_size")
     if raw_sample_size is not None or configured_default_sample_size > 0:
         sample_size_override = int(thresholds["sample_size"])
     else:
         sample_size_override = None
 
-    pii_context_chars = max(0, min(safe_int(cfg.get("pii_context_chars") or 50, default=50), 500))
-    pii_max_samples_per_file = max(0, min(safe_int(cfg.get("pii_max_samples_per_file") or 5, default=5), 50))
-    secrets_context_chars = max(0, min(safe_int(cfg.get("secrets_context_chars") or 50, default=50), 500))
-    secrets_max_samples_per_file = max(0, min(safe_int(cfg.get("secrets_max_samples_per_file") or 5, default=5), 50))
-    near_dup_hamming_threshold = max(0, min(safe_int(cfg.get("near_dup_hamming_threshold") or 5, default=5), 32))
-    near_dup_max_pairs = max(0, min(safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000), 200_000))
+    pii_context_chars = max(0, min(safe_int(cfg.get("pii_context_chars"), default=50), 500))
+    pii_max_samples_per_file = max(0, min(safe_int(cfg.get("pii_max_samples_per_file"), default=5), 50))
+    secrets_context_chars = max(0, min(safe_int(cfg.get("secrets_context_chars"), default=50), 500))
+    secrets_max_samples_per_file = max(0, min(safe_int(cfg.get("secrets_max_samples_per_file"), default=5), 50))
+    near_dup_hamming_threshold = max(0, min(safe_int(cfg.get("near_dup_hamming_threshold"), default=5), 32))
+    near_dup_max_pairs = max(0, min(safe_int(cfg.get("near_dup_max_pairs"), default=5000), 200_000))
     spreadsheet_merged_ratio_threshold = _clamp_unit_ratio(
-        float(getattr(settings, "PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD", 0.15) or 0.15)
+        float(settings.PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD or 0.15)
     )
     directory_stats_limit = max(
         0,
-        min(safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200), 2000),
+        min(safe_int(settings.PRECHECK_DIRECTORY_STATS_LIMIT, default=200), 2000),
     )
 
     redact_paths = bool(cfg.get("redact_paths", False))
     return _ScanOptions(
         cfg=cfg,
-        root_path=str(cfg.get("root_path") or "").strip(),
+        root_path=cfg["root_path"].strip(),
         max_files=max_files,
-        max_total_bytes=safe_int(getattr(settings, "PRECHECK_SCAN_MAX_TOTAL_BYTES", 0), default=0),
+        max_total_bytes=safe_int(settings.PRECHECK_SCAN_MAX_TOTAL_BYTES, default=0),
         text_max_bytes=safe_int(
-            cfg.get("text_extract_max_bytes") or getattr(settings, "PRECHECK_TEXT_EXTRACT_MAX_BYTES", 2_000_000),
+            cfg.get("text_extract_max_bytes") or settings.PRECHECK_TEXT_EXTRACT_MAX_BYTES,
             default=2_000_000,
         ),
         pdf_sample_pages=safe_int(
-            cfg.get("pdf_sample_pages") or getattr(settings, "PRECHECK_PDF_SAMPLE_PAGES", 3),
+            cfg.get("pdf_sample_pages") or settings.PRECHECK_PDF_SAMPLE_PAGES,
             default=3,
         ),
         enable_pdf_quality=bool(cfg.get("enable_pdf_quality", True)),
@@ -1050,35 +1052,35 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
         enable_sampling=bool(cfg.get("enable_sampling", True)),
         sample_size_override=sample_size_override,
         pdf_scan_max_chars=safe_int(
-            cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
+            cfg.get("pdf_min_text_chars_per_page") or settings.PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE,
             default=50,
         ),
         pdf_text_min_chars=safe_int(
-            cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
+            cfg.get("pdf_text_chars_per_page") or settings.PRECHECK_PDF_TEXT_CHARS_PER_PAGE,
             default=200,
         ),
         pdf_scan_ratio_threshold=float(thresholds["pdf_scan_ratio_threshold"]),
         spreadsheet_large_row_threshold=safe_int(
-            getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
+            settings.PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD,
             default=5000,
         ),
         spreadsheet_wide_col_threshold=safe_int(
-            getattr(settings, "PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD", 80),
+            settings.PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD,
             default=80,
         ),
         spreadsheet_sheet_threshold=safe_int(
-            getattr(settings, "PRECHECK_SPREADSHEET_SHEET_THRESHOLD", 5),
+            settings.PRECHECK_SPREADSHEET_SHEET_THRESHOLD,
             default=5,
         ),
         spreadsheet_merged_ratio_threshold=spreadsheet_merged_ratio_threshold,
-        language_min_chars=safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40),
+        language_min_chars=safe_int(settings.PRECHECK_LANGUAGE_MIN_CHARS, default=40),
         text_short_chars_threshold=int(thresholds["text_short_chars_threshold"]),
         text_density_threshold=float(thresholds["text_density_threshold"]),
         text_gibberish_density_threshold=float(thresholds["text_gibberish_density_threshold"]),
         text_high_replacement_ratio_threshold=float(thresholds["text_high_replacement_ratio_threshold"]),
         pdf_low_density_ratio_threshold=float(thresholds["pdf_low_density_ratio_threshold"]),
         directory_stats_limit=directory_stats_limit,
-        allowed_exts=set(getattr(settings, "allowed_extensions_list", []) or []),
+        allowed_exts=set(settings.allowed_extensions_list),
     )
 
 
@@ -1099,7 +1101,7 @@ def _collect_scan_candidates(
         if max_total_bytes > 0 and (total_bytes_seen + size) > max_total_bytes:
             break
         candidates.append(path)
-        file_type = ext.lstrip(".") if ext.startswith(".") else (path.suffix or "").lower().lstrip(".") or "unknown"
+        file_type = ext.lstrip(".") if ext.startswith(".") else (path.suffix).lower().lstrip(".") or "unknown"
         candidate_type_counts[str(file_type or "unknown").lower()] += 1
         total_bytes_seen += size
     return candidates, candidate_type_counts
@@ -1164,12 +1166,7 @@ def _build_empty_scan_summary(
 
 
 def _prepare_artifact_paths(*, tenant_id: UUID, scan_run_id: UUID) -> tuple[Path, Path, Path, Path]:
-    artifact_root = (
-        Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK)
-        / str(tenant_id)
-        / "precheck"
-        / str(scan_run_id)
-    )
+    artifact_root = Path(settings.UPLOAD_DIR) / str(tenant_id) / "precheck" / str(scan_run_id)
     artifact_root.mkdir(parents=True, exist_ok=True)
     jsonl_path = (artifact_root / "files.jsonl").resolve(strict=False)
     samples_path = (artifact_root / "samples.json").resolve(strict=False)
@@ -1210,9 +1207,11 @@ def _query_previous_scan_run(
 
 
 def _resolve_reusable_jsonl_path(*, tenant_id: UUID, prev_run: DBDatasetPrecheckScanRun) -> Path | None:
-    prev_artifacts = getattr(prev_run, "artifacts", None)
+    prev_artifacts = prev_run.artifacts
     prev_artifacts = prev_artifacts if isinstance(prev_artifacts, dict) else {}
-    prev_jsonl_raw = str(prev_artifacts.get("files_jsonl") or "").strip()
+    prev_jsonl_raw = prev_artifacts.get("files_jsonl")
+    if prev_jsonl_raw is not None:
+        prev_jsonl_raw = prev_jsonl_raw.strip()
     prev_jsonl = Path(prev_jsonl_raw) if prev_jsonl_raw else None
     if prev_jsonl is None or not prev_jsonl.exists() or not prev_jsonl.is_file():
         return None
@@ -1228,7 +1227,7 @@ def _resolve_reusable_jsonl_path(*, tenant_id: UUID, prev_run: DBDatasetPrecheck
 def _load_jsonl_records_by_name(jsonl_path: Path) -> dict[str, dict[str, Any]]:
     prev_records: dict[str, dict[str, Any]] = {}
     for obj in _iter_jsonl_objects(jsonl_path):
-        name = str(obj.get("name") or "").strip()
+        name = obj["name"].strip()
         if name:
             prev_records[name] = obj
     return prev_records
@@ -1248,6 +1247,14 @@ def _load_previous_records(
         logger.info("Skip reuse_unchanged_files in redact_paths mode")
         return {}
 
+    # Older runs may contain samples produced before zero-valued settings were honored.
+    if (options.enable_pii_samples and (options.pii_context_chars == 0 or options.pii_max_samples_per_file == 0)) or (
+        options.enable_secrets_samples
+        and (options.secrets_context_chars == 0 or options.secrets_max_samples_per_file == 0)
+    ):
+        logger.info("Skip reuse_unchanged_files for zero-valued sample settings; rescan required")
+        return {}
+
     prev_run = _query_previous_scan_run(
         db,
         tenant_id=tenant_id,
@@ -1257,15 +1264,17 @@ def _load_previous_records(
     if prev_run is None:
         return {}
 
-    prev_cfg = dict(getattr(prev_run, "config", None) or {})
-    prev_root = str(prev_cfg.get("root_path") or "").strip()
+    prev_cfg = dict(prev_run.config or {})
+    prev_root = prev_cfg.get("root_path")
+    if prev_root is not None:
+        prev_root = prev_root.strip()
     if not prev_root or prev_root != options.root_path or bool(prev_cfg.get("redact_paths", False)):
         logger.info("Skip reuse_unchanged_files due to root_path mismatch or redacted prev run")
         return {}
     if _reuse_cfg_subset(options.cfg) != _reuse_cfg_subset(prev_cfg):
         logger.info(
             "Skip reuse_unchanged_files due to config mismatch (scan_run_id=%s)",
-            str(getattr(prev_run, "id", "")),
+            str(prev_run.id),
         )
         return {}
 
@@ -1317,7 +1326,7 @@ def _build_file_record(*, path: Path, root: Path, idx: int, redact_paths: bool) 
         mtime = 0
     rec = _FileRecord(
         name=_sanitize_display_name(rel) if not redact_paths else f"FILE_{idx:06d}{ext}",
-        file_type=ext.lstrip(".") if ext.startswith(".") else (path.suffix or "").lower().lstrip(".") or "unknown",
+        file_type=ext.lstrip(".") if ext.startswith(".") else (path.suffix).lower().lstrip(".") or "unknown",
         file_size=size,
         file_mtime=mtime,
     )
@@ -1369,7 +1378,7 @@ def _extract_pdf_sample(
     )
     if pdf_err:
         rec.error_message = str(pdf_err)[:200]
-        err_l = str(pdf_err or "").strip().lower()
+        err_l = pdf_err.strip().lower()
         if any(token in err_l for token in {"password", "encrypt", "encryption"}):
             _append_finding(rec, state, "pdf_encrypted")
         _append_finding(rec, state, "parse_failed")
@@ -1614,10 +1623,10 @@ def _apply_pii_findings(sample_text: str, *, rec: _FileRecord, state: _ScanAccum
             continue
         rec.pii_samples.append(
             {
-                "kind": str(getattr(match, "kind", "") or "pii"),
+                "kind": match.kind,
                 "masked": _mask_pii_value(
-                    str(getattr(match, "kind", "") or ""),
-                    str(getattr(match, "text", "") or ""),
+                    match.kind,
+                    match.text,
                 ),
                 "context": _collect_match_context(
                     sample_text,
@@ -1656,10 +1665,10 @@ def _apply_secret_findings(
             continue
         rec.secrets_samples.append(
             {
-                "kind": str(getattr(match, "kind", "") or "secret"),
+                "kind": match.kind,
                 "masked": _mask_secret_value(
-                    str(getattr(match, "kind", "") or ""),
-                    str(getattr(match, "text", "") or ""),
+                    match.kind,
+                    match.text,
                 ),
                 "context": _collect_match_context(
                     sample_text,
@@ -1773,7 +1782,7 @@ def _update_directory_stats(
         directory_stats[d] = entry
     entry["total_files"] = int(entry.get("total_files") or 0) + 1
     entry["total_size_bytes"] = int(entry.get("total_size_bytes") or 0) + int(file_size or 0)
-    fset = {str(value or "").strip().lower() for value in (findings or []) if str(value or "").strip()}
+    fset = {value.strip().lower() for value in (findings or []) if value.strip()}
     if fset and (fset & _RISKY_FINDING_KEYS):
         entry["risky_files"] = int(entry.get("risky_files") or 0) + 1
     counts = entry.get("findings")
@@ -1807,7 +1816,7 @@ def _apply_record_tags(rec: _FileRecord, state: _ScanAccumulator) -> str:
     rec.processing_paths = infer_processing_paths(primary_tag=rec.primary_tag, findings=rec.findings)
     state.primary_tag_counts[rec.primary_tag] += 1
     for path_key in rec.processing_paths:
-        state.processing_path_counts[str(path_key or "")] += 1
+        state.processing_path_counts[path_key] += 1
     return file_type
 
 
@@ -1842,7 +1851,7 @@ def _finalize_record(rec: _FileRecord, *, state: _ScanAccumulator, jf: Any) -> N
 
 
 def _prev_has_parse_failed(prev_findings: list[Any]) -> bool:
-    return "parse_failed" in {str(x or "").strip().lower() for x in prev_findings}
+    return "parse_failed" in {x.strip().lower() for x in prev_findings}
 
 
 def _accumulate_reused_hit_totals(target: dict[str, int], hits: dict[str, Any]) -> None:
@@ -1885,7 +1894,7 @@ def _apply_reused_pdf_and_findings(
     elif file_type == "pdf":
         state.pdf_unknown += 1
     if isinstance(prev_findings, list):
-        for finding in {str(fk or "").strip().lower() for fk in prev_findings if str(fk or "").strip()}:
+        for finding in {fk.strip().lower() for fk in prev_findings if fk.strip()}:
             if finding in state.finding_counts:
                 state.finding_counts[finding] += 1
     _update_risk_bucket_counts(state, file_type=file_type, findings=prev_findings)
@@ -1903,7 +1912,9 @@ def _apply_reused_signatures(
     options: _ScanOptions,
 ) -> None:
     if options.enable_near_dup:
-        sim_hex = str(prev.get("text_simhash64") or "").strip().lower()
+        sim_hex = prev.get("text_simhash64")
+        if sim_hex is not None:
+            sim_hex = sim_hex.strip().lower()
         if sim_hex:
             try:
                 state.simhash_entries.append(
@@ -1918,7 +1929,9 @@ def _apply_reused_signatures(
             except Exception as exc:
                 logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
     if options.compute_file_hash:
-        sha = str(prev.get("file_sha256") or "").strip().lower()
+        sha = prev.get("file_sha256")
+        if sha is not None:
+            sha = sha.strip().lower()
         if sha:
             state.sha_counts[sha] = state.sha_counts.get(sha, 0) + 1
 
@@ -2014,7 +2027,7 @@ def _process_candidate(
 
 
 def _count_exact_duplicates(sha_counts: dict[str, int]) -> int:
-    return sum(int(cnt) for cnt in sha_counts.values() if int(cnt) > 1)
+    return sum(count for count in sha_counts.values() if count > 1)
 
 
 def _find_union_root(parent: list[int], x: int) -> int:
@@ -2072,7 +2085,7 @@ def _cluster_keep_score(
 ) -> tuple[int, int, int, str]:
     try:
         name, _hash, size, text_len, mtime = simhash_entries[idx]
-        return int(text_len or 0), int(size or 0), int(mtime or 0), str(name or "")
+        return int(text_len or 0), int(size or 0), int(mtime or 0), name
     except Exception:
         return 0, 0, 0, names[idx]
 
@@ -2117,7 +2130,7 @@ def _build_near_dup_clusters(
         if member_stats:
             cluster["member_stats"] = member_stats
         clusters.append(cluster)
-    clusters.sort(key=lambda c: (-len(c.get("members") or []), str(c.get("id") or "")))
+    clusters.sort(key=lambda c: (-len(c.get("members") or []), c["id"]))
     affected = {member for cluster in clusters for member in (cluster.get("members") or [])}
     return clusters, affected
 
@@ -2190,9 +2203,9 @@ def _build_file_type_stats(by_type: dict[str, int], bytes_by_type: dict[str, int
     ]
     stats.sort(
         key=lambda o: (
-            -int(o.get("count") or 0),
-            -int(o.get("total_size_bytes") or 0),
-            str(o.get("file_type") or ""),
+            -o["count"],
+            -o["total_size_bytes"],
+            o["file_type"],
         )
     )
     return stats[:500]
@@ -2219,9 +2232,9 @@ def _build_directory_items(directory_stats: dict[str, dict[str, Any]], *, limit:
         items.append(item)
     items.sort(
         key=lambda o: (
-            -int(o.get("risky_files") or 0),
-            -int(o.get("total_files") or 0),
-            str(o.get("path") or ""),
+            -o["risky_files"],
+            -o["total_files"],
+            o["path"],
         )
     )
     return items[: int(limit)] if int(limit or 0) > 0 else []
@@ -2254,7 +2267,7 @@ def _build_scan_summary(
             k: int(v)
             for k, v in sorted(
                 state.bytes_by_type.items(),
-                key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
+                key=lambda kv: (-int(kv[1] or 0), kv[0]),
             )
             if int(v or 0) > 0
         },
@@ -2297,7 +2310,7 @@ def _build_scan_summary(
             k: int(v)
             for k, v in sorted(
                 state.risk_bucket_counts.items(),
-                key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
+                key=lambda kv: (-int(kv[1] or 0), kv[0]),
             )
             if int(v or 0) > 0
         },
@@ -2305,7 +2318,7 @@ def _build_scan_summary(
             k: int(v)
             for k, v in sorted(
                 state.primary_tag_counts.items(),
-                key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
+                key=lambda kv: (-int(kv[1] or 0), kv[0]),
             )
             if int(v or 0) > 0
         },
@@ -2313,7 +2326,7 @@ def _build_scan_summary(
             k: int(v)
             for k, v in sorted(
                 state.processing_path_counts.items(),
-                key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
+                key=lambda kv: (-int(kv[1] or 0), kv[0]),
             )
             if int(v or 0) > 0
         },
@@ -2506,7 +2519,7 @@ def run_dataset_precheck_scan(
     dataset_metadata = dict(dataset_metadata_raw) if isinstance(dataset_metadata_raw, dict) else {}
     _mark_run_running(db, run)
 
-    cfg = dict(getattr(run, "config", None) or {})
+    cfg = dict(run.config or {})
     options = _build_scan_options(cfg=cfg)
     root = _validate_scan_root(cfg=cfg, root_path=options.root_path)
     reuse_from_scan_run_id = _parse_reuse_scan_run_id(cfg)
@@ -2559,7 +2572,7 @@ def run_dataset_precheck_scan(
         db.commit()
         try:
             db.refresh(run)
-            if str(getattr(run, "status", "") or "").lower() == "cancelled":
+            if run.status.lower() == "cancelled":
                 state.cancelled = True
         except Exception as exc:
             logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)

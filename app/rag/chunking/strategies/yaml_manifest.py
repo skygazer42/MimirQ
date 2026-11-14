@@ -20,14 +20,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -69,7 +62,7 @@ def _parse_yaml_kv_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or s.startswith("#") or ":" not in s:
         return None
     key_raw, rest = s.split(":", 1)
@@ -93,19 +86,6 @@ def _parse_yaml_kv_line(line: str) -> tuple[str, str] | None:
     return key, val
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text, plain=text))
-    return out
-
-
 def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None]:
     if not doc_text:
         return None, None, None
@@ -115,10 +95,10 @@ def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None
 
     m = _API_VERSION_RE.search(doc_text[:4000])
     if m:
-        api = (m.group("val") or "").strip() or None
+        api = m.group("val").strip()
     m = _KIND_RE.search(doc_text[:4000])
     if m:
-        kind = (m.group("val") or "").strip() or None
+        kind = m.group("val").strip()
 
     lines = _iter_lines(doc_text[:8000])
     meta_indent: int | None = None
@@ -126,7 +106,7 @@ def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None
         if meta_indent is None:
             mm = _METADATA_RE.match(ln.plain)
             if mm:
-                meta_indent = len(mm.group("indent") or "")
+                meta_indent = len(mm.group("indent"))
             continue
         if not ln.plain.strip() or ln.plain.lstrip().startswith("#"):
             continue
@@ -135,7 +115,7 @@ def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None
             break
         nm = _NAME_RE.match(ln.plain)
         if nm:
-            name = (nm.group("val") or "").strip() or None
+            name = nm.group("val").strip()
             break
 
     return kind, name, api
@@ -197,7 +177,7 @@ def _looks_like_yaml_from_doc_separators(head: str) -> bool:
 
 
 def _looks_like_structured_yaml(text: str) -> bool:
-    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    raw_lines = [ln for ln in (text).splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if len(raw_lines) < 8:
         return False
 
@@ -206,11 +186,11 @@ def _looks_like_structured_yaml(text: str) -> bool:
     if key_lines < 6:
         return False
 
-    ratio = key_lines / max(1, stats.total_lines)
+    ratio = key_lines / stats.total_lines
     if ratio < 0.25:
         return False
 
-    return bool(stats.key_only >= 1 or stats.indented >= 2 or stats.list_items >= 2)
+    return stats.key_only >= 1 or stats.indented >= 2 or stats.list_items >= 2
 
 
 def _build_yaml_chunk_metadata(
@@ -228,8 +208,8 @@ def _build_yaml_chunk_metadata(
     meta["start_char"] = abs_start
     meta["end_char"] = abs_end
     meta.setdefault("doc_type_kwd", "yaml")
-    meta["yaml_doc_index"] = int(doc_info.index)
-    meta["yaml_doc_count"] = int(doc_count)
+    meta["yaml_doc_index"] = doc_info.index
+    meta["yaml_doc_count"] = doc_count
     if doc_info.api_version:
         meta["yaml_api_version"] = doc_info.api_version
     if doc_info.kind:
@@ -257,7 +237,7 @@ def looks_like_yaml_manifest(text: str) -> bool:
 
 
 class YAMLManifestChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -273,8 +253,8 @@ class YAMLManifestChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -32,7 +31,9 @@ def _isoformat_utc(value: datetime) -> str:
 def _normalize_recorded_at(value: datetime | str | None) -> str:
     if isinstance(value, datetime):
         return _isoformat_utc(value)
-    text = str(value or "").strip()
+    if value is None:
+        return _isoformat_utc(datetime.now(UTC))
+    text = value.strip()
     if text:
         return text
     return _isoformat_utc(datetime.now(UTC))
@@ -44,8 +45,10 @@ def normalize_source_manifest(value: Mapping[str, Any] | None) -> dict[str, str]
 
     items: list[tuple[str, str]] = []
     for raw_path, raw_sha in value.items():
-        path = str(raw_path or "").strip()
-        sha = str(raw_sha or "").strip()
+        if raw_sha is None:
+            continue
+        path = raw_path.strip()
+        sha = str(raw_sha).strip()
         if not path or not sha:
             continue
         items.append((path, sha))
@@ -60,7 +63,9 @@ def normalize_boundary_ids(value: Any, *, max_items: int = 200) -> list[str]:
     seen: set[str] = set()
     limit = max(1, int(max_items or 0))
     for raw in raw_items:
-        item = str(raw or "").strip()
+        if raw is None:
+            continue
+        item = str(raw).strip()
         if not item or item in seen:
             continue
         seen.add(item)
@@ -77,19 +82,19 @@ def get_resume_cursor(state: Mapping[str, Any] | None) -> int:
     raw = state.get("cursor")
     try:
         cursor = int(raw or 0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
     return cursor if cursor >= 0 else 0
 
 
 def slice_items_from_cursor(items: Sequence[T], *, cursor: int) -> tuple[list[T], int]:
-    items_list = list(items or [])
-    cursor_in = max(0, min(int(cursor or 0), len(items_list)))
+    items_list = list(items)
+    cursor_in = max(0, min(cursor, len(items_list)))
     return items_list[cursor_in:], cursor_in
 
 
 def _normalize_cursor_value(*, definition: ConnectorDefinition, state: Mapping[str, Any]) -> dict[str, Any] | None:
-    kind = str(getattr(definition, "sync_cursor_kind", "none") or "none").strip().lower() or "none"
+    kind = definition.sync_cursor_kind
     if kind == "offset":
         return {"kind": "offset", "field": "cursor", "value": get_resume_cursor(state)}
 
@@ -97,14 +102,17 @@ def _normalize_cursor_value(*, definition: ConnectorDefinition, state: Mapping[s
 
 
 def _normalize_watermark_value(*, definition: ConnectorDefinition, state: Mapping[str, Any]) -> dict[str, Any] | None:
-    kind = str(getattr(definition, "sync_cursor_kind", "none") or "none").strip().lower() or "none"
+    kind = definition.sync_cursor_kind
     if kind != "timestamp":
         return None
 
-    value = str(state.get("last_modified") or "").strip()
+    raw_value = state.get("last_modified")
+    if raw_value is None:
+        return None
+    value = str(raw_value).strip()
     if not value:
         return None
-    out = {"kind": "timestamp", "field": "last_modified", "value": value}
+    out: dict[str, Any] = {"kind": "timestamp", "field": "last_modified", "value": value}
     seen_ids = normalize_boundary_ids(state.get("last_modified_ids"))
     if seen_ids:
         out["seen_ids"] = seen_ids
@@ -118,25 +126,25 @@ def _normalize_manifest_value(state: Mapping[str, Any]) -> dict[str, Any] | None
     return {
         "kind": "source_manifest",
         "field": "source_manifest",
-        "count": int(len(manifest)),
+        "count": len(manifest),
         "entries": manifest,
     }
 
 
 def _normalize_totals(*, definition: ConnectorDefinition, state: Mapping[str, Any]) -> dict[str, int] | None:
     totals: dict[str, int] = {}
-    for key in getattr(definition, "state_keys", ()) or ():
-        if not str(key).startswith("total_"):
+    for key in definition.state_keys:
+        if not key.startswith("total_"):
             continue
         raw = state.get(key)
         if raw is None:
             continue
         try:
-            totals[str(key)] = int(raw)
-        except Exception:
+            totals[key] = int(raw)
+        except (TypeError, ValueError, OverflowError):
             get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
-    return totals or None
+    return totals
 
 
 def _resolve_last_successful_markers(
@@ -147,13 +155,16 @@ def _resolve_last_successful_markers(
     recorded_at_norm: str | None,
 ) -> tuple[str | None, str | None]:
     prev = previous_state if isinstance(previous_state, Mapping) else {}
-    last_successful_run_id = str(prev.get("state_last_successful_run_id") or "").strip() or None
-    last_successful_recorded_at = str(prev.get("state_last_successful_recorded_at") or "").strip() or None
+    last_successful_run_id = prev.get("state_last_successful_run_id")
+    last_successful_recorded_at = prev.get("state_last_successful_recorded_at")
 
-    status = str(run_status or "").strip().lower()
+    status = run_status
+    if status is not None:
+        status = status.strip().lower()
     if status == "completed" and run_id is not None:
         last_successful_run_id = str(run_id)
-        last_successful_recorded_at = str(recorded_at_norm or "").strip() or last_successful_recorded_at
+        if recorded_at_norm is not None:
+            last_successful_recorded_at = recorded_at_norm.strip() or last_successful_recorded_at
 
     return last_successful_run_id, last_successful_recorded_at
 
@@ -167,7 +178,7 @@ def _build_state_sync_payload(
     run_status: str | None = None,
     recorded_at_norm: str | None = None,
 ) -> dict[str, Any] | None:
-    definition = CONNECTOR_REGISTRY.get(str(connector_id or "").strip())
+    definition = CONNECTOR_REGISTRY.get(connector_id.strip())
     if definition is None:
         return None
 
@@ -180,10 +191,10 @@ def _build_state_sync_payload(
 
     return {
         "schema": "mimirq.connector_sync_state.v2",
-        "connector_id": str(definition.connector_id),
-        "supports_incremental": bool(definition.supports_incremental),
-        "supports_resume": bool(definition.supports_resume),
-        "supports_full_reconcile": bool(getattr(definition, "supports_full_reconcile", False)),
+        "connector_id": definition.connector_id,
+        "supports_incremental": definition.supports_incremental,
+        "supports_resume": definition.supports_resume,
+        "supports_full_reconcile": definition.supports_full_reconcile,
         "cursor": _normalize_cursor_value(definition=definition, state=state),
         "watermark": _normalize_watermark_value(definition=definition, state=state),
         "manifest": _normalize_manifest_value(state),
@@ -214,7 +225,7 @@ def _apply_policy_state_key(*, state: dict[str, Any], stats_map: Mapping[str, An
     if value is None:
         return
     if key == "last_modified":
-        value = str(value or "").strip()
+        value = str(value).strip()
         if not value:
             return
     state[key] = value
@@ -227,7 +238,7 @@ def build_persisted_state(
     stats: Mapping[str, Any] | None,
     run_id: UUID | str,
 ) -> dict[str, Any]:
-    policy = CONNECTOR_SYNC_POLICIES.get(str(connector_id or "").strip())
+    policy = CONNECTOR_SYNC_POLICIES.get(connector_id.strip())
     state = dict(existing_state or {})
     if policy is None:
         return state
@@ -237,7 +248,7 @@ def build_persisted_state(
         _apply_policy_state_key(state=state, stats_map=stats_map, key=key)
 
     state["last_run_id"] = str(run_id)
-    state["state_schema_version"] = int(_STATE_SCHEMA_VERSION)
+    state["state_schema_version"] = _STATE_SCHEMA_VERSION
     state_sync = _build_state_sync_payload(
         connector_id=connector_id,
         state=state,
@@ -268,24 +279,22 @@ def build_saved_state_snapshot(
     )
 
     updated_keys = sorted(
-        key
-        for key, value in state.items()
-        if not str(key).startswith("state_") and previous_state.get(key) != value
+        key for key, value in state.items() if not str(key).startswith("state_") and previous_state.get(key) != value
     )
 
     try:
         revision0 = int(previous_state.get("state_revision") or 0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         revision0 = 0
     revision = max(0, revision0) + 1
 
     recorded_at_norm = _normalize_recorded_at(recorded_at)
     history_entry = {
-        "revision": int(revision),
+        "revision": revision,
         "run_id": str(run_id),
-        "status": str(run_status or "").strip().lower() or None,
+        "status": run_status,
         "recorded_at": recorded_at_norm,
-        "updated_keys": list(updated_keys),
+        "updated_keys": updated_keys,
     }
 
     prev_audit = previous_state.get("state_audit") if isinstance(previous_state.get("state_audit"), Mapping) else {}
@@ -294,8 +303,8 @@ def build_saved_state_snapshot(
     limit = max(1, int(history_limit or _STATE_AUDIT_HISTORY_LIMIT))
     history = (history + [history_entry])[-limit:]
 
-    state["state_schema_version"] = int(_STATE_SCHEMA_VERSION)
-    state["state_revision"] = int(revision)
+    state["state_schema_version"] = _STATE_SCHEMA_VERSION
+    state["state_revision"] = revision
     state["state_recorded_at"] = recorded_at_norm
     last_successful_run_id, last_successful_recorded_at = _resolve_last_successful_markers(
         previous_state=previous_state,
@@ -316,7 +325,7 @@ def build_saved_state_snapshot(
     if state_sync is not None:
         state["state_sync"] = state_sync
     state["state_audit"] = {
-        "last_status": str(run_status or "").strip().lower() or None,
+        "last_status": run_status,
         "last_run_id": str(run_id),
         "last_recorded_at": recorded_at_norm,
         "updated_keys": list(updated_keys),

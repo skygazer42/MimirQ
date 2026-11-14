@@ -10,6 +10,7 @@ _QUERY_KEYS = ("query", "question", "q")
 _EXPECTED_ANSWER_KEYS = ("expected_answer", "expected", "answer", "expectedAnswer", "expected_answer_text")
 _TAGS_KEYS = ("tags", "tag")
 _QUERY_REQUIRED_ERROR = "query is required"
+_UNSUPPORTED_FILE_TYPE_ERROR = "unsupported file type (expect .csv or .jsonl)"
 
 
 def _coerce_str(value: Any) -> str:
@@ -20,16 +21,16 @@ def _coerce_str(value: Any) -> str:
 
 def _normalize_query(query: str) -> str:
     # Keep it deterministic and user-visible. Collapse whitespace to reduce accidental dupes.
-    return " ".join(str(query or "").strip().split())
+    return " ".join(query.strip().split())
 
 
 def _parse_tags(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        raw = [str(x or "").strip() for x in value]
+        raw = [str(x).strip() for x in value if x is not None]
     else:
-        s = str(value or "").strip()
+        s = str(value).strip()
         if not s:
             return []
         # If it's JSON, prefer that.
@@ -37,7 +38,7 @@ def _parse_tags(value: Any) -> list[str]:
             try:
                 obj = json.loads(s)
                 if isinstance(obj, list):
-                    raw = [str(x or "").strip() for x in obj]
+                    raw = [str(x).strip() for x in obj if x is not None]
                 else:
                     raw = [s]
             except Exception:
@@ -48,7 +49,7 @@ def _parse_tags(value: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for t in raw:
-        tag = str(t or "").strip()
+        tag = t.strip()
         if not tag:
             continue
         if tag in seen:
@@ -63,7 +64,7 @@ def _parse_source_metadata(value: Any) -> dict[str, Any]:
         return {}
     if isinstance(value, dict):
         return dict(value)
-    s = str(value or "").strip()
+    s = str(value).strip()
     if not s:
         return {}
     if s.startswith("{") and s.endswith("}"):
@@ -79,12 +80,12 @@ def _parse_source_metadata(value: Any) -> dict[str, Any]:
 def _pick_first(mapping: dict[str, Any], keys: Sequence[str]) -> Any:
     for k in keys:
         if k in mapping:
-            return mapping.get(k)
+            return mapping[k]
         # Common CSV variants.
         lk = k.lower()
         for mk in mapping.keys():
-            if str(mk or "").strip().lower() == lk:
-                return mapping.get(mk)
+            if mk.strip().lower() == lk:
+                return mapping[mk]
     return None
 
 
@@ -130,8 +131,8 @@ def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
             "source",
         )
     }
-    for k, v in (payload or {}).items():
-        kk = str(k or "").strip()
+    for k, v in payload.items():
+        kk = k.strip()
         if not kk:
             continue
         if kk.lower() in reserved:
@@ -158,7 +159,7 @@ def _append_import_item(
     error_value: int,
 ) -> None:
     item = _build_item(payload)
-    if item.get("query"):
+    if item["query"]:
         items.append(item)
         return
     errors.append({error_key: error_value, "error": _QUERY_REQUIRED_ERROR})
@@ -167,7 +168,8 @@ def _append_import_item(
 def _parse_csv_import_text(*, text: str, cap: int, items: list[dict[str, Any]], errors: list[dict[str, Any]]) -> None:
     reader = csv.DictReader(io.StringIO(text))
     for idx, row in enumerate(reader):
-        if row is None:
+        if None in row:
+            errors.append({"index": idx, "error": "CSV row has more values than header columns"})
             continue
         _append_import_item(items=items, errors=errors, payload=_coerce_record(row), error_key="index", error_value=idx)
         if len(items) >= cap:
@@ -203,7 +205,9 @@ def parse_qa_faq_import_bytes(
     - JSONL: one JSON object per line
     """
     cap = max(1, min(10_000, int(max_items or 0))) if max_items else 2000
-    name = str(filename or "").strip()
+    if filename is None:
+        raise ValueError(_UNSUPPORTED_FILE_TYPE_ERROR)
+    name = filename.strip()
     ext = os.path.splitext(name.lower())[1]
 
     errors: list[dict[str, Any]] = []
@@ -220,7 +224,7 @@ def parse_qa_faq_import_bytes(
     elif ext == ".jsonl":
         _parse_jsonl_import_text(text=text, cap=cap, items=items, errors=errors)
     else:
-        raise ValueError("unsupported file type (expect .csv or .jsonl)")
+        raise ValueError(_UNSUPPORTED_FILE_TYPE_ERROR)
 
     return items, errors
 
@@ -238,7 +242,6 @@ def plan_evidence_item_import(
     """
     cap = max(1, min(10_000, int(max_items or 0))) if max_items else 2000
 
-    created = 0
     skipped = 0
     errors: list[dict[str, Any]] = []
 
@@ -273,7 +276,6 @@ def plan_evidence_item_import(
         src = payload.get("source_metadata")
         payload["source_metadata"] = dict(src) if isinstance(src, dict) else {}
 
-        created += 1
         create_items.append(payload)
 
     # If input is larger than cap, treat remaining items as skipped.
@@ -282,7 +284,7 @@ def plan_evidence_item_import(
         errors.append({"error": "max_items exceeded", "max_items": cap, "ignored": len(items_list) - cap})
 
     return {
-        "created": created,
+        "created": len(create_items),
         "skipped": skipped,
         "errors": errors,
         "create_items": create_items,

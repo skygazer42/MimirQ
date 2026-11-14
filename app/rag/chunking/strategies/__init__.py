@@ -6,11 +6,12 @@ without pulling every strategy module into default startup.
 """
 
 from importlib import import_module
+from typing import Any
 
 from app.rag.chunking.capabilities import CHUNKER_CLASS_EXPORTS
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     target = CHUNKER_CLASS_EXPORTS.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

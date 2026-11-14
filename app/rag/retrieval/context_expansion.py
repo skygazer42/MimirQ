@@ -2,18 +2,18 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.hierarchy_expand import FetchByHierarchyKey, expand_hierarchy_context
-from app.rag.retrieval.neighbor_expand import expand_neighbors_by_score
 from app.rag.retrieval.sibling_expand import expand_document_siblings
 
 
 def _chunk_id_from_item(item: dict[str, Any]) -> str:
-    meta = item.get("metadata") or {}
-    return str(item.get("chunk_id") or meta.get("chunk_id") or "").strip()
+    return str(item["chunk_id"]).strip()
 
 
 def _header_path_from_meta(meta: dict[str, Any]) -> str | None:
-    return str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
+    header_path = _stringified_metadata_text(meta, "header_path") or _stringified_metadata_text(meta, "header_context")
+    return header_path if header_path else None
 
 
 def _coerce_non_negative_int(value: Any) -> int:
@@ -31,14 +31,14 @@ def _coerce_chunk_index(meta: dict[str, Any]) -> int | None:
 
 
 def _normalize_short_doc_ids(short_doc_ids: set[str] | None) -> set[str]:
-    return {str(doc_id).strip() for doc_id in (short_doc_ids or set()) if str(doc_id or "").strip()}
+    return {str(doc_id).strip() for doc_id in (short_doc_ids if short_doc_ids else set()) if doc_id.strip()}
 
 
 def _build_original_result_map(
     results: list[dict[str, Any]],
     original_results_by_chunk_id: dict[str, dict[str, Any]] | None,
 ) -> dict[str, dict[str, Any]]:
-    original_map = dict(original_results_by_chunk_id or {})
+    original_map = dict((original_results_by_chunk_id if original_results_by_chunk_id is not None else {}))
     if original_map:
         return original_map
     for item in results or []:
@@ -69,22 +69,22 @@ def _neighbor_item(
     anchor_chunk_id: str,
 ) -> dict[str, Any]:
     stored_meta = dict(getattr(chunk, "doc_metadata", None) or {})
-    stored_meta.setdefault("tenant_id", str(getattr(chunk, "tenant_id", "") or ""))
-    stored_meta.setdefault("document_id", str(getattr(chunk, "document_id", "") or ""))
+    stored_meta.setdefault("tenant_id", str(chunk.tenant_id))
+    stored_meta.setdefault("document_id", str(chunk.document_id))
     stored_meta.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
-    stored_meta.setdefault("chunk_id", str(getattr(chunk, "id", "") or ""))
+    stored_meta.setdefault("chunk_id", str(chunk.id))
     if getattr(chunk, "page_number", None) is not None:
         stored_meta.setdefault("page", chunk.page_number)
     if not stored_meta.get("source"):
         stored_meta["source"] = "unknown"
-    stored_meta["neighbor_of"] = anchor_chunk_id or None
+    stored_meta["neighbor_of"] = anchor_chunk_id
     stored_meta["retrieval_role"] = "neighbor"
     anchor_score = float(result.get("score", 0.0) or 0.0)
     return {
-        "chunk_id": str(getattr(chunk, "id", "") or ""),
-        "content": str(getattr(chunk, "content", "") or ""),
+        "chunk_id": str(chunk.id),
+        "content": chunk.content,
         "metadata": stored_meta,
-        "score": float(anchor_score * 0.85) if anchor_score else 0.0,
+        "score": anchor_score * 0.85 if anchor_score else 0.0,
     }
 
 
@@ -135,7 +135,7 @@ def _append_short_document_expansion(
         if chunk_id in seen:
             expanded.append(item)
             continue
-        if str((item.get("metadata") or {}).get("retrieval_role") or "").strip() == "sibling":
+        if (item.get("metadata") or {}).get("retrieval_role") == "sibling":
             sibling_added += 1
         seen.add(chunk_id)
         expanded.append(item)
@@ -197,7 +197,7 @@ def _append_neighbor_window(
             pending_score_neighbors.append(item)
         else:
             expanded.append(item)
-        seen.add(str(getattr(neighbor_chunk, "id", "") or "").strip())
+        seen.add(str(neighbor_chunk.id).strip())
         neighbor_added += 1
     return neighbor_added
 
@@ -239,7 +239,7 @@ def _eligible_neighbor_chunk(
     neighbor_chunk = neighbors_by_pair.get((doc_key, neighbor_index))
     if neighbor_chunk is None:
         return None
-    neighbor_chunk_id = str(getattr(neighbor_chunk, "id", "") or "").strip()
+    neighbor_chunk_id = str(neighbor_chunk.id).strip()
     if not neighbor_chunk_id or neighbor_chunk_id in seen:
         return None
     if max_added and neighbor_added >= max_added:
@@ -274,7 +274,7 @@ def _process_ranked_result(
 ) -> tuple[int, int]:
     meta = result.get("metadata") or {}
     anchor_chunk_id = _chunk_id_from_item(result)
-    doc_key = str(meta.get("document_id") or "").strip()
+    doc_key = _stringified_metadata_text(meta, "document_id")
     if doc_key in short_doc_ids:
         return _process_short_doc_result(
             result=result,
@@ -347,7 +347,7 @@ def _process_short_doc_result(
 def _process_windowed_result(
     *,
     result: dict[str, Any],
-    doc_key: str,
+    doc_key: str | None,
     chunk_index: int | None,
     local_window: int,
     max_added: int,
@@ -388,25 +388,6 @@ def _process_windowed_result(
     return neighbor_added, 0
 
 
-def expand_reranked_ids_by_score(
-    *,
-    ranked_items: list[dict[str, Any]],
-    get_adjacent_ids,
-    high_threshold: float = 0.7,
-    mid_threshold: float = 0.4,
-    high_span: int = 3,
-    mid_span: int = 1,
-) -> dict[str, Any]:
-    return expand_neighbors_by_score(
-        ranked_items=ranked_items,
-        get_adjacent_ids=get_adjacent_ids,
-        high_threshold=high_threshold,
-        mid_threshold=mid_threshold,
-        high_span=high_span,
-        mid_span=mid_span,
-    )
-
-
 def expand_ranked_chunk_results(
     *,
     results: list[dict[str, Any]],
@@ -429,9 +410,9 @@ def expand_ranked_chunk_results(
     window_i = _coerce_non_negative_int(window)
     max_added_i = _coerce_non_negative_int(max_added)
     sibling_max_added_i = _coerce_non_negative_int(sibling_max_added)
-    document_chunks_by_doc = dict(document_chunks_by_doc or {})
+    document_chunks_by_doc = dict((document_chunks_by_doc if document_chunks_by_doc is not None else {}))
     short_doc_ids = _normalize_short_doc_ids(short_doc_ids)
-    neighbors_by_pair = dict(neighbors_by_pair or {})
+    neighbors_by_pair = dict((neighbors_by_pair if neighbors_by_pair is not None else {}))
 
     if window_i <= 0 and not short_doc_ids:
         return results, {"enabled": False, "reason": "disabled"}
@@ -486,16 +467,16 @@ def expand_ranked_chunk_results(
         "framework": "context_expansion",
         "strategy": strategy,
         "strategies_used": sorted(strategies_used),
-        "window": int(window_i),
+        "window": window_i,
         "score_driven": bool(score_driven),
         "high_threshold": float(high_threshold),
         "mid_threshold": float(mid_threshold),
         "high_span": int(high_span),
         "mid_span": int(mid_span),
-        "short_doc_count": int(len(short_doc_ids)),
-        "neighbor_added": int(neighbor_added),
-        "sibling_added": int(sibling_added),
-        "added_docs": int(neighbor_added + sibling_added),
+        "short_doc_count": len(short_doc_ids),
+        "neighbor_added": neighbor_added,
+        "sibling_added": sibling_added,
+        "added_docs": neighbor_added + sibling_added,
     }
     return expanded, meta
 
@@ -524,5 +505,4 @@ def expand_hierarchy_documents(
 __all__ = [
     "expand_hierarchy_documents",
     "expand_ranked_chunk_results",
-    "expand_reranked_ids_by_score",
 ]

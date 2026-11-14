@@ -17,7 +17,7 @@ erDiagram
     DbCatalogTable ||--o{ DbProfileSnapshot : "profiled"
 ```
 
-DB Catalog 是 MimirQ 的结构化数据连接能力的基础：通过 Connector 连接外部数据库，自动发现 schema/table/column 元数据并存入目录，供后续的 Text-to-SQL 和 TAG 查询使用。
+DB Catalog 是 Ragvia 的结构化数据连接能力的基础：通过 Connector 连接外部数据库，自动发现 schema/table/column 元数据并存入目录，供后续的 Text-to-SQL 和 TAG 查询使用。
 
 ## 自动发现流程
 

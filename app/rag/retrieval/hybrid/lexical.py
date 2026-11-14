@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.retrieval.hybrid.common import (
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     _log_retriever_fallback,
@@ -50,7 +50,9 @@ class LexicalDBMixin:
         dataset_uuids: list[UUID] = []
         seen: set[str] = set()
         for item in values:
-            text = str(item or "").strip()
+            if item is None:
+                continue
+            text = str(item).strip()
             if not text:
                 continue
             try:
@@ -121,36 +123,36 @@ class LexicalDBMixin:
         return scoped
 
     @classmethod
-    def _lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> tuple[list[UUID] | None, str | None]:
+    def _lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> tuple[list[UUID], str | None]:
         dataset_uuids = cls._collect_lexical_dataset_scope(metadata_filter)
         dataset_str = str(dataset_uuids[0]) if dataset_uuids else None
-        return (dataset_uuids or None), dataset_str
+        return dataset_uuids, dataset_str
 
     @staticmethod
     def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
-        fts_config = str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple").strip() or "simple"
-        fetch_mult = max(1, int(getattr(settings, "LEXICAL_DB_FETCH_MULTIPLIER", 4) or 4))
-        fetch_cap = max(10, int(getattr(settings, "LEXICAL_DB_MAX_CANDIDATES", 200) or 200))
+        fts_config = str(settings.LEXICAL_DB_FTS_CONFIG).strip() or "simple"
+        fetch_mult = max(1, int(settings.LEXICAL_DB_FETCH_MULTIPLIER))
+        fetch_cap = max(10, int(settings.LEXICAL_DB_MAX_CANDIDATES))
         limit = max(0, int(top_k or 0))
         fetch_k = min(fetch_cap, max(limit, limit * fetch_mult))
-        want_trgm = bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True))
-        trgm_min_chars = max(1, int(getattr(settings, "LEXICAL_DB_TRGM_MIN_QUERY_CHARS", 3) or 3))
+        want_trgm = bool(settings.LEXICAL_DB_TRGM_ENABLED)
+        trgm_min_chars = max(1, int(settings.LEXICAL_DB_TRGM_MIN_QUERY_CHARS))
         return fts_config, fetch_k, want_trgm, trgm_min_chars
 
     @staticmethod
     def _lexical_cjk_token_terms(raw_query: str) -> list[str]:
-        text = str(raw_query or "").strip()
+        text = raw_query.strip()
         if not text or not re.search(r"[\u3400-\u4dbf\u4e00-\u9fff]", text):
             return []
         try:
-            max_terms = max(1, min(16, int(getattr(settings, "LEXICAL_DB_CJK_TOKEN_MAX_TERMS", 6) or 6)))
+            max_terms = max(1, min(16, int(settings.LEXICAL_DB_CJK_TOKEN_MAX_TERMS)))
         except (TypeError, ValueError):
             max_terms = 6
 
         candidates: list[str] = []
         seen: set[str] = set()
-        for token in tokenize_for_bm25(text):
-            term = str(token or "").strip()
+        for token in tokenize_lexical_text(text):
+            term = token.strip()
             if len(term) < 2:
                 continue
             # This channel is for CJK queries, but ASCII/numeric tokens inside
@@ -264,7 +266,7 @@ class LexicalDBMixin:
         meta.setdefault("lexical_score_raw", score)
         if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
             return None
-        return cid, {"chunk_id": cid, "content": content or "", "metadata": meta, "score": score}
+        return cid, {"chunk_id": cid, "content": content, "metadata": meta, "score": score}
 
     def _add_lexical_rows(
         self,
@@ -287,8 +289,10 @@ class LexicalDBMixin:
                 continue
             cid, result = parsed
             existing = results_by_id.get(cid)
-            if not replace_if_higher or existing is None or float(existing.get("score", 0.0) or 0.0) < float(
-                result.get("score", 0.0) or 0.0
+            if (
+                not replace_if_higher
+                or existing is None
+                or float(existing.get("score", 0.0) or 0.0) < float(result.get("score", 0.0) or 0.0)
             ):
                 results_by_id[cid] = result
 
@@ -343,7 +347,7 @@ class LexicalDBMixin:
             row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
             pg_trgm_available = bool(row)
         except Exception as exc:
-            _log_retriever_fallback('_search_lexical_db', exc)
+            _log_retriever_fallback("_search_lexical_db", exc)
             pg_trgm_available = False
         self._lexical_pg_trgm_available = pg_trgm_available
         return bool(pg_trgm_available)
@@ -400,7 +404,7 @@ class LexicalDBMixin:
         metadata_filter: dict[str, Any] | None,
         results_by_id: dict[str, dict[str, Any]],
     ) -> None:
-        if not bool(getattr(settings, "LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED", True)):
+        if not bool(settings.LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED):
             return
         terms = self._lexical_cjk_token_terms(raw_query)
         if not terms:
@@ -421,7 +425,7 @@ class LexicalDBMixin:
             return
 
         try:
-            configured_min_hits = int(getattr(settings, "LEXICAL_DB_CJK_TOKEN_MIN_HITS", 0) or 0)
+            configured_min_hits = int(settings.LEXICAL_DB_CJK_TOKEN_MIN_HITS)
         except (TypeError, ValueError):
             configured_min_hits = 0
         min_hits = configured_min_hits
@@ -471,7 +475,7 @@ class LexicalDBMixin:
             return []
 
         bind = db.get_bind()
-        if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+        if bind.dialect.name != "postgresql":
             return []
 
         results_by_id: dict[str, dict[str, Any]] = {}
@@ -558,10 +562,10 @@ class LexicalDBMixin:
 
         Returns dicts with raw `score` values; downstream fusion normalizes.
         """
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
-        if not bool(getattr(settings, "LEXICAL_DB_ENABLED", True)):
+        if not bool(settings.LEXICAL_DB_ENABLED):
             return []
 
         tenant_uuid = self._resolve_tenant_uuid(tenant_id)
@@ -586,18 +590,18 @@ class LexicalDBMixin:
 
     @staticmethod
     def _escape_sql_like_term(value: str) -> str:
-        return str(value or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     @staticmethod
     def _metadata_exact_db_like_terms(value: str) -> list[str]:
-        raw = str(value or "").strip()
+        raw = value.strip()
         if not raw:
             return []
         variants: list[str] = []
         seen: set[str] = set()
 
         def add(text: str) -> None:
-            item = str(text or "").strip()
+            item = text.strip()
             if not item or item in seen:
                 return
             seen.add(item)
@@ -667,14 +671,14 @@ class LexicalDBMixin:
             meta["page"] = page_number
         meta.setdefault("lexical_method", "metadata_exact")
         meta["metadata_exact_candidate"] = True
-        meta["metadata_exact_candidate_field"] = str(metadata_match.get("field") or "")
+        meta["metadata_exact_candidate_field"] = metadata_match["field"]
         meta["metadata_exact_candidate_fields"] = list(metadata_match.get("fields") or [])
         meta["metadata_exact_candidate_score"] = float(match_score)
         if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
             return None
         return cid, {
             "chunk_id": cid,
-            "content": content or "",
+            "content": content,
             "metadata": meta,
             "score": max(1.0, float(match_score)),
         }
@@ -689,13 +693,13 @@ class LexicalDBMixin:
         document_ids: list[UUID] | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query or not _query_looks_like_cjk_metadata_anchor(raw_query):
             return []
 
         dataset_uuid, dataset_str = self._lexical_dataset_scope(metadata_filter)
         limit = max(1, int(top_k or 1))
-        cap = max(1, int(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES", 80) or 80))
+        cap = max(1, int(settings.RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES))
         fetch_k = min(cap, max(limit, limit * 4))
         patterns = [f"%{self._escape_sql_like_term(term)}%" for term in self._metadata_exact_db_like_terms(raw_query)]
         if not patterns:
@@ -739,7 +743,7 @@ class LexicalDBMixin:
         results.sort(
             key=lambda item: (
                 -float((item.get("metadata") or {}).get("metadata_exact_candidate_score") or 0.0),
-                str(item.get("chunk_id") or ""),
+                item["chunk_id"],
             )
         )
         return results[:limit]
@@ -753,13 +757,13 @@ class LexicalDBMixin:
         tenant_id: UUID | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
         if self.metadata_exact_db_fallback_enabled is not None:
             metadata_exact_db_enabled = bool(self.metadata_exact_db_fallback_enabled)
         else:
-            metadata_exact_db_enabled = bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True))
+            metadata_exact_db_enabled = bool(settings.RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED)
         if not metadata_exact_db_enabled:
             return []
 
@@ -770,7 +774,7 @@ class LexicalDBMixin:
         db = self._open_session()
         try:
             bind = db.get_bind()
-            if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+            if bind.dialect.name != "postgresql":
                 return []
             return self._search_metadata_exact_anchor_db_with_session(
                 db=db,

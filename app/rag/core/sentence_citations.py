@@ -1,49 +1,52 @@
-
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
 
-def _build_inline_citation_href(ev: dict[str, Any]) -> str | None:
+@dataclass(frozen=True)
+class _CitationReference:
+    document_id: str
+    chunk_id: str
+    page: int | None
+
+
+def _citation_reference(ev: dict[str, Any]) -> _CitationReference:
     doc_id = str(ev.get("document_id") or "").strip()
     chunk_id = str(ev.get("chunk_id") or "").strip()
     page = ev.get("page_number")
     if page is None:
         page = ev.get("page")
 
-    params: dict[str, str] = {}
-    if doc_id:
-        params["document_id"] = doc_id
-    if chunk_id:
-        params["chunk_id"] = chunk_id
     try:
         page_i = int(page) if page is not None else None
     except Exception:
         page_i = None
-    if page_i is not None:
-        params["page"] = str(page_i)
+    return _CitationReference(doc_id, chunk_id, page_i)
+
+
+def _build_inline_citation_href(ev: dict[str, Any]) -> str | None:
+    reference = _citation_reference(ev)
+    params: dict[str, str] = {}
+    if reference.document_id:
+        params["document_id"] = reference.document_id
+    if reference.chunk_id:
+        params["chunk_id"] = reference.chunk_id
+    if reference.page is not None:
+        params["page"] = str(reference.page)
     if not params:
         return None
     return f"mimirq-citation://evidence?{urlencode(params)}"
 
 
 def _build_markdown_citation_label(ev: dict[str, Any]) -> str | None:
-    doc_id = str(ev.get("document_id") or "").strip()
-    chunk_id = str(ev.get("chunk_id") or "").strip()
-    page = ev.get("page_number")
-    if page is None:
-        page = ev.get("page")
-
+    reference = _citation_reference(ev)
     parts: list[str] = []
-    if doc_id:
-        parts.append(f"doc:{doc_id}")
-    if chunk_id:
-        parts.append(f"chunk:{chunk_id}")
-    try:
-        page_i = int(page) if page is not None else None
-    except Exception:
-        page_i = None
-    if page_i is not None:
-        parts.append(f"p.{page_i}")
+    if reference.document_id:
+        parts.append(f"doc:{reference.document_id}")
+    if reference.chunk_id:
+        parts.append(f"chunk:{reference.chunk_id}")
+    if reference.page is not None:
+        parts.append(f"p.{reference.page}")
     if not parts:
         return None
     return "[" + " | ".join(parts) + "]"
@@ -80,7 +83,7 @@ def _render_sentence_citation_rows(
             break
         if not isinstance(item, dict):
             continue
-        claim = str(item.get("claim") or "").strip()
+        claim = item["claim"].strip()
         if not claim:
             continue
 
@@ -153,7 +156,7 @@ def render_sentence_citations_inline(
             break
         if not isinstance(item, dict):
             continue
-        claim = str(item.get("claim") or "").strip()
+        claim = item["claim"].strip()
         if not claim:
             continue
 

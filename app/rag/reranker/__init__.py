@@ -5,8 +5,8 @@ Exports are resolved lazily so callers can import a specific reranker submodule
 without pulling in every provider implementation and its optional dependencies.
 """
 
-
 from importlib import import_module
+from typing import Any
 
 _MODULE_BASE = "app.rag.reranker.base"
 _MODULE_HYBRID = "app.rag.reranker.hybrid"
@@ -41,7 +41,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
 }
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     target = _EXPORTS.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -1,8 +1,9 @@
 'use client'
+import { FeedbackToast } from '@/components/feedback-toast'
 
 import type { ComponentProps, ReactNode } from 'react'
 
-import { Calendar, Pencil } from 'lucide-react'
+import { Calendar, Pencil } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -12,7 +13,7 @@ import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Document } from '@/types'
 
-type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
+type DocumentPublicationStatus = Document['publication_status']
 
 type DocumentDetailLifecyclePanelProps = Readonly<{
   editing: boolean
@@ -72,6 +73,7 @@ export function DocumentDetailLifecyclePanel({
 
   return (
     <Panel className="rounded-2xl">
+      <FeedbackToast type="error" message={lifecycleError} id="document-lifecycleError" />
       {editing ? (
         <form action={saveAction}>
           <input type="hidden" name="publication_status" value={lifecyclePublicationStatusDraft} />
@@ -105,7 +107,9 @@ export function DocumentDetailLifecyclePanel({
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.publicationStatus.label')}</div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {t('lifecycle.fields.publicationStatus.label')}
+                </div>
                 <Select
                   value={lifecyclePublicationStatusDraft}
                   onValueChange={(v) =>
@@ -117,9 +121,13 @@ export function DocumentDetailLifecyclePanel({
                     <SelectValue placeholder={t('lifecycle.fields.publicationStatus.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="published">{t('lifecycle.fields.publicationStatus.options.published')}</SelectItem>
+                    <SelectItem value="published">
+                      {t('lifecycle.fields.publicationStatus.options.published')}
+                    </SelectItem>
                     <SelectItem value="draft">{t('lifecycle.fields.publicationStatus.options.draft')}</SelectItem>
-                    <SelectItem value="deprecated">{t('lifecycle.fields.publicationStatus.options.deprecated')}</SelectItem>
+                    <SelectItem value="deprecated">
+                      {t('lifecycle.fields.publicationStatus.options.deprecated')}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -136,7 +144,9 @@ export function DocumentDetailLifecyclePanel({
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.reviewDueAt.label')}</div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {t('lifecycle.fields.reviewDueAt.label')}
+                </div>
                 <Input
                   name="review_due_at"
                   type="datetime-local"
@@ -147,7 +157,9 @@ export function DocumentDetailLifecyclePanel({
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.authorityLevel.label')}</div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {t('lifecycle.fields.authorityLevel.label')}
+                </div>
                 <Input
                   name="authority_level"
                   type="number"
@@ -162,7 +174,9 @@ export function DocumentDetailLifecyclePanel({
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.supersedesDocumentId.label')}</div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {t('lifecycle.fields.supersedesDocumentId.label')}
+                </div>
                 <Input
                   name="supersedes_document_id"
                   value={lifecycleSupersedesDraft}
@@ -177,13 +191,6 @@ export function DocumentDetailLifecyclePanel({
               <Alert variant="destructive">
                 <AlertTitle>{validationAlertTitle}</AlertTitle>
                 <AlertDescription>{lifecycleValidationError}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            {lifecycleError ? (
-              <Alert variant="destructive">
-                <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                <AlertDescription>{lifecycleError}</AlertDescription>
               </Alert>
             ) : null}
           </div>
@@ -227,7 +234,10 @@ export function DocumentDetailLifecyclePanel({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-muted-foreground">publication_status</span>
-                <span className="min-w-0 truncate text-foreground" title={String(displayDoc.publication_status || 'published')}>
+                <span
+                  className="min-w-0 truncate text-foreground"
+                  title={String(displayDoc.publication_status || 'published')}
+                >
                   {String(displayDoc.publication_status || 'published')}
                 </span>
               </div>
@@ -239,19 +249,30 @@ export function DocumentDetailLifecyclePanel({
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-muted-foreground">review_due_at</span>
-                <span className="min-w-0 truncate text-foreground" title={displayDoc.review_due_at ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN') : '-'}>
+                <span
+                  className="min-w-0 truncate text-foreground"
+                  title={
+                    displayDoc.review_due_at ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN') : '-'
+                  }
+                >
                   {displayDoc.review_due_at ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN') : '-'}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-muted-foreground">authority_level</span>
-                <span className="min-w-0 truncate text-foreground font-mono" title={displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}>
+                <span
+                  className="min-w-0 truncate text-foreground font-mono"
+                  title={displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}
+                >
                   {displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-muted-foreground">supersedes_document_id</span>
-                <span className="min-w-0 truncate text-foreground font-mono" title={String(displayDoc.supersedes_document_id || '-')}>
+                <span
+                  className="min-w-0 truncate text-foreground font-mono"
+                  title={String(displayDoc.supersedes_document_id || '-')}
+                >
                   {String(displayDoc.supersedes_document_id || '-')}
                 </span>
               </div>
@@ -263,13 +284,6 @@ export function DocumentDetailLifecyclePanel({
                 <div className="text-xs text-muted-foreground">{t('lifecycle.empty')}</div>
               ) : null}
             </div>
-
-            {lifecycleError ? (
-              <Alert variant="destructive">
-                <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                <AlertDescription>{lifecycleError}</AlertDescription>
-              </Alert>
-            ) : null}
           </div>
         </>
       )}

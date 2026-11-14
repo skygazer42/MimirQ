@@ -5,7 +5,6 @@ The goal is metadata enrichment (title/tags/date/author) without adding heavy
 YAML dependencies. Parsing is intentionally limited and safe.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -28,7 +27,7 @@ class FrontmatterExtractResult:
 
 
 def _coerce_scalar(value: str) -> Any:
-    v = (value or "").strip()
+    v = (value).strip()
     if not v:
         return ""
 
@@ -43,14 +42,14 @@ def _coerce_scalar(value: str) -> Any:
     if v.isdigit() and 1 <= len(v) <= 18:
         try:
             return int(v)
-        except Exception:
+        except ValueError:
             return v
 
     return v
 
 
 def _parse_frontmatter_key_value(line: str) -> tuple[str, str] | None:
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
 
@@ -79,7 +78,7 @@ def _parse_frontmatter_key_value(line: str) -> tuple[str, str] | None:
 
 
 def _parse_frontmatter_list_item(line: str) -> str | None:
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
     s = raw.lstrip()
@@ -95,7 +94,7 @@ def _parse_frontmatter_list_item(line: str) -> str | None:
 
 
 def _parse_markdown_h1_title(line: str) -> str | None:
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
     s = raw.lstrip()
@@ -113,7 +112,7 @@ def _parse_markdown_h1_title(line: str) -> str | None:
 
 
 def _parse_inline_list(value: str) -> list[str] | None:
-    v = (value or "").strip()
+    v = (value).strip()
     if not (v.startswith("[") and v.endswith("]")):
         return None
     inner = v[1:-1].strip()
@@ -122,6 +121,25 @@ def _parse_inline_list(value: str) -> list[str] | None:
     parts = [p.strip().strip("'\"") for p in inner.split(",")]
     out = [p for p in parts if p]
     return out
+
+
+def normalize_frontmatter_tags(raw_tags: object) -> list[str] | None:
+    if isinstance(raw_tags, str) and raw_tags.strip():
+        parts = [part.strip() for part in raw_tags.replace(";", ",").split(",") if part.strip()]
+        return parts[:50] or None
+    if not isinstance(raw_tags, list):
+        return None
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_tags:
+        value = str(item).strip() if item is not None else ""
+        key = value.casefold()
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(value[:64])
+    return cleaned[:50] or None
 
 
 def _find_frontmatter_end(lines: list[str], *, max_chars: int) -> int | None:
@@ -161,7 +179,7 @@ def _parse_frontmatter_data(frontmatter_raw: str) -> dict[str, Any]:
             continue
 
         key, val_raw = kv
-        val_raw = (val_raw or "").strip()
+        val_raw = val_raw.strip()
         inline_list = _parse_inline_list(val_raw)
         if inline_list is not None:
             data[key] = inline_list
@@ -193,14 +211,11 @@ def extract_markdown_frontmatter(
         strip: remove the frontmatter block from output text
         max_chars: safety cap for the block size to parse
     """
-    raw = text or ""
+    raw = text
     if not raw:
         return None
 
     lines = raw.splitlines(keepends=True)
-    if not lines:
-        return None
-
     # Frontmatter must be the very first non-empty line (BOM allowed).
     first = lines[0].rstrip("\r\n")
     if not _FRONTMATTER_START_RE.match(first.strip()):
@@ -219,7 +234,7 @@ def extract_markdown_frontmatter(
         data=data,
         raw=fm_raw,
         start_char=0,
-        end_char=int(end_char),
+        end_char=end_char,
         stripped_text=stripped_text,
         changed=bool(strip and stripped_text != raw),
     )
@@ -231,7 +246,7 @@ def extract_markdown_title(text: str, *, max_lines: int = 60) -> str | None:
     - prefers the first H1 heading (`# Title`)
     - skips fenced code blocks
     """
-    raw = text or ""
+    raw = text
     if not raw:
         return None
 
@@ -249,7 +264,7 @@ def extract_markdown_title(text: str, *, max_lines: int = 60) -> str | None:
         if not title:
             continue
         title = " ".join(title.split())
-        return title[:200] or None
+        return title[:200]
 
     return None
 
@@ -258,4 +273,5 @@ __all__ = [
     "FrontmatterExtractResult",
     "extract_markdown_frontmatter",
     "extract_markdown_title",
+    "normalize_frontmatter_tags",
 ]

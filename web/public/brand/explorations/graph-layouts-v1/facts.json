@@ -1,0 +1,218 @@
+{
+  "title": "工程能力标准",
+  "document": "02 AI工程师能力贡献标准（0615） - 认证版.xlsx",
+  "selectedId": "architecture",
+  "selected": "系统架构设计",
+  "alias": "D2",
+  "sourceHeading": "能力贡献项详解",
+  "sourceChunk": 6,
+  "sourceText": "能够从端到端视角设计系统架构，把握前端交互、后端服务、数据存储的全链路技术选型与边界，聚焦于技术架构设计、系统边界划分、技术选型决策等。",
+  "sourceText2": "能够主导建立跨模块的系统架构规范与复用标准，设计AI驱动的技术架构演进路线图，主导技术债务治理和架构优化。",
+  "nodeCount": 18,
+  "edgeCount": 22,
+  "nodes": [
+    {
+      "id": "engineer",
+      "label": "AI工程师",
+      "type": "role"
+    },
+    {
+      "id": "business",
+      "label": "业务需求理解",
+      "type": "ability"
+    },
+    {
+      "id": "architecture",
+      "label": "系统架构设计",
+      "type": "ability"
+    },
+    {
+      "id": "technology",
+      "label": "AI技术能力",
+      "type": "ability"
+    },
+    {
+      "id": "quality",
+      "label": "代码审核与质量",
+      "type": "ability"
+    },
+    {
+      "id": "knowledge",
+      "label": "知识资产化",
+      "type": "ability"
+    },
+    {
+      "id": "scenario",
+      "label": "业务场景",
+      "type": "practice"
+    },
+    {
+      "id": "selection",
+      "label": "技术选型",
+      "type": "practice"
+    },
+    {
+      "id": "boundary",
+      "label": "系统边界",
+      "type": "practice"
+    },
+    {
+      "id": "debt",
+      "label": "技术债务",
+      "type": "practice"
+    },
+    {
+      "id": "fullstack",
+      "label": "全栈开发",
+      "type": "practice"
+    },
+    {
+      "id": "tests",
+      "label": "自动化测试",
+      "type": "practice"
+    },
+    {
+      "id": "review",
+      "label": "代码审核",
+      "type": "practice"
+    },
+    {
+      "id": "library",
+      "label": "团队知识库",
+      "type": "asset"
+    },
+    {
+      "id": "rules",
+      "label": "技术规范",
+      "type": "asset"
+    },
+    {
+      "id": "tools",
+      "label": "工具与组件",
+      "type": "asset"
+    },
+    {
+      "id": "delivery",
+      "label": "交付质量",
+      "type": "outcome"
+    },
+    {
+      "id": "organization",
+      "label": "组织能力提升",
+      "type": "outcome"
+    }
+  ],
+  "edges": [
+    {
+      "source": "engineer",
+      "target": "business",
+      "label": "能力要求"
+    },
+    {
+      "source": "engineer",
+      "target": "architecture",
+      "label": "能力要求"
+    },
+    {
+      "source": "engineer",
+      "target": "technology",
+      "label": "能力要求"
+    },
+    {
+      "source": "engineer",
+      "target": "quality",
+      "label": "能力要求"
+    },
+    {
+      "source": "engineer",
+      "target": "knowledge",
+      "label": "能力要求"
+    },
+    {
+      "source": "business",
+      "target": "scenario",
+      "label": "理解"
+    },
+    {
+      "source": "architecture",
+      "target": "selection",
+      "label": "包含"
+    },
+    {
+      "source": "architecture",
+      "target": "boundary",
+      "label": "包含"
+    },
+    {
+      "source": "architecture",
+      "target": "debt",
+      "label": "识别"
+    },
+    {
+      "source": "technology",
+      "target": "fullstack",
+      "label": "支持"
+    },
+    {
+      "source": "technology",
+      "target": "tools",
+      "label": "封装"
+    },
+    {
+      "source": "quality",
+      "target": "tests",
+      "label": "使用"
+    },
+    {
+      "source": "quality",
+      "target": "review",
+      "label": "包含"
+    },
+    {
+      "source": "knowledge",
+      "target": "library",
+      "label": "建设"
+    },
+    {
+      "source": "knowledge",
+      "target": "rules",
+      "label": "沉淀"
+    },
+    {
+      "source": "knowledge",
+      "target": "organization",
+      "label": "促进"
+    },
+    {
+      "source": "architecture",
+      "target": "rules",
+      "label": "制定"
+    },
+    {
+      "source": "review",
+      "target": "delivery",
+      "label": "保障"
+    },
+    {
+      "source": "tests",
+      "target": "delivery",
+      "label": "保障"
+    },
+    {
+      "source": "selection",
+      "target": "delivery",
+      "label": "影响"
+    },
+    {
+      "source": "tools",
+      "target": "library",
+      "label": "沉淀"
+    },
+    {
+      "source": "library",
+      "target": "organization",
+      "label": "支持"
+    }
+  ],
+  "note": "设计排版数据：实体与关系由现有已解析文档的文字组织，不是已运行抽取的真实图谱结果。"
+}

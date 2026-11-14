@@ -2,7 +2,6 @@ import asyncio
 import threading
 import time
 import uuid
-from collections import OrderedDict
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -272,7 +271,7 @@ def test_indexer_embedding_runtime_for_document_propagates_invalid_dataset_scope
 
     indexer = indexer_module.Indexer.__new__(indexer_module.Indexer)
     indexer._db = SimpleNamespace(query=lambda *_args, **_kwargs: _Query())
-    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(
         indexer,
         "_load_dataset_metadata",
@@ -419,7 +418,7 @@ def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
@@ -549,7 +548,7 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_keeps_exact_cach
     monkeypatch.setattr(
         retriever_module,
         "get_cached_retrieval_candidates",
-        lambda key: cache_lookups.append(key) or None,
+        lambda key: cache_lookups.append(key),
     )
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [])  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
@@ -622,7 +621,7 @@ def test_metadata_filter_dataset_scope_drives_runtime_shards(
     captured: dict[str, tuple[uuid.UUID, ...]] = {}
 
     def record_runtime_scope(self, *, tenant_id, dataset_ids=None):  # noqa: ANN001,ARG002
-        captured["dataset_ids"] = dataset_ids or ()
+        captured["dataset_ids"] = dataset_ids if dataset_ids is not None else ()
         return []
 
     monkeypatch.setattr(
@@ -684,7 +683,7 @@ def test_sparse_search_uses_metadata_scope_for_bm25_corpus(
         captured["search_kwargs"] = dict(kwargs)
         return [], "empty", "no_candidates", 0
 
-    monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_resolve_derived_corpus_snapshot", record_scope_docs)
     monkeypatch.setattr(HybridRetriever, "_search_sparse_docs", record_sparse_docs)
     monkeypatch.setattr(
         HybridRetriever,
@@ -732,11 +731,11 @@ def test_colbert_search_uses_metadata_scope_for_bm25_corpus(
         )
 
     monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", True, raising=False)
-    monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
-    monkeypatch.setattr(HybridRetriever, "_search_colbert_ann_docs", lambda self, **kwargs: [])  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_resolve_derived_corpus_snapshot", record_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_search_colbert_dense_docs", lambda self, **kwargs: [])  # noqa: ANN001
 
     retriever = HybridRetriever(metadata_filter_enabled=True)
-    retriever._search_colbert_ann(
+    retriever._search_colbert_dense(
         "scope query",
         top_k=2,
         tenant_id=tenant_id,
@@ -1394,363 +1393,52 @@ async def test_worker_startup_registers_heartbeat_task(monkeypatch: pytest.Monke
     await worker.shutdown(ctx)
 
 
-def test_bm25_concurrent_first_build_uses_one_scope_lock(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import app.rag.retriever as retriever_module
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
+def test_corpus_scope_key_is_isolated_and_stable() -> None:
+    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
 
-    retriever = HybridRetriever(document_ids=[uuid.uuid4()])
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    factory_barrier = threading.Barrier(2)
-    call_barrier = threading.Barrier(2)
-    state_lock = threading.Lock()
-    build_count = 0
-    built = False
-
-    def lock_factory():
-        factory_barrier.wait(timeout=1)
-        return threading.Lock()
-
-    def build_inside_lock(self, **kwargs):  # noqa: ANN001,ANN003
-        nonlocal build_count, built
-        with state_lock:
-            if built:
-                return True
-            build_count += 1
-        time.sleep(0.05)
-        with state_lock:
-            built = True
-        return True
-
-    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "BM25_LAZY_BUILD_ENABLED", True, raising=False)
-    monkeypatch.setattr(retriever_module, "threading", SimpleNamespace(Lock=lock_factory))
-    monkeypatch.setattr(HybridRetriever, "_bm25_existing_scope_ready", lambda self, **kwargs: False)
-    monkeypatch.setattr(HybridRetriever, "_build_bm25_scope_inside_lock", build_inside_lock)
-
-    results: list[bool] = []
-
-    def build() -> None:
-        call_barrier.wait(timeout=1)
-        results.append(
-            retriever._lazy_build_bm25_index(
-                tenant_id=tenant_id,
-                document_ids=None,
-                dataset_ids=(dataset_id,),
-            )
-        )
-
-    threads = [threading.Thread(target=build) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=2)
-
-    assert not any(thread.is_alive() for thread in threads)
-    assert results == [True, True]
-    assert build_count == 1
+    tenant, a, b = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    key = CorpusIndex.scope_key(CorpusScope(tenant, document_ids=(a, b)))
+    assert key != CorpusIndex.scope_key(CorpusScope(tenant))
+    assert key != CorpusIndex.scope_key(CorpusScope(tenant, document_ids=(a,)))
+    assert key == CorpusIndex.scope_key(CorpusScope(tenant, document_ids=(b, a, b)))
 
 
-def test_bm25_multi_dataset_scope_stays_bounded_and_invalidates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_candidate_corpus_token_reuses_short_lived_lookup_and_invalidates_on_upsert(monkeypatch) -> None:
     from langchain_core.documents import Document
 
-    import app.rag.retriever as retriever_module
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    dataset_a = uuid.uuid4()
-    dataset_b = uuid.uuid4()
-    retriever = HybridRetriever(dataset_ids=[dataset_b, dataset_a, dataset_b])
-    captured: dict[str, object] = {}
-
-    scope_tenant, dataset_scope_ids, cache_key = retriever._bm25_search_scope(
-        tenant_id=tenant_id,
-        document_ids=None,
-    )
-
-    assert scope_tenant == tenant_id
-    assert dataset_scope_ids == tuple(sorted((dataset_a, dataset_b), key=str))
-    assert cache_key != str(tenant_id)
-    assert (
-        cache_key
-        == HybridRetriever(dataset_ids=[dataset_a, dataset_b])._bm25_search_scope(
-            tenant_id=tenant_id,
-            document_ids=None,
-        )[2]
-    )
-
-    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "BM25_LAZY_BUILD_ENABLED", True, raising=False)
-    monkeypatch.setattr(HybridRetriever, "_bm25_existing_scope_ready", lambda self, **kwargs: False)
-    monkeypatch.setattr(
-        retriever_module,
-        "SessionLocal",
-        lambda: SimpleNamespace(close=lambda: None),
-        raising=True,
-    )
-
-    def load_scope_docs(self, db, **kwargs):  # noqa: ANN001,ARG001
-        captured["dataset_ids"] = kwargs["dataset_ids"]
-        return [
-            Document(
-                page_content="scope doc",
-                id="chunk-1",
-                metadata={
-                    "document_id": str(uuid.uuid4()),
-                    "chunk_index": 0,
-                },
-            )
-        ]
-
-    def build_index(self, docs, *, tenant_id, cache_key):  # noqa: ANN001
-        captured["cache_key"] = cache_key
-        captured["docs"] = len(docs)
-
-    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
-    monkeypatch.setattr(HybridRetriever, "_build_bm25_index_from_documents", build_index)
-
-    built = retriever._lazy_build_bm25_index(
-        tenant_id=tenant_id,
-        document_ids=None,
-        dataset_ids=dataset_scope_ids,
-    )
-
-    assert built is True
-    assert captured["dataset_ids"] == tuple(sorted((dataset_a, dataset_b), key=str))
-    assert captured["cache_key"] == retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=dataset_scope_ids,
-        document_ids=None,
-    )
-    assert captured["docs"] == 1
-
-    retriever._bm25_retrievers[cache_key] = object()  # type: ignore[assignment]
-    retriever._bm25_docs[cache_key] = [Document(page_content="old", id="old")]
-    retriever._bm25_cache_versions[cache_key] = "old-version"
-
-    def dataset_version(self, *, _tenant_id, _dataset_ids):  # noqa: ANN001
-        captured["version_dataset_ids"] = _dataset_ids
-        return "new-version"
-
-    monkeypatch.setattr(HybridRetriever, "_bm25_dataset_cache_version", dataset_version)
-
-    assert (
-        retriever._refresh_bm25_dataset_cache_version(
-            cache_key=cache_key,
-            tenant_uuid=tenant_id,
-            dataset_scope_ids=dataset_scope_ids,
-        )
-        == "new-version"
-    )
-    assert captured["version_dataset_ids"] == dataset_scope_ids
-    assert cache_key not in retriever._bm25_retrievers
-    assert cache_key not in retriever._bm25_docs
-
-
-def test_bm25_database_row_keeps_dataset_scope_metadata() -> None:
-    from app.rag.retriever import HybridRetriever
-
-    chunk_id = uuid.uuid4()
-    tenant_id = uuid.uuid4()
-    document_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-
-    document = HybridRetriever._document_from_chunk_row(
-        (chunk_id, "body", {}, tenant_id, document_id, 3, 7, dataset_id),
-    )
-
-    assert document.id == str(chunk_id)
-    assert document.metadata["dataset_id"] == str(dataset_id)
-    assert document.metadata["document_id"] == str(document_id)
-
-
-def test_bm25_document_scope_cache_key_is_isolated_and_stable() -> None:
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    document_a = uuid.uuid4()
-    document_b = uuid.uuid4()
-    retriever = HybridRetriever()
-
-    tenant_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=None,
-    )
-    document_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=[document_a, document_b],
-    )
-
-    assert document_key != tenant_key
-    assert document_key != retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=[document_a],
-    )
-    assert document_key == retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=[document_b, document_a, document_b],
-    )
-
-
-def test_bm25_document_scope_caches_are_mutation_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
-    from langchain_core.documents import Document
-
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    document_id = uuid.uuid4()
-    retriever = HybridRetriever()
-    scope_key = f"{tenant_id}:documents:1:cached"
-    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
-    retriever._bm25_docs[scope_key] = [
-        Document(
-            page_content="old",
-            id=str(uuid.uuid4()),
-            metadata={"document_id": str(document_id), "chunk_index": 0},
-        )
-    ]
-    retriever._bm25_doc_ids[scope_key] = {str(document_id)}
-    retriever._chunk_id_lookup[scope_key] = {}
-    retriever._bm25_cache_versions[scope_key] = "old"
-
-    assert scope_key in retriever._bm25_filter_scope_keys(tenant_key=str(tenant_id))
-
-    monkeypatch.setattr(HybridRetriever, "_replace_bm25_scope_index", lambda self, **kwargs: None)
-    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", lambda self, **kwargs: None)
-    monkeypatch.setattr(HybridRetriever, "_sync_colbert_index_after_bm25_upsert", lambda self, **kwargs: None)
-    retriever.upsert_bm25_documents(
-        [
-            Document(
-                page_content="new",
-                id=str(uuid.uuid4()),
-                metadata={"document_id": str(document_id), "chunk_index": 0},
-            )
-        ],
-        tenant_id=tenant_id,
-    )
-
-    assert scope_key not in retriever._bm25_retrievers
-    assert scope_key not in retriever._bm25_docs
-    assert scope_key not in retriever._bm25_doc_ids
-    assert scope_key not in retriever._chunk_id_lookup
-    assert scope_key not in retriever._bm25_deferred_scopes
-    assert scope_key not in retriever._bm25_cache_versions
-
-
-def test_bm25_document_scope_cache_version_invalidates_stale_index(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    document_id = uuid.uuid4()
-    retriever = HybridRetriever()
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=[document_id],
-    )
-    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
-    retriever._bm25_docs[scope_key] = [Document(page_content="old", id=str(uuid.uuid4()))]
-    retriever._bm25_cache_versions[scope_key] = "old-version"
-    monkeypatch.setattr(
-        HybridRetriever,
-        "_resolve_candidate_cache_corpus_token",
-        lambda self, **kwargs: "new-version",
-    )
-
-    assert (
-        retriever._refresh_bm25_dataset_cache_version(
-            cache_key=scope_key,
-            tenant_uuid=tenant_id,
-            dataset_scope_ids=(),
-            document_ids=[document_id],
-        )
-        == "new-version"
-    )
-    assert scope_key not in retriever._bm25_retrievers
-    assert scope_key not in retriever._bm25_docs
-
-
-def test_candidate_corpus_token_reuses_short_lived_lookup_and_invalidates_on_upsert(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
+    from app.rag.retrieval import corpus_index as module
+    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.services import corpus_cache_tokens
+    from tests.test_milvus_bm25_cutover import Store
 
     calls = 0
 
-    class _Session:
-        def close(self) -> None:
-            return None
+    class Session:
+        def close(self):
+            pass
 
-    def resolve_token(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+    def resolve(*_args, **_kwargs):
         nonlocal calls
         calls += 1
         return f"version-{calls}"
 
-    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-    monkeypatch.setattr(retriever_module, "resolve_corpus_cache_token", resolve_token, raising=True)
     clock = [0.0]
-    monkeypatch.setattr(retriever_module.time, "monotonic", lambda: clock[0])
-    monkeypatch.setattr(HybridRetriever, "_replace_bm25_scope_index", lambda self, **kwargs: None)
-    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", lambda self, **kwargs: None)
-    monkeypatch.setattr(HybridRetriever, "_sync_colbert_index_after_bm25_upsert", lambda self, **kwargs: None)
-
-    tenant_id = uuid.uuid4()
-    document_id = uuid.uuid4()
-    retriever = HybridRetriever(tenant_id=tenant_id)
-
-    assert (
-        retriever._resolve_candidate_cache_corpus_token(
-            tenant_id=tenant_id,
-            document_ids=[document_id],
-        )
-        == "version-1"
+    monkeypatch.setattr(module, "SessionLocal", Session)
+    monkeypatch.setattr(corpus_cache_tokens, "resolve_corpus_cache_token", resolve)
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+    tenant, document = uuid.uuid4(), uuid.uuid4()
+    owner = CorpusIndex(bm25_store=Store())
+    scope = CorpusScope(tenant, document_ids=(document,))
+    assert owner.resolve_version(scope) == "version-1"
+    assert owner.resolve_version(scope) == "version-1"
+    owner.upsert(
+        None,
+        tenant_id=tenant,
+        documents=[Document(id=str(uuid.uuid4()), page_content="updated", metadata={"document_id": str(document)})],
     )
-    assert (
-        retriever._resolve_candidate_cache_corpus_token(
-            tenant_id=tenant_id,
-            document_ids=[document_id],
-        )
-        == "version-1"
-    )
-
-    retriever.upsert_bm25_documents(
-        [
-            Document(
-                page_content="updated",
-                id=str(uuid.uuid4()),
-                metadata={"document_id": str(document_id), "chunk_index": 0},
-            )
-        ],
-        tenant_id=tenant_id,
-    )
-
-    assert (
-        retriever._resolve_candidate_cache_corpus_token(
-            tenant_id=tenant_id,
-            document_ids=[document_id],
-        )
-        == "version-2"
-    )
+    assert owner.resolve_version(scope) == "version-2"
     clock[0] = 2.0
-    assert (
-        retriever._resolve_candidate_cache_corpus_token(
-            tenant_id=tenant_id,
-            document_ids=[document_id],
-        )
-        == "version-3"
-    )
+    assert owner.resolve_version(scope) == "version-3"
     assert calls == 3
 
 
@@ -1825,354 +1513,6 @@ def test_candidate_corpus_token_allows_explicit_dataset_scope_override(
     assert captured["document_ids"] == []
 
 
-def test_bm25_unversioned_existing_scope_is_rebuilt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    document_id = uuid.uuid4()
-    retriever = HybridRetriever()
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=[document_id],
-    )
-    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
-    retriever._bm25_docs[scope_key] = [Document(page_content="unknown-version", id=str(uuid.uuid4()))]
-    monkeypatch.setattr(
-        HybridRetriever,
-        "_resolve_candidate_cache_corpus_token",
-        lambda self, **kwargs: "current-version",
-    )
-
-    assert (
-        retriever._refresh_bm25_dataset_cache_version(
-            cache_key=scope_key,
-            tenant_uuid=tenant_id,
-            dataset_scope_ids=(),
-            document_ids=[document_id],
-        )
-        == "current-version"
-    )
-    assert scope_key not in retriever._bm25_retrievers
-    assert scope_key not in retriever._bm25_docs
-    assert scope_key not in retriever._bm25_cache_versions
-
-
-def test_bm25_document_scope_cache_rebuilds_when_requested_document_is_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    document_a = uuid.uuid4()
-    document_b = uuid.uuid4()
-    retriever = HybridRetriever()
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        document_ids=[document_a, document_b],
-    )
-    old_retriever = object()
-    new_retriever = object()
-    old_docs = [
-        Document(
-            page_content="a",
-            id=str(uuid.uuid4()),
-            metadata={"document_id": str(document_a)},
-        )
-    ]
-    new_docs = old_docs + [
-        Document(
-            page_content="b",
-            id=str(uuid.uuid4()),
-            metadata={"document_id": str(document_b)},
-        )
-    ]
-    retriever._bm25_retrievers[scope_key] = old_retriever  # type: ignore[assignment]
-    retriever._bm25_docs[scope_key] = old_docs
-
-    def rebuild(self, **kwargs):  # noqa: ANN001, ANN202
-        self._bm25_retrievers[scope_key] = new_retriever
-        self._bm25_docs[scope_key] = new_docs
-        return True
-
-    monkeypatch.setattr(HybridRetriever, "_lazy_build_bm25_index", rebuild)
-
-    cached_retriever, cached_docs = retriever._ensure_bm25_search_index(
-        cache_key=scope_key,
-        tenant_uuid=tenant_id,
-        dataset_scope_ids=(),
-        document_ids=[document_a, document_b],
-    )
-
-    assert cached_retriever is new_retriever
-    assert cached_docs == new_docs
-    assert retriever._last_bm25_status["reason"] == "lazy_build_success"
-
-
-def test_bm25_deferred_scope_uses_db_lazy_rebuild_without_materialized_docs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    retriever = HybridRetriever(dataset_id=dataset_id)
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(dataset_id,),
-        document_ids=None,
-    )
-
-    retriever._defer_bm25_scope_index(
-        cache_key=scope_key,
-        merged_docs=[
-            Document(
-                page_content="should not stay materialized",
-                id=str(uuid.uuid4()),
-                metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0},
-            )
-        ],
-    )
-
-    assert scope_key in retriever._bm25_deferred_scopes
-    assert scope_key not in retriever._bm25_docs
-    assert scope_key not in retriever._bm25_doc_ids
-    assert scope_key not in retriever._chunk_id_lookup
-
-    class _Session:
-        def close(self) -> None:
-            return None
-
-    rebuilt = [
-        Document(
-            page_content="rebuilt from db",
-            id=str(uuid.uuid4()),
-            metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0, "dataset_id": str(dataset_id)},
-        )
-    ]
-    captured: dict[str, object] = {}
-
-    def load_scope_docs(self, db, **kwargs):  # noqa: ANN001,ARG001
-        captured["dataset_ids"] = kwargs["dataset_ids"]
-        return list(rebuilt)
-
-    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
-
-    assert retriever._lazy_build_bm25_index(
-        tenant_id=tenant_id,
-        document_ids=None,
-        dataset_ids=(dataset_id,),
-    )
-    assert captured["dataset_ids"] == (dataset_id,)
-    assert scope_key not in retriever._bm25_deferred_scopes
-    assert [doc.page_content for doc in retriever._bm25_docs[scope_key]] == ["rebuilt from db"]
-
-
-def test_bm25_deferred_scope_upsert_uses_db_corpus_for_incremental_sync(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    import app.rag.retriever as retriever_module
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    retriever = HybridRetriever(dataset_id=dataset_id, sparse_enabled=True)
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(dataset_id,),
-        document_ids=None,
-    )
-    retriever._bm25_deferred_scopes.add(scope_key)
-
-    existing_doc = Document(
-        page_content="existing corpus doc",
-        id=str(uuid.uuid4()),
-        metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0, "dataset_id": str(dataset_id)},
-    )
-    upsert_doc = Document(
-        page_content="fresh upsert doc",
-        id=str(uuid.uuid4()),
-        metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0, "dataset_id": str(dataset_id)},
-    )
-    captured: dict[str, object] = {}
-
-    class _Session:
-        def close(self) -> None:
-            return None
-
-    def load_scope_docs(self, db, **kwargs):  # noqa: ANN001,ARG001
-        captured["dataset_ids"] = kwargs["dataset_ids"]
-        return [existing_doc]
-
-    def fail_replace(self, **kwargs):  # noqa: ANN001,ANN202
-        raise AssertionError("deferred scope should not materialize a partial BM25 index")
-
-    def record_sparse_sync(self, **kwargs):  # noqa: ANN001,ANN202
-        captured["merged_ids"] = {doc.id for doc in kwargs["merged_docs"]}
-        captured["upsert_ids"] = {doc.id for doc in kwargs["upsert_docs"]}
-
-    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 1, raising=False)
-    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
-    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
-    monkeypatch.setattr(HybridRetriever, "_replace_bm25_scope_index", fail_replace)
-    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", record_sparse_sync)
-    monkeypatch.setattr(HybridRetriever, "_sync_colbert_index_after_bm25_upsert", lambda self, **kwargs: None)
-
-    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id)
-
-    assert captured["dataset_ids"] == (dataset_id,)
-    assert captured["merged_ids"] == {existing_doc.id, upsert_doc.id}
-    assert captured["upsert_ids"] == {upsert_doc.id}
-    assert scope_key in retriever._bm25_deferred_scopes
-    assert scope_key not in retriever._bm25_docs
-    assert scope_key not in retriever._bm25_retrievers
-
-
-def test_bm25_deferred_scope_uses_caller_session_for_transaction_visible_corpus(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    import app.rag.retriever as retriever_module
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    retriever = HybridRetriever(dataset_id=dataset_id, sparse_enabled=True)
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(dataset_id,),
-        document_ids=None,
-    )
-    retriever._bm25_deferred_scopes.add(scope_key)
-    current_db = object()
-    current_doc = Document(
-        page_content="transaction-visible corpus",
-        id=str(uuid.uuid4()),
-        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
-    )
-    upsert_doc = Document(
-        page_content="fresh upsert",
-        id=str(uuid.uuid4()),
-        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
-    )
-    captured: dict[str, object] = {}
-
-    def load_scope_docs(self, db, **_kwargs):  # noqa: ANN001,ANN202
-        captured["db"] = db
-        return [current_doc]
-
-    def record_sparse_sync(self, **kwargs):  # noqa: ANN001,ANN202
-        captured["merged_ids"] = {doc.id for doc in kwargs["merged_docs"]}
-
-    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
-    monkeypatch.setattr(
-        retriever_module,
-        "SessionLocal",
-        lambda: (_ for _ in ()).throw(AssertionError("caller session should be reused")),
-        raising=True,
-    )
-    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
-    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", record_sparse_sync)
-
-    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id, db=current_db)
-
-    assert captured["db"] is current_db
-    assert captured["merged_ids"] == {current_doc.id, upsert_doc.id}
-    assert scope_key in retriever._bm25_deferred_scopes
-    assert scope_key not in retriever._bm25_docs
-
-
-def test_bm25_threshold_defer_keeps_corpus_transient_for_same_upsert_sync(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from langchain_core.documents import Document
-
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    retriever = HybridRetriever(dataset_id=dataset_id, sparse_enabled=True)
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(dataset_id,),
-        document_ids=None,
-    )
-    existing_doc = Document(
-        page_content="existing",
-        id=str(uuid.uuid4()),
-        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
-    )
-    upsert_doc = Document(
-        page_content="new",
-        id=str(uuid.uuid4()),
-        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
-    )
-    retriever._bm25_docs[scope_key] = [existing_doc]
-    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
-    captured: dict[str, set[str]] = {}
-
-    def record_sparse_sync(self, **kwargs):  # noqa: ANN001,ANN202
-        captured["merged"] = {str(doc.id) for doc in kwargs["merged_docs"]}
-
-    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 1, raising=False)
-    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
-    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", record_sparse_sync)
-
-    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id)
-
-    assert captured["merged"] == {str(existing_doc.id), str(upsert_doc.id)}
-    assert scope_key in retriever._bm25_deferred_scopes
-    assert scope_key not in retriever._bm25_docs
-    assert scope_key not in retriever._bm25_retrievers
-
-
-def test_bm25_deferred_scope_version_invalidation_clears_marker(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.rag.retriever import HybridRetriever
-
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    retriever = HybridRetriever(dataset_id=dataset_id)
-    scope_key = retriever._bm25_scope_key(
-        tenant_id=tenant_id,
-        dataset_ids=(dataset_id,),
-        document_ids=None,
-    )
-    retriever._bm25_deferred_scopes.add(scope_key)
-    retriever._bm25_cache_versions[scope_key] = "old-version"
-
-    monkeypatch.setattr(
-        HybridRetriever, "_bm25_dataset_cache_version", lambda self, *, _tenant_id, _dataset_ids: "new-version"
-    )
-
-    assert (
-        retriever._refresh_bm25_dataset_cache_version(
-            cache_key=scope_key,
-            tenant_uuid=tenant_id,
-            dataset_scope_ids=(dataset_id,),
-        )
-        == "new-version"
-    )
-    assert scope_key not in retriever._bm25_deferred_scopes
-
-
 def test_enrich_results_fails_closed_when_acl_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retriever as retriever_module
     from app.rag.retriever import HybridRetriever
@@ -2240,17 +1580,17 @@ def test_enrich_results_fails_closed_when_metadata_filter_fails(monkeypatch: pyt
 def test_chunk_mutations_rotate_document_corpus_version_before_commit() -> None:
     from pathlib import Path
 
-    source = Path("app/api/v1/document_chunks_write.py").read_text(encoding="utf-8")
+    source = Path("app/services/document_chunk_operations.py").read_text(encoding="utf-8")
     version_touch = "document.updated_at = datetime.now(UTC)"
-    for function_name, next_decorator in (
-        ("create_document_chunk", "@router.patch("),
-        ("patch_document_chunk", "@router.delete("),
-        ("delete_document_chunk", "@router.post("),
-        ("disable_document_chunk", "@router.post("),
-        ("enable_document_chunk", "@router.post("),
+    for function_name, next_function in (
+        ("create_chunk", "def patch_chunk("),
+        ("patch_chunk", "async def delete_chunk("),
+        ("delete_chunk", "async def disable_chunk("),
+        ("disable_chunk", "def enable_chunk("),
+        ("enable_chunk", "def reembed_chunks("),
     ):
         function_start = source.index(f"def {function_name}(")
-        function_source = source[function_start : source.index(next_decorator, function_start)]
+        function_source = source[function_start : source.index(next_function, function_start)]
         assert version_touch in function_source
         assert function_source.index(version_touch) < function_source.index("db.commit()")
 
@@ -2544,30 +1884,3 @@ def test_mixed_default_and_dataset_scoped_runtime_shards_use_native_search_paths
         "dataset_id": str(dataset_b),
         "embedding_space_hash": {"$in": ["space-custom", ""]},
     }
-
-
-def test_bm25_lru_eviction_keeps_cache_maps_aligned(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
-
-    retriever = HybridRetriever(document_ids=[uuid.uuid4()])
-    monkeypatch.setattr(settings, "BM25_CACHE_MAX_TENANTS", 2, raising=False)
-
-    for key in ("scope-a", "scope-b", "scope-c"):
-        retriever._bm25_retrievers[key] = object()  # type: ignore[assignment]
-        retriever._bm25_docs[key] = []
-        retriever._bm25_doc_ids[key] = set()
-        retriever._chunk_id_lookup[key] = {}
-        retriever._bm25_cache_versions[key] = key
-        retriever._bm25_deferred_scopes.add(key)
-        retriever._touch_bm25_cache(key)
-
-    expected = {"scope-b", "scope-c"}
-    assert set(retriever._bm25_cache_order) == expected
-    assert set(retriever._bm25_retrievers) == expected
-    assert set(retriever._bm25_docs) == expected
-    assert set(retriever._bm25_doc_ids) == expected
-    assert set(retriever._chunk_id_lookup) == expected
-    assert set(retriever._bm25_cache_versions) == expected
-    assert set(retriever._bm25_deferred_scopes) == expected
-    assert isinstance(retriever._bm25_cache_order, OrderedDict)

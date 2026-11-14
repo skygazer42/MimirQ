@@ -32,7 +32,9 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
 
 
 def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -43,7 +45,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    text = str(value or "").strip()
+    text = str(value).strip()
     if not text:
         return None
     if text.endswith("Z"):
@@ -130,7 +132,7 @@ def _resolve_latency_total_ms(trace: dict[str, Any]) -> int | None:
     try:
         if elapsed_sec is None:
             return None
-        return max(0, int(round(float(elapsed_sec) * 1000.0)))
+        return max(0, round(float(elapsed_sec) * 1000.0))
     except Exception:
         return None
 
@@ -226,18 +228,14 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
         "feedback_polarity": feedback_polarity,
         "attributable_feedback_eligible": feedback_polarity == "negative",
         "latency_total_ms": (
-            int(round(total_elapsed_sec * 1000.0))
-            if total_elapsed_sec is not None
-            else _resolve_latency_total_ms(trace)
+            round(total_elapsed_sec * 1000.0) if total_elapsed_sec is not None else _resolve_latency_total_ms(trace)
         ),
-        "latency_total_sec": round(float(total_elapsed_sec), 4) if total_elapsed_sec is not None else None,
-        "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec), 4) if retrieval_elapsed_sec is not None else None,
-        "generation_elapsed_sec": round(float(generation_elapsed_sec), 4)
-        if generation_elapsed_sec is not None
-        else None,
-        "rewrite_elapsed_sec": round(float(rewrite_elapsed_sec), 4) if rewrite_elapsed_sec is not None else None,
-        "hyde_elapsed_sec": round(float(hyde_elapsed_sec), 4) if hyde_elapsed_sec is not None else None,
-        "decompose_elapsed_sec": round(float(decompose_elapsed_sec), 4) if decompose_elapsed_sec is not None else None,
+        "latency_total_sec": round(total_elapsed_sec, 4) if total_elapsed_sec is not None else None,
+        "retrieval_elapsed_sec": round(retrieval_elapsed_sec, 4) if retrieval_elapsed_sec is not None else None,
+        "generation_elapsed_sec": round(generation_elapsed_sec, 4) if generation_elapsed_sec is not None else None,
+        "rewrite_elapsed_sec": round(rewrite_elapsed_sec, 4) if rewrite_elapsed_sec is not None else None,
+        "hyde_elapsed_sec": round(hyde_elapsed_sec, 4) if hyde_elapsed_sec is not None else None,
+        "decompose_elapsed_sec": round(decompose_elapsed_sec, 4) if decompose_elapsed_sec is not None else None,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "answer_tokens": answer_tokens,

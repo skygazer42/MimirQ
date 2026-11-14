@@ -1,7 +1,7 @@
 # Pipeline Plugins
 
 Pipeline plugins are registered plugin packages for governance, chunking, and KG
-extraction. MimirQ owns the registration, validation, execution, and indexing
+extraction. Ragvia owns the registration, validation, execution, and indexing
 contracts; domain-specific rules live in plugin package files so they can be
 added without changing the backend application code.
 
@@ -95,7 +95,7 @@ resolution.
 Contract JSON top-level fields are closed platform contracts.
 Do not add business-specific top-level fields to `metadata_schema.json`, `retrieval_text_schema.json`, `retrieval_policy.json`, `golden_rules.json`, or `processing_templates.json`; put business metadata under `metadata_schema.fields`, retrieval composition under `retrieval_text_schema.stages`, retrieval strategy hints under `retrieval_policy`, evaluation declarations under the supported Golden rule arrays/templates, and operator-facing business template provenance under `processing_templates.templates`.
 `processing_templates.json` is a plugin-owned template provenance contract:
-MimirQ validates and exposes the declared `templates[]`, but does not copy those
+Ragvia validates and exposes the declared `templates[]`, but does not copy those
 business templates into platform built-ins.
 `processing_templates.templates[].key` is plugin-local. Namespace business
 template keys (for example with the plugin id or domain prefix) when they mirror
@@ -105,7 +105,7 @@ provenance with platform built-ins. Plugin processing template keys must not col
 `processing_templates.templates[].related_implementations[]` must also be plugin-local.
 The referenced symbol must exist in that plugin file. Function, class, and top-level assignment symbols are accepted so a template can point to either executable helpers or plugin-owned constants such as regex rules.
 Do not point processing template provenance at `app.*`, `scripts.*`, or other
-MimirQ platform modules; if a template needs business behavior, ship that
+Ragvia platform modules; if a template needs business behavior, ship that
 implementation inside the plugin package.
 
 `suggested_pipeline_patch` is first validated as a partial `DocumentPipelineOptions`
@@ -141,7 +141,7 @@ Entry callable names must be single Python identifiers such as
 rejected at manifest load time.
 Do not use platform top-level names such as `app/`, `scripts/`, or `tests/` for
 plugin entry files or import modules.
-Plugin Python source files must not import MimirQ platform modules such as `app.*`, `scripts.*`, or `tests.*`, and must not place helper source under platform-shaped top-level directories such as `app/`, `scripts/`, or `tests/`.
+Plugin Python source files must not import Ragvia platform modules such as `app.*`, `scripts.*`, or `tests.*`, and must not place helper source under platform-shaped top-level directories such as `app/`, `scripts/`, or `tests/`.
 Use plugin-local helpers or stable third-party dependencies instead, so business
 plugins remain portable and do not depend on platform internals.
 Entry stages are limited to `governance`, `chunk`, and `kg`; business-specific
@@ -288,7 +288,7 @@ Supported field types are `string`, `integer`, `number`, `boolean`, `array`, and
 shortcuts such as `true` or `123`; invalid field declarations are rejected before
 the platform builds generic index/display/evaluation views.
 `metadata_schema.fields[].name` must not start with `_`, and no dotted path
-segment may start with `_`. The `_` namespace is reserved for MimirQ platform
+segment may start with `_`. The `_` namespace is reserved for Ragvia platform
 views such as `_indexed_metadata`, `_display_metadata`, `_evaluable_metadata`,
 and `_record_identity`; KG metadata subpaths such as `metadata._record_identity` are also rejected.
 Platform-owned metadata field names are reserved; platform-owned metadata field names such as `source`, `document_id`, `chunk_id`, `dataset_id`, `parser_backend`, and `resolved_chunk_strategy` cannot be declared by plugins.
@@ -509,7 +509,7 @@ query templates the plugin can use later for generated test cases.
 
 `template_selector_fields` tells the platform which plugin metadata fields select
 the `query_templates` bucket. `tag_fields` controls which metadata values become
-generated Golden case tags. If `template_selector_fields` is omitted, MimirQ
+generated Golden case tags. If `template_selector_fields` is omitted, Ragvia
 only tries the `default` query template bucket. If `tag_fields` is omitted, the
 draft only carries platform tags such as `plugin:<id>` and `golden_draft`.
 Business-specific selector and tag fields must be declared in the plugin rule

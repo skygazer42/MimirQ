@@ -99,9 +99,8 @@ if TYPE_CHECKING:
     from app.parsing.parsers.video_parser import VideoParser
 
 
-_PARSER_BACKEND_FAMILIES = iter_parser_backend_families()
 _USER_SELECTABLE_BACKEND_FAMILIES = tuple(
-    family for family in _PARSER_BACKEND_FAMILIES if family.user_selectable and not family.implicit_only
+    family for family in iter_parser_backend_families() if family.user_selectable and not family.implicit_only
 )
 
 
@@ -181,8 +180,8 @@ class ParserFactory:
 
     PDF_SETTING_REQUIREMENTS = {
         family.canonical_name: (
-            str(family.pdf_required_setting_flag or ""),
-            str(family.pdf_disabled_message or ""),
+            family.pdf_required_setting_flag,
+            family.pdf_disabled_message,
             tuple(family.pdf_required_settings),
         )
         for family in _USER_SELECTABLE_BACKEND_FAMILIES
@@ -190,17 +189,17 @@ class ParserFactory:
     }
 
     NON_PDF_BACKEND_EXTENSION_RULES = {
-        family.canonical_name: (set(family.non_pdf_extensions), str(family.non_pdf_extension_error or ""))
+        family.canonical_name: (set(family.non_pdf_extensions), family.non_pdf_extension_error)
         for family in _USER_SELECTABLE_BACKEND_FAMILIES
         if family.non_pdf_extensions
     }
 
     PDF_PARSER_SPECS = {
         family.canonical_name: (
-            str(family.pdf_cache_attr or ""),
-            str(family.parser_module_name or ""),
-            str(family.parser_class_name or ""),
-            str(family.init_log_message or ""),
+            family.pdf_cache_attr,
+            family.parser_module_name,
+            family.parser_class_name,
+            family.init_log_message,
         )
         for family in _USER_SELECTABLE_BACKEND_FAMILIES
         if family.pdf_cache_attr and family.parser_module_name and family.parser_class_name and family.init_log_message
@@ -237,7 +236,7 @@ class ParserFactory:
     def _settings_enabled(flag_name: str, *value_names: str) -> bool:
         if not bool(getattr(settings, flag_name, False)):
             return False
-        return all(bool((getattr(settings, value_name, "") or "").strip()) for value_name in value_names)
+        return all(bool(getattr(settings, value_name).strip()) for value_name in value_names)
 
     @staticmethod
     def _mineru_configured() -> bool:
@@ -286,7 +285,7 @@ class ParserFactory:
                 "[pdf] Docling service available (requires selection)",
             ),
             (
-                bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+                settings.MAGIC_PDF_ENABLED,
                 "[pdf] MagicPDF parser available (requires selection)",
             ),
         )
@@ -317,19 +316,17 @@ class ParserFactory:
 
     @staticmethod
     def _magicpdf_runtime_ready() -> bool:
-        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+        if not settings.MAGIC_PDF_ENABLED:
             return False
         try:
             from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
             from app.parsing.utils.cli import resolve_cli_command
 
-            if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+            if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
                 return True
 
-            cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-            return bool(
-                resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-            )
+            cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+            return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR))
         except Exception as exc:
             logger.debug("MagicPDF runtime availability check failed: %s", exc)
             return False
@@ -338,8 +335,14 @@ class ParserFactory:
         """
         Resolve the actual parser to use based on file type and user selection.
         """
-        explicit_backend = bool(str(parser_backend or "").strip())
-        normalized = normalize_parser_backend(parser_backend or settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
+        requested = normalize_parser_backend(parser_backend)
+        explicit_backend = bool(requested)
+        normalized = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND) if requested == "" else requested
+        if normalized == "":
+            normalized = "auto"
+        from app.core.model_execution import reject_retired_provider
+
+        reject_retired_provider(normalized, capability="parser")
         file_ext = file_ext.lower()
 
         if file_ext != ".pdf":
@@ -394,16 +397,14 @@ class ParserFactory:
 
     def _resolve_auto_non_pdf_backend(self, file_ext: str) -> str:
         if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
-            return "pandoc" if bool(getattr(settings, "PANDOC_ENABLED", False)) else "markitdown"
+            return "pandoc" if settings.PANDOC_ENABLED else "markitdown"
         if file_ext in {XLSX_EXTENSION, ".xls"}:
             return "excel"
         if file_ext in {".doc", ".ppt"}:
-            pandoc_with_libreoffice = bool(getattr(settings, "PANDOC_ENABLED", False)) and bool(
-                getattr(settings, "LIBREOFFICE_ENABLED", False)
-            )
+            pandoc_with_libreoffice = settings.PANDOC_ENABLED and settings.LIBREOFFICE_ENABLED
             return "pandoc" if pandoc_with_libreoffice else "markitdown"
         if file_ext in {DOCX_EXTENSION, PPTX_EXTENSION, HTML_EXTENSION, ".htm"}:
-            return "pandoc" if bool(getattr(settings, "PANDOC_ENABLED", False)) else "markitdown"
+            return "pandoc" if settings.PANDOC_ENABLED else "markitdown"
         return "markitdown"
 
     def _validate_non_pdf_backend(self, *, backend: str, file_ext: str) -> None:
@@ -478,7 +479,7 @@ class ParserFactory:
         if not bool(getattr(settings, flag_name, False)):
             raise ValueError(disabled_message)
         for value_name, missing_message in required_values:
-            if not bool((getattr(settings, value_name, "") or "").strip()):
+            if not bool(getattr(settings, value_name).strip()):
                 raise ValueError(missing_message)
 
     def _validate_mineru_backend(self) -> None:
@@ -492,13 +493,13 @@ class ParserFactory:
 
     @staticmethod
     def _validate_docling_backend() -> None:
-        if not getattr(settings, "DOCLING_ENABLED", False):
+        if not settings.DOCLING_ENABLED:
             raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
-        if not (getattr(settings, "DOCLING_API_URL", "") or "").strip():
+        if not settings.DOCLING_API_URL.strip():
             raise ValueError("Docling parser requires DOCLING_API_URL for the external service.")
 
     def _validate_magicpdf_backend(self) -> None:
-        if not getattr(settings, "MAGIC_PDF_ENABLED", False):
+        if not settings.MAGIC_PDF_ENABLED:
             raise ValueError("MagicPDF parser is not enabled. Please set MAGIC_PDF_ENABLED=True.")
         if not self._magicpdf_runtime_ready():
             raise ValueError(
@@ -630,31 +631,6 @@ class ParserFactory:
             "selected": False,
         }
 
-    def _fallback_with_attempt(
-        self,
-        *,
-        file_path: Path,
-        file_ext: str,
-        backend: str,
-        error: Exception,
-        html_xpath: str | None,
-        attempts: list[dict[str, Any]],
-    ) -> tuple[list[Document], str] | None:
-        fb_t0 = time.perf_counter()
-        fallback_docs, fallback_backend = self._fallback_parse(
-            file_path=file_path,
-            file_ext=file_ext,
-            requested_backend=backend,
-            error=error,
-            html_xpath=html_xpath,
-        )
-        if fallback_docs is None:
-            return None
-        attempt = self._successful_attempt(backend=fallback_backend, started_at=fb_t0, documents=fallback_docs)
-        attempt["fallback_from"] = attempts[0].get("backend") if attempts else backend
-        attempts.append(attempt)
-        return fallback_docs, fallback_backend
-
     def parse(
         self,
         file_path: Path,
@@ -745,24 +721,29 @@ class ParserFactory:
             attempts.append(self._successful_attempt(backend=backend, started_at=primary_t0, documents=documents))
         except Exception as exc:
             attempts.append(self._failed_attempt(backend=backend, started_at=primary_t0, error=exc))
-            fallback = self._fallback_with_attempt(
+            fallback_t0 = time.perf_counter()
+            fallback_docs, fallback_backend = self._fallback_parse(
                 file_path=file_path,
                 file_ext=file_ext,
-                backend=backend,
+                requested_backend=backend,
                 error=exc,
                 html_xpath=html_xpath,
-                attempts=attempts,
             )
-            if fallback is None:
+            if fallback_docs is None:
                 raise
-            documents, backend = fallback
+            attempt = self._successful_attempt(
+                backend=fallback_backend, started_at=fallback_t0, documents=fallback_docs
+            )
+            attempt["fallback_from"] = backend
+            attempts.append(attempt)
+            documents, backend = fallback_docs, fallback_backend
 
         self._apply_document_metadata(documents, backend=backend, filename=str(file_path.name), file_ext=file_ext)
 
         provenance: dict[str, Any] = {
             "version": "2",
             "file_type": file_ext.lstrip("."),
-            "requested_backend": str(parser_backend or ""),
+            "requested_backend": str((parser_backend if parser_backend is not None else "")),
             "resolved_backend": backend,
             "attempts": attempts,
             "elapsed_ms": int(round((time.perf_counter() - total_t0) * 1000)),
@@ -784,8 +765,8 @@ class ParserFactory:
         We only fall back when we can produce a reasonable text representation
         without introducing new heavy dependencies.
         """
-        backend = (requested_backend or "").strip().lower()
-        file_ext = (file_ext or "").strip().lower()
+        backend = (requested_backend).strip().lower()
+        file_ext = (file_ext).strip().lower()
 
         if file_ext == ".pdf" and backend in self.PDF_ADVANCED_FALLBACK_BACKENDS:
             return self._fallback_pdf_parse(file_path=file_path, backend=backend, error=error)
@@ -863,7 +844,7 @@ class ParserFactory:
             return self._try_docx_lightweight_fallback(file_path, backend)
 
     def _try_docx_pandoc_fallback(self, file_path: Path) -> tuple[list[Document], str] | None:
-        if not bool(getattr(settings, "PANDOC_ENABLED", False)):
+        if not settings.PANDOC_ENABLED:
             return None
         try:
             return self._get_pandoc_parser().parse(file_path), "pandoc"
@@ -917,33 +898,39 @@ class ParserFactory:
         html_xpath: str | None,
     ) -> tuple[list[Document] | None, str]:
         if file_ext == DOCX_EXTENSION:
-            return self._parse_docx_file(file_path), "docx"
+            from app.parsing.parsers.docx_parser import DocxParser
+
+            return DocxParser().parse(file_path), "docx"
         if file_ext == PPTX_EXTENSION:
-            return self._parse_pptx_markitdown_fallback(file_path)
+            if settings.PANDOC_ENABLED:
+                return self._get_pandoc_parser().parse(file_path), "pandoc"
+            from app.parsing.parsers.pptx_parser import PptxParser
+
+            return PptxParser().parse(file_path), "pptx"
         if file_ext in {XLSX_EXTENSION, ".xls"}:
-            return self._parse_excel_file(file_path), "excel"
+            from app.parsing.parsers.excel_parser import ExcelParser
+
+            return ExcelParser().parse(file_path), "excel"
         if file_ext in {HTML_EXTENSION, ".htm"}:
-            return self._parse_html_file(file_path, html_xpath=html_xpath), "html"
+            from app.parsing.parsers.html_parser import HtmlParser
+
+            return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
         if file_ext == ".csv":
-            return self._parse_csv_file(file_path), "csv"
+            from app.parsing.parsers.csv_parser import CsvParser
+
+            return CsvParser().parse(file_path), "csv"
         if file_ext == JSON_EXTENSION:
-            return self._parse_json_file(file_path), "json"
+            from app.parsing.parsers.json_parser import JsonParser
+
+            return JsonParser().parse(file_path), "json"
         if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
-            return self._parse_extended_office_fallback(file_path)
+            if settings.PANDOC_ENABLED:
+                return self._get_pandoc_parser().parse(file_path), "pandoc"
+            return None, "markitdown"
         if file_ext in {".doc", ".ppt"}:
             return self._try_legacy_office_pandoc_fallback(file_path)
         if file_ext == ".pdf":
             return self._get_pdf_parser("basic").parse(file_path), "basic"
-        return None, "markitdown"
-
-    def _parse_pptx_markitdown_fallback(self, file_path: Path) -> tuple[list[Document], str]:
-        if bool(getattr(settings, "PANDOC_ENABLED", False)):
-            return self._get_pandoc_parser().parse(file_path), "pandoc"
-        return self._parse_pptx_file(file_path), "pptx"
-
-    def _parse_extended_office_fallback(self, file_path: Path) -> tuple[list[Document] | None, str]:
-        if bool(getattr(settings, "PANDOC_ENABLED", False)):
-            return self._get_pandoc_parser().parse(file_path), "pandoc"
         return None, "markitdown"
 
     @staticmethod
@@ -959,42 +946,6 @@ class ParserFactory:
                 str(exc)[:200],
             )
             return None, "markitdown"
-
-    @staticmethod
-    def _parse_docx_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.docx_parser import DocxParser
-
-        return DocxParser().parse(file_path)
-
-    @staticmethod
-    def _parse_pptx_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.pptx_parser import PptxParser
-
-        return PptxParser().parse(file_path)
-
-    @staticmethod
-    def _parse_excel_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.excel_parser import ExcelParser
-
-        return ExcelParser().parse(file_path)
-
-    @staticmethod
-    def _parse_html_file(file_path: Path, *, html_xpath: str | None) -> list[Document]:
-        from app.parsing.parsers.html_parser import HtmlParser
-
-        return HtmlParser().parse(file_path, html_xpath=html_xpath)
-
-    @staticmethod
-    def _parse_csv_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.csv_parser import CsvParser
-
-        return CsvParser().parse(file_path)
-
-    @staticmethod
-    def _parse_json_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.json_parser import JsonParser
-
-        return JsonParser().parse(file_path)
 
     def _fallback_to_markitdown(
         self,

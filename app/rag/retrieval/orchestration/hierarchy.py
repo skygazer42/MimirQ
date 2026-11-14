@@ -9,6 +9,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.orchestration.common import _doc_key, _safe_int
 
 
@@ -44,11 +45,11 @@ def _update_hierarchy_family_feature(
     best_rank: dict[str, int],
     best_score: dict[str, float],
 ) -> None:
-    doc_hits[family_key] = int(doc_hits.get(family_key, 0) or 0) + 1
-    if family_key not in best_rank or rank < int(best_rank.get(family_key) or 0):
-        best_rank[family_key] = int(rank)
-    if family_key not in best_score or float(score) > float(best_score.get(family_key) or 0.0):
-        best_score[family_key] = float(score)
+    doc_hits[family_key] = doc_hits.get(family_key, 0) + 1
+    if family_key not in best_rank or rank < best_rank[family_key]:
+        best_rank[family_key] = rank
+    if family_key not in best_score or score > (best_score[family_key] or 0.0):
+        best_score[family_key] = score
 
 
 def _build_hierarchy_family_feature_payload(
@@ -60,10 +61,10 @@ def _build_hierarchy_family_feature_payload(
     best_score: dict[str, float],
 ) -> dict[str, Any]:
     return {
-        "variant_hits": int(variant_hits.get(family_key, 0) or 0),
-        "doc_hits": int(doc_hits.get(family_key, 0) or 0),
-        "best_rank": int(best_rank.get(family_key, 0) or 0),
-        "best_score": float(best_score.get(family_key, 0.0) or 0.0),
+        "variant_hits": variant_hits[family_key],
+        "doc_hits": doc_hits[family_key],
+        "best_rank": best_rank[family_key],
+        "best_score": best_score[family_key] or 0.0,
     }
 
 
@@ -93,7 +94,7 @@ def _build_hierarchy_family_features(docs_by_query: list[list[Document]]) -> dic
                 best_score=best_score,
             )
         for fk in seen_in_variant:
-            variant_hits[fk] = int(variant_hits.get(fk, 0) or 0) + 1
+            variant_hits[fk] = variant_hits.get(fk, 0) + 1
 
     out: dict[str, dict[str, Any]] = {}
     all_keys = set(variant_hits) | set(doc_hits) | set(best_rank) | set(best_score)
@@ -115,7 +116,7 @@ def _resolve_family_aggregation_strategy(
         return "", {"enabled": False, "reason": "no_docs"}
     if not family_features:
         return "", {"enabled": False, "reason": "no_families"}
-    strat = str(strategy or "").strip().lower()
+    strat = strategy.strip().lower()
     if strat not in {"frequency", "score", "combined"}:
         return strat, {"enabled": False, "reason": "invalid_strategy"}
     return strat, None
@@ -133,15 +134,15 @@ def _family_aggregation_sort_key(
     best_rank = int(feats.get("best_rank") or 0) or 1_000_000
     best_score = float(feats.get("best_score") or 0.0)
     if strategy == "frequency":
-        return (-float(variant_hits), float(best_rank), -float(best_score), family_key)
+        return (-float(variant_hits), float(best_rank), -best_score, family_key)
     if strategy == "score":
-        return (-float(best_score), -float(variant_hits), float(best_rank), family_key)
-    return (-float(variant_hits), -float(best_score), float(best_rank), family_key)
+        return (-best_score, -float(variant_hits), float(best_rank), family_key)
+    return (-float(variant_hits), -best_score, float(best_rank), family_key)
 
 
-def _doc_stable_debug_id(doc: Document) -> str:
+def _doc_stable_debug_id(doc: Document) -> str | None:
     meta = doc.metadata or {}
-    return str(getattr(doc, "id", None) or meta.get("chunk_id") or "")
+    return doc.id if doc.id is not None else _stringified_metadata_text(meta, "chunk_id")
 
 
 def _rank_hierarchy_family_docs(
@@ -150,16 +151,16 @@ def _rank_hierarchy_family_docs(
     family_features: dict[str, dict[str, Any]],
     strategy: str,
 ) -> list[Document]:
-    ranked: list[tuple[tuple[float, float, float, str], float, int, str, Document]] = []
+    ranked: list[tuple[tuple[float, float, float, str], float, int, str | None, Document]] = []
     for index, doc in enumerate(docs):
         meta = doc.metadata or {}
         family_key = _resolve_hierarchy_family_collapse_key(meta)
         family_key_tuple = _family_aggregation_sort_key(
-            family_key or "",
+            family_key,
             family_features=family_features,
             strategy=strategy,
         )
-        ranked.append((family_key_tuple, -float(_doc_base_score(meta)), int(index), _doc_stable_debug_id(doc), doc))
+        ranked.append((family_key_tuple, -_doc_base_score(meta), index, _doc_stable_debug_id(doc), doc))
     ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
     return [doc for *_rest, doc in ranked]
 
@@ -177,9 +178,9 @@ def _family_aggregation_meta(
     return {
         "enabled": True,
         "strategy": strategy,
-        "input_docs": int(len(docs)),
-        "families": int(len(family_features)),
-        "moved_positions": int(moved),
+        "input_docs": len(docs),
+        "families": len(family_features),
+        "moved_positions": moved,
         "top_changed": bool(before_ids) and bool(after_ids) and before_ids[0] != after_ids[0],
     }
 
@@ -213,7 +214,7 @@ def _resolve_hierarchy_node_key(meta: dict[str, Any]) -> str:
     return ""
 
 
-def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
+def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str | None:
     # Respect explicit hierarchy_parent_key=None emitted by chunkers. Only fall back to
     # legacy parent_id fields when the hierarchy_parent_key field is absent entirely.
     raw = (
@@ -221,8 +222,7 @@ def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
         if "hierarchy_parent_key" in meta
         else (meta.get("parent_id") or meta.get("parent_node_id"))
     )
-    s = str(raw or "").strip()
-    return s if s else ""
+    return str(raw).strip() if raw is not None else None
 
 
 @dataclass
@@ -233,7 +233,7 @@ class _HierarchyDedupState:
     order: list[str]
     doc_by_key: dict[str, Document]
     node_by_doc_key: dict[str, str]
-    parent_by_doc_key: dict[str, str]
+    parent_by_doc_key: dict[str, str | None]
     children_by_parent_node: dict[str, set[str]]
     dropped_as_descendant: int = 0
     removed_by_ancestor: int = 0
@@ -258,18 +258,18 @@ def _hierarchy_dedup_limits(top_k: int, overfetch_factor: int) -> tuple[int, int
     if top_k_i <= 0:
         return top_k_i, 1, 0, {"enabled": False, "reason": "top_k_le_0"}
     factor = max(1, _safe_int(overfetch_factor, default=1))
-    max_candidates = max(int(top_k_i), int(top_k_i) * int(factor))
+    max_candidates = max(top_k_i, top_k_i * factor)
     return top_k_i, factor, max_candidates, None
 
 
 def _hierarchy_dedup_candidates(primary_list: list[Document], refill: list[Document] | None) -> list[Document]:
     candidates: list[Document] = list(primary_list)
     if refill:
-        candidates.extend([doc for doc in (refill or []) if doc is not None])
+        candidates.extend(doc for doc in refill if doc is not None)
     return candidates
 
 
-def _hierarchy_node_parent_keys(doc: Document) -> tuple[str, str]:
+def _hierarchy_node_parent_keys(doc: Document) -> tuple[str, str | None]:
     meta = doc.metadata or {}
     node_key = _resolve_hierarchy_node_key(meta)
     parent_key = _resolve_hierarchy_parent_key(meta)
@@ -284,8 +284,8 @@ def _remove_hierarchy_dedup_doc(state: _HierarchyDedupState, doc_key: str) -> in
     state.kept_doc_keys.discard(doc_key)
     state.removed_by_ancestor += 1
 
-    node_key = state.node_by_doc_key.get(doc_key) or ""
-    parent_key = state.parent_by_doc_key.get(doc_key) or ""
+    node_key = state.node_by_doc_key[doc_key]
+    parent_key = state.parent_by_doc_key[doc_key]
     if parent_key:
         kids = state.children_by_parent_node.get(parent_key)
         if kids:
@@ -307,7 +307,7 @@ def _keep_hierarchy_dedup_doc(
     doc_key: str,
     doc: Document,
     node_key: str,
-    parent_key: str,
+    parent_key: str | None,
 ) -> None:
     state.doc_by_key[doc_key] = doc
     state.node_by_doc_key[doc_key] = node_key
@@ -354,10 +354,8 @@ def _hierarchy_dedup_output(state: _HierarchyDedupState, *, top_k: int) -> list[
     for doc_key in state.order:
         if doc_key not in state.kept_doc_keys:
             continue
-        doc = state.doc_by_key.get(doc_key)
-        if doc is not None:
-            out.append(doc)
-    return out[: int(top_k)]
+        out.append(state.doc_by_key[doc_key])
+    return out[:top_k]
 
 
 def _hierarchy_dedup_meta(
@@ -372,15 +370,15 @@ def _hierarchy_dedup_meta(
 ) -> dict[str, Any]:
     return {
         "enabled": True,
-        "top_k": int(top_k),
-        "overfetch_factor": int(factor),
-        "max_candidates": int(max_candidates),
-        "scanned_unique": int(state.scanned_unique),
-        "input_primary": int(len(primary_list)),
-        "input_refill": int(len(refill or [])),
-        "output": int(len(out_sliced)),
-        "dropped_as_descendant": int(state.dropped_as_descendant),
-        "removed_by_ancestor": int(state.removed_by_ancestor),
+        "top_k": top_k,
+        "overfetch_factor": factor,
+        "max_candidates": max_candidates,
+        "scanned_unique": state.scanned_unique,
+        "input_primary": len(primary_list),
+        "input_refill": len(refill if refill is not None else []),
+        "output": len(out_sliced),
+        "dropped_as_descendant": state.dropped_as_descendant,
+        "removed_by_ancestor": state.removed_by_ancestor,
     }
 
 

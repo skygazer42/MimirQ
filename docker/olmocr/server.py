@@ -6,7 +6,7 @@ import signal
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 
@@ -19,7 +19,7 @@ def _get_int_env(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
-    except Exception:
+    except ValueError:
         return default
 
 
@@ -39,7 +39,7 @@ def _get_float_env(name: str, default: float) -> float:
         return default
     try:
         return float(raw)
-    except Exception:
+    except ValueError:
         return default
 
 
@@ -185,7 +185,7 @@ async def _terminate_process_group(process: asyncio.subprocess.Process, *, grace
     await _wait_for_process_exit(process)
 
 
-def _pick_markdown_path(workspace: Path) -> Optional[Path]:
+def _pick_markdown_path(workspace: Path) -> Path | None:
     default = workspace / "markdown" / "input.md"
     if default.exists():
         return default
@@ -338,7 +338,7 @@ async def convert(
 
     async with _semaphore:
         runtime = _runtime_status()
-        if not bool(runtime.get("ok")):
+        if not runtime["ok"]:
             raise HTTPException(
                 status_code=503,
                 detail={"error": "olmocr_runtime_unavailable", **runtime},

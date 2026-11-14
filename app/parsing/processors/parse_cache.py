@@ -1,4 +1,3 @@
-
 import hashlib
 import json
 import os
@@ -11,25 +10,30 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+_CACHE_SCHEMA = "mimirq.local_parse_cache.v2"
+
 
 @dataclass(frozen=True)
 class ParseCacheEntry:
     created_at_epoch: float
     file_sha256: str
-    parser_backend: str
+    parser_backend: str | None
     resolved_backend: str
     resolved_chunk_strategy: str
     documents: list[dict[str, Any]] | None
     chunks: list[dict[str, Any]] | None
 
 
-def build_parse_cache_key(*, file_sha256: str, parser_backend: str, config_hash: str) -> str:
-    payload = "|".join(
-        [
-            str(file_sha256 or "").strip().lower(),
-            str(parser_backend or "").strip().lower(),
-            str(config_hash or "").strip(),
-        ]
+def build_parse_cache_key(*, file_sha256: str, parser_backend: str | None, config_hash: str) -> str:
+    payload = json.dumps(
+        {
+            "schema": _CACHE_SCHEMA,
+            "file_sha256": file_sha256.strip().lower(),
+            "parser_backend": None if parser_backend is None else parser_backend.strip().lower(),
+            "config_hash": config_hash.strip(),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8", "ignore")).hexdigest()
 
@@ -39,7 +43,7 @@ class LocalParseCacheStore:
         self._root = Path(root)
 
     def _path_for(self, key: str) -> Path:
-        safe = str(key or "").strip().lower()
+        safe = key.strip().lower()
         return self._root / safe[:2] / f"{safe}.json"
 
     def get(
@@ -50,22 +54,21 @@ class LocalParseCacheStore:
         now_epoch: float | None = None,
     ) -> tuple[ParseCacheEntry | None, int | None]:
         path = self._path_for(key)
-        if not path.exists() or not path.is_file():
-            return None, None
-
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             entry = ParseCacheEntry(**payload)
-        except Exception:
+            if not isinstance(entry.resolved_chunk_strategy, str) or not entry.resolved_chunk_strategy.strip():
+                return None, None
+            now = time.time() if now_epoch is None else now_epoch
+            age_sec = max(0.0, now - float(entry.created_at_epoch))
+        except (OSError, TypeError, ValueError) as exc:
+            logger.debug("Ignoring invalid parse cache entry: %s", type(exc).__name__)
             return None, None
-
-        now = float(time.time() if now_epoch is None else now_epoch)
-        age_sec = max(0.0, now - float(entry.created_at_epoch or 0.0))
-        if int(ttl_sec or 0) > 0 and age_sec > int(ttl_sec):
+        if ttl_sec > 0 and age_sec > ttl_sec:
             try:
                 path.unlink(missing_ok=True)
-            except Exception as exc:
-                logger.debug("Ignoring stale parse cache unlink failure: %s", exc)
+            except OSError as exc:
+                logger.debug("Ignoring stale parse cache unlink failure: %s", type(exc).__name__)
             return None, None
 
         return entry, int(age_sec * 1000.0)

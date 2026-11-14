@@ -5,6 +5,7 @@ Used for:
 - images extracted during document parsing (legacy + current)
 - document source files when enabled (enterprise deployments)
 """
+
 import asyncio
 import contextlib
 import io
@@ -13,6 +14,7 @@ import threading
 import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlparse
@@ -33,23 +35,23 @@ class MinIOObjectRef:
 
 
 def is_minio_uri(value: str) -> bool:
-    return str(value or "").strip().lower().startswith("minio://")
+    return value.strip().lower().startswith("minio://")
 
 
 def parse_minio_uri(uri: str) -> MinIOObjectRef:
-    parsed = urlparse(str(uri or "").strip())
+    parsed = urlparse(uri.strip())
     if parsed.scheme != "minio":
         raise ValueError("invalid_minio_uri_scheme")
-    bucket = (parsed.netloc or "").strip()
-    object_name = (parsed.path or "").lstrip("/").strip()
+    bucket = parsed.netloc.strip()
+    object_name = parsed.path.lstrip("/").strip()
     if not bucket or not object_name:
         raise ValueError("invalid_minio_uri")
     return MinIOObjectRef(bucket=bucket, object_name=object_name)
 
 
 def build_minio_uri(bucket: str, object_name: str) -> str:
-    b = (bucket or "").strip()
-    o = (object_name or "").lstrip("/").strip()
+    b = (bucket).strip()
+    o = (object_name).lstrip("/").strip()
     if not b or not o:
         raise ValueError("invalid_minio_uri_components")
     return f"minio://{b}/{o}"
@@ -58,9 +60,9 @@ def build_minio_uri(bucket: str, object_name: str) -> str:
 class MinIOService:
     """MinIO object storage service."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._state_lock = threading.RLock()
-        self._client: Any | None = None
+        self._client: Minio | None = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
         self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
@@ -75,20 +77,20 @@ class MinIOService:
     def describe_backend(self) -> dict[str, Any]:
         return {
             "provider": "minio",
-            "enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
-            "endpoint": str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
-            "bucket": str(getattr(settings, "MINIO_BUCKET_NAME", "") or ""),
-            "secure": bool(getattr(settings, "MINIO_USE_SSL", False)),
-            "documents_enabled": bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)),
+            "enabled": settings.MINIO_ENABLED,
+            "endpoint": settings.MINIO_ENDPOINT,
+            "bucket": settings.MINIO_BUCKET_NAME,
+            "secure": settings.MINIO_USE_SSL,
+            "documents_enabled": settings.MINIO_DOCUMENTS_ENABLED,
         }
 
     def build_object_uri(self, bucket: str, object_name: str) -> str:
         return build_minio_uri(bucket, object_name)
 
-    def _get_client(self):
+    def _get_client(self) -> Minio:
         """Lazily initialize the MinIO client."""
         with self._state_lock:
-            if not bool(getattr(settings, "MINIO_ENABLED", False)):
+            if not settings.MINIO_ENABLED:
                 raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
 
             if self._client is None:
@@ -110,7 +112,7 @@ class MinIOService:
         - When MINIO_ENABLED=true, this also ensures the configured bucket exists.
         - Never raises: returns a structured status dict.
         """
-        enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+        enabled = settings.MINIO_ENABLED
         if not enabled:
             return {"enabled": False, "status": "disabled"}
 
@@ -134,7 +136,7 @@ class MinIOService:
                 "elapsed_ms": round((time.perf_counter() - t0) * 1000.0, 2),
             }
 
-    def _ensure_bucket(self):
+    def _ensure_bucket(self) -> None:
         """Ensure the bucket exists; create it if missing."""
         client = self._client
         if client is None:
@@ -247,20 +249,10 @@ class MinIOService:
             img_id: format "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         """
         return await asyncio.to_thread(
-            self.upload_image,
-            image_data,
-            tenant_id,
-            dataset_id,
-            document_id,
-            chunk_key,
-            extension
+            self.upload_image, image_data, tenant_id, dataset_id, document_id, chunk_key, extension
         )
 
-    async def upload_images_batch(
-        self,
-        images: list[dict[str, Any]],
-        max_concurrent: int = 10
-    ) -> list[dict[str, Any]]:
+    async def upload_images_batch(self, images: list[dict[str, Any]], max_concurrent: int = 10) -> list[dict[str, Any]]:
         """
         Upload images to MinIO concurrently in batches.
 
@@ -296,44 +288,23 @@ class MinIOService:
                         dataset_id=img_info["dataset_id"],
                         document_id=img_info["document_id"],
                         chunk_key=img_info["chunk_key"],
-                        extension=img_info.get("extension", "jpg")
+                        extension=img_info.get("extension", "jpg"),
                     )
-                    return {
-                        "success": True,
-                        "img_id": img_id,
-                        "chunk_key": img_info["chunk_key"]
-                    }
+                    return {"success": True, "img_id": img_id, "chunk_key": img_info["chunk_key"]}
                 except Exception as e:
-                    logger.exception(f"Batch upload failed for chunk_key {img_info.get('chunk_key')}: {str(e)}")
-                    return {
-                        "success": False,
-                        "error": str(e),
-                        "chunk_key": img_info.get("chunk_key")
-                    }
+                    logger.exception("Batch upload failed for chunk_key %s: %s", img_info.get("chunk_key"), e)
+                    return {"success": False, "error": str(e), "chunk_key": img_info.get("chunk_key")}
 
-        tasks = [upload_single(img) for img in images]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Process exceptions.
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                processed_results.append({
-                    "success": False,
-                    "error": str(result),
-                    "chunk_key": images[i].get("chunk_key")
-                })
-            else:
-                processed_results.append(result)
+        results = await asyncio.gather(*(upload_single(image) for image in images), return_exceptions=True)
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
 
         elapsed = time.perf_counter() - t0
-        success_count = sum(1 for r in processed_results if r.get("success"))
-        logger.info(
-            f"Batch upload completed: {success_count}/{len(images)} successful, "
-            f"elapsed: {elapsed:.2f}s"
-        )
+        success_count = sum(1 for result in results if result["success"])
+        logger.info("Batch upload completed: %s/%s successful, elapsed: %.2fs", success_count, len(images), elapsed)
 
-        return processed_results
+        return results
 
     def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
         """
@@ -348,28 +319,21 @@ class MinIOService:
         """
         t0 = time.perf_counter()
         try:
-            if ":" in img_id:
-                tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
-                object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
-            else:
-                # Backward compatible: "{dataset_id}-{chunk_id}"
-                dataset_id, chunk_id = img_id.split("-", 1)
-                object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
-
+            object_name = self._image_object_name(img_id, extension=extension)
             client = self._get_client()
             # Presigned URLs do not check object existence; validate to avoid dead links.
             client.stat_object(bucket_name=self._bucket_name, object_name=object_name)
             url = client.presigned_get_object(
                 bucket_name=self._bucket_name,
                 object_name=object_name,
-                expires=7 * 24 * 3600,  # 7-day expiry
+                expires=timedelta(days=7),
             )
             self._log_metric("presign", True, time.perf_counter() - t0, object_name)
             return url
 
         except Exception as e:
             logger.exception("MinIO presign URL failed: %s", e)
-            self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
+            self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name"), error=str(e))
             raise RuntimeError(f"MinIO get image URL failed: {e}") from e
 
     def _image_object_name(self, img_id: str, extension: str = "jpg") -> str:
@@ -379,7 +343,7 @@ class MinIOService:
         dataset_id, chunk_id = img_id.split("-", 1)
         return f"images/{dataset_id}/{chunk_id}.{extension}"
 
-    def delete_image(self, img_id: str, extension: str = "jpg"):
+    def delete_image(self, img_id: str, extension: str = "jpg") -> None:
         """
         Delete an image.
 
@@ -404,7 +368,7 @@ class MinIOService:
                 "delete",
                 False,
                 time.perf_counter() - t0,
-                locals().get("object_name", ""),
+                locals().get("object_name"),
                 error=str(exc),
             )
             raise RuntimeError(f"MinIO delete image failed: {exc}") from exc
@@ -446,7 +410,7 @@ class MinIOService:
             elapsed = time.perf_counter() - batch_started_at
             if errors:
                 for error in errors:
-                    object_name = str(getattr(error, "name", "") or "")
+                    object_name = error.name or ""
                     self._log_metric("delete", False, elapsed, object_name, error=str(error))
                 raise RuntimeError(f"MinIO delete images failed for {len(errors)} object(s)")
 
@@ -462,7 +426,7 @@ class MinIOService:
         document_id: str,
         extension: str,
     ) -> str:
-        ext = (extension or "").strip().lower()
+        ext = (extension).strip().lower()
         if ext and not ext.startswith("."):
             ext = f".{ext}"
         if not ext:
@@ -482,7 +446,7 @@ class MinIOService:
         """
         Upload a document source file to MinIO and return a `minio://` URI.
         """
-        if not bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)):
+        if not settings.MINIO_DOCUMENTS_ENABLED:
             raise RuntimeError("MinIO document storage is disabled (MINIO_DOCUMENTS_ENABLED=false)")
 
         t0 = time.perf_counter()
@@ -490,7 +454,7 @@ class MinIOService:
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
             document_id=str(document_id),
-            extension=str(extension or ""),
+            extension=extension,
         )
         client = self._get_client()
         try:
@@ -541,7 +505,7 @@ class MinIOService:
         """
         client = self._get_client()
         t0 = time.perf_counter()
-        obj = str(object_name or "").lstrip("/").strip()
+        obj = object_name.lstrip("/").strip()
         if not obj:
             raise ValueError("object_name_required")
         blob = data if isinstance(data, (bytes, bytearray)) else bytes(data)
@@ -564,7 +528,7 @@ class MinIOService:
             object_name: object key in the configured bucket.
             max_bytes: hard cap (0 means "no cap").
         """
-        obj = str(object_name or "").lstrip("/").strip()
+        obj = object_name.lstrip("/").strip()
         if not obj:
             raise ValueError("object_name_required")
         max_bytes_i = max(0, int(max_bytes or 0))
@@ -574,16 +538,14 @@ class MinIOService:
             if size > max_bytes_i:
                 raise ValueError("object_too_large")
 
-        resp = None
+        resp = self.open_object(object_name=obj)
         try:
-            resp = self.open_object(object_name=obj)
             return resp.read()  # type: ignore[no-any-return]
         finally:
-            if resp is not None:
-                with contextlib.suppress(Exception):
-                    resp.close()
-                with contextlib.suppress(Exception):
-                    resp.release_conn()
+            with contextlib.suppress(Exception):
+                resp.close()
+            with contextlib.suppress(Exception):
+                resp.release_conn()
 
     def download_object_to_path(self, *, object_name: str, destination: Path, max_bytes: int = 0) -> Path:
         """
@@ -635,22 +597,20 @@ class MinIOService:
         """
         Stream object bytes in a generator suitable for Starlette's StreamingResponse.
         """
-        response = None
+        response = self.open_object(object_name=object_name, offset=offset, length=length)
         try:
-            response = self.open_object(object_name=object_name, offset=offset, length=length)
             while True:
                 chunk = response.read(int(chunk_size))
                 if not chunk:
                     break
                 yield chunk
         finally:
-            if response is not None:
-                with contextlib.suppress(Exception):
-                    response.close()
-                with contextlib.suppress(Exception):
-                    response.release_conn()
+            with contextlib.suppress(Exception):
+                response.close()
+            with contextlib.suppress(Exception):
+                response.release_conn()
 
-    def delete_dataset_images(self, tenant_id: str, dataset_id: str):
+    def delete_dataset_images(self, tenant_id: str, dataset_id: str) -> None:
         """
         Delete all images for a dataset.
 
@@ -659,9 +619,9 @@ class MinIOService:
             dataset_id: dataset ID
         """
         t0 = time.perf_counter()
+        prefix = f"images/{tenant_id}/{dataset_id}/"
         try:
             client = self._get_client()
-            prefix = f"images/{tenant_id}/{dataset_id}/"
 
             objects = client.list_objects(
                 bucket_name=self._bucket_name,
@@ -682,7 +642,9 @@ class MinIOService:
             logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
-    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: str | None = None):
+    def _log_metric(
+        self, op: str, success: bool, elapsed: float, object_name: str | None, error: str | None = None
+    ) -> None:
         """Simple JSONL metrics log for external collection/monitoring."""
         try:
             self._metrics_path.parent.mkdir(parents=True, exist_ok=True)

@@ -59,7 +59,7 @@ def test_orchestrator_evidence_post_rerank_pipeline_applies_stages(monkeypatch: 
 
     # Enable post-rerank + pipeline.
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "ltr", raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "none", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 10, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", True, raising=False)
 
@@ -70,7 +70,7 @@ def test_orchestrator_evidence_post_rerank_pipeline_applies_stages(monkeypatch: 
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", json.dumps(pipeline), raising=False)
 
     # Retriever returns a->b->c initially.
-    doc_id = "doc"
+    doc_id = "00000000-0000-0000-0000-000000000001"
     d1 = Document(page_content="a", id="a", metadata={"document_id": doc_id, "chunk_id": "a", "score": 0.1})
     d2 = Document(page_content="b", id="b", metadata={"document_id": doc_id, "chunk_id": "b", "score": 0.1})
     d3 = Document(page_content="c", id="c", metadata={"document_id": doc_id, "chunk_id": "c", "score": 0.1})

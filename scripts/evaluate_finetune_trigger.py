@@ -36,9 +36,9 @@ def evaluate_finetune_trigger(
     return {
         "schema": "mimirq.finetune_trigger_eval.v1",
         "summary": {
-            "feedback_total": int(len(rows)),
-            "negative_feedback_total": int(len(negative)),
-            "unique_requests": int(len(request_ids)),
+            "feedback_total": len(rows),
+            "negative_feedback_total": len(negative),
+            "unique_requests": len(request_ids),
             "min_feedback": int(min_feedback),
             "min_negative_feedback": int(min_negative_feedback),
         },
@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = evaluate_finetune_trigger(
         feedback_rows=_read_json(Path(args.feedback_json)),
-        min_feedback=int(args.min_feedback),
-        min_negative_feedback=int(args.min_negative_feedback),
+        min_feedback=args.min_feedback,
+        min_negative_feedback=args.min_negative_feedback,
     )
 
     out_path = Path(args.out)

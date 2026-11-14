@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2, Shield } from 'lucide-react'
+import { Loader2, Shield } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { useFormStatus } from 'react-dom'
 
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import type { DocumentAccessMode } from '@/types'
 
-interface DocumentAccessDialogProps {
+type DocumentAccessDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   ownerId: string | null | undefined
@@ -30,9 +30,7 @@ function DocumentAccessSaveButton() {
 
   return (
     <Button type="submit" disabled={pending}>
-      {pending ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-      ) : null}
+      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
       {t('actions.save')}
     </Button>
   )
@@ -65,7 +63,7 @@ function DocumentAccessDialogForm({
             disabled={pending}
           >
             <SelectTrigger>
-              <SelectValue placeholder={t("mode.placeholder")} />
+              <SelectValue placeholder={t('mode.placeholder')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="inherit">{t('mode.options.inherit')}</SelectItem>
@@ -134,14 +132,12 @@ export function DocumentAccessDialog({
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full gap-2 sm:w-auto">
           <Shield className="h-4 w-4" />
-          {t("trigger")}
+          {t('trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-xl">
         <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription className="text-xs">
-          {t('description')}
-        </DialogDescription>
+        <DialogDescription className="text-xs">{t('description')}</DialogDescription>
         <form action={action}>
           <DocumentAccessDialogForm
             ownerId={ownerId}

@@ -12,13 +12,18 @@ Note:
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, TypedDict
 
 KG_SNAPSHOT_SCHEMA_V1 = "mimirq.kg_snapshot.v1"
 KG_SNAPSHOT_SCHEMA_V2 = "mimirq.kg_snapshot.v2"
 KG_SNAPSHOT_DIFF_SCHEMA_V1 = "mimirq.kg_snapshot_diff.v1"
 KG_SNAPSHOT_DIFF_SCHEMA_V2 = "mimirq.kg_snapshot_diff.v2"
 KG_SNAPSHOT_DIFF_SAMPLE_LIMIT = 200
+
+
+class _EntityTypeDelta(TypedDict):
+    type: str
+    delta: int
 
 
 def _to_int(v: Any) -> int:
@@ -72,12 +77,12 @@ def _detail_items(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
             normalized.get("props_hash") or canonical_json_hash({k: v for k, v in normalized.items() if k != "id"})
         )
         out.append(normalized)
-    out.sort(key=lambda x: str(x.get("id") or ""))
+    out.sort(key=lambda x: x["id"])
     return out
 
 
 def _detail_index(snapshot: dict[str, Any], key: str) -> dict[str, dict[str, Any]]:
-    return {str(item.get("id")): item for item in _detail_items(snapshot, key)}
+    return {item["id"]: item for item in _detail_items(snapshot, key)}
 
 
 def _sample(items: list[dict[str, Any]], limit: int = KG_SNAPSHOT_DIFF_SAMPLE_LIMIT) -> list[dict[str, Any]]:
@@ -92,8 +97,8 @@ def _changed_items(
     for item_id in sorted(set(a_items) & set(b_items)):
         before = a_items[item_id]
         after = b_items[item_id]
-        before_hash = str(before.get("props_hash") or "")
-        after_hash = str(after.get("props_hash") or "")
+        before_hash = before["props_hash"]
+        after_hash = after["props_hash"]
         if before_hash == after_hash:
             continue
         changed.append(
@@ -175,15 +180,15 @@ def diff_kg_snapshots(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     b_types = _type_counts(b0)
 
     all_types = sorted(set(a_types.keys()) | set(b_types.keys()))
-    type_deltas: list[dict[str, Any]] = []
+    type_deltas: list[_EntityTypeDelta] = []
     for typ in all_types:
-        d = int(b_types.get(typ, 0) or 0) - int(a_types.get(typ, 0) or 0)
+        d = b_types.get(typ, 0) - a_types.get(typ, 0)
         if d == 0:
             continue
-        type_deltas.append({"type": typ, "delta": int(d)})
+        type_deltas.append({"type": typ, "delta": d})
 
     # Deterministic ordering: larger magnitude first, then type.
-    type_deltas.sort(key=lambda x: (-abs(int(x.get("delta") or 0)), str(x.get("type") or "")))
+    type_deltas.sort(key=lambda x: (-abs(x["delta"]), x["type"]))
     out["entity_types_delta"] = type_deltas
     if has_detail_diff:
         _append_exact_detail_diff(out, a0, b0)

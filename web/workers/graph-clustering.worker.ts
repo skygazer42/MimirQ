@@ -9,4 +9,3 @@ const api = {
 export type GraphClusteringWorkerApi = typeof api
 
 expose(api)
-

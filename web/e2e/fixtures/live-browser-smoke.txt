@@ -1,4 +1,4 @@
-MimirQ live browser smoke fixture
+Ragvia live browser smoke fixture
 
 Release token: LIVE-CLOSED-LOOP-AXIOM-2049
 Owner: CI host browser smoke

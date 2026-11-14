@@ -160,7 +160,7 @@ def _select_evidence_set(raw: Any) -> list[tuple[str, int]]:
             title = str(pt).strip()
             if not title:
                 continue
-            picked.append((title, int(sid)))
+            picked.append((title, sid))
         if picked:
             # Dedup stable.
             picked = sorted(set(picked), key=lambda x: (x[0], x[1]))
@@ -208,7 +208,7 @@ def build_dev_cases(
             )
         )
 
-    out.sort(key=lambda x: (str(x.label), str(x.cid)))
+    out.sort(key=lambda x: (x.label, x.cid))
     if max_cases and int(max_cases) > 0:
         out = out[: int(max_cases)]
     return out
@@ -250,7 +250,7 @@ def export_regression_cases_bundle(*, dataset_id: UUID, cases: list[DevCase], ou
                     f"domain:{c.domain}",
                     f"cid:{c.cid}",
                 ],
-                "extra": extra or None,
+                "extra": (extra),
             }
         )
 
@@ -276,7 +276,7 @@ def _upsert_dataset(
                 id=dataset_id,
                 tenant_id=tenant_id,
                 name=name,
-                description=description or None,
+                description=(description),
                 permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
                 owner_id=owner_id,
                 dataset_metadata=dict(meta or {}),
@@ -284,7 +284,7 @@ def _upsert_dataset(
             db.add(row)
         else:
             row.name = name
-            row.description = description or None
+            row.description = description
             row.owner_id = owner_id
             row.dataset_metadata = dict(meta or {})
         db.commit()
@@ -302,7 +302,7 @@ def _delete_dataset_documents(*, tenant_id: UUID, dataset_id: UUID) -> dict[str,
     db = SessionLocal()
     try:
         q = db.query(DBDocument.id).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
-        doc_ids = [r[0] for r in q.all() if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+        doc_ids = [doc_id for (doc_id,) in q.all() if isinstance(doc_id, UUID)]
         store = get_vector_store()
         for did in doc_ids:
             try:
@@ -313,7 +313,7 @@ def _delete_dataset_documents(*, tenant_id: UUID, dataset_id: UUID) -> dict[str,
             db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id).delete()
         )
         db.commit()
-        return {"deleted_documents": int(deleted or 0), "deleted_vectors_best_effort": int(len(doc_ids))}
+        return {"deleted_documents": int(deleted or 0), "deleted_vectors_best_effort": len(doc_ids)}
     finally:
         db.close()
 
@@ -342,7 +342,7 @@ def _iter_page_sentences(lines: str) -> Iterator[tuple[int, str]]:
             sid = int(sid_raw)
         except Exception:
             continue
-        yield sid, str(text or "").strip()
+        yield sid, text.strip()
 
 
 def _limit_required_pages(required: dict[str, set[int]], max_pages: int) -> dict[str, set[int]]:
@@ -367,7 +367,7 @@ def _seed_plan(
         "repo_type": "dataset",
         "revision": revision,
         "wiki_files": list(wiki_files),
-        "required_pages": int(len(required)),
+        "required_pages": len(required),
         "max_pages": int(max_pages or 0),
         "dry_run": bool(dry_run),
         "overwrite": bool(overwrite),
@@ -399,8 +399,8 @@ def _build_page_chunks(
                     "source": title,
                     "language": LANG,
                     "page_title": title,
-                    "sentence_id": int(sid),
-                    "public_bench": {"key": BENCH_KEY, "page_title": title, "sentence_id": int(sid)},
+                    "sentence_id": sid,
+                    "public_bench": {"key": BENCH_KEY, "page_title": title, "sentence_id": sid},
                 },
                 page_number=None,
                 start_char=None,
@@ -430,12 +430,12 @@ def _upsert_cfever_document(
             dataset_id=dataset_id,
             filename=filename,
             file_type="md",
-            file_size=int(total_chars),
+            file_size=total_chars,
             file_path=file_path,
             status="completed",
             publication_status="published",
             chunk_count=len(chunks),
-            total_characters=int(total_chars),
+            total_characters=total_chars,
             doc_metadata={
                 "public_bench": {"key": BENCH_KEY, "split": SPLIT, "lang": LANG},
                 "page_title": title,
@@ -449,13 +449,13 @@ def _upsert_cfever_document(
     row.dataset_id = dataset_id
     row.filename = filename
     row.file_type = "md"
-    row.file_size = int(total_chars)
+    row.file_size = total_chars
     row.file_path = file_path
     row.status = "completed"
     row.error_message = None
     row.publication_status = "published"
     row.chunk_count = len(chunks)
-    row.total_characters = int(total_chars)
+    row.total_characters = total_chars
     meta0 = row.doc_metadata if isinstance(row.doc_metadata, dict) else {}
     meta0["public_bench"] = {"key": BENCH_KEY, "split": SPLIT, "lang": LANG}
     meta0["page_title"] = title
@@ -582,9 +582,9 @@ def seed_wiki_subset(
             "plan": plan,
             "wipe": wipe,
             "seeded": {
-                "pages": int(seeded_pages),
-                "sentences": int(seeded_sentences),
-                "skipped_pages": int(skipped_pages),
+                "pages": seeded_pages,
+                "sentences": seeded_sentences,
+                "skipped_pages": skipped_pages,
             },
         }
     finally:
@@ -635,8 +635,7 @@ def verify_reference_integrity(
                 )
                 .all()
             )
-            for r in rows:
-                cid = r[0] if isinstance(r, tuple) else r
+            for (cid,) in rows:
                 if cid is None:
                     continue
                 try:
@@ -647,8 +646,8 @@ def verify_reference_integrity(
         missing = [cid for cid in want if cid not in found]
         return {
             "ok": len(missing) == 0,
-            "checked": int(len(want)),
-            "missing": int(len(missing)),
+            "checked": len(want),
+            "missing": len(missing),
             "missing_sample": [str(x) for x in missing[:20]],
         }
     finally:
@@ -685,11 +684,11 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--execute", action="store_true", help="Execute seeding (writes DB + vector store).")
 
     args = p.parse_args(argv)
-    dry_run = not bool(args.execute)
+    dry_run = not args.execute
 
     from app.core.config import settings
 
-    hf_revision = str(args.hf_revision or "").strip() or None
+    hf_revision = args.hf_revision.strip() or None
     if not hf_revision:
         print(
             "[cfever_seed] WARN: --hf-revision not set; upstream dataset changes may break reproducibility",
@@ -712,17 +711,17 @@ def main(argv: list[str] | None = None) -> int:
     owner_id = "public-bench-bot"
 
     cases = build_dev_cases(
-        include_nei=bool(args.include_nei),
-        max_cases=int(args.max_cases or 0),
-        max_refs_per_case=int(args.max_refs_per_case or 0),
+        include_nei=args.include_nei,
+        max_cases=args.max_cases,
+        max_refs_per_case=args.max_refs_per_case,
         revision=hf_revision,
     )
     if not cases:
         print("[cfever_seed] ERROR: zero cases built", file=sys.stderr)
         return 2
 
-    if str(args.out_cases or "").strip():
-        export_regression_cases_bundle(dataset_id=dataset_id, cases=cases, out_path=Path(str(args.out_cases)))
+    if args.out_cases.strip():
+        export_regression_cases_bundle(dataset_id=dataset_id, cases=cases, out_path=Path(args.out_cases))
 
     required = _required_pages(cases)
 
@@ -740,10 +739,10 @@ def main(argv: list[str] | None = None) -> int:
                     "source": "CFEVER",
                     "split": SPLIT,
                     "lang": LANG,
-                    "required_pages": int(len(required)),
-                    "max_pages": int(args.max_pages or 0),
-                    "max_refs_per_case": int(args.max_refs_per_case or 0),
-                    "include_nei": bool(args.include_nei),
+                    "required_pages": len(required),
+                    "max_pages": args.max_pages,
+                    "max_refs_per_case": args.max_refs_per_case,
+                    "include_nei": args.include_nei,
                 }
             },
         )
@@ -753,9 +752,9 @@ def main(argv: list[str] | None = None) -> int:
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         required=required,
-        max_pages=int(args.max_pages or 0),
-        overwrite=bool(args.overwrite),
-        dry_run=bool(dry_run),
+        max_pages=args.max_pages,
+        overwrite=args.overwrite,
+        dry_run=dry_run,
         revision=hf_revision,
     )
 
@@ -763,7 +762,7 @@ def main(argv: list[str] | None = None) -> int:
     if not dry_run:
         integrity = verify_reference_integrity(tenant_id=tenant_id, dataset_id=dataset_id, cases=cases)
 
-    if str(args.out_manifest or "").strip():
+    if args.out_manifest.strip():
         seeded = res.get("seeded") if isinstance(res, dict) else None
         manifest = {
             "schema": MANIFEST_SCHEMA,
@@ -783,22 +782,22 @@ def main(argv: list[str] | None = None) -> int:
                 },
             },
             "params": {
-                "include_nei": bool(args.include_nei),
-                "max_cases": int(args.max_cases or 0),
-                "max_refs_per_case": int(args.max_refs_per_case or 0),
-                "max_pages": int(args.max_pages or 0),
-                "overwrite": bool(args.overwrite),
-                "dry_run": bool(dry_run),
+                "include_nei": args.include_nei,
+                "max_cases": args.max_cases,
+                "max_refs_per_case": args.max_refs_per_case,
+                "max_pages": args.max_pages,
+                "overwrite": args.overwrite,
+                "dry_run": dry_run,
             },
             "counts": {
-                "cases": int(len(cases)),
-                "required_pages": int(len(required)),
+                "cases": len(cases),
+                "required_pages": len(required),
                 "seeded_pages": int((seeded or {}).get("pages") or 0) if not dry_run else None,
                 "seeded_chunks": int((seeded or {}).get("sentences") or 0) if not dry_run else None,
             },
             "reference_integrity": integrity,
         }
-        write_json_file(Path(str(args.out_manifest)), manifest)
+        write_json_file(Path(args.out_manifest), manifest)
         print(f"[cfever_seed] wrote manifest: {args.out_manifest}", file=sys.stderr)
 
     if integrity and not bool(integrity.get("ok")):
@@ -817,10 +816,10 @@ def main(argv: list[str] | None = None) -> int:
                 "bench_key": BENCH_KEY,
                 "tenant_id": str(tenant_id),
                 "dataset_id": str(dataset_id),
-                "dry_run": bool(dry_run),
-                "cases": int(len(cases)),
-                "required_pages": int(len(required)),
-                "elapsed_sec": round(float(time.time() - t0), 2),
+                "dry_run": dry_run,
+                "cases": len(cases),
+                "required_pages": len(required),
+                "elapsed_sec": round(time.time() - t0, 2),
                 "result": res,
             },
             ensure_ascii=False,

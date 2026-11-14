@@ -4,6 +4,8 @@ Checkpoint saver factory module.
 Provides configuration-based checkpoint saver selection.
 """
 
+from typing import Any
+
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -14,8 +16,8 @@ from app.rag.core.logging import get_logger
 logger = get_logger("rag.checkpointer.factory")
 
 # Configuration
-CHECKPOINT_BACKEND = getattr(settings, "CHECKPOINT_BACKEND", "memory")
-CHECKPOINT_SQLITE_PATH = getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
+CHECKPOINT_BACKEND = settings.CHECKPOINT_BACKEND
+CHECKPOINT_SQLITE_PATH = settings.CHECKPOINT_SQLITE_PATH
 
 # Global instance
 _checkpointer: BaseCheckpointSaver | None = None
@@ -23,7 +25,7 @@ _checkpointer: BaseCheckpointSaver | None = None
 
 def get_checkpointer(
     backend: str | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseCheckpointSaver:
     """
     Get or create a checkpointer instance.

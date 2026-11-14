@@ -1,19 +1,11 @@
-
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_int as _coerce_int
+
 _FIGURE_CAPTION_RE = re.compile(r"^\s*(图|figure|fig\.)\s*[\d一二三四五六七八九十]+", re.IGNORECASE)
 _TABLE_CAPTION_RE = re.compile(r"^\s*(表|table)\s*[\d一二三四五六七八九十]+", re.IGNORECASE)
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
 
 
 def _bbox(value: Any) -> dict[str, int] | None:
@@ -23,25 +15,21 @@ def _bbox(value: Any) -> dict[str, int] | None:
     y0 = _coerce_int(value.get("y0"))
     x1 = _coerce_int(value.get("x1"))
     y1 = _coerce_int(value.get("y1"))
-    if None in {x0, y0, x1, y1}:
+    if x0 is None or y0 is None or x1 is None or y1 is None:
         return None
-    return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
-
-
-def _caption_pattern(media_kind: str) -> re.Pattern[str]:
-    return _TABLE_CAPTION_RE if str(media_kind or "").strip().lower() == "table" else _FIGURE_CAPTION_RE
+    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
 
 
 def _vertical_gap(a: Mapping[str, int], b: Mapping[str, int]) -> int:
-    if int(a["y1"]) <= int(b["y0"]):
-        return int(b["y0"]) - int(a["y1"])
-    if int(b["y1"]) <= int(a["y0"]):
-        return int(a["y0"]) - int(b["y1"])
+    if a["y1"] <= b["y0"]:
+        return b["y0"] - a["y1"]
+    if b["y1"] <= a["y0"]:
+        return a["y0"] - b["y1"]
     return 0
 
 
 def _horizontal_overlap(a: Mapping[str, int], b: Mapping[str, int]) -> int:
-    return max(0, min(int(a["x1"]), int(b["x1"])) - max(int(a["x0"]), int(b["x0"])))
+    return max(0, min(a["x1"], b["x1"]) - max(a["x0"], b["x0"]))
 
 
 def find_nearest_caption(
@@ -55,32 +43,32 @@ def find_nearest_caption(
     media_bbox = _bbox(bbox)
     if page is None or media_bbox is None:
         return None
-    pattern = _caption_pattern(media_kind)
-    candidates: list[tuple[int, int, Mapping[str, Any]]] = []
+    pattern = _TABLE_CAPTION_RE if media_kind.strip().lower() == "table" else _FIGURE_CAPTION_RE
+    candidates: list[tuple[int, int, Mapping[str, Any], dict[str, int]]] = []
     for raw in elements or []:
         if not isinstance(raw, Mapping):
             continue
-        if _coerce_int(raw.get("page")) != int(page):
+        if _coerce_int(raw.get("page")) != page:
             continue
-        text = str(raw.get("text") or "").strip()
+        text = raw["text"].strip()
         if not pattern.match(text):
             continue
         candidate_bbox = _bbox(raw.get("bbox"))
         if candidate_bbox is None:
             continue
         gap = _vertical_gap(candidate_bbox, media_bbox)
-        if gap > int(max_vertical_gap):
+        if gap > max_vertical_gap:
             continue
         overlap = _horizontal_overlap(candidate_bbox, media_bbox)
-        candidates.append((gap, -overlap, raw))
+        candidates.append((gap, -overlap, raw, candidate_bbox))
     if not candidates:
         return None
-    _gap, _overlap, selected = min(candidates, key=lambda item: (item[0], item[1]))
+    _gap, _overlap, selected, selected_bbox = min(candidates, key=lambda item: (item[0], item[1]))
     return {
-        "id": str(selected.get("id") or ""),
-        "text": str(selected.get("text") or "").strip(),
-        "page": int(page),
-        "bbox": dict(_bbox(selected.get("bbox")) or {}),
+        "id": selected["id"],
+        "text": selected["text"].strip(),
+        "page": page,
+        "bbox": selected_bbox,
         "source_element_id": selected.get("source_element_id"),
     }
 

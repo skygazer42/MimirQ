@@ -12,20 +12,13 @@ Design goals:
 
 import re
 from collections.abc import Iterable, Sequence
-from typing import Any
 
-from app.rag.evaluation.kg_hardcase_generator import Hardcase
+from app.rag.evaluation.kg_hardcase_generator import Hardcase, _collapse_ws
 from app.rag.kg.extraction.alias import is_abbrev_token
-
-_WS_RE = re.compile(r"\s+")
-
-
-def _collapse_ws(text: Any) -> str:
-    return _WS_RE.sub(" ", str(text or "").strip())
 
 
 def _contains_cjk(text: str) -> bool:
-    for ch in str(text or ""):
+    for ch in text:
         code = ord(ch)
         if 0x4E00 <= code <= 0x9FFF:
             return True
@@ -68,9 +61,9 @@ def _replace_surface(question: str, *, src: str, dst: str) -> str | None:
     - Prefer exact substring replacement.
     - For ASCII src, also try case-insensitive replacement.
     """
-    q = str(question or "")
-    s = str(src or "")
-    d = str(dst or "")
+    q = question
+    s = src
+    d = dst
     if not q or not s or not d or s == d:
         return None
 
@@ -254,7 +247,7 @@ def generate_hardcases_deterministic(
         q2 = _truncate(_collapse_ws(hc.question), max_chars=max_chars)
         if not q2:
             continue
-        cleaned.append(Hardcase(kind=hc.kind, question=q2, rationale=_collapse_ws(hc.rationale) or None))
+        cleaned.append(Hardcase(kind=hc.kind, question=q2, rationale=(hc.rationale)))
 
     return _dedupe_questions(cleaned, max_items=lim)
 

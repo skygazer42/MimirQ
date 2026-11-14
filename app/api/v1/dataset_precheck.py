@@ -9,18 +9,19 @@ import asyncio
 import json
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
+from functools import partial
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Query as ORMQuery
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.dataset_precheck import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets import (
     DatasetPrecheckDiffResponse,
     DatasetPrecheckFindingListResponse,
     DatasetPrecheckIngestionSuggestionResponse,
@@ -33,8 +34,9 @@ from app.api.schemas.dataset_precheck import (
     DatasetPrecheckScanRunOut,
     DatasetPrecheckSummary,
 )
-from app.api.schemas.ingestion_policy import IngestionPolicyImportResponse
-from app.api.utils.response_headers import download_response_headers
+from app.api.schemas.sources import IngestionPolicyImportResponse
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES, file_response_headers
+from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
@@ -57,226 +59,133 @@ from app.services.dataset_precheck_service import (
     load_precheck_summary_from_row,
     upsert_precheck_sample_review_for_row,
 )
+from app.services.dataset_scan_session import (
+    DatasetScanSession,
+    ScanTransaction,
+    expire_stale_scan_runs,
+    fail_unhanded_scan_run,
+    persist_scan_handoff_update,
+    settle_scan_enqueue,
+    submit_local_scan_run,
+)
 from app.services.ingestion_policy import parse_ingestion_policy_from_metadata
+from app.services.managed_handoff import prepare_managed_handoff
 from app.services.report_html import render_precheck_html
-from app.tasks.queue import TaskEnqueueRejectedError, enqueue_dataset_precheck_scan, get_task_job_status
+from app.tasks.queue import (
+    enqueue_dataset_precheck_scan,
+    get_task_job_status,
+    register_local_scan_run_active,
+    unregister_local_scan_run_active,
+)
 
 logger = get_logger(__name__)
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _SCAN_RUN_NOT_FOUND_DETAIL = "Scan run not found"
-_PRECHECK_SCAN_PENDING_STALE_AFTER = timedelta(minutes=15)
-_PRECHECK_SCAN_RUNNING_STALE_AFTER = timedelta(hours=2)
-_PRECHECK_SCAN_PENDING_HARD_STALE_AFTER = timedelta(hours=2)
-_PRECHECK_SCAN_RUNNING_HARD_STALE_AFTER = timedelta(hours=24)
 
 
-def _precheck_scan_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _precheck_scan_reference_time(row: object) -> datetime | None:
-    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
-    if ts is None:
-        return None
-    if getattr(ts, "tzinfo", None) is None:
-        return ts.replace(tzinfo=timezone.utc)
-    return ts
-
-
-def _is_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
-    if status not in {"pending", "running"}:
-        return False
-    ts = _precheck_scan_reference_time(row)
-    if ts is None:
-        return False
-    if status == "pending":
-        return ts + _PRECHECK_SCAN_PENDING_STALE_AFTER <= now
-    return ts + _PRECHECK_SCAN_RUNNING_STALE_AFTER <= now
-
-
-def _is_hard_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
-    ts = _precheck_scan_reference_time(row)
-    if ts is None:
-        return False
-    if status == "pending":
-        return ts + _PRECHECK_SCAN_PENDING_HARD_STALE_AFTER <= now
-    if status == "running":
-        return ts + _PRECHECK_SCAN_RUNNING_HARD_STALE_AFTER <= now
-    return False
-
-
-async def _expire_stale_precheck_scan_runs(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> int:
-    now = _precheck_scan_now()
-    rows = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-            DBDatasetPrecheckScanRun.status.in_(["pending", "running"]),
-        )
-        .all()
+def _precheck_scan_run_query(
+    db: Session, *, tenant_id: UUID, dataset_id: UUID, scan_run_id: UUID
+) -> ORMQuery[DBDatasetPrecheckScanRun]:
+    return db.query(DBDatasetPrecheckScanRun).filter(
+        DBDatasetPrecheckScanRun.id == scan_run_id,
+        DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+        DBDatasetPrecheckScanRun.dataset_id == dataset_id,
     )
-    expired = 0
-    for row in rows:
-        status = str(getattr(row, "status", "") or "").strip().lower()
-        if not _is_stale_precheck_scan_run(row, now=now):
-            continue
-        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
-            job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{row.id}"
-            job_status: str | None = None
-            try:
-                job_status = await get_task_job_status(job_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not verify stale dataset precheck job %s: %s", job_id, str(exc)[:160])
-                if not _is_hard_stale_precheck_scan_run(row, now=now):
-                    continue
-            if job_status in {"deferred", "queued", "in_progress"}:
-                continue
-        elif status == "running":
-            from app.tasks.queue import is_local_scan_run_active
-
-            if is_local_scan_run_active(
-                kind="precheck",
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=row.id,
-            ):
-                continue
-        row.status = "failed"
-        row.error_message = "stale_running_scan_replaced" if status == "running" else "stale_pending_scan_replaced"
-        row.finished_at = now
-        row.updated_at = now
-        expired += 1
-    if expired:
-        db.flush()
-    return expired
 
 
-def _mark_precheck_scan_run_failed(
+def _require_precheck_scan_run(
     db: Session,
-    *,
-    row: DBDatasetPrecheckScanRun,
-    error_message: str,
-) -> None:
-    failed_at = _precheck_scan_now()
-    row.status = "failed"
-    row.error_message = str(error_message or "")[:200]
-    row.finished_at = failed_at
-    row.updated_at = failed_at
-    try:
-        db.commit()
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        logger.debug("Ignoring precheck enqueue failure status update failure: %s", exc)
-
-
-def _collect_precheck_sample_names(raw: dict[str, object]) -> set[str]:
-    names: set[str] = set()
-
-    def _pull(items: object) -> None:
-        if not isinstance(items, list):
-            return
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name") or "").strip()
-            if name:
-                names.add(name)
-
-    _pull(raw.get("representative"))
-    _pull(raw.get("top_large_files"))
-    _pull(raw.get("top_long_text"))
-    needs_review = raw.get("needs_review")
-    if isinstance(needs_review, dict):
-        for items in needs_review.values():
-            _pull(items)
-    return names
-
-
-def _run_precheck_scan_background(
     *,
     tenant_id: UUID,
     dataset_id: UUID,
     scan_run_id: UUID,
-) -> None:
+    not_found_detail: str = _SCAN_RUN_NOT_FOUND_DETAIL,
+) -> DBDatasetPrecheckScanRun:
+    row = _precheck_scan_run_query(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=not_found_detail)
+    return row
+
+
+def _precheck_scan_event_snapshot(*, tenant_id: UUID, dataset_id: UUID, scan_run_id: UUID) -> tuple[str, str] | None:
+    """Build a JSON-ready event while the polling worker owns its session."""
+    with SessionLocal() as db:
+        row = _precheck_scan_run_query(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id).first()
+        if row is None:
+            return None
+        snapshot = DatasetPrecheckScanRunOut.model_validate(_scan_run_out_from_row(row))
+        return (
+            json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")),
+            snapshot.status.lower(),
+        )
+
+
+async def _expire_stale_precheck_scan_runs(transaction: ScanTransaction, *, tenant_id: UUID, dataset_id: UUID) -> int:
+    return await expire_stale_scan_runs(
+        transaction,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        now=datetime.now(UTC),
+        kind="precheck",
+        queue_enabled=settings.TASK_QUEUE_ENABLED,
+        get_job_status=get_task_job_status,
+    )
+
+
+def _run_precheck_scan_background(*, tenant_id: UUID, dataset_id: UUID, scan_run_id: UUID) -> None:
     """
-    BackgroundTasks wrapper when the queue is disabled.
+    Local executor worker when the queue is disabled.
 
     Uses a dedicated DB session and marks the run as failed on exception.
     """
-    db = SessionLocal()
-    from app.tasks.queue import register_local_scan_run_active, unregister_local_scan_run_active
-
-    register_local_scan_run_active(
-        kind="precheck",
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        scan_run_id=scan_run_id,
-    )
-    try:
-        run_dataset_precheck_scan(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
-    except Exception as exc:  # noqa: BLE001
-        try:
-            row = (
-                db.query(DBDatasetPrecheckScanRun)
-                .filter(
-                    DBDatasetPrecheckScanRun.id == scan_run_id,
-                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-                )
-                .first()
-            )
-            if row is not None:
-                row.status = "failed"
-                row.error_message = str(exc)[:200]
-                db.commit()
-        except Exception as update_exc:
-            logger.debug("Ignoring precheck background failure status update failure: %s", update_exc)
-    finally:
-        unregister_local_scan_run_active(
-            kind="precheck",
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            scan_run_id=scan_run_id,
+    with SessionLocal() as db:
+        register_local_scan_run_active(
+            kind="precheck", tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
         )
-        db.close()
+        try:
+            run_dataset_precheck_scan(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
+        except Exception as exc:
+            logger.exception("Dataset precheck scan failed: scan_run_id=%s", scan_run_id)
+            db.rollback()
+            try:
+                row = _precheck_scan_run_query(
+                    db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
+                ).first()
+                if row is not None:
+                    row.status = "failed"
+                    row.error_message = str(exc)[:200]
+                    db.commit()
+            except Exception:
+                db.rollback()
+                logger.warning(
+                    "Failed to persist precheck background failure state: scan_run_id=%s", scan_run_id, exc_info=True
+                )
+        finally:
+            unregister_local_scan_run_active(
+                kind="precheck", tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
+            )
 
 
-@router.post(
-    "/{dataset_id}/precheck/scan-runs",
-    response_model=DatasetPrecheckScanRunOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
-async def create_dataset_precheck_scan_run(
-    dataset_id: UUID,
-    body: DatasetPrecheckScanRunCreateRequest,
-    background_tasks: BackgroundTasks,
+async def _prepare_precheck_scan_run(
+    transaction: ScanTransaction,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    # Starting a local scan is privileged (reads filesystem) -> require dataset write permission.
-    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+    body: DatasetPrecheckScanRunCreateRequest,
+) -> tuple[UUID, DatasetPrecheckScanRunOut]:
 
-    expired = await _expire_stale_precheck_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    def authorize(db: Session) -> None:
+        get_dataset_for_precheck(
+            db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True
+        )
+
+    await transaction.run(authorize)
+    expired = await _expire_stale_precheck_scan_runs(transaction, tenant_id=tenant_id, dataset_id=dataset_id)
     if expired:
-        db.commit()
+        await transaction.run(lambda db: db.commit())
 
-    def _active_precheck_scan():  # noqa: ANN202
+    def has_active_run(db: Session) -> bool:
         return (
             db.query(DBDatasetPrecheckScanRun)
             .filter(
@@ -286,71 +195,125 @@ async def create_dataset_precheck_scan_run(
             )
             .order_by(DBDatasetPrecheckScanRun.created_at.desc())
             .first()
+            is not None
         )
 
-    existing = _active_precheck_scan()
-    if existing is not None:
+    if await transaction.run(has_active_run):
         raise HTTPException(status_code=409, detail="A precheck scan run is already pending/running for this dataset")
 
-    cfg = body.model_dump(exclude_none=True)
-    row = DBDatasetPrecheckScanRun(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        requested_by=account_id,
-        kind="path",
-        status="pending",
-        progress=0,
-        config=cfg,
-        summary={},
-        artifacts={},
-    )
-    db.add(row)
-    try:
+    await transaction.run(lambda db: db.rollback())
+    transaction.raise_if_cancelled()
+
+    def insert_run(db: Session) -> tuple[UUID, DatasetPrecheckScanRunOut]:
+        row = DBDatasetPrecheckScanRun(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            requested_by=account_id,
+            kind="path",
+            status="pending",
+            progress=0,
+            config=body.model_dump(mode="json", exclude_none=True),
+            summary={},
+            artifacts={},
+        )
+        db.add(row)
         db.commit()
+        db.refresh(row)
+        return (row.id, DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row)))
+
+    try:
+        return await prepare_managed_handoff(
+            insert_run,
+            recover_cancelled=lambda worker_db, prepared: fail_unhanded_scan_run(
+                worker_db,
+                kind="precheck",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=prepared[0],
+                error_message="scan_request_cancelled_before_handoff",
+            ),
+        )
     except IntegrityError as exc:
-        db.rollback()
-        expired_after_conflict = await _expire_stale_precheck_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+        await transaction.run(lambda db: db.rollback())
+        expired_after_conflict = await _expire_stale_precheck_scan_runs(
+            transaction, tenant_id=tenant_id, dataset_id=dataset_id
+        )
         if expired_after_conflict:
-            db.commit()
-        if _active_precheck_scan() is not None:
+            await transaction.run(lambda db: db.commit())
+        if await transaction.run(has_active_run):
             raise HTTPException(
-                status_code=409,
-                detail="A precheck scan run is already pending/running for this dataset",
+                status_code=409, detail="A precheck scan run is already pending/running for this dataset"
             ) from exc
         raise
-    db.refresh(row)
 
-    job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{row.id}"
-    try:
-        task_id = await enqueue_dataset_precheck_scan(
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            scan_run_id=row.id,
-            requested_by=account_id,
-            job_id=job_id,
+
+@router.post("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunOut, status_code=201)
+async def create_dataset_precheck_scan_run(
+    dataset_id: UUID,
+    body: DatasetPrecheckScanRunCreateRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+):
+    async with DatasetScanSession(SessionLocal) as transaction:
+        scan_run_id, result = await _prepare_precheck_scan_run(
+            transaction, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, body=body
         )
-    except TaskEnqueueRejectedError as exc:
-        _mark_precheck_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {exc}")
-        raise HTTPException(status_code=503, detail="Failed to enqueue dataset precheck scan job") from exc
-    except Exception as exc:  # noqa: BLE001
-        _mark_precheck_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {str(exc)[:160]}")
-        raise HTTPException(status_code=503, detail="Failed to enqueue dataset precheck scan job") from exc
-    if not task_id:
-        background_tasks.add_task(
-            _run_precheck_scan_background,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            scan_run_id=row.id,
+        job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{scan_run_id}"
+        enqueue_task = asyncio.create_task(
+            enqueue_dataset_precheck_scan(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+                requested_by=account_id,
+                job_id=job_id,
+            )
         )
+        try:
+            task_id = await settle_scan_enqueue(
+                enqueue_task,
+                kind="precheck",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Failed to enqueue dataset precheck scan job") from exc
+        if task_id is None:
+            try:
+                submit_local_scan_run(
+                    partial(
+                        _run_precheck_scan_background,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        scan_run_id=scan_run_id,
+                    ),
+                    kind="precheck",
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    scan_run_id=scan_run_id,
+                )
+            except Exception as exc:
+                try:
+                    await persist_scan_handoff_update(
+                        partial(
+                            fail_unhanded_scan_run,
+                            kind="precheck",
+                            tenant_id=tenant_id,
+                            dataset_id=dataset_id,
+                            scan_run_id=scan_run_id,
+                            error_message=f"local_scan_submit_failed: {str(exc)[:160]}",
+                        )
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to record local scan submission failure: scan_run_id=%s", scan_run_id, exc_info=True
+                    )
+                raise HTTPException(status_code=503, detail="Failed to enqueue dataset precheck scan job") from exc
+        return result
 
-    return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
-
-@router.get(
-    "/{dataset_id}/precheck/scan-runs",
-    response_model=DatasetPrecheckScanRunListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunListResponse)
 def list_dataset_precheck_scan_runs(
     dataset_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -361,22 +324,17 @@ def list_dataset_precheck_scan_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-
     q = db.query(DBDatasetPrecheckScanRun).filter(
         DBDatasetPrecheckScanRun.tenant_id == tenant_id, DBDatasetPrecheckScanRun.dataset_id == dataset_id
     )
-    total = int(q.count())
-    rows = q.order_by(DBDatasetPrecheckScanRun.created_at.desc()).offset(int(skip or 0)).limit(int(limit or 20)).all()
+    total = q.count()
+    rows = q.order_by(DBDatasetPrecheckScanRun.created_at.desc()).offset(skip).limit(limit).all()
     return DatasetPrecheckScanRunListResponse(
         total=total, items=[DatasetPrecheckScanRunOut(**_scan_run_out_from_row(r)) for r in rows]
     )
 
 
-@router.get(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}",
-    response_model=DatasetPrecheckScanRunOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}", response_model=DatasetPrecheckScanRunOut)
 def get_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -386,26 +344,11 @@ def get_dataset_precheck_scan_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary",
-    response_model=DatasetPrecheckSummary,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary", response_model=DatasetPrecheckSummary)
 def get_dataset_precheck_summary(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -415,24 +358,13 @@ def get_dataset_precheck_summary(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     return load_precheck_summary_from_row(row)
 
 
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/findings/{finding_key}",
     response_model=DatasetPrecheckFindingListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_precheck_finding_files(
     dataset_id: UUID,
@@ -452,16 +384,12 @@ def list_dataset_precheck_finding_files(
         account_id=account_id,
         scan_run_id=scan_run_id,
         finding_key=finding_key,
-        skip=int(skip or 0),
-        limit=int(limit or 50),
+        skip=skip,
+        limit=limit,
     )
 
 
-@router.get(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/files",
-    response_model=DatasetPrecheckFindingListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/files", response_model=DatasetPrecheckFindingListResponse)
 def list_dataset_precheck_files(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -482,16 +410,12 @@ def list_dataset_precheck_files(
         account_id=account_id,
         scan_run_id=scan_run_id,
         dir_prefix=dir_prefix,
-        skip=int(skip or 0),
-        limit=int(limit or 50),
+        skip=skip,
+        limit=limit,
     )
 
 
-@router.post(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel",
-    response_model=DatasetPrecheckScanRunOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel", response_model=DatasetPrecheckScanRunOut)
 def cancel_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -500,82 +424,51 @@ def cancel_dataset_precheck_scan_run(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    # Cancelling affects the run state -> require dataset write permission.
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
-
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
-    st = str(getattr(row, "status", "") or "").lower()
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
+    st = row.status.lower()
     if st in {"completed", "failed", "cancelled"}:
         return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
-
     row.status = "cancelled"
     db.commit()
     db.refresh(row)
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/events", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/events")
 def stream_dataset_precheck_scan_events(
     dataset_id: UUID,
     scan_run_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[Session, Depends(get_db, scope="function")],
 ):
     """
     Server-sent events (SSE) stream for scan run progress.
 
     This allows web UIs to avoid polling while a scan is running.
     """
-    # Read access is enough to observe progress.
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
 
-    async def gen():  # noqa: ANN202
+    async def gen():
         last_payload: str | None = None
         last_keepalive = time.monotonic()
-        # Send an immediate frame so clients/proxies don't see an idle connection.
         yield ": keepalive\n\n"
         while True:
-            db2 = SessionLocal()
-            try:
-                row = (
-                    db2.query(DBDatasetPrecheckScanRun)
-                    .filter(
-                        DBDatasetPrecheckScanRun.id == scan_run_id,
-                        DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-                        DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-                    )
-                    .first()
-                )
-                if row is None:
-                    break
-                out = _scan_run_out_from_row(row)
-                payload = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
-                st = str(out.get("status") or "").lower()
-            finally:
-                db2.close()
-
+            event = await run_blocking_in_thread(
+                _precheck_scan_event_snapshot, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
+            )
+            if event is None:
+                break
+            payload, st = event
             if payload != last_payload:
                 last_payload = payload
                 yield f"data: {payload}\n\n"
                 last_keepalive = time.monotonic()
-            elif (time.monotonic() - last_keepalive) > 15.0:
-                # Keep the connection alive even if the payload doesn't change for a while.
+            elif time.monotonic() - last_keepalive > 15.0:
                 yield ": keepalive\n\n"
                 last_keepalive = time.monotonic()
-
             if st not in {"pending", "running"}:
                 break
             await asyncio.sleep(1.0)
@@ -583,19 +476,11 @@ def stream_dataset_precheck_scan_events(
     return StreamingResponse(
         gen(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
 
 
-@router.get(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples",
-    response_model=DatasetPrecheckSamplesResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples", response_model=DatasetPrecheckSamplesResponse)
 def get_dataset_precheck_samples(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -607,35 +492,14 @@ def get_dataset_precheck_samples(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
-    raw = load_precheck_samples_from_row(
-        row, tenant_id=tenant_id, size=int(size or 0), prefer_artifact=bool(prefer_artifact)
-    )
-    raw = apply_precheck_sample_reviews(
-        raw,
-        load_precheck_sample_reviews_from_row(row, tenant_id=tenant_id),
-    )
-    try:
-        return DatasetPrecheckSamplesResponse(**raw)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Invalid samples payload: {str(exc)[:200]}") from exc
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
+    raw = load_precheck_samples_from_row(row, tenant_id=tenant_id, size=size, prefer_artifact=prefer_artifact)
+    raw = apply_precheck_sample_reviews(raw, load_precheck_sample_reviews_from_row(row, tenant_id=tenant_id))
+    return DatasetPrecheckSamplesResponse.model_validate(raw)
 
 
 @router.patch(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples/review",
-    response_model=DatasetPrecheckSampleReviewOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples/review", response_model=DatasetPrecheckSampleReviewOut
 )
 def patch_dataset_precheck_sample_review(
     dataset_id: UUID,
@@ -646,58 +510,34 @@ def patch_dataset_precheck_sample_review(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    get_dataset_for_precheck(
-        db,
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        account_id=account_id,
-        require_write=True,
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
+    samples = DatasetPrecheckSamplesResponse.model_validate(
+        load_precheck_samples_from_row(row, tenant_id=tenant_id, size=2000, prefer_artifact=True)
     )
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
+    sample_groups = (
+        samples.representative,
+        samples.top_large_files,
+        samples.top_long_text,
+        *samples.needs_review.values(),
     )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
-    sample_names = _collect_precheck_sample_names(
-        load_precheck_samples_from_row(
-            row,
-            tenant_id=tenant_id,
-            size=2000,
-            prefer_artifact=True,
-        )
-    )
+    sample_names = {sample.name.strip() for group in sample_groups for sample in group}
     if body.file_name not in sample_names:
         raise HTTPException(status_code=404, detail="Sample file not found in this precheck run")
-
     review = upsert_precheck_sample_review_for_row(
-        row,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        file_name=body.file_name,
-        disposition=body.disposition,
+        row, tenant_id=tenant_id, account_id=account_id, file_name=body.file_name, disposition=body.disposition
     )
     db.commit()
     db.refresh(row)
     return DatasetPrecheckSampleReviewOut(
         file_name=body.file_name,
-        review_disposition=str(review["review_disposition"]),
+        review_disposition=review["review_disposition"],
         reviewed_at=review["reviewed_at"],
-        reviewed_by=review.get("reviewed_by"),
+        reviewed_by=review["reviewed_by"],
     )
 
 
-@router.get(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups",
-    response_model=DatasetPrecheckNearDupResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups", response_model=DatasetPrecheckNearDupResponse)
 def get_dataset_precheck_near_dups(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -707,30 +547,12 @@ def get_dataset_precheck_near_dups(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     raw = load_precheck_near_dups_from_row(row, tenant_id=tenant_id)
-    try:
-        return DatasetPrecheckNearDupResponse(**raw)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Invalid near-dup payload: {str(exc)[:200]}") from exc
+    return DatasetPrecheckNearDupResponse.model_validate(raw)
 
 
-@router.get(
-    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/diff",
-    response_model=DatasetPrecheckDiffResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/diff", response_model=DatasetPrecheckDiffResponse)
 def diff_dataset_precheck_scan_runs(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -741,37 +563,26 @@ def diff_dataset_precheck_scan_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-
-    base = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == base_scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
+    base = _require_precheck_scan_run(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=base_scan_run_id,
+        not_found_detail="Base scan run not found",
     )
-    if base is None:
-        raise HTTPException(status_code=404, detail="Base scan run not found")
-    target = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
+    target = _require_precheck_scan_run(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+        not_found_detail="Target scan run not found",
     )
-    if target is None:
-        raise HTTPException(status_code=404, detail="Target scan run not found")
-
-    base_summary = getattr(base, "summary", None)
+    base_summary = base.summary
     base_summary = base_summary if isinstance(base_summary, dict) else {}
-    target_summary = getattr(target, "summary", None)
+    target_summary = target.summary
     target_summary = target_summary if isinstance(target_summary, dict) else {}
     if not base_summary or not target_summary:
         raise HTTPException(status_code=404, detail="Summary not available")
-
     diff = diff_precheck_summaries(
         base_scan_run_id=base_scan_run_id,
         target_scan_run_id=scan_run_id,
@@ -784,7 +595,6 @@ def diff_dataset_precheck_scan_runs(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/suggest-ingestion-policy",
     response_model=DatasetPrecheckIngestionSuggestionResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
@@ -798,23 +608,10 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     dataset = get_dataset_for_precheck(
         db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False
     )
-    before_policy = parse_ingestion_policy_from_metadata(dict(getattr(dataset, "dataset_metadata", None) or {}))
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
+    before_policy = parse_ingestion_policy_from_metadata(dict(dataset.dataset_metadata or {}))
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     suggestion = build_ingestion_policy_suggestion(
-        row,
-        tenant_id=tenant_id,
-        before_policy=before_policy,
-        max_names_per_bucket=int(max_names_per_bucket or 0),
+        row, tenant_id=tenant_id, before_policy=before_policy, max_names_per_bucket=max_names_per_bucket
     )
     return DatasetPrecheckIngestionSuggestionResponse(**suggestion)
 
@@ -822,7 +619,6 @@ def get_dataset_precheck_ingestion_policy_suggestion(
 @router.post(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy",
     response_model=IngestionPolicyImportResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def apply_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
@@ -833,33 +629,15 @@ def apply_dataset_precheck_ingestion_policy_suggestion(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    # Applying modifies dataset metadata -> require write permission.
     dataset = get_dataset_for_precheck(
         db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True
     )
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
-    res = apply_ingestion_policy_suggestion(
-        db,
-        dataset=dataset,
-        scan_run=row,
-        tenant_id=tenant_id,
-        replace=bool(replace),
-    )
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
+    res = apply_ingestion_policy_suggestion(db, dataset=dataset, scan_run=row, tenant_id=tenant_id, replace=replace)
     return IngestionPolicyImportResponse(**res)
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export")
 def export_dataset_precheck_summary_json(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -869,30 +647,14 @@ def export_dataset_precheck_summary_json(
     db: Annotated[Session, Depends(get_db)],
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     summary = load_precheck_summary_from_row(row)
-    content = json.dumps(summary.model_dump(), ensure_ascii=False, separators=(",", ":"))
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", f"dataset_{dataset_id}")[:64]
-    filename = f"{safe}.precheck.json"
-    return Response(
-        content=content,
-        media_type="application/json",
-        headers=download_response_headers(filename),
-    )
+    content = summary.model_dump_json()
+    filename = f"dataset_{dataset_id}.precheck.json"
+    return Response(content=content, media_type="application/json", headers=file_response_headers(filename))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export-html")
 def export_dataset_precheck_html_report(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -905,45 +667,31 @@ def export_dataset_precheck_html_report(
     dataset = get_dataset_for_precheck(
         db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False
     )
-
-    row = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.id == scan_run_id,
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
-
-    cfg = getattr(row, "config", None)
+    row = _require_precheck_scan_run(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
+    cfg = row.config
     cfg = cfg if isinstance(cfg, dict) else {}
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
-
     summary = load_precheck_summary_from_row(row)
-    effective_redact = bool(redact) or bool(cfg.get("redact_paths", False))
-    root_path = str(artifacts.get("root_path") or "")
-
+    effective_redact = redact or bool(cfg.get("redact_paths", False))
+    root_path = artifacts.get("root_path")
     samples = None
-    # Only include file lists in a redacted export when the scan itself redacted paths
-    # (avoid leaking real filenames via an on-demand rebuild).
-    if (not effective_redact) or bool(cfg.get("redact_paths", False)):
+    # Rebuild file lists only when the original scan's path policy permits it.
+    if not effective_redact or bool(cfg.get("redact_paths", False)):
         try:
             samples = load_precheck_samples_from_row(
-                row,
-                tenant_id=tenant_id,
-                size=int(cfg.get("sample_size") or 0),
-                prefer_artifact=True,
+                row, tenant_id=tenant_id, size=int(cfg.get("sample_size") or 0), prefer_artifact=True
             )
-        except Exception:
-            samples = None
-
+        except Exception as exc:
+            logger.warning(
+                "Precheck HTML sample loading failed: tenant_id=%s scan_run_id=%s error_type=%s",
+                tenant_id,
+                scan_run_id,
+                type(exc).__name__,
+            )
     html = render_precheck_html(
         title="MimirQ · 预检扫描报告",
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=dataset.name,
         dataset_id=str(dataset_id),
         root_path=root_path,
         generated_at=summary.generated_at,
@@ -951,11 +699,6 @@ def export_dataset_precheck_html_report(
         samples=samples,
         redact=effective_redact,
     )
-
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = re.sub("[^a-zA-Z0-9_.-]+", "_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.precheck.html"
-    return Response(
-        content=html,
-        media_type="text/html; charset=utf-8",
-        headers=download_response_headers(filename),
-    )
+    return Response(content=html, media_type="text/html; charset=utf-8", headers=file_response_headers(filename))

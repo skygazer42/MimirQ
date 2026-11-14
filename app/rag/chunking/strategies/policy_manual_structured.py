@@ -10,7 +10,6 @@ This is intentionally deterministic and conservative:
 - Heuristics aim to avoid misclassifying generic outlines
 """
 
-
 import hashlib
 from dataclasses import dataclass
 from typing import Any
@@ -33,7 +32,7 @@ class PolicyHeading:
 
 
 def _sha256_hex(text: str) -> str:
-    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+    return hashlib.sha256((text).encode("utf-8")).hexdigest()
 
 
 def _stable_id24(text: str) -> str:
@@ -78,7 +77,7 @@ def _iter_headings(text: str) -> list[PolicyHeading]:
                 start=line_start,
                 end=line_start + len(raw_line),
                 text=line,
-                level=int(level),
+                level=level,
                 kind=kind,
                 number=num,
             )
@@ -100,7 +99,7 @@ def looks_like_policy_manual(text: str) -> bool:
     We require multiple article markers, and at least one extra signal
     (chapter/clause marker, or bracketed titles) to avoid matching generic outlines.
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return False
 
@@ -117,7 +116,7 @@ def looks_like_policy_manual(text: str) -> bool:
     bracket_titles = "【" in raw and "】" in raw
 
     # Short texts can still be policy-like if they clearly use the format.
-    return bool(chapters or clauses or bracket_titles or len(raw) >= 400)
+    return chapters or clauses or bracket_titles or len(raw) >= 400
 
 
 def _resolve_document_id(base_meta: dict[str, Any]) -> str:
@@ -153,7 +152,7 @@ class PolicyManualStructuredChunker(BaseChunker):
     - child chunks (bounded by chunk_size, with parent_id reference)
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -203,7 +202,7 @@ class PolicyManualStructuredChunker(BaseChunker):
             local_start = sd_meta.pop("start_index", None) or 0
             abs_start = sec_start + int(local_start)
             abs_end = abs_start + len(sd.page_content)
-            child_content = sd.page_content or ""
+            child_content = sd.page_content
             child_content_hash = _sha256_hex(child_content)
             child_clause_id = _stable_id24(f"{doc_id}:{article_number}:{child_content_hash}")
 
@@ -228,7 +227,7 @@ class PolicyManualStructuredChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -248,7 +247,7 @@ class PolicyManualStructuredChunker(BaseChunker):
                 if not sec_text.strip():
                     continue
 
-                article_number = str(heading.number or "").strip() or f"article_{idx + 1}"
+                article_number = (heading.number or "").strip() or f"article_{idx + 1}"
                 path = path_by_article_start.get(heading.start) or ([heading.text] if heading.text else [])
                 if not path:
                     path = [article_number]

@@ -41,6 +41,122 @@ _HEADER_FOOTER_TYPES = {
 }
 
 
+def _image_partition_item(part: dict[str, Any]) -> tuple[int, str, list[int]] | None:
+    try:
+        if str(part.get("type") or "").strip().lower() != "image":
+            return None
+        element_id = str(part.get("element_id") or "").strip()
+        extra = (part.get("metadata") or {}).get("extra_data") or {}
+        bboxes = extra.get("bboxes") or []
+        pages = extra.get("pages") or []
+        if not element_id:
+            element_id = hashlib.sha256(
+                (str(pages[:1]) + str(bboxes[:1])).encode("utf-8", errors="ignore")
+            ).hexdigest()[:32]
+        if not bboxes or not pages:
+            return None
+        bbox = bboxes[0]
+        if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
+            return None
+        return int(pages[0]), element_id, [int(x) for x in bbox]
+    except Exception:
+        get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+        return None
+
+
+def _collect_partition_image_items(
+    partitions: list[dict[str, Any]],
+) -> list[tuple[int, str, list[int]]]:
+    items: list[tuple[int, str, list[int]]] = []
+    for part in partitions:
+        item = _image_partition_item(part)
+        if item is not None:
+            items.append(item)
+    return items
+
+
+def _clamp_crop_box(page_img: PILImage.Image, bbox: list[int]) -> tuple[int, int, int, int]:
+    x1, y1, x2, y2 = bbox
+    w, h = page_img.size
+    x1c = max(0, min(x1, w - 1))
+    y1c = max(0, min(y1, h - 1))
+    x2c = max(x1c + 1, min(x2, w))
+    y2c = max(y1c + 1, min(y2, h))
+    return x1c, y1c, x2c, y2c
+
+
+def _partition_text(label_l: str, text: str, element_id: str, image_map: dict[str, str]) -> str:
+    if label_l != "image":
+        return text
+    ref = image_map.get(element_id)
+    if ref:
+        return f"![]({ref})"
+    return text
+
+
+def _append_partition_text(
+    parts: list[str],
+    *,
+    text: str,
+    label_l: str,
+    last_label: str,
+) -> None:
+    if not parts:
+        parts.append(text + "\n" if label_l == "title" else text)
+        return
+    if last_label == "title" and label_l == "title":
+        parts.append("\n" + text)
+        return
+    if label_l in {"title", "table"}:
+        parts.append("\n\n" + text)
+        return
+    separator = "\n\n" if last_label == "table" else "\n"
+    parts.append(separator + text)
+
+
+def _partition_extra(part: dict[str, Any]) -> dict[str, Any]:
+    metadata = part.get("metadata")
+    if isinstance(metadata, dict):
+        return metadata.get("extra_data") or {}
+    return {}
+
+
+def _extend_merged_meta(
+    *,
+    meta: dict[str, Any],
+    extra: dict[str, Any],
+    prev_length: int,
+) -> None:
+    bboxes = extra.get("bboxes") or []
+    pages = extra.get("pages") or []
+    types = extra.get("types") or []
+    indexes = extra.get("indexes") or []
+
+    try:
+        meta["bboxes"].extend([list(map(int, b)) for b in bboxes if isinstance(b, (list, tuple)) and len(b) == 4])
+    except Exception as exc:
+        logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
+    if isinstance(pages, list):
+        meta["pages"].extend(pages)
+    if isinstance(types, list):
+        meta["types"].extend(types)
+
+    try:
+        shifted = []
+        for item in indexes:
+            if not (isinstance(item, (list, tuple)) and len(item) == 2):
+                continue
+            s, e = int(item[0]), int(item[1])
+            shifted.append([s + prev_length, e + prev_length])
+        meta["indexes"].extend(shifted)
+    except Exception as exc:
+        logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _base_merged_meta() -> dict[str, Any]:
+    return {"bboxes": [], "pages": [], "indexes": [], "types": []}
+
+
 class Etl4LlmParser:
     """
     ETL4LLM parser via an etl4llm predict API.
@@ -51,14 +167,14 @@ class Etl4LlmParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
-        self._api_url = (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "ETL4LLM_TIMEOUT_SEC", 120) or 120)
-        self._mode = (getattr(settings, "ETL4LLM_MODE", "") or "partition").strip().lower()
-        self._force_ocr = bool(getattr(settings, "ETL4LLM_FORCE_OCR", False))
-        self._enable_formula = bool(getattr(settings, "ETL4LLM_ENABLE_FORMULA", True))
-        self._extract_images = bool(getattr(settings, "ETL4LLM_EXTRACT_IMAGES", True))
-        self._filter_header_footer = bool(getattr(settings, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", False))
+        self._enabled = settings.ETL4LLM_ENABLED
+        self._api_url = settings.ETL4LLM_API_URL.strip()
+        self._timeout_sec = float(settings.ETL4LLM_TIMEOUT_SEC or 120)
+        self._mode = (settings.ETL4LLM_MODE or "partition").strip().lower()
+        self._force_ocr = settings.ETL4LLM_FORCE_OCR
+        self._enable_formula = settings.ETL4LLM_ENABLE_FORMULA
+        self._extract_images = settings.ETL4LLM_EXTRACT_IMAGES
+        self._filter_header_footer = settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER
 
         if not self._enabled:
             raise RuntimeError("ETL4LLM is disabled (ETL4LLM_ENABLED=false).")
@@ -73,7 +189,7 @@ class Etl4LlmParser:
         return (file_path.parent / ".etl4llm" / run_id).absolute()
 
     def _resolve_force_ocr(self, pdf_quality: Any) -> bool:
-        if bool(self._force_ocr):
+        if self._force_ocr:
             return True
         if isinstance(pdf_quality, dict):
             return bool(pdf_quality.get("is_scanned", False))
@@ -83,7 +199,7 @@ class Etl4LlmParser:
         file_bytes = file_path.read_bytes()
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
-        mode = self._mode or "partition"
+        mode = self._mode
         if mode not in {"partition", "text"}:
             mode = "partition"
 
@@ -93,8 +209,8 @@ class Etl4LlmParser:
             "mode": mode,
         }
         # Optional knobs (service-dependent).
-        payload["force_ocr"] = bool(force_ocr)
-        payload["enable_formula"] = bool(self._enable_formula)
+        payload["force_ocr"] = force_ocr
+        payload["enable_formula"] = self._enable_formula
         payload["parameters"] = {"start": 0, "n": None}
 
         resp = self._session.post(self._api_url, json=payload, timeout=self._timeout_sec)
@@ -106,40 +222,6 @@ class Etl4LlmParser:
         return data
 
     @staticmethod
-    def _image_partition_item(part: dict[str, Any]) -> tuple[int, str, list[int]] | None:
-        try:
-            if str(part.get("type") or "").strip().lower() != "image":
-                return None
-            element_id = str(part.get("element_id") or "").strip()
-            extra = (part.get("metadata") or {}).get("extra_data") or {}
-            bboxes = extra.get("bboxes") or []
-            pages = extra.get("pages") or []
-            if not element_id:
-                element_id = hashlib.sha256(
-                    (str(pages[:1]) + str(bboxes[:1])).encode("utf-8", errors="ignore")
-                ).hexdigest()[:32]
-            if not bboxes or not pages:
-                return None
-            bbox = bboxes[0]
-            if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
-                return None
-            return int(pages[0]), element_id, [int(x) for x in bbox]
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            return None
-
-    def _collect_partition_image_items(
-        self,
-        partitions: list[dict[str, Any]],
-    ) -> list[tuple[int, str, list[int]]]:
-        items: list[tuple[int, str, list[int]]] = []
-        for part in partitions:
-            item = self._image_partition_item(part)
-            if item is not None:
-                items.append(item)
-        return items
-
-    @staticmethod
     def _load_pdf_page_image(pdf: Any, page_cache: dict[int, Any], page_idx: int) -> Any:
         page_img = page_cache.get(page_idx)
         if page_img is not None:
@@ -148,16 +230,6 @@ class Etl4LlmParser:
         page_img = PILImage.open(BytesIO(pix.tobytes("png"))).convert("RGB")
         page_cache[page_idx] = page_img
         return page_img
-
-    @staticmethod
-    def _clamp_crop_box(page_img: Any, bbox: list[int]) -> tuple[int, int, int, int]:
-        x1, y1, x2, y2 = bbox
-        w, h = page_img.size
-        x1c = max(0, min(int(x1), w - 1))
-        y1c = max(0, min(int(y1), h - 1))
-        x2c = max(x1c + 1, min(int(x2), w))
-        y2c = max(y1c + 1, min(int(y2), h))
-        return x1c, y1c, x2c, y2c
 
     def _write_partition_image(
         self,
@@ -172,7 +244,7 @@ class Etl4LlmParser:
         if page_idx < 0 or page_idx >= len(pdf):
             return None
         page_img = self._load_pdf_page_image(pdf, page_cache, page_idx)
-        crop_box = self._clamp_crop_box(page_img, bbox)
+        crop_box = _clamp_crop_box(page_img, bbox)
         out_path = images_dir / f"{element_id}.png"
         try:
             cropped = page_img.crop(crop_box)
@@ -191,93 +263,20 @@ class Etl4LlmParser:
             except Exception as exc:
                 logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
 
-    @staticmethod
-    def _partition_text(label_l: str, text: str, element_id: str, image_map: dict[str, str]) -> str:
-        if label_l != "image":
-            return text
-        ref = image_map.get(element_id)
-        if ref:
-            return f"![]({ref})"
-        return text
-
-    @staticmethod
-    def _append_partition_text(
-        parts: list[str],
-        *,
-        text: str,
-        label_l: str,
-        last_label: str,
-        is_first: bool,
-    ) -> None:
-        if is_first:
-            parts.append(text + "\n" if label_l == "title" else text)
-            return
-        if last_label.lower() == "title" and label_l == "title":
-            parts.append("\n" + text)
-            return
-        if label_l in {"title", "table"}:
-            parts.append("\n\n" + text)
-            return
-        separator = "\n\n" if last_label.lower() == "table" else "\n"
-        parts.append(separator + text)
-
-    @staticmethod
-    def _partition_extra(part: dict[str, Any]) -> dict[str, Any]:
-        if isinstance(part.get("metadata"), dict):
-            return (part.get("metadata") or {}).get("extra_data") or {}
-        return {}
-
-    def _extend_merged_meta(
-        self,
-        *,
-        meta: dict[str, Any],
-        extra: dict[str, Any],
-        prev_length: int,
-    ) -> None:
-        bboxes = extra.get("bboxes") or []
-        pages = extra.get("pages") or []
-        types = extra.get("types") or []
-        indexes = extra.get("indexes") or []
-
-        try:
-            meta["bboxes"].extend([list(map(int, b)) for b in bboxes if isinstance(b, (list, tuple)) and len(b) == 4])
-        except Exception as exc:
-            logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
-        if isinstance(pages, list):
-            meta["pages"].extend(pages)
-        if isinstance(types, list):
-            meta["types"].extend(types)
-
-        try:
-            shifted = []
-            for item in indexes:
-                if not (isinstance(item, (list, tuple)) and len(item) == 2):
-                    continue
-                s, e = int(item[0]), int(item[1])
-                shifted.append([s + prev_length, e + prev_length])
-            meta["indexes"].extend(shifted)
-        except Exception as exc:
-            logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
-
-    @staticmethod
-    def _base_merged_meta() -> dict[str, Any]:
-        return {"bboxes": [], "pages": [], "indexes": [], "types": []}
-
     def _parse_service_payload(
         self,
         *,
         file_path: Path,
         force_ocr: bool,
-        artifact_root: Path,
         images_dir: Path,
-    ) -> tuple[str, dict[str, Any], int]:
+    ) -> tuple[str, dict[str, Any]]:
         data = self._call_api(file_path=file_path, force_ocr=force_ocr)
         partitions = data.get("partitions") or []
         text = str(data.get("text") or "")
 
         extracted_images = 0
         image_map: dict[str, str] = {}
-        merged_meta = self._base_merged_meta()
+        merged_meta = _base_merged_meta()
         merged_text = ""
         if isinstance(partitions, list) and partitions:
             try:
@@ -292,19 +291,16 @@ class Etl4LlmParser:
         elif text.strip():
             merged_text = text.strip()
 
-        self._maybe_add_page_image_fallback(
+        merged_text = self._maybe_add_page_image_fallback(
             file_path=file_path,
             merged_text=merged_text,
             extracted_images=extracted_images,
             images_dir=images_dir,
             metadata=merged_meta,
         )
-        merged_text = str(merged_meta.pop("_merged_text", merged_text))
-        merged_meta["asset_base_dir"] = str(artifact_root)
-        merged_meta["artifact_dir"] = str(artifact_root)
-        merged_meta["etl4llm_partitions"] = int(len(partitions) if isinstance(partitions, list) else 0)
-        merged_meta["etl4llm_extracted_images"] = int(extracted_images)
-        return merged_text, merged_meta, extracted_images
+        merged_meta["etl4llm_partitions"] = len(partitions) if isinstance(partitions, list) else 0
+        merged_meta["etl4llm_extracted_images"] = extracted_images
+        return merged_text, merged_meta
 
     def _maybe_add_page_image_fallback(
         self,
@@ -314,11 +310,11 @@ class Etl4LlmParser:
         extracted_images: int,
         images_dir: Path,
         metadata: dict[str, Any],
-    ) -> None:
+    ) -> str:
         try:
-            fallback_enabled = bool(getattr(settings, "ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY", True))
-            has_any_images = int(extracted_images or 0) > 0
-            lowered = (merged_text or "").lower()
+            fallback_enabled = settings.ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY
+            has_any_images = extracted_images > 0
+            lowered = merged_text.lower()
             has_refs = ("![" in lowered) or ("<img" in lowered)
             if not (
                 fallback_enabled
@@ -327,21 +323,22 @@ class Etl4LlmParser:
                 and (not has_any_images)
                 and (not has_refs)
             ):
-                return
+                return merged_text
 
-            dpi = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_DPI", 150) or 150)
+            dpi = int(settings.ETL4LLM_PAGE_IMAGE_DPI or 150)
             max_pages = max(0, int(settings.ETL4LLM_PAGE_IMAGE_MAX_PAGES))
             page_refs = self._render_page_image_refs(
                 file_path=file_path, images_dir=images_dir, dpi=dpi, max_pages=max_pages
             )
             if not page_refs:
-                return
+                return merged_text
 
             gallery = "\n\n".join(page_refs).strip()
-            metadata["_merged_text"] = f"{gallery}\n\n{merged_text}".strip() if (merged_text or "").strip() else gallery
             metadata["etl4llm_page_images"] = len(page_refs)
+            return f"{gallery}\n\n{merged_text}".strip() if merged_text.strip() else gallery
         except Exception as exc:  # noqa: BLE001
             logger.warning("[etl4llm] page image fallback failed: %s", str(exc)[:200])
+            return merged_text
 
     def _render_page_image_refs(
         self,
@@ -387,13 +384,12 @@ class Etl4LlmParser:
             "source": file_path.name,
             "file_type": "pdf",
             "parser_backend": "etl4llm",
-            "etl4llm_mode": str(self._mode or ""),
-            "etl4llm_force_ocr": bool(force_ocr),
+            "etl4llm_mode": self._mode,
+            "etl4llm_force_ocr": force_ocr,
             "asset_base_dir": str(artifact_root),
             "artifact_dir": str(artifact_root),
         }
-        if isinstance(merged_meta, dict):
-            metadata.update(merged_meta)
+        metadata.update(merged_meta)
         return metadata
 
     def _extract_partition_images(
@@ -412,7 +408,7 @@ class Etl4LlmParser:
             return 0, {}
 
         images_dir.mkdir(parents=True, exist_ok=True)
-        items = self._collect_partition_image_items(partitions)
+        items = _collect_partition_image_items(partitions)
 
         if not items:
             return 0, {}
@@ -452,10 +448,9 @@ class Etl4LlmParser:
         Merge partitions into a single markdown-ish string, preserving extra_data indices.
         """
         parts: list[str] = []
-        is_first = True
         last_label = ""
         prev_length = 0
-        meta = self._base_merged_meta()
+        meta = _base_merged_meta()
 
         for part in partitions:
             label = str(part.get("type") or "").strip()
@@ -463,28 +458,26 @@ class Etl4LlmParser:
             if self._filter_header_footer and label_l in _HEADER_FOOTER_TYPES:
                 continue
 
-            text = self._partition_text(
+            text = _partition_text(
                 label_l,
                 str(part.get("text") or ""),
                 str(part.get("element_id") or "").strip(),
                 image_map,
             )
-            self._append_partition_text(
+            _append_partition_text(
                 parts,
                 text=text,
                 label_l=label_l,
                 last_label=last_label,
-                is_first=is_first,
             )
-            self._extend_merged_meta(
+            _extend_merged_meta(
                 meta=meta,
-                extra=self._partition_extra(part),
+                extra=_partition_extra(part),
                 prev_length=prev_length,
             )
 
             prev_length += len(parts[-1])
-            last_label = label
-            is_first = False
+            last_label = label_l
 
         return "".join(parts), meta
 
@@ -506,16 +499,15 @@ class Etl4LlmParser:
 
         start = time.time()
         force_ocr = self._resolve_force_ocr(_kwargs.get("pdf_quality"))
-        logger.info("[etl4llm] start %s (force_ocr=%s)", file_path.name, bool(force_ocr))
+        logger.info("[etl4llm] start %s (force_ocr=%s)", file_path.name, force_ocr)
 
         artifact_root = self._build_artifact_root(file_path, document_id)
         images_dir = artifact_root / "images"
         artifact_root.mkdir(parents=True, exist_ok=True)
 
-        merged_text, merged_meta, _ = self._parse_service_payload(
+        merged_text, merged_meta = self._parse_service_payload(
             file_path=file_path,
             force_ocr=force_ocr,
-            artifact_root=artifact_root,
             images_dir=images_dir,
         )
         metadata = self._build_document_metadata(

@@ -1,11 +1,6 @@
-"""Support subpackage for the Dify external knowledge adapter.
+"""HTTP-specific Dify authentication and conversation adapters.
 
-Pure helper functions and constants mechanically extracted from
-`app.api.v1.integrations_dify`. The parent module re-imports every name
-defined here, so monkeypatching and external imports keep working through
-the original module path.
-
-Submodules MUST NOT import `app.api.v1.integrations_dify` (directly or
-indirectly): the parent module imports this subpackage, and helpers here
-must never resolve names through the parent module globals.
+Pure record, scoring, and compaction rules belong to
+``app.services.dify_integration``. The remaining HTTP adapter keeps the existing
+API dependency and callback bindings.
 """

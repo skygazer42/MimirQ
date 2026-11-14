@@ -45,7 +45,10 @@ class _EmptyModeRetriever:
 
 class _QueryDrivenRetriever:
     def __init__(self, *, delays_by_query: dict[str, float] | None = None) -> None:
-        self._delays_by_query = {str(query): float(delay) for query, delay in (delays_by_query or {}).items()}
+        self._delays_by_query = {
+            str(query): float(delay)
+            for query, delay in (delays_by_query if delays_by_query is not None else {}).items()
+        }
         self._last_debug_metrics: dict[str, Any] = {}
 
     def model_copy(self, **_kwargs: Any) -> "_QueryDrivenRetriever":
@@ -81,7 +84,7 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
     ]
 
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "ltr", raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "pc", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 2, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "ignored", raising=False)
@@ -123,7 +126,7 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
         return {
             "docs": [docs[1], docs[0]],
             "post_rerank_used": True,
-            "post_rerank_provider": "ltr",
+            "post_rerank_provider": "pc",
             "post_rerank_model_used": "single-model",
             "post_rerank_candidates_n": 2,
             "post_rerank_elapsed": 0.75,
@@ -146,7 +149,7 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
     assert result["post_rerank_pipeline"] == [{"provider": "stage1", "top_n": 1}]
     assert result["post_rerank_pipeline_used"] is True
     assert result["post_rerank_used"] is True
-    assert result["post_rerank_provider"] == "ltr"
+    assert result["post_rerank_provider"] == "pc"
     assert result["post_rerank_model_used"] == "single-model"
     assert result["post_rerank_candidates_n"] == 2
     assert result["post_rerank_elapsed"] == 0.75

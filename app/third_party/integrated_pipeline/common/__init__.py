@@ -1,6 +1,7 @@
 """
 Integrated pipeline common utilities.
 """
+
 from app.third_party.integrated_pipeline.common.constants import LLMType, ParserType, TaskStatus
 from app.third_party.integrated_pipeline.common.file_utils import get_project_base_directory, traversal_files
 from app.third_party.integrated_pipeline.common.token_utils import (

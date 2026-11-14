@@ -90,7 +90,11 @@
   font-size: 0.91rem;
   font-weight: 650;
   text-decoration: none;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .primaryAction {
@@ -396,7 +400,9 @@
 .areaList > a > svg:last-child {
   margin-top: 0.2rem;
   color: var(--mimirq-faint);
-  transition: transform 160ms ease, color 160ms ease;
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
 }
 
 .areaList > a:hover > svg:last-child {

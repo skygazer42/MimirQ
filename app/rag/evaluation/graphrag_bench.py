@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -17,7 +16,10 @@ def _to_float(value: Any) -> float:
 def summarize_graphrag_bench(rows: list[dict[str, Any]]) -> dict[str, Any]:
     systems: dict[str, dict[str, float]] = {}
     for row in rows or []:
-        system = str((row or {}).get("system") or "").strip()
+        raw_system = (row or {}).get("system")
+        if raw_system is None:
+            continue
+        system = str(raw_system).strip()
         if not system:
             continue
         recall = _to_float((row or {}).get("recall"))
@@ -38,12 +40,12 @@ def summarize_graphrag_bench(rows: list[dict[str, Any]]) -> dict[str, Any]:
             key=lambda item: item[1].get(key, 0.0),
             reverse=reverse,
         )
-        return items[0][0] if items else None
+        return items[0][0]
 
     return {
         "schema": "mimirq.graphrag_bench.v1",
         "summary": {
-            "systems_compared": int(len(systems)),
+            "systems_compared": len(systems),
             "best_recall_system": _best("recall", reverse=True),
             "lowest_cost_system": _best("cost_usd", reverse=False),
             "fastest_system": _best("latency_ms", reverse=False),

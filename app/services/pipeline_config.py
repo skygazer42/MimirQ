@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any, Callable
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_provider
 from app.core.regex_safety import looks_like_nested_quantifier
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
@@ -104,11 +105,9 @@ def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
             cleaned[key] = v
         # No nested objects/lists.
 
-    return cleaned or None
-
-
-def _sanitize_stage_python_plugin_ref(value: Any, expected_stage: str) -> str | None:
-    return sanitize_python_plugin_ref(value, expected_stage=expected_stage)
+    if value and not cleaned:
+        return None
+    return cleaned
 
 
 def _sanitize_regex_pattern(value: Any) -> str | None:
@@ -155,7 +154,7 @@ def _sanitize_regex_rule(item: Any) -> dict[str, Any] | None:
         return None
     return {
         "pattern": pattern,
-        "repl": _sanitize_regex_replacement(item.get("repl", "")),
+        "repl": _sanitize_regex_replacement(item.get("repl")),
         "flags": flags,
     }
 
@@ -183,7 +182,9 @@ def _sanitize_regex_rules(value: Any) -> list[dict] | None:
         if len(out) >= _REGEX_RULES_MAX:
             break
 
-    return out or None
+    if value and not out:
+        return None
+    return out
 
 
 def _sanitize_rule_packs(value: Any) -> list[str] | None:
@@ -218,7 +219,9 @@ def _sanitize_rule_packs(value: Any) -> list[str] | None:
         if len(out) >= _RULE_PACKS_MAX:
             break
 
-    return out or None
+    if value and not out:
+        return None
+    return out
 
 
 def _resolve_flag(default: bool, override: bool | None) -> bool:
@@ -251,9 +254,13 @@ _PIPELINE_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
 
 _PIPELINE_METADATA_SANITIZED_FIELDS: tuple[_MetadataFieldSpec, ...] = (
     ("chunk_strategy_params", "chunk_strategy_params", _sanitize_chunk_strategy_params),
-    ("chunk_python_plugin", "chunk_python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "chunk")),
+    (
+        "chunk_python_plugin",
+        "chunk_python_plugin",
+        lambda value: sanitize_python_plugin_ref(value, expected_stage="chunk"),
+    ),
     ("chunk_python_params", "chunk_python_params", _sanitize_chunk_strategy_params),
-    ("kg_python_plugin", "kg_python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "kg")),
+    ("kg_python_plugin", "kg_python_plugin", lambda value: sanitize_python_plugin_ref(value, expected_stage="kg")),
     ("kg_python_params", "kg_python_params", _sanitize_chunk_strategy_params),
 )
 
@@ -335,7 +342,11 @@ _GOVERNANCE_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
 _GOVERNANCE_METADATA_SANITIZED_FIELDS: tuple[_MetadataFieldSpec, ...] = (
     ("governance_rule_packs", "rule_packs", _sanitize_rule_packs),
     ("governance_regex_rules", "regex_rules", _sanitize_regex_rules),
-    ("governance_python_plugin", "python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "governance")),
+    (
+        "governance_python_plugin",
+        "python_plugin",
+        lambda value: sanitize_python_plugin_ref(value, expected_stage="governance"),
+    ),
     ("governance_python_params", "python_params", _sanitize_chunk_strategy_params),
 )
 
@@ -380,7 +391,7 @@ def _apply_sanitized_metadata_fields(
         if value is None:
             continue
         sanitized = sanitize(value)
-        if sanitized:
+        if sanitized is not None:
             target[metadata_key] = sanitized
 
 
@@ -499,9 +510,15 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_normalize_urls=_coerce_bool(governance.get("normalize_urls")),
         governance_normalize_urls_strip_tracking=_coerce_bool(governance.get("normalize_urls_strip_tracking")),
         governance_drop_duplicate_paragraphs=_coerce_bool(governance.get("drop_duplicate_paragraphs")),
-        governance_drop_duplicate_paragraphs_min_occurrences=_coerce_int(governance.get("drop_duplicate_paragraphs_min_occurrences")),
-        governance_drop_duplicate_paragraphs_min_chars=_coerce_int(governance.get("drop_duplicate_paragraphs_min_chars")),
-        governance_drop_duplicate_paragraphs_max_chars=_coerce_int(governance.get("drop_duplicate_paragraphs_max_chars")),
+        governance_drop_duplicate_paragraphs_min_occurrences=_coerce_int(
+            governance.get("drop_duplicate_paragraphs_min_occurrences")
+        ),
+        governance_drop_duplicate_paragraphs_min_chars=_coerce_int(
+            governance.get("drop_duplicate_paragraphs_min_chars")
+        ),
+        governance_drop_duplicate_paragraphs_max_chars=_coerce_int(
+            governance.get("drop_duplicate_paragraphs_max_chars")
+        ),
         governance_trim_references=_coerce_bool(governance.get("trim_references")),
         governance_extract_keywords=_coerce_bool(governance.get("extract_keywords")),
         governance_keywords_provider=_coerce_str(governance.get("keywords_provider")),
@@ -535,7 +552,9 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_noise_ratio_threshold=_coerce_float(governance.get("noise_ratio_threshold")),
         governance_common_lines_min_docs=_coerce_int(governance.get("common_lines_min_docs")),
         governance_common_lines_min_ratio=_coerce_float(governance.get("common_lines_min_ratio")),
-        governance_python_plugin=_sanitize_stage_python_plugin_ref(governance.get("python_plugin"), "governance"),
+        governance_python_plugin=sanitize_python_plugin_ref(
+            governance.get("python_plugin"), expected_stage="governance"
+        ),
         governance_python_params=_sanitize_chunk_strategy_params(governance.get("python_params")),
         parse_fallback_enabled=_coerce_bool(pipeline.get("parse_fallback_enabled")),
         parse_fallback_min_content_chars=_coerce_int(pipeline.get("parse_fallback_min_content_chars")),
@@ -558,7 +577,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
         chunk_merge_small_min_chars=_coerce_int(pipeline.get("chunk_merge_small_min_chars")),
         chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
-        chunk_python_plugin=_sanitize_stage_python_plugin_ref(pipeline.get("chunk_python_plugin"), "chunk"),
+        chunk_python_plugin=sanitize_python_plugin_ref(pipeline.get("chunk_python_plugin"), expected_stage="chunk"),
         chunk_python_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_python_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
         embedding_contextual_retrieval_enabled=_coerce_bool(index.get("embedding_contextual_retrieval_enabled")),
@@ -567,7 +586,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
         kg_enabled=_coerce_bool(index.get("kg_enabled")),
-        kg_python_plugin=_sanitize_stage_python_plugin_ref(pipeline.get("kg_python_plugin"), "kg"),
+        kg_python_plugin=sanitize_python_plugin_ref(pipeline.get("kg_python_plugin"), expected_stage="kg"),
         kg_python_params=_sanitize_chunk_strategy_params(pipeline.get("kg_python_params")),
         event_vector_enabled=_coerce_bool(index.get("event_vector_enabled")),
         entity_vector_enabled=_coerce_bool(index.get("entity_vector_enabled")),
@@ -620,7 +639,12 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
     if index:
         pipeline["index"] = index
 
-    return pipeline or None
+    return pipeline
+
+
+def validate_pipeline_execution(options: PipelineOptions | PipelineEffective) -> None:
+    """Validate selected capabilities at write and execution boundaries, preserving readable history."""
+    reject_retired_provider(options.governance_keywords_provider, capability="keyword")
 
 
 def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions | None) -> bool:
@@ -631,6 +655,7 @@ def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions |
     """
     if options is None:
         return False
+    validate_pipeline_execution(options)
     pipeline_meta = build_pipeline_metadata(options)
     if pipeline_meta:
         meta["pipeline"] = pipeline_meta
@@ -654,17 +679,17 @@ def resolve_pipeline_effective(
     - document metadata.pipeline
     - request_overrides (e.g., upload/preview payload)
     """
-    dataset_opts = parse_pipeline_from_metadata(dataset_metadata or {}) if dataset_metadata else PipelineOptions()
-    doc_opts = parse_pipeline_from_metadata(document_metadata or {}) if document_metadata else PipelineOptions()
-    merged = merge_pipeline_options(dataset_opts, doc_opts, request_overrides or PipelineOptions())
+    dataset_opts = parse_pipeline_from_metadata(dataset_metadata) if dataset_metadata else PipelineOptions()
+    doc_opts = parse_pipeline_from_metadata(document_metadata) if document_metadata else PipelineOptions()
+    merged = merge_pipeline_options(
+        dataset_opts, doc_opts, (request_overrides if request_overrides is not None else PipelineOptions())
+    )
     return resolve_pipeline_options(merged)
 
 
 def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     governance_enabled = (
-        settings.GOVERNANCE_ENABLED
-        if options.governance_enabled is None
-        else bool(options.governance_enabled)
+        settings.GOVERNANCE_ENABLED if options.governance_enabled is None else bool(options.governance_enabled)
     )
     governance_remove_toc_lines = (
         settings.GOVERNANCE_REMOVE_TOC_LINES
@@ -687,119 +712,119 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else bool(options.governance_remove_common_lines)
     )
     governance_remove_boilerplate = (
-        getattr(settings, "GOVERNANCE_REMOVE_BOILERPLATE", False)
+        settings.GOVERNANCE_REMOVE_BOILERPLATE
         if options.governance_remove_boilerplate is None
         else bool(options.governance_remove_boilerplate)
     )
     governance_remove_images = (
-        getattr(settings, "GOVERNANCE_REMOVE_IMAGES", "none")
+        settings.GOVERNANCE_REMOVE_IMAGES
         if options.governance_remove_images is None
         else str(options.governance_remove_images or "none")
     )
     governance_rule_packs = _sanitize_rule_packs(options.governance_rule_packs) or []
     governance_regex_rules = _sanitize_regex_rules(options.governance_regex_rules) or []
     governance_extract_frontmatter = (
-        getattr(settings, "GOVERNANCE_EXTRACT_FRONTMATTER", False)
+        settings.GOVERNANCE_EXTRACT_FRONTMATTER
         if options.governance_extract_frontmatter is None
         else bool(options.governance_extract_frontmatter)
     )
     governance_strip_frontmatter = (
-        getattr(settings, "GOVERNANCE_STRIP_FRONTMATTER", False)
+        settings.GOVERNANCE_STRIP_FRONTMATTER
         if options.governance_strip_frontmatter is None
         else bool(options.governance_strip_frontmatter)
     )
     governance_detect_language = (
-        getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)
+        settings.GOVERNANCE_DETECT_LANGUAGE
         if options.governance_detect_language is None
         else bool(options.governance_detect_language)
     )
     governance_language_min_chars = (
         options.governance_language_min_chars
         if options.governance_language_min_chars is not None
-        else int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40)
+        else int(settings.GOVERNANCE_LANGUAGE_MIN_CHARS or 40)
     )
     governance_normalize_urls = (
-        getattr(settings, "GOVERNANCE_NORMALIZE_URLS", False)
+        settings.GOVERNANCE_NORMALIZE_URLS
         if options.governance_normalize_urls is None
         else bool(options.governance_normalize_urls)
     )
     governance_normalize_urls_strip_tracking = (
-        getattr(settings, "GOVERNANCE_NORMALIZE_URLS_STRIP_TRACKING", True)
+        settings.GOVERNANCE_NORMALIZE_URLS_STRIP_TRACKING
         if options.governance_normalize_urls_strip_tracking is None
         else bool(options.governance_normalize_urls_strip_tracking)
     )
     governance_drop_duplicate_paragraphs = (
-        getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS", False)
+        settings.GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS
         if options.governance_drop_duplicate_paragraphs is None
         else bool(options.governance_drop_duplicate_paragraphs)
     )
     governance_drop_duplicate_paragraphs_min_occurrences = (
         options.governance_drop_duplicate_paragraphs_min_occurrences
         if options.governance_drop_duplicate_paragraphs_min_occurrences is not None
-        else int(getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MIN_OCCURRENCES", 3) or 3)
+        else int(settings.GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MIN_OCCURRENCES or 3)
     )
     governance_drop_duplicate_paragraphs_min_chars = (
         options.governance_drop_duplicate_paragraphs_min_chars
         if options.governance_drop_duplicate_paragraphs_min_chars is not None
-        else int(getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MIN_CHARS", 40) or 40)
+        else int(settings.GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MIN_CHARS or 40)
     )
     governance_drop_duplicate_paragraphs_max_chars = (
         options.governance_drop_duplicate_paragraphs_max_chars
         if options.governance_drop_duplicate_paragraphs_max_chars is not None
-        else int(getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MAX_CHARS", 1200) or 1200)
+        else int(settings.GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MAX_CHARS or 1200)
     )
     governance_trim_references = (
-        getattr(settings, "GOVERNANCE_TRIM_REFERENCES", False)
+        settings.GOVERNANCE_TRIM_REFERENCES
         if options.governance_trim_references is None
         else bool(options.governance_trim_references)
     )
     governance_extract_keywords = (
-        getattr(settings, "GOVERNANCE_EXTRACT_KEYWORDS", False)
+        settings.GOVERNANCE_EXTRACT_KEYWORDS
         if options.governance_extract_keywords is None
         else bool(options.governance_extract_keywords)
     )
     governance_keywords_provider = (
-        getattr(settings, "GOVERNANCE_KEYWORDS_PROVIDER", "auto")
+        settings.GOVERNANCE_KEYWORDS_PROVIDER
         if options.governance_keywords_provider is None
         else str(options.governance_keywords_provider or "auto")
     )
     governance_keywords_top_k = (
         options.governance_keywords_top_k
         if options.governance_keywords_top_k is not None
-        else int(getattr(settings, "GOVERNANCE_KEYWORDS_TOP_K", 10) or 10)
+        else int(settings.GOVERNANCE_KEYWORDS_TOP_K or 10)
     )
     governance_keywords_max_chars = (
         options.governance_keywords_max_chars
         if options.governance_keywords_max_chars is not None
-        else int(getattr(settings, "GOVERNANCE_KEYWORDS_MAX_CHARS", 20_000) or 20_000)
+        else int(settings.GOVERNANCE_KEYWORDS_MAX_CHARS or 20_000)
     )
     governance_normalize_tables = (
-        getattr(settings, "GOVERNANCE_NORMALIZE_TABLES", False)
+        settings.GOVERNANCE_NORMALIZE_TABLES
         if options.governance_normalize_tables is None
         else bool(options.governance_normalize_tables)
     )
     governance_strip_code_line_numbers = (
-        getattr(settings, "GOVERNANCE_STRIP_CODE_LINE_NUMBERS", False)
+        settings.GOVERNANCE_STRIP_CODE_LINE_NUMBERS
         if options.governance_strip_code_line_numbers is None
         else bool(options.governance_strip_code_line_numbers)
     )
     governance_quarantine_on_drop = (
-        getattr(settings, "GOVERNANCE_QUARANTINE_ON_DROP", False)
+        settings.GOVERNANCE_QUARANTINE_ON_DROP
         if options.governance_quarantine_on_drop is None
         else bool(options.governance_quarantine_on_drop)
     )
     governance_pii_anonymize = (
-        getattr(settings, "GOVERNANCE_PII_ANONYMIZE", False)
+        settings.GOVERNANCE_PII_ANONYMIZE
         if options.governance_pii_anonymize is None
         else bool(options.governance_pii_anonymize)
     )
     governance_pii_mode = (
-        getattr(settings, "GOVERNANCE_PII_MODE", "mask")
+        settings.GOVERNANCE_PII_MODE
         if options.governance_pii_mode is None
         else str(options.governance_pii_mode or "mask")
     )
     governance_pii_mask = (
-        getattr(settings, "GOVERNANCE_PII_MASK", DEFAULT_GOVERNANCE_PII_MASK)
+        settings.GOVERNANCE_PII_MASK
         if options.governance_pii_mask is None
         else str(options.governance_pii_mask or DEFAULT_GOVERNANCE_PII_MASK)
     )
@@ -809,42 +834,42 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else int(settings.GOVERNANCE_PII_MAX_HITS)
     )
     governance_llm_auto_tagging_enabled = (
-        getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_ENABLED", False)
+        settings.GOVERNANCE_LLM_AUTO_TAGGING_ENABLED
         if options.governance_llm_auto_tagging_enabled is None
         else bool(options.governance_llm_auto_tagging_enabled)
     )
     governance_llm_auto_tagging_max_chars = (
         options.governance_llm_auto_tagging_max_chars
         if options.governance_llm_auto_tagging_max_chars is not None
-        else int(getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_MAX_CHARS", 3000) or 3000)
+        else int(settings.GOVERNANCE_LLM_AUTO_TAGGING_MAX_CHARS or 3000)
     )
     governance_llm_auto_tagging_max_items = (
         options.governance_llm_auto_tagging_max_items
         if options.governance_llm_auto_tagging_max_items is not None
-        else int(getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_MAX_ITEMS", 16) or 16)
+        else int(settings.GOVERNANCE_LLM_AUTO_TAGGING_MAX_ITEMS or 16)
     )
     ingest_pre_poc_scanner_enabled = (
-        getattr(settings, "INGEST_PRE_POC_SCANNER_ENABLED", False)
+        settings.INGEST_PRE_POC_SCANNER_ENABLED
         if options.ingest_pre_poc_scanner_enabled is None
         else bool(options.ingest_pre_poc_scanner_enabled)
     )
     ingest_pre_poc_quality_gate_mode = (
-        getattr(settings, "INGEST_PRE_POC_QUALITY_GATE_MODE", "warn")
+        settings.INGEST_PRE_POC_QUALITY_GATE_MODE
         if options.ingest_pre_poc_quality_gate_mode is None
         else str(options.ingest_pre_poc_quality_gate_mode or "warn")
     )
     governance_secrets_redact = (
-        getattr(settings, "GOVERNANCE_SECRETS_REDACT", False)
+        settings.GOVERNANCE_SECRETS_REDACT
         if options.governance_secrets_redact is None
         else bool(options.governance_secrets_redact)
     )
     governance_secrets_mode = (
-        getattr(settings, "GOVERNANCE_SECRETS_MODE", "mask")
+        settings.GOVERNANCE_SECRETS_MODE
         if options.governance_secrets_mode is None
         else str(options.governance_secrets_mode or "mask")
     )
     governance_secrets_mask = (
-        getattr(settings, "GOVERNANCE_SECRETS_MASK", DEFAULT_GOVERNANCE_SECRETS_MASK)
+        settings.GOVERNANCE_SECRETS_MASK
         if options.governance_secrets_mask is None
         else str(options.governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK)
     )
@@ -856,37 +881,35 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     governance_max_blank_lines = (
         options.governance_max_blank_lines
         if options.governance_max_blank_lines is not None
-        else int(getattr(settings, "GOVERNANCE_MAX_BLANK_LINES", 1) or 1)
+        else int(settings.GOVERNANCE_MAX_BLANK_LINES or 1)
     )
     governance_html_xpath = (
-        getattr(settings, "GOVERNANCE_HTML_XPATH", "")
-        if options.governance_html_xpath is None
-        else str(options.governance_html_xpath or "")
+        settings.GOVERNANCE_HTML_XPATH if options.governance_html_xpath is None else options.governance_html_xpath
     )
     governance_drop_outline_only = (
-        getattr(settings, "GOVERNANCE_DROP_OUTLINE_ONLY", False)
+        settings.GOVERNANCE_DROP_OUTLINE_ONLY
         if options.governance_drop_outline_only is None
         else bool(options.governance_drop_outline_only)
     )
     governance_drop_outline_min_content_chars = (
         options.governance_drop_outline_min_content_chars
         if options.governance_drop_outline_min_content_chars is not None
-        else int(getattr(settings, "GOVERNANCE_DROP_OUTLINE_MIN_CONTENT_CHARS", 200) or 200)
+        else int(settings.GOVERNANCE_DROP_OUTLINE_MIN_CONTENT_CHARS or 200)
     )
     governance_drop_outline_max_heading_ratio = (
         options.governance_drop_outline_max_heading_ratio
         if options.governance_drop_outline_max_heading_ratio is not None
-        else float(getattr(settings, "GOVERNANCE_DROP_OUTLINE_MAX_HEADING_RATIO", 0.85) or 0.85)
+        else float(settings.GOVERNANCE_DROP_OUTLINE_MAX_HEADING_RATIO or 0.85)
     )
     governance_drop_low_density = (
-        getattr(settings, "GOVERNANCE_DROP_LOW_DENSITY", False)
+        settings.GOVERNANCE_DROP_LOW_DENSITY
         if options.governance_drop_low_density is None
         else bool(options.governance_drop_low_density)
     )
     governance_drop_low_density_threshold = (
         options.governance_drop_low_density_threshold
         if options.governance_drop_low_density_threshold is not None
-        else float(getattr(settings, "GOVERNANCE_DROP_LOW_DENSITY_THRESHOLD", 0.12) or 0.12)
+        else float(settings.GOVERNANCE_DROP_LOW_DENSITY_THRESHOLD or 0.12)
     )
     governance_unwrap_max_line_length = (
         options.governance_unwrap_max_line_length
@@ -913,122 +936,114 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_common_lines_min_ratio is not None
         else settings.GOVERNANCE_COMMON_LINES_MIN_RATIO
     )
-    governance_python_plugin = _sanitize_stage_python_plugin_ref(options.governance_python_plugin, "governance") or ""
+    governance_python_plugin = (
+        sanitize_python_plugin_ref(options.governance_python_plugin, expected_stage="governance") or ""
+    )
     governance_python_params = _sanitize_chunk_strategy_params(options.governance_python_params) or {}
     parse_fallback_enabled = (
-        getattr(settings, "PARSE_FALLBACK_ENABLED", False)
+        settings.PARSE_FALLBACK_ENABLED
         if options.parse_fallback_enabled is None
         else bool(options.parse_fallback_enabled)
     )
     parse_fallback_min_content_chars = (
         options.parse_fallback_min_content_chars
         if options.parse_fallback_min_content_chars is not None
-        else int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)
+        else int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)
     )
     parse_fallback_min_parse_score = (
         options.parse_fallback_min_parse_score
         if options.parse_fallback_min_parse_score is not None
-        else float(getattr(settings, "PARSE_FALLBACK_MIN_PARSE_SCORE", 0.55) or 0.55)
+        else float(settings.PARSE_FALLBACK_MIN_PARSE_SCORE or 0.55)
     )
     parse_fallback_max_retries = (
         options.parse_fallback_max_retries
         if options.parse_fallback_max_retries is not None
-        else int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1)
+        else int(settings.PARSE_FALLBACK_MAX_RETRIES or 1)
     )
     cross_page_merge_enabled = (
-        getattr(settings, "CROSS_PAGE_MERGE_ENABLED", False)
+        settings.CROSS_PAGE_MERGE_ENABLED
         if options.cross_page_merge_enabled is None
         else bool(options.cross_page_merge_enabled)
     )
     cross_page_merge_max_page_gap = (
         options.cross_page_merge_max_page_gap
         if options.cross_page_merge_max_page_gap is not None
-        else int(getattr(settings, "CROSS_PAGE_MERGE_MAX_PAGE_GAP", 1) or 1)
+        else int(settings.CROSS_PAGE_MERGE_MAX_PAGE_GAP or 1)
     )
     reading_order_enabled = (
-        getattr(settings, "READING_ORDER_ENABLED", True)
-        if options.reading_order_enabled is None
-        else bool(options.reading_order_enabled)
+        settings.READING_ORDER_ENABLED if options.reading_order_enabled is None else bool(options.reading_order_enabled)
     )
     parse_cache_enabled = (
-        getattr(settings, "PARSE_CACHE_ENABLED", False)
-        if options.parse_cache_enabled is None
-        else bool(options.parse_cache_enabled)
+        settings.PARSE_CACHE_ENABLED if options.parse_cache_enabled is None else bool(options.parse_cache_enabled)
     )
     parse_cache_ttl_sec = (
         options.parse_cache_ttl_sec
         if options.parse_cache_ttl_sec is not None
-        else int(getattr(settings, "PARSE_CACHE_TTL_SEC", 86_400) or 86_400)
+        else int(settings.PARSE_CACHE_TTL_SEC or 86_400)
     )
     vlm_correction_enabled = (
-        getattr(settings, "VLM_CORRECTION_ENABLED", False)
+        settings.VLM_CORRECTION_ENABLED
         if options.vlm_correction_enabled is None
         else bool(options.vlm_correction_enabled)
     )
     vlm_correction_min_table_score = (
         options.vlm_correction_min_table_score
         if options.vlm_correction_min_table_score is not None
-        else float(getattr(settings, "VLM_CORRECTION_MIN_TABLE_SCORE", 0.6) or 0.6)
+        else float(settings.VLM_CORRECTION_MIN_TABLE_SCORE or 0.6)
     )
     vlm_correction_max_pages = (
         options.vlm_correction_max_pages
         if options.vlm_correction_max_pages is not None
-        else int(getattr(settings, "VLM_CORRECTION_MAX_PAGES", 2) or 2)
+        else int(settings.VLM_CORRECTION_MAX_PAGES)
     )
     persist_parsed_content = (
-        getattr(settings, "PERSIST_PARSED_CONTENT", False)
+        settings.PERSIST_PARSED_CONTENT
         if options.persist_parsed_content is None
         else bool(options.persist_parsed_content)
     )
     persist_parsed_content_max_chars = (
         options.persist_parsed_content_max_chars
         if options.persist_parsed_content_max_chars is not None
-        else int(getattr(settings, "PERSIST_PARSED_CONTENT_MAX_CHARS", 200_000) or 200_000)
+        else int(settings.PERSIST_PARSED_CONTENT_MAX_CHARS or 200_000)
     )
     near_dedup_enabled = (
-        getattr(settings, "NEAR_DEDUP_ENABLED", False)
-        if options.near_dedup_enabled is None
-        else bool(options.near_dedup_enabled)
+        settings.NEAR_DEDUP_ENABLED if options.near_dedup_enabled is None else bool(options.near_dedup_enabled)
     )
     near_dedup_hamming_threshold = (
         options.near_dedup_hamming_threshold
         if options.near_dedup_hamming_threshold is not None
-        else int(getattr(settings, "NEAR_DEDUP_HAMMING_THRESHOLD", 3) or 3)
+        else int(settings.NEAR_DEDUP_HAMMING_THRESHOLD or 3)
     )
     near_dedup_max_bucket_size = (
         options.near_dedup_max_bucket_size
         if options.near_dedup_max_bucket_size is not None
-        else int(getattr(settings, "NEAR_DEDUP_MAX_BUCKET_SIZE", 256) or 256)
+        else int(settings.NEAR_DEDUP_MAX_BUCKET_SIZE or 256)
     )
     chunk_size = options.chunk_size if options.chunk_size is not None else settings.CHUNK_SIZE
     chunk_overlap = options.chunk_overlap if options.chunk_overlap is not None else settings.CHUNK_OVERLAP
     chunk_merge_small_min_chars = (
         options.chunk_merge_small_min_chars
         if options.chunk_merge_small_min_chars is not None
-        else int(getattr(settings, "CHUNK_MERGE_SMALL_MIN_CHARS", 0) or 0)
+        else int(settings.CHUNK_MERGE_SMALL_MIN_CHARS or 0)
     )
-    chunk_strategy_params = (
-        options.chunk_strategy_params
-        if options.chunk_strategy_params is not None
-        else None
-    )
+    chunk_strategy_params = options.chunk_strategy_params
     chunk_strategy_params = _sanitize_chunk_strategy_params(chunk_strategy_params) or {}
-    chunk_python_plugin = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk") or ""
+    chunk_python_plugin = sanitize_python_plugin_ref(options.chunk_python_plugin, expected_stage="chunk") or ""
     chunk_python_params = _sanitize_chunk_strategy_params(options.chunk_python_params) or {}
-    kg_python_plugin = _sanitize_stage_python_plugin_ref(options.kg_python_plugin, "kg") or ""
+    kg_python_plugin = sanitize_python_plugin_ref(options.kg_python_plugin, expected_stage="kg") or ""
     kg_python_params = _sanitize_chunk_strategy_params(options.kg_python_params) or {}
     embedding_context_prefix_enabled = (
-        getattr(settings, "EMBEDDING_CONTEXT_PREFIX_ENABLED", False)
+        settings.EMBEDDING_CONTEXT_PREFIX_ENABLED
         if options.embedding_context_prefix_enabled is None
         else bool(options.embedding_context_prefix_enabled)
     )
     embedding_contextual_retrieval_enabled = (
-        getattr(settings, "CONTEXTUAL_RETRIEVAL_ENABLED", False)
+        settings.CONTEXTUAL_RETRIEVAL_ENABLED
         if options.embedding_contextual_retrieval_enabled is None
         else bool(options.embedding_contextual_retrieval_enabled)
     )
     embedding_contextual_retrieval_lazy_mode = (
-        getattr(settings, "CONTEXTUAL_RETRIEVAL_LAZY_MODE", False)
+        settings.CONTEXTUAL_RETRIEVAL_LAZY_MODE
         if options.embedding_contextual_retrieval_lazy_mode is None
         else bool(options.embedding_contextual_retrieval_lazy_mode)
     )
@@ -1036,19 +1051,13 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         False if options.embedding_field_aware_enabled is None else bool(options.embedding_field_aware_enabled)
     )
     table_store_enabled = (
-        getattr(settings, "TABLE_STORE_ENABLED", False)
-        if options.table_store_enabled is None
-        else bool(options.table_store_enabled)
+        settings.TABLE_STORE_ENABLED if options.table_store_enabled is None else bool(options.table_store_enabled)
     )
     table_store_max_rows = (
-        options.table_store_max_rows
-        if options.table_store_max_rows is not None
-        else int(settings.TABLE_STORE_MAX_ROWS)
+        options.table_store_max_rows if options.table_store_max_rows is not None else int(settings.TABLE_STORE_MAX_ROWS)
     )
     table_store_max_cols = (
-        options.table_store_max_cols
-        if options.table_store_max_cols is not None
-        else int(settings.TABLE_STORE_MAX_COLS)
+        options.table_store_max_cols if options.table_store_max_cols is not None else int(settings.TABLE_STORE_MAX_COLS)
     )
     table_store_sample_rows = (
         options.table_store_sample_rows
@@ -1056,54 +1065,46 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else int(settings.TABLE_STORE_SAMPLE_ROWS)
     )
     table_store_auto_route = (
-        getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)
+        settings.TABLE_STORE_AUTO_ROUTE
         if options.table_store_auto_route is None
         else bool(options.table_store_auto_route)
     )
     table_store_sidecar_exclusive_routing = (
-        getattr(settings, "TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", False)
+        settings.TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING
         if options.table_store_sidecar_exclusive_routing is None
         else bool(options.table_store_sidecar_exclusive_routing)
     )
     table_store_auto_row_threshold = (
         options.table_store_auto_row_threshold
         if options.table_store_auto_row_threshold is not None
-        else int(getattr(settings, "TABLE_STORE_AUTO_ROW_THRESHOLD", 5000) or 5000)
+        else int(settings.TABLE_STORE_AUTO_ROW_THRESHOLD or 5000)
     )
     table_store_auto_col_threshold = (
         options.table_store_auto_col_threshold
         if options.table_store_auto_col_threshold is not None
-        else int(getattr(settings, "TABLE_STORE_AUTO_COL_THRESHOLD", 80) or 80)
+        else int(settings.TABLE_STORE_AUTO_COL_THRESHOLD or 80)
     )
     table_store_auto_sheet_threshold = (
         options.table_store_auto_sheet_threshold
         if options.table_store_auto_sheet_threshold is not None
-        else int(getattr(settings, "TABLE_STORE_AUTO_SHEET_THRESHOLD", 5) or 5)
+        else int(settings.TABLE_STORE_AUTO_SHEET_THRESHOLD or 5)
     )
     table_store_auto_file_bytes_threshold = (
         options.table_store_auto_file_bytes_threshold
         if options.table_store_auto_file_bytes_threshold is not None
-        else int(getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000)
+        else int(settings.TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD or 5_000_000)
     )
     image_caption_enabled = (
-        getattr(settings, "IMAGE_CAPTION_ENABLED", False)
-        if options.image_caption_enabled is None
-        else bool(options.image_caption_enabled)
+        settings.IMAGE_CAPTION_ENABLED if options.image_caption_enabled is None else bool(options.image_caption_enabled)
     )
     image_ocr_enabled = (
-        getattr(settings, "IMAGE_OCR_ENABLED", False)
-        if options.image_ocr_enabled is None
-        else bool(options.image_ocr_enabled)
+        settings.IMAGE_OCR_ENABLED if options.image_ocr_enabled is None else bool(options.image_ocr_enabled)
     )
     image_ocr_max_chars = (
-        options.image_ocr_max_chars
-        if options.image_ocr_max_chars is not None
-        else int(getattr(settings, "IMAGE_OCR_MAX_CHARS", 2000) or 2000)
+        options.image_ocr_max_chars if options.image_ocr_max_chars is not None else int(settings.IMAGE_OCR_MAX_CHARS)
     )
     image_ocr_max_images = (
-        options.image_ocr_max_images
-        if options.image_ocr_max_images is not None
-        else int(getattr(settings, "IMAGE_OCR_MAX_IMAGES", 20) or 20)
+        options.image_ocr_max_images if options.image_ocr_max_images is not None else int(settings.IMAGE_OCR_MAX_IMAGES)
     )
     image_ocr_max_chars = max(0, int(image_ocr_max_chars))
     image_ocr_max_images = max(0, int(image_ocr_max_images))
@@ -1150,7 +1151,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_secrets_mask=str(governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK),
         governance_secrets_max_hits=int(governance_secrets_max_hits),
         governance_max_blank_lines=int(governance_max_blank_lines),
-        governance_html_xpath=str(governance_html_xpath or ""),
+        governance_html_xpath=governance_html_xpath,
         governance_drop_outline_only=bool(governance_drop_outline_only),
         governance_drop_outline_min_content_chars=int(governance_drop_outline_min_content_chars),
         governance_drop_outline_max_heading_ratio=float(governance_drop_outline_max_heading_ratio),
@@ -1161,7 +1162,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_noise_ratio_threshold=float(governance_noise_ratio_threshold),
         governance_common_lines_min_docs=int(governance_common_lines_min_docs),
         governance_common_lines_min_ratio=float(governance_common_lines_min_ratio),
-        governance_python_plugin=str(governance_python_plugin or ""),
+        governance_python_plugin=governance_python_plugin,
         governance_python_params=dict(governance_python_params),
         parse_fallback_enabled=bool(parse_fallback_enabled),
         parse_fallback_min_content_chars=int(parse_fallback_min_content_chars),
@@ -1184,16 +1185,19 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_overlap=int(chunk_overlap),
         chunk_merge_small_min_chars=int(chunk_merge_small_min_chars),
         chunk_strategy_params=dict(chunk_strategy_params),
-        chunk_python_plugin=str(chunk_python_plugin or ""),
+        chunk_python_plugin=chunk_python_plugin,
         chunk_python_params=dict(chunk_python_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
         embedding_contextual_retrieval_enabled=bool(embedding_contextual_retrieval_enabled),
         embedding_contextual_retrieval_lazy_mode=bool(embedding_contextual_retrieval_lazy_mode),
         embedding_field_aware_enabled=bool(embedding_field_aware_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
-        bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
+        bm25_index_enabled=(
+            settings.VECTOR_BACKEND.strip().lower() == "milvus"
+            and _resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled)
+        ),
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
-        kg_python_plugin=str(kg_python_plugin or ""),
+        kg_python_plugin=kg_python_plugin,
         kg_python_params=dict(kg_python_params),
         event_vector_enabled=_resolve_flag(settings.EVENT_VECTOR_ENABLED, options.event_vector_enabled),
         entity_vector_enabled=_resolve_flag(settings.ENTITY_VECTOR_ENABLED, options.entity_vector_enabled),
@@ -1209,8 +1213,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         table_store_auto_file_bytes_threshold=int(table_store_auto_file_bytes_threshold),
         image_caption_enabled=bool(image_caption_enabled),
         image_ocr_enabled=bool(image_ocr_enabled),
-        image_ocr_max_chars=int(image_ocr_max_chars),
-        image_ocr_max_images=int(image_ocr_max_images),
+        image_ocr_max_chars=image_ocr_max_chars,
+        image_ocr_max_images=image_ocr_max_images,
     )
 
 

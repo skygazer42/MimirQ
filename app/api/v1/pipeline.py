@@ -10,32 +10,22 @@ import re
 import shutil
 import uuid
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+import anyio
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.governance_profile import (
-    BuiltinProcessingScriptListResponse,
-    BuiltinProcessingScriptOut,
-    GovernanceProfileCreate,
-    GovernanceProfileImportResponse,
-    GovernanceProfileListResponse,
-    GovernanceProfileOut,
-    GovernanceProfileResolvedResponse,
-    GovernanceProfileSummary,
-    GovernanceProfileUpdate,
-)
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
-from app.api.schemas.pipeline import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.pipelines import (
     AutoAnnotationRequest,
     AutoAnnotationResponse,
+    BuiltinProcessingScriptListResponse,
+    BuiltinProcessingScriptOut,
     CleanPreviewRequest,
     CleanPreviewResponse,
     CleanRegexRuleModel,
@@ -45,6 +35,14 @@ from app.api.schemas.pipeline import (
     GovernanceCommonLineCandidate,
     GovernanceCommonLinesLearnRequest,
     GovernanceCommonLinesLearnResponse,
+    GovernanceProfileCreate,
+    GovernanceProfileImportResponse,
+    GovernanceProfileListQuery,
+    GovernanceProfileListResponse,
+    GovernanceProfileOut,
+    GovernanceProfileResolvedResponse,
+    GovernanceProfileSummary,
+    GovernanceProfileUpdate,
     IngestionPreviewResponse,
     KeywordExtractRequest,
     KeywordExtractResponse,
@@ -54,6 +52,8 @@ from app.api.schemas.pipeline import (
     PipelineCapabilitiesResponse,
     PipelineChunkPreviewRequest,
     PipelineChunkPreviewResponse,
+    PipelineIngestionPreviewForm,
+    PipelineParsePreviewForm,
     PipelinePluginChunkReportRequest,
     PipelinePluginChunkReportResponse,
     PipelinePluginGoldenDraftImportRequest,
@@ -61,10 +61,13 @@ from app.api.schemas.pipeline import (
     PipelinePluginGoldenDraftRequest,
     PipelinePluginGoldenDraftResponse,
     PipelinePluginListResponse,
+    PipelineProfileImportForm,
+    PipelineZipUploadForm,
     ZipWithImagesResponse,
 )
-from app.api.utils.response_headers import download_response_headers
-from app.api.utils.upload import save_upload_file
+from app.api.schemas.sources import IngestionPolicy, IngestionRule
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.api.utils import file_response_headers, save_upload_file
 from app.api.v1.pipeline_support.auto_annotations import (
     _AutoAnnotationDraft,
     _collect_common_lines_texts,
@@ -76,33 +79,17 @@ from app.api.v1.pipeline_support.auto_annotations import (
     _finalize_auto_annotation_keyword_provider,
     _normalize_auto_annotation_providers,
 )
-from app.api.v1.pipeline_support.capabilities import (
-    _pipeline_chunk_strategy_info,
-    _pipeline_parser_backend_info,
-)
+from app.api.v1.pipeline_support.capabilities import _pipeline_chunk_strategy_info, _pipeline_parser_backend_info
 from app.api.v1.pipeline_support.clean_preview import (
     _PIPELINE_FALLBACK_LOG_MESSAGE,
     _analyze_governance_preview,
-    _apply_preview_cleanup_stats,
-    _apply_preview_format_transforms,
-    _apply_preview_sensitive_redaction,
-    _build_clean_preview_response,
-    _build_clean_preview_rules,
-    _clean_preview_rule_stats,
-    _CleanPreviewResponseContext,
-    _detect_preview_language,
-    _extract_clean_preview_frontmatter,
     _extract_governance_input_text,
-    _extract_preview_keywords,
-    _extract_preview_title,
     _governance_analysis_options,
+    _LLMCleanPromptSelection,
     _parse_llm_clean_response,
-    _preview_drop_reason,
     _request_llm_clean_preview,
     _resolve_llm_clean_prompt_selection,
-)
-from app.api.v1.pipeline_support.governance_profiles import (
-    GOVERNANCE_PROFILE_NOT_FOUND_DETAIL as GOVERNANCE_PROFILE_NOT_FOUND_DETAIL,
+    build_clean_preview,
 )
 from app.api.v1.pipeline_support.governance_profiles import (
     _normalize_governance_profile_import_record,
@@ -116,7 +103,6 @@ from app.api.v1.pipeline_support.governance_profiles import (
 )
 from app.api.v1.pipeline_support.ingestion_preview import (
     _build_ingestion_clean_preview_request,
-    _dataset_metadata_dict,
     _ingestion_preview_defaults,
     _ingestion_preview_explain,
     _ingestion_preview_rule_output,
@@ -124,22 +110,22 @@ from app.api.v1.pipeline_support.ingestion_preview import (
     _IngestionPreviewConfig,
     _preprocess_ingestion_preview_file,
 )
+from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
-from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_safety import RegexRulesValidationError
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
+from app.models.document import Document, DocumentChunk
+from app.models.governance_profile import GovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
-from app.parsing.utils.zip_processor import zip_image_processor
+from app.parsing.utils.zip_processor import process_zip_with_images
 from app.rag.chunking import chunker_factory, hierarchical_chunk_markdown
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 from app.rag.pipeline_plugins.registry import (
+    PipelinePluginDescriptor,
     PipelinePluginRegistryError,
     default_plugin_directories,
     list_pipeline_plugins_with_errors,
@@ -148,13 +134,9 @@ from app.rag.pipeline_plugins.registry import (
 from app.rag.pipeline_plugins.reports import (
     build_pipeline_plugin_chunk_report as build_pipeline_plugin_chunk_report_data,
 )
-from app.rag.preprocessing.cleaning import (
-    build_repeated_line_signatures,
-    clean_markdown,
-    learn_common_line_candidates,
-)
+from app.rag.preprocessing.cleaning import learn_common_line_candidates
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.governance_processing_scripts import list_builtin_processing_scripts
 from app.services.governance_profiles import (
     get_builtin_governance_profiles,
@@ -166,20 +148,28 @@ from app.services.ingestion_policy import export_policy_json, match_ingestion_ru
 from app.services.pipeline_config import resolve_pipeline_effective
 from app.types.pipeline import PipelineOptions
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
-
 _BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
 _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
 _BUILTIN_PROCESSING_SCRIPTS = list_builtin_processing_scripts()
+_T = TypeVar("_T")
+
+
+async def _run_pipeline_db_call(callback: Callable[..., _T], **kwargs: Any) -> _T:
+    """Wait for the worker-owned Session to close before propagating cancellation."""
+
+    def work() -> _T:
+        with SessionLocal() as worker_db:
+            return callback(worker_db, **kwargs)
+
+    return await run_blocking_in_thread(work)
+
+
+async def _cleanup_preview_directory(run_dir: Path) -> None:
+    """Clean the request-owned directory under the existing shielded budget."""
+    with anyio.fail_after(5.0, shield=True):
+        await run_blocking_in_thread(shutil.rmtree, run_dir, ignore_errors=True)
 
 
 def _safe_pipeline_plugin_error_path(path: Path | None, roots: Iterable[Path]) -> str:
@@ -189,7 +179,6 @@ def _safe_pipeline_plugin_error_path(path: Path | None, roots: Iterable[Path]) -
         resolved = path.expanduser().resolve()
     except (OSError, RuntimeError, TypeError, ValueError):
         return path.name or str(path)
-
     for root in sorted((Path(item).expanduser() for item in roots), key=lambda item: len(str(item)), reverse=True):
         try:
             rel = resolved.relative_to(root.resolve())
@@ -205,9 +194,8 @@ def _safe_pipeline_plugin_error_path(path: Path | None, roots: Iterable[Path]) -
     dependencies=[Depends(get_current_account_id)],
     response_model=PipelinePluginListResponse,
     response_model_exclude_none=True,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def list_pipeline_plugins_endpoint():
+def list_pipeline_plugins_endpoint() -> PipelinePluginListResponse:
     """
     List registered local pipeline plugins.
 
@@ -236,45 +224,40 @@ async def list_pipeline_plugins_endpoint():
                 "suggested_pipeline_patch": plugin.suggested_pipeline_patch,
             }
         )
-    return {
-        "items": items,
-        "errors": [
-            {
-                "plugin_dir": _safe_pipeline_plugin_error_path(error.plugin_dir, plugin_roots),
-                "manifest_path": _safe_pipeline_plugin_error_path(error.manifest_path, plugin_roots),
-                "error": error.error,
-            }
-            for error in errors
-        ],
-    }
+    return PipelinePluginListResponse.model_validate(
+        {
+            "items": items,
+            "errors": [
+                {
+                    "plugin_dir": _safe_pipeline_plugin_error_path(error.plugin_dir, plugin_roots),
+                    "manifest_path": _safe_pipeline_plugin_error_path(error.manifest_path, plugin_roots),
+                    "error": error.error,
+                }
+                for error in errors
+            ],
+        }
+    )
 
 
-def _plugin_marker_refs(plugin_ref: str, descriptor: Any) -> set[str]:
-    refs = {str(plugin_ref or "").strip()}
-    raw_refs = getattr(descriptor, "refs", {}) or {}
-    if isinstance(raw_refs, dict):
-        refs.update(str(value or "").strip() for value in raw_refs.values())
+def _plugin_marker_refs(plugin_ref: str, descriptor: PipelinePluginDescriptor) -> set[str]:
+    refs = {plugin_ref.strip()}
+    refs.update((value.strip() for value in descriptor.refs.values()))
     return {ref for ref in refs if ref}
 
 
-def _assert_pipeline_plugin_executable(plugin_ref: str, descriptor: Any) -> None:
-    if getattr(descriptor, "published", True) is not True or getattr(descriptor, "executable", True) is not True:
-        plugin_id = str(getattr(descriptor, "id", "") or plugin_ref)
-        version = str(getattr(descriptor, "version", "") or "")
-        status = str(getattr(descriptor, "test_status", "") or "unknown")
+def _assert_pipeline_plugin_executable(descriptor: PipelinePluginDescriptor) -> None:
+    if descriptor.published is not True or descriptor.executable is not True:
+        plugin_id = descriptor.id
+        version = descriptor.version
+        status = descriptor.test_status
         qualified = f"{plugin_id}@{version}" if version else plugin_id
         raise HTTPException(
-            status_code=409,
-            detail=f"plugin '{qualified}' is not executable; local test report status is {status}",
+            status_code=409, detail=f"plugin '{qualified}' is not executable; local test report status is {status}"
         )
 
 
-def _assert_pipeline_plugin_ready_for_golden(plugin_ref: str, descriptor: Any) -> None:
-    _assert_pipeline_plugin_executable(plugin_ref, descriptor)
-
-
 def _resolve_plugin_relative_input_path(plugin_dir: Path, input_path: str) -> Path:
-    raw = str(input_path or "").strip() or "sample.json"
+    raw = input_path.strip() or "sample.json"
     candidate = Path(raw)
     if candidate.is_absolute() or ".." in candidate.parts:
         raise HTTPException(status_code=400, detail="input_path must stay inside the plugin directory")
@@ -289,16 +272,9 @@ def _resolve_plugin_relative_input_path(plugin_dir: Path, input_path: str) -> Pa
     return resolved
 
 
-@router.post(
-    "/plugins/chunk-report",
-    response_model=PipelinePluginChunkReportResponse,
-    response_model_by_alias=True,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
-async def build_pipeline_plugin_chunk_report_endpoint(
-    payload: PipelinePluginChunkReportRequest,
-    *,
-    account_id: Annotated[str, Depends(get_current_account_id)],
+@router.post("/plugins/chunk-report", response_model=PipelinePluginChunkReportResponse, response_model_by_alias=True)
+def build_pipeline_plugin_chunk_report_endpoint(
+    payload: PipelinePluginChunkReportRequest, *, account_id: Annotated[str, Depends(get_current_account_id)]
 ) -> PipelinePluginChunkReportResponse:
     """
     Build a review-only governance/chunk/KG report for a registered plugin sample.
@@ -307,12 +283,11 @@ async def build_pipeline_plugin_chunk_report_endpoint(
     plugin code, so callers select a registered plugin ref rather than arbitrary
     host paths.
     """
-    _ = account_id
     try:
         descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
     except PipelinePluginRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    _assert_pipeline_plugin_executable(payload.plugin_ref, descriptor)
+    _assert_pipeline_plugin_executable(descriptor)
     input_path = _resolve_plugin_relative_input_path(descriptor.plugin_dir, payload.input_path)
     try:
         report = build_pipeline_plugin_chunk_report_data(
@@ -323,13 +298,13 @@ async def build_pipeline_plugin_chunk_report_endpoint(
             governance_params=payload.governance_params,
             chunk_params=payload.chunk_params,
             kg_params=payload.kg_params,
-            section_metadata_keys=tuple(payload.section_metadata_keys or ()),
-            title_metadata_keys=tuple(payload.title_metadata_keys or ()),
-            metadata_highlight_keys=tuple(payload.metadata_highlight_keys or ()),
+            section_metadata_keys=tuple(payload.section_metadata_keys),
+            title_metadata_keys=tuple(payload.title_metadata_keys),
+            metadata_highlight_keys=tuple(payload.metadata_highlight_keys),
         )
     except PipelinePluginRegistryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=400, detail=f"failed to build plugin chunk report: {exc}") from exc
     return PipelinePluginChunkReportResponse.model_validate(report)
 
@@ -337,15 +312,11 @@ async def build_pipeline_plugin_chunk_report_endpoint(
 def _assert_unmarked_plugin_golden_chunks_allowed(include_unmarked_chunks: bool) -> None:
     if not include_unmarked_chunks:
         return
-    if bool(getattr(settings, "PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS", False)):
+    if settings.PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS:
         return
     raise HTTPException(
         status_code=400,
-        detail=(
-            "include_unmarked_chunks requires "
-            "PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true; "
-            "plugin Golden drafts normally use only chunks produced by the selected plugin"
-        ),
+        detail="include_unmarked_chunks requires PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true; plugin Golden drafts normally use only chunks produced by the selected plugin",
     )
 
 
@@ -353,7 +324,9 @@ def _chunk_marked_by_plugin(meta: dict[str, Any], plugin_refs: set[str]) -> bool
     if not plugin_refs:
         return False
     for key in ("chunk_python_plugin", "governance_python_plugin"):
-        value = str(meta.get(key) or "").strip()
+        value = meta.get(key)
+        if value is not None:
+            value = value.strip()
         if value and value in plugin_refs:
             return True
     return False
@@ -367,7 +340,9 @@ def _active_doc_pipeline_key(document_id: UUID, doc_metadata: dict[str, Any]) ->
 def _chunk_matches_active_pipeline(chunk_meta: dict[str, Any], active_key: str | None) -> bool:
     if not active_key:
         return True
-    chunk_key = str(chunk_meta.get("doc_pipeline_key") or "").strip()
+    chunk_key = chunk_meta.get("doc_pipeline_key")
+    if chunk_key is not None:
+        chunk_key = chunk_key.strip()
     return not chunk_key or chunk_key == active_key
 
 
@@ -380,33 +355,29 @@ def _load_plugin_golden_draft_chunks(
     max_chunks: int,
     include_unmarked_chunks: bool = False,
 ) -> list[DocumentChunk]:
-    cap = max(1, min(50_000, int(max_chunks or 5000)))
     rows = (
-        db.query(DocumentChunk, DBDocument)
-        .join(
-            DBDocument,
-            and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id),
-        )
+        db.query(DocumentChunk, Document)
+        .join(Document, and_(Document.id == DocumentChunk.document_id, Document.tenant_id == DocumentChunk.tenant_id))
         .filter(
             DocumentChunk.tenant_id == tenant_id,
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.status == "completed",
-            DBDocument.publication_status == "published",
-            DBDocument.archived_at.is_(None),
-            DBDocument.disabled_at.is_(None),
+            Document.tenant_id == tenant_id,
+            Document.dataset_id == dataset_id,
+            Document.status == "completed",
+            Document.publication_status == "published",
+            Document.archived_at.is_(None),
+            Document.disabled_at.is_(None),
             DocumentChunk.disabled_at.is_(None),
         )
         .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-        .limit(cap)
+        .limit(max_chunks)
         .all()
     )
     chunks: list[DocumentChunk] = []
     for chunk, document in rows:
-        chunk_meta = dict(getattr(chunk, "doc_metadata", None) or {})
-        if not include_unmarked_chunks and not _chunk_marked_by_plugin(chunk_meta, plugin_refs):
+        chunk_meta = dict(chunk.doc_metadata or {})
+        if not include_unmarked_chunks and (not _chunk_marked_by_plugin(chunk_meta, plugin_refs)):
             continue
-        doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+        doc_meta = dict(document.doc_metadata or {})
         if not _chunk_matches_active_pipeline(chunk_meta, _active_doc_pipeline_key(document.id, doc_meta)):
             continue
         chunks.append(chunk)
@@ -417,32 +388,32 @@ def _build_plugin_golden_draft_response(
     *,
     dataset_id: UUID,
     plugin_ref: str,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     chunks: Iterable[DocumentChunk],
     max_items: int,
 ) -> PipelinePluginGoldenDraftResponse:
-    plugin_id = str(getattr(descriptor, "id", ""))
+    plugin_id = descriptor.id
     bundle = build_golden_draft_bundle_from_chunks(
         dataset_id=dataset_id,
         chunks=chunks,
-        golden_rules=getattr(descriptor, "golden_rules", {}) or {},
+        golden_rules=descriptor.golden_rules,
         plugin_id=plugin_id,
-        plugin_version=str(getattr(descriptor, "version", "")),
+        plugin_version=descriptor.version,
         plugin_ref=plugin_ref,
-        plugin_package_hash=str(getattr(descriptor, "package_hash", "")),
+        plugin_package_hash=descriptor.package_hash,
         max_items=max_items,
     )
     return PipelinePluginGoldenDraftResponse(
         dataset_id=dataset_id,
         plugin_id=plugin_id,
-        plugin_version=str(getattr(descriptor, "version", "")),
+        plugin_version=descriptor.version,
         plugin_ref=plugin_ref,
-        items_total=len(bundle.get("items") or []),
+        items_total=len(bundle["items"]),
         bundle=bundle,
     )
 
 
-async def _import_plugin_golden_draft_bundle(
+def _import_plugin_golden_draft_bundle(
     *,
     db: Session,
     tenant_id: UUID,
@@ -452,8 +423,8 @@ async def _import_plugin_golden_draft_bundle(
     overwrite: bool,
     max_items: int,
 ) -> dict[str, Any]:
-    items = bundle.get("items") if isinstance(bundle, dict) else []
-    if not isinstance(items, list) or not items:
+    items = bundle["items"]
+    if not items:
         return {
             "created": 0,
             "updated": 0,
@@ -463,30 +434,16 @@ async def _import_plugin_golden_draft_bundle(
             "updated_case_ids": [],
             "case_ids": [],
         }
-
-    from app.api.schemas.regression import RagasRegressionCaseImportRequest
-    from app.api.v1.evaluations import import_ragas_regression_cases
+    from app.api.schemas.evaluation import RagasRegressionCaseImportRequest
+    from app.services.evaluation_case_import import import_regression_cases
 
     payload = RagasRegressionCaseImportRequest(
-        dataset_id=dataset_id,
-        overwrite=bool(overwrite),
-        max_items=max(1, min(2000, int(max_items or 500))),
-        items=items,
+        dataset_id=dataset_id, overwrite=overwrite, max_items=max_items, items=items
     )
-    result = await import_ragas_regression_cases(
-        payload,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        db=db,
-    )
-    return result if isinstance(result, dict) else dict(result)
+    return import_regression_cases(payload, tenant_id=tenant_id, account_id=account_id, db=db)
 
 
-@router.post(
-    "/plugins/golden-draft",
-    response_model=PipelinePluginGoldenDraftResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/plugins/golden-draft", response_model=PipelinePluginGoldenDraftResponse)
 def build_pipeline_plugin_golden_draft(
     payload: PipelinePluginGoldenDraftRequest,
     *,
@@ -501,17 +458,15 @@ def build_pipeline_plugin_golden_draft(
     bundle, then import it through the regression case import API or the
     pipeline-side golden-draft/import helper.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     try:
         descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
     except PipelinePluginRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    _assert_pipeline_plugin_ready_for_golden(payload.plugin_ref, descriptor)
+    _assert_pipeline_plugin_executable(descriptor)
     _assert_unmarked_plugin_golden_chunks_allowed(payload.include_unmarked_chunks)
-
     chunks = _load_plugin_golden_draft_chunks(
         db=db,
         tenant_id=tenant_id,
@@ -529,12 +484,8 @@ def build_pipeline_plugin_golden_draft(
     )
 
 
-@router.post(
-    "/plugins/golden-draft/import",
-    response_model=PipelinePluginGoldenDraftImportResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
-async def import_pipeline_plugin_golden_draft(
+@router.post("/plugins/golden-draft/import", response_model=PipelinePluginGoldenDraftImportResponse)
+def import_pipeline_plugin_golden_draft(
     payload: PipelinePluginGoldenDraftImportRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -542,17 +493,15 @@ async def import_pipeline_plugin_golden_draft(
     db: Annotated[Session, Depends(get_db)],
 ) -> PipelinePluginGoldenDraftImportResponse:
     """Build a plugin golden draft bundle and import it into regression cases."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
-
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
     try:
         descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
     except PipelinePluginRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    _assert_pipeline_plugin_ready_for_golden(payload.plugin_ref, descriptor)
+    _assert_pipeline_plugin_executable(descriptor)
     _assert_unmarked_plugin_golden_chunks_allowed(payload.include_unmarked_chunks)
-
     chunks = _load_plugin_golden_draft_chunks(
         db=db,
         tenant_id=tenant_id,
@@ -568,7 +517,7 @@ async def import_pipeline_plugin_golden_draft(
         chunks=chunks,
         max_items=payload.max_items,
     )
-    import_result = await _import_plugin_golden_draft_bundle(
+    import_result = _import_plugin_golden_draft_bundle(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -580,37 +529,24 @@ async def import_pipeline_plugin_golden_draft(
     return PipelinePluginGoldenDraftImportResponse(draft=draft, import_result=import_result)
 
 
-@router.get(
-    "/capabilities",
-    response_model=PipelineCapabilitiesResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/capabilities", response_model=PipelineCapabilitiesResponse)
 def get_pipeline_capabilities(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> PipelineCapabilitiesResponse:
     """
     Return available parsers and chunking strategies for the frontend.
 
     Note: only availability info is returned (no sensitive config like API keys).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    default_parser_backend = (
-        normalize_parser_backend(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto") or "auto"
-    )
-    default_chunk_strategy = (
-        (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-    )
-
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    default_parser_backend = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND) or "auto"
+    default_chunk_strategy = settings.DEFAULT_CHUNK_STRATEGY.strip().lower()
     pdf_backends = [_pipeline_parser_backend_info(name) for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS)]
-
-    # Expose all strategies known to the backend (frontends may choose a subset).
     all_strats = set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.INTEGRATED_PIPELINE_STRATEGIES)
     chunk_strategies = [_pipeline_chunk_strategy_info(name) for name in sorted(all_strats)]
-
     return PipelineCapabilitiesResponse(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
@@ -619,20 +555,14 @@ def get_pipeline_capabilities(
     )
 
 
-@router.get(
-    "/governance-profiles",
-    response_model=GovernanceProfileListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/governance-profiles", response_model=GovernanceProfileListResponse)
 def list_governance_profiles(
-    q: str | None = None,
-    include_builtin: bool = True,
-    limit: int = 200,
+    params: Annotated[GovernanceProfileListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> GovernanceProfileListResponse:
     """
     List governance profiles (built-in + tenant custom profiles).
 
@@ -640,54 +570,36 @@ def list_governance_profiles(
     - Built-in profiles are shipped in code (read-only).
     - Custom profiles are stored in DB (tenant-scoped).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    query = (q or "").strip().lower()
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    query = params.q.strip().lower() if params.q is not None else None
     items: list[GovernanceProfileSummary] = []
     builtin_count = 0
-
-    if include_builtin:
+    if params.include_builtin:
         for p in _BUILTIN_GOVERNANCE_PROFILES:
-            if query and query not in (p.name.lower() + " " + p.description.lower()):
+            if query and query not in p.name.lower() + " " + p.description.lower():
                 continue
             items.append(
-                GovernanceProfileSummary(
-                    id=None,
-                    key=p.key,
-                    name=p.name,
-                    description=p.description,
-                    is_system=True,
-                )
+                GovernanceProfileSummary(id=None, key=p.key, name=p.name, description=p.description, is_system=True)
             )
         builtin_count = len(items)
-
-    q_db = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    q_db = db.query(GovernanceProfile).filter(GovernanceProfile.tenant_id == tenant_id)
     if query:
         like = f"%{query}%"
-        # Avoid depending on database-specific full-text features.
         q_db = q_db.filter(
-            (DBGovernanceProfile.name.ilike(like))
-            | (DBGovernanceProfile.description.ilike(like))
-            | (DBGovernanceProfile.key.ilike(like))
+            GovernanceProfile.name.ilike(like)
+            | GovernanceProfile.description.ilike(like)
+            | GovernanceProfile.key.ilike(like)
         )
-
-    total_custom = int(q_db.count() or 0)
-    rows = q_db.order_by(DBGovernanceProfile.updated_at.desc()).limit(min(int(limit or 200), 200)).all()
+    total_custom = q_db.count()
+    rows = q_db.order_by(GovernanceProfile.updated_at.desc()).limit(min(params.limit or 200, 200)).all()
     items.extend([_profile_summary_from_row(r) for r in rows])
+    return GovernanceProfileListResponse(total=builtin_count + total_custom, items=items)
 
-    return GovernanceProfileListResponse(total=(builtin_count + total_custom), items=items)
 
-
-@router.get(
-    "/governance-processing-scripts/builtins",
-    response_model=BuiltinProcessingScriptListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/governance-processing-scripts/builtins", response_model=BuiltinProcessingScriptListResponse)
 async def list_builtin_processing_scripts_endpoint(
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-):
+    *, tenant_id: Annotated[UUID, Depends(get_tenant_id)], account_id: Annotated[str, Depends(get_current_account_id)]
+) -> BuiltinProcessingScriptListResponse:
     """
     List built-in processing script templates exposed on the 重复行学习 page.
 
@@ -713,53 +625,43 @@ async def list_builtin_processing_scripts_endpoint(
     return BuiltinProcessingScriptListResponse(total=len(items), items=items)
 
 
-@router.post(
-    "/governance-profiles",
-    response_model=GovernanceProfileOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201)
 def create_governance_profile(
     body: GovernanceProfileCreate,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    name = str(body.name or "").strip()
+) -> GovernanceProfileOut:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-
     try:
         key = validate_profile_key(body.key)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     if key:
         exists = (
-            db.query(DBGovernanceProfile.id)
-            .filter(DBGovernanceProfile.tenant_id == tenant_id, DBGovernanceProfile.key == key)
+            db.query(GovernanceProfile.id)
+            .filter(GovernanceProfile.tenant_id == tenant_id, GovernanceProfile.key == key)
             .first()
         )
         if exists:
             raise HTTPException(status_code=409, detail="profile key already exists")
-
     try:
         payload = validate_and_normalize_payload(body.payload)
     except RegexRulesValidationError as exc:
         raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    row = DBGovernanceProfile(
+    row = GovernanceProfile(
         tenant_id=tenant_id,
         key=key,
-        name=name[:200],
-        description=(str(body.description).strip()[:2000] if body.description is not None else None),
+        name=name,
+        description=body.description.strip() if body.description is not None else None,
         is_system=False,
-        payload=payload.model_dump(),
+        payload=payload.model_dump(mode="json"),
     )
     db.add(row)
     db.commit()
@@ -767,64 +669,42 @@ def create_governance_profile(
     return _profile_out_from_row(row)
 
 
-@router.get(
-    "/governance-profiles/{profile_ref}",
-    response_model=GovernanceProfileOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
 def get_governance_profile(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+) -> GovernanceProfileOut:
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return _resolve_profile_ref(
-        db=db,
-        tenant_id=tenant_id,
-        profile_ref=profile_ref,
-        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+        db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY
     )
 
 
-@router.get(
-    "/governance-profiles/{profile_ref}/resolved",
-    response_model=GovernanceProfileResolvedResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse)
 def get_governance_profile_resolved(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+) -> GovernanceProfileResolvedResponse:
+    dataset_service.ensure_member(db, tenant_id, account_id)
     try:
-        resolved = resolve_governance_profile_ref_effective(
-            db=db,
-            tenant_id=tenant_id,
-            profile_ref=profile_ref,
-        )
+        resolved = resolve_governance_profile_ref_effective(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
     except ValueError as exc:
         msg = str(exc) or "invalid profile_ref"
         if "not found" in msg.lower():
             raise HTTPException(status_code=404, detail=msg) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
-
     return GovernanceProfileResolvedResponse(
-        profile=resolved.profile,
-        chain=resolved.chain,
-        effective=resolved.effective,
+        profile=resolved.profile, chain=resolved.chain, effective=resolved.effective
     )
 
 
-@router.patch(
-    "/governance-profiles/{profile_ref}",
-    response_model=GovernanceProfileOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
 def update_governance_profile(
     profile_ref: str,
     body: GovernanceProfileUpdate,
@@ -832,26 +712,19 @@ def update_governance_profile(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
+) -> GovernanceProfileOut:
+    dataset_service.ensure_member(db, tenant_id, account_id)
     row = _resolve_custom_profile_row(
-        db=db,
-        tenant_id=tenant_id,
-        profile_ref=profile_ref,
-        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+        db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY
     )
-
     if body.name is not None:
-        name = str(body.name or "").strip()
+        name = body.name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="name must not be empty")
-        row.name = name[:200]
-
+        row.name = name
     if body.description is not None:
-        desc = str(body.description or "").strip()
-        row.description = desc[:2000] if desc else None
-
+        desc = body.description.strip()
+        row.description = desc if desc else None
     if body.payload is not None:
         try:
             payload = validate_and_normalize_payload(body.payload)
@@ -859,48 +732,53 @@ def update_governance_profile(
             raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        row.payload = payload.model_dump()
-
+        row.payload = payload.model_dump(mode="json")
     db.commit()
     db.refresh(row)
     return _profile_out_from_row(row)
 
 
-@router.delete("/governance-profiles/{profile_ref}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete("/governance-profiles/{profile_ref}", status_code=204)
 def delete_governance_profile(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
+) -> None:
+    dataset_service.ensure_member(db, tenant_id, account_id)
     row = _resolve_custom_profile_row(
-        db=db,
-        tenant_id=tenant_id,
-        profile_ref=profile_ref,
-        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+        db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY
     )
-
     db.delete(row)
     db.commit()
-    return None
 
 
-@router.post(
-    "/governance-profiles/import",
-    response_model=GovernanceProfileImportResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+def _import_governance_profile_records(
+    db: Session, *, tenant_id: UUID, raw_profiles: list[object], overwrite: bool
+) -> GovernanceProfileImportResponse:
+    created = 0
+    updated = 0
+    out_items: list[GovernanceProfileSummary] = []
+    for item in raw_profiles:
+        record = _normalize_governance_profile_import_record(item)
+        created_delta, updated_delta, summary = _upsert_governance_profile_import_record(
+            db=db, tenant_id=tenant_id, record=record, overwrite=overwrite
+        )
+        created += created_delta
+        updated += updated_delta
+        out_items.append(summary)
+    db.commit()
+    return GovernanceProfileImportResponse(created=created, updated=updated, items=out_items)
+
+
+@router.post("/governance-profiles/import", response_model=GovernanceProfileImportResponse)
 async def import_governance_profiles(
-    file: Annotated[UploadFile, File(...)],
-    overwrite: Annotated[bool, Form()] = False,
+    form: Annotated[PipelineProfileImportForm, Form(media_type="multipart/form-data")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
+) -> GovernanceProfileImportResponse:
     """
     Import governance profile scripts (JSON).
 
@@ -908,181 +786,124 @@ async def import_governance_profiles(
     - Only declarative JSON is accepted (no executable code).
     - Strong validation on regex rules and option keys is applied server-side.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    raw_profiles = _raw_governance_profile_import_items(await _read_governance_profile_import_json(file))
-    created = 0
-    updated = 0
-    out_items: list[GovernanceProfileSummary] = []
-    for item in raw_profiles:
-        record = _normalize_governance_profile_import_record(item)
-        created_delta, updated_delta, summary = _upsert_governance_profile_import_record(
-            db=db,
-            tenant_id=tenant_id,
-            record=record,
-            overwrite=bool(overwrite),
-        )
-        created += created_delta
-        updated += updated_delta
-        out_items.append(summary)
-
-    db.commit()
-    return GovernanceProfileImportResponse(created=created, updated=updated, items=out_items)
+    await _run_pipeline_db_call(dataset_service.ensure_member, tenant_id=tenant_id, account_id=account_id)
+    raw_profiles = _raw_governance_profile_import_items(await _read_governance_profile_import_json(form.file))
+    return await _run_pipeline_db_call(
+        _import_governance_profile_records, tenant_id=tenant_id, raw_profiles=raw_profiles, overwrite=form.overwrite
+    )
 
 
-@router.get("/governance-profiles/{profile_ref}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/governance-profiles/{profile_ref}/export")
 def export_governance_profile(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+) -> Response:
+    dataset_service.ensure_member(db, tenant_id, account_id)
     profile = _resolve_profile_ref(
-        db=db,
-        tenant_id=tenant_id,
-        profile_ref=profile_ref,
-        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+        db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY
     )
-
     payload = profile.payload.model_dump()
-    export_obj = {
-        "name": profile.name,
-        "description": profile.description,
-        "key": profile.key,
-        "payload": payload,
-    }
-
-    # Best-effort safe filename.
-    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(profile.key or "profile"))[:64]
+    export_obj = {"name": profile.name, "description": profile.description, "key": profile.key, "payload": payload}
+    safe_key = re.sub("[^a-zA-Z0-9_.-]+", "_", profile.key)[:64]
     filename = f"{safe_key}.governance-profile.json"
     content = json.dumps(export_obj, ensure_ascii=False, indent=2).encode("utf-8")
-    return Response(
-        content=content,
-        media_type="application/json",
-        headers=download_response_headers(filename),
-    )
+    return Response(content=content, media_type="application/json", headers=file_response_headers(filename))
 
 
-@router.get(
-    "/governance-profiles/{profile_ref}/export-ingestion-policy",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/governance-profiles/{profile_ref}/export-ingestion-policy")
 def export_governance_profile_ingestion_policy(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Response:
     """
     Export a minimal, importable dataset ingestion policy that references the given governance profile.
 
     This "closes the loop" for operators: build custom governance profiles in the UI, then export
     an ingestion_policy JSON snippet to be imported into a dataset.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     profile = _resolve_profile_ref(
-        db=db,
-        tenant_id=tenant_id,
-        profile_ref=profile_ref,
-        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+        db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY
     )
-
-    # Best-effort safe filename + rule id.
-    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(profile.key or "profile"))[:64] or "profile"
+    safe_key = re.sub("[^a-zA-Z0-9_.-]+", "_", profile.key)[:64] or "profile"
     filename = f"{safe_key}.ingestion_policy.json"
-
-    # Match all files by default; operators can refine extensions/filename_regex after import.
     rule = IngestionRule(
         id=f"gov:{safe_key}"[:100],
-        name=f"Governance: {str(profile.name or '').strip() or safe_key}"[:200],
+        name=f"Governance: {profile.name.strip() or safe_key}"[:200],
         enabled=True,
         match={"extensions": []},
         preprocess={"enabled": False, "steps": []},
-        governance_profile_ref=str(profile.key or "").strip() or None,
+        governance_profile_ref=profile.key,
         pipeline_patch={},
     )
-
     policy = IngestionPolicy(version="1", rules=[rule])
     content = export_policy_json(policy)
-    return Response(
-        content=content,
-        media_type="application/json",
-        headers=download_response_headers(filename),
-    )
+    return Response(content=content, media_type="application/json", headers=file_response_headers(filename))
 
 
-@router.post("/parse-preview", response_model=ParsePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _assert_pipeline_dataset_writable(db: Session, *, tenant_id: UUID, account_id: str, dataset_id: UUID) -> None:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
+
+
+@router.post("/parse-preview", response_model=ParsePreviewResponse)
 async def parse_preview(
     request: Request,
-    file: Annotated[UploadFile, File(...)],
-    parser_backend: Annotated[str | None, Form()] = None,
+    form: Annotated[PipelineParsePreviewForm, Form(media_type="multipart/form-data")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
+) -> ParsePreviewResponse:
     """
     Parse a file into a Markdown preview without persisting it; extract inline images to uploads/{tenant}/images.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    file_ext = Path(file.filename).suffix.lower()
+    await _run_pipeline_db_call(dataset_service.ensure_member, tenant_id=tenant_id, account_id=account_id)
+    file_ext = Path(form.file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}",
+            status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
-
-    # Save to a temporary path.
     preview_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
-    preview_dir.mkdir(parents=True, exist_ok=True)
     run_dir = preview_dir / uuid.uuid4().hex
-    run_dir.mkdir(parents=True, exist_ok=True)
     temp_path = run_dir / f"input{file_ext}"
     try:
-        await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
-
+        await save_upload_file(form.file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
         result = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
                 "action": "pipeline_parse_preview",
                 "tenant_id": str(tenant_id),
-                "account_id": str(account_id),
+                "account_id": account_id,
                 "file_path": str(temp_path),
-                "parser_backend": parser_backend,
+                "parser_backend": form.parser_backend,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=settings.TASK_JOB_TIMEOUT_SEC,
         )
-        return result
+        return ParsePreviewResponse.model_validate(result)
     except SubprocessCancelled:
         raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
-        err_type = (e.details or {}).get("type")
-        if err_type == "ValueError":
+        err_type = e.details.get("type")
+        if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=str(e)) from e
         raise HTTPException(status_code=500, detail="Failed to parse preview") from e
     finally:
-        shutil.rmtree(run_dir, ignore_errors=True)
+        await _cleanup_preview_directory(run_dir)
 
 
-def _profile_pipeline_patch_for_ingestion(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    profile_ref: str,
-) -> dict[str, object]:
+def _profile_pipeline_patch_for_ingestion(*, db: Session, tenant_id: UUID, profile_ref: str) -> dict[str, object]:
     prof = _resolve_profile_ref(
-        db=db,
-        tenant_id=tenant_id,
-        profile_ref=profile_ref,
-        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+        db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY
     )
-    patch_dict = dict(prof.payload.pipeline_patch or {})
-    rules = [rule.model_dump() for rule in (prof.payload.regex_rules or [])]
+    patch_dict = prof.payload.pipeline_patch.copy()
+    rules = [rule.model_dump() for rule in prof.payload.regex_rules]
     if rules:
         patch_dict["governance_regex_rules"] = rules
     return patch_dict
@@ -1090,55 +911,73 @@ def _profile_pipeline_patch_for_ingestion(
 
 def _resolve_ingestion_preview_config(
     *,
-    matched_rule: object | None,
+    matched_rule: IngestionRule | None,
     parser_backend: str | None,
     chunk_strategy: str | None,
     db: Session,
     tenant_id: UUID,
 ) -> _IngestionPreviewConfig:
-    default_pb, default_cs, base_pb, base_cs = _ingestion_preview_defaults(parser_backend, chunk_strategy)
+    default_parser_backend, default_chunk_strategy, base_parser_backend, base_chunk_strategy = (
+        _ingestion_preview_defaults(parser_backend, chunk_strategy)
+    )
     config = _IngestionPreviewConfig(
-        base_parser_backend=base_pb,
-        base_chunk_strategy=base_cs,
-        parser_backend_choice=base_pb,
-        chunk_strategy_choice=base_cs,
+        base_parser_backend=base_parser_backend,
+        base_chunk_strategy=base_chunk_strategy,
+        parser_backend_choice=base_parser_backend,
+        chunk_strategy_choice=base_chunk_strategy,
     )
     if matched_rule is None:
         return config
-
-    if base_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
-        config.parser_backend_choice = str(matched_rule.parser_backend)
-    if base_cs in {"", default_cs} and matched_rule.chunk_strategy:
-        config.chunk_strategy_choice = str(matched_rule.chunk_strategy)
-
+    if base_parser_backend in {"", "auto", default_parser_backend} and matched_rule.parser_backend:
+        config.parser_backend_choice = matched_rule.parser_backend
+    if base_chunk_strategy in {"", default_chunk_strategy} and matched_rule.chunk_strategy:
+        config.chunk_strategy_choice = matched_rule.chunk_strategy
     config.preprocess_steps = _ingestion_rule_preprocess_steps(matched_rule)
-    governance_profile_ref = getattr(matched_rule, "governance_profile_ref", None)
-    if isinstance(governance_profile_ref, str) and governance_profile_ref.strip():
+    governance_profile_ref = matched_rule.governance_profile_ref
+    if governance_profile_ref is not None and governance_profile_ref.strip():
         config.governance_profile_ref = governance_profile_ref.strip()
         config.patch_dict.update(
-            _profile_pipeline_patch_for_ingestion(
-                db=db,
-                tenant_id=tenant_id,
-                profile_ref=config.governance_profile_ref,
-            )
+            _profile_pipeline_patch_for_ingestion(db=db, tenant_id=tenant_id, profile_ref=config.governance_profile_ref)
         )
-    config.patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+    config.patch_dict.update(matched_rule.pipeline_patch)
     return config
 
 
-@router.post("/ingestion-preview", response_model=IngestionPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _prepare_ingestion_preview(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    filename: str,
+    file_ext: str,
+    parser_backend: str | None,
+    chunk_strategy: str | None,
+) -> tuple[dict[str, Any], IngestionRule | None, _IngestionPreviewConfig]:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    dataset_meta = dict(dataset.dataset_metadata or {})
+    policy = parse_ingestion_policy_from_metadata(dataset_meta)
+    matched_rule = match_ingestion_rule(policy, filename=filename, file_ext=file_ext)
+    config = _resolve_ingestion_preview_config(
+        matched_rule=matched_rule,
+        parser_backend=parser_backend,
+        chunk_strategy=chunk_strategy,
+        db=db,
+        tenant_id=tenant_id,
+    )
+    return (dataset_meta, matched_rule, config)
+
+
+@router.post("/ingestion-preview", response_model=IngestionPreviewResponse)
 async def ingestion_preview(
     request: Request,
-    file: Annotated[UploadFile, File(...)],
-    dataset_id: Annotated[UUID, Form(...)],
-    parser_backend: Annotated[str | None, Form()] = None,
-    chunk_strategy: Annotated[str | None, Form()] = None,
-    diff_max_lines: Annotated[int, Form()] = 2000,
+    form: Annotated[PipelineIngestionPreviewForm, Form(media_type="multipart/form-data")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
+) -> IngestionPreviewResponse:
     """
     One-shot ingestion preview for a dataset:
     - match dataset ingestion policy
@@ -1146,372 +985,234 @@ async def ingestion_preview(
     - parse to Markdown (preview)
     - run governance clean preview (issues + unified diff)
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-
-    file_ext = Path(file.filename).suffix.lower()
+    file_ext = Path(form.file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}",
+            status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
-
     preview_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
-    preview_dir.mkdir(parents=True, exist_ok=True)
     run_dir = preview_dir / uuid.uuid4().hex
-    run_dir.mkdir(parents=True, exist_ok=True)
     temp_path = run_dir / f"input{file_ext}"
-
     try:
-        await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
-
-        dataset_meta = _dataset_metadata_dict(dataset)
-        policy = parse_ingestion_policy_from_metadata(dataset_meta) or None
-        matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
-        config = _resolve_ingestion_preview_config(
-            matched_rule=matched_rule,
-            parser_backend=parser_backend,
-            chunk_strategy=chunk_strategy,
-            db=db,
+        await save_upload_file(form.file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        dataset_meta, matched_rule, config = await _run_pipeline_db_call(
+            _prepare_ingestion_preview,
             tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=form.dataset_id,
+            filename=form.file.filename,
+            file_ext=file_ext,
+            parser_backend=form.parser_backend,
+            chunk_strategy=form.chunk_strategy,
         )
-
-        # Preprocess file (before parsing).
-        parse_path, pre_summary = _preprocess_ingestion_preview_file(temp_path, config.preprocess_steps)
-
-        # Compute effective governance options (dataset defaults + rule/profile patches).
-        patch_opts = PipelineOptions(**config.patch_dict) if config.patch_dict else PipelineOptions()
+        parse_path, pre_summary = await run_blocking_in_thread(
+            _preprocess_ingestion_preview_file, temp_path, config.preprocess_steps
+        )
+        patch_opts = PipelineOptions(**config.patch_dict)
         effective = resolve_pipeline_effective(
-            dataset_metadata=dataset_meta,
-            document_metadata={},
-            request_overrides=patch_opts,
+            dataset_metadata=dataset_meta, document_metadata={}, request_overrides=patch_opts
         )
+        from app.services.pipeline_config import validate_pipeline_execution
 
-        # Parse preview via subprocess worker.
+        validate_pipeline_execution(effective)
         parsed = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
                 "action": "pipeline_parse_preview",
                 "tenant_id": str(tenant_id),
-                "account_id": str(account_id),
+                "account_id": account_id,
                 "file_path": str(parse_path),
                 "parser_backend": config.parser_backend_choice,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=settings.TASK_JOB_TIMEOUT_SEC,
         )
-
-        # Governance clean preview (issues + diff).
         clean_body = _build_ingestion_clean_preview_request(
-            parsed=parsed,
-            effective=effective,
-            diff_max_lines=diff_max_lines,
+            markdown=parsed["markdown"], effective=effective, diff_max_lines=form.diff_max_lines
         )
-        cleaned = clean_preview(body=clean_body, tenant_id=tenant_id, account_id=account_id, db=db)
+        cleaned = await run_blocking_in_thread(build_clean_preview, clean_body)
         rule_out = _ingestion_preview_rule_output(matched_rule, config)
         explain = _ingestion_preview_explain(
-            dataset_id=dataset_id,
-            file=file,
+            dataset_id=form.dataset_id,
+            filename=form.file.filename,
             file_ext=file_ext,
             config=config,
             rule_out=rule_out,
             pre_summary=pre_summary,
             parsed=parsed,
         )
-
-        return {
-            "rule": rule_out,
-            "preprocess": pre_summary,
-            "parse": parsed,
-            "clean": cleaned,
-            "explain": explain,
-        }
+        return IngestionPreviewResponse.model_validate(
+            {"rule": rule_out, "preprocess": pre_summary, "parse": parsed, "clean": cleaned, "explain": explain}
+        )
     except SubprocessCancelled:
         raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
-        err_type = (e.details or {}).get("type")
-        if err_type == "ValueError":
+        err_type = e.details.get("type")
+        if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=str(e)) from e
         raise HTTPException(status_code=500, detail="Failed to parse preview") from e
     finally:
-        shutil.rmtree(run_dir, ignore_errors=True)
+        await _cleanup_preview_directory(run_dir)
 
 
-@router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse)
 def chunk_preview(
     body: PipelineChunkPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> PipelineChunkPreviewResponse:
     """
     Perform hierarchical chunking for Markdown text and return highlight offsets.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     chunks = hierarchical_chunk_markdown(body.markdown)
     return PipelineChunkPreviewResponse(**chunks)
 
 
-@router.post(
-    "/clean-preview",
-    response_model=CleanPreviewResponse,
-    response_model_exclude_none=True,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/clean-preview", response_model=CleanPreviewResponse, response_model_exclude_none=True)
 def clean_preview(
     body: CleanPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> CleanPreviewResponse:
     """
     Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    input_text = _extract_governance_input_text(body)
-    input_text, frontmatter, title, tags = _extract_clean_preview_frontmatter(input_text, body)
-    baseline_text = input_text or ""
-
-    analysis_opts = _governance_analysis_options(body)
-    rules, rule_meta = _build_clean_preview_rules(body)
-    common_lines = (
-        build_repeated_line_signatures(
-            baseline_text,
-            min_occurrences=body.common_lines_min_occurrences,
-            max_line_length=body.unwrap_max_line_length,
-        )
-        if body.remove_common_lines
-        else None
-    )
-    try:
-        result = clean_markdown(
-            baseline_text,
-            rules=rules,
-            regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
-            normalize_line_endings=body.normalize_line_endings,
-            trim_trailing_spaces=body.trim_trailing_spaces,
-            collapse_blank_lines=body.collapse_blank_lines,
-            max_blank_lines=body.max_blank_lines,
-            remove_control_chars=body.remove_control_chars,
-            remove_toc_lines=body.remove_toc_lines,
-            remove_noise_lines=body.remove_noise_lines,
-            unwrap_lines=body.unwrap_lines,
-            remove_common_lines=body.remove_common_lines,
-            common_lines=common_lines,
-            unwrap_max_line_length=body.unwrap_max_line_length,
-            noise_min_chars=body.noise_min_chars,
-            noise_ratio_threshold=body.noise_ratio_threshold,
-        )
-    except RegexSubstitutionTimeoutError as exc:
-        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
-
-    rule_hits = list(getattr(result, "rule_hits", None) or [])
-    rule_stats = _clean_preview_rule_stats(rules, rule_meta, rule_hits)
-
-    text = _apply_preview_format_transforms(result.markdown, body)
-    text, pii_hits, secrets_hits = _apply_preview_sensitive_redaction(text, body)
-    text, paragraphs_dropped, references_removed_lines, urls_changed = _apply_preview_cleanup_stats(text, body)
-    response_context = _CleanPreviewResponseContext(
-        baseline_text=baseline_text,
-        body=body,
-        clean_result=result,
-        rule_stats=rule_stats,
-        pii_hits=pii_hits,
-        secrets_hits=secrets_hits,
-        frontmatter=frontmatter,
-        title=title,
-        tags=tags,
-        urls_changed=urls_changed,
-        paragraphs_dropped=paragraphs_dropped,
-        references_removed_lines=references_removed_lines,
-        analysis_opts=analysis_opts,
-    )
-
-    drop_reason = _preview_drop_reason(text, body)
-    if drop_reason is not None:
-        return _build_clean_preview_response(
-            response_context,
-            markdown="",
-            dropped=True,
-            drop_reason=drop_reason,
-        )
-
-    response_context.title = _extract_preview_title(text, title)
-    response_context.language, response_context.language_confidence = _detect_preview_language(text, body)
-    response_context.keywords = _extract_preview_keywords(text, body)
-    return _build_clean_preview_response(
-        response_context,
-        markdown=text,
-        dropped=False,
-        drop_reason=None,
-    )
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    return build_clean_preview(body)
 
 
-@router.post(
-    "/learn-common-lines",
-    response_model=GovernanceCommonLinesLearnResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse)
 def learn_common_lines(
     body: GovernanceCommonLinesLearnRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> GovernanceCommonLinesLearnResponse:
     """
     Learn common/repeated header/footer lines across multiple documents in a dataset.
 
     This endpoint is intended to support "learning mode" in the governance UI:
     discover candidate lines, then turn them into regex rules and write into a custom profile.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     total, texts = _collect_common_lines_texts(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=body.dataset_id,
-        limit_docs=int(body.limit_docs),
-        use_original=bool(body.use_original),
+        limit_docs=body.limit_docs,
+        use_original=body.use_original,
     )
-
     if len(texts) < 2:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Not enough documents with persisted parsed content. "
-                "Enable persist_parsed_content and ingest some documents first."
-            ),
+            detail="Not enough documents with persisted parsed content. Enable persist_parsed_content and ingest some documents first.",
         )
-
     candidates_raw = learn_common_line_candidates(
         texts,
-        min_docs=int(body.min_docs),
-        min_ratio=float(body.min_ratio),
-        max_line_length=int(body.max_line_length),
-        max_candidates=int(body.max_candidates),
+        min_docs=body.min_docs,
+        min_ratio=body.min_ratio,
+        max_line_length=body.max_line_length,
+        max_candidates=body.max_candidates,
     )
     candidates = [
         GovernanceCommonLineCandidate(
-            signature=str(it.get("signature") or ""),
-            sample=str(it.get("sample") or "")[:400],
-            docs=int(it.get("docs") or 0),
-            ratio=float(it.get("ratio") or 0.0),
+            signature=it["signature"], sample=it["sample"][:400], docs=it["docs"], ratio=it["ratio"]
         )
         for it in candidates_raw
-        if isinstance(it, dict) and str(it.get("signature") or "").strip()
     ]
-
     return GovernanceCommonLinesLearnResponse(
-        dataset_id=body.dataset_id,
-        total_documents=int(total),
-        used_documents=int(len(texts)),
-        candidates=candidates,
+        dataset_id=body.dataset_id, total_documents=total, used_documents=len(texts), candidates=candidates
     )
 
 
-@router.post(
-    "/governance-analyze",
-    response_model=GovernanceAnalyzeResponse,
-    response_model_exclude_none=True,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/governance-analyze", response_model=GovernanceAnalyzeResponse, response_model_exclude_none=True)
 def governance_analyze(
     body: GovernanceAnalyzeRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> GovernanceAnalyzeResponse:
     """
     Analyze a text for governance issues without performing cleaning/persistence.
 
     This is intended for "quality check" UI flows to recommend治理配置/预设。
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
+    dataset_service.ensure_member(db, tenant_id, account_id)
     input_text = _extract_governance_input_text(body)
     analysis_opts = _governance_analysis_options(body)
-    base = input_text or ""
+    base = input_text
     out_issues, patch = _analyze_governance_preview(base, "", body, analysis_opts)
     return GovernanceAnalyzeResponse(
-        input_chars=len(base),
-        input_lines=len(base.splitlines()),
-        issues=out_issues,
-        suggested_pipeline_patch=dict(patch or {}),
+        input_chars=len(base), input_lines=len(base.splitlines()), issues=out_issues, suggested_pipeline_patch=patch
     )
 
 
-@router.get("/clean-rules", response_model=CleanRulesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/clean-rules", response_model=CleanRulesResponse)
 def list_clean_rules(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> CleanRulesResponse:
     """
     Return default governance rules for UI selection/editing.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return CleanRulesResponse(
         rules=[CleanRegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
     )
 
 
-@router.post("/extract-keywords", response_model=KeywordExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/extract-keywords", response_model=KeywordExtractResponse)
 def extract_keywords(
     body: KeywordExtractRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> KeywordExtractResponse:
     """
     Extract keywords (for governance/annotation/classification).
 
     Supported providers:
-    - provider=auto (prefer HanLP, fallback to jieba)
+    - provider=auto (jieba)
     - provider=jieba / jieba_tfidf (default)
     - provider=jieba_textrank
-    - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
     - provider=simple (lightweight regex tokenization + term frequency)
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    from app.rag.preprocessing.keyword import (
-        KeywordProviderUnavailable,
-        UnsupportedKeywordProvider,
-    )
-    from app.rag.preprocessing.keyword import (
-        extract_keywords as extract_keywords_fn,
-    )
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    from app.rag.preprocessing.keyword import KeywordProviderUnavailable, UnsupportedKeywordProvider
+    from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_fn
 
     provider = (body.provider or "jieba").lower()
     try:
-        keywords = extract_keywords_fn(body.text or "", provider=provider, top_k=int(body.top_k))
+        keywords = extract_keywords_fn(body.text, provider=provider, top_k=body.top_k)
         return KeywordExtractResponse(provider=provider, keywords=keywords)
     except KeywordProviderUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except UnsupportedKeywordProvider as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Keyword extraction failed: {str(exc)}") from exc
 
 
-@router.post("/auto-annotations", response_model=AutoAnnotationResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/auto-annotations", response_model=AutoAnnotationResponse)
 async def auto_annotations(
     body: AutoAnnotationRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
+) -> AutoAnnotationResponse:
     """
     Generate reviewable annotation candidates for the data-governance UI.
 
@@ -1522,28 +1223,23 @@ async def auto_annotations(
 
     Results are suggestions for human confirmation, not authoritative labels.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    source = str(body.text or "")
+    await _run_pipeline_db_call(dataset_service.ensure_member, tenant_id=tenant_id, account_id=account_id)
+    source = body.text
     total_chars = len(source)
-    max_chars = max(1, min(int(body.max_chars or 20_000), 200_000))
+    max_chars = body.max_chars
     scan_text = source[:max_chars]
-    max_items = max(1, min(int(body.max_annotations or 80), 500))
-
-    mode = str(body.mode or "document_focus").strip().lower()
+    max_items = body.max_annotations
+    mode = body.mode
     providers = _normalize_auto_annotation_providers(body)
     draft = _AutoAnnotationDraft()
-
     try:
         if mode == "document_focus":
             await _collect_document_focus_annotations(draft, scan_text, body, providers, max_items)
         else:
             await _collect_compliance_annotations(draft, scan_text, body, providers, max_items)
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Auto annotation failed: {str(exc)}") from exc
-
     keyword_provider = _finalize_auto_annotation_keyword_provider(draft.keyword_provider, body, providers)
-
     annotations = _dedupe_auto_annotations(draft.candidates, max_items=max_items)
     if not draft.document_tags:
         draft.document_tags.extend(_derive_document_tags_from_annotations(annotations, max_items=max_items))
@@ -1556,20 +1252,33 @@ async def auto_annotations(
         scanned_chars=len(scan_text),
         truncated=total_chars > len(scan_text),
         keyword_provider=keyword_provider,
-        strategy=draft.strategy,  # type: ignore[arg-type]
+        strategy=draft.strategy,
         providers_used=draft.providers_used,
         warnings=draft.warnings,
     )
 
 
-@router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _prepare_llm_clean_preview(
+    db: Session, *, body: LLMCleanPreviewRequest, tenant_id: UUID, account_id: str
+) -> _LLMCleanPromptSelection:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    markdown = body.markdown
+    if len(markdown) > body.max_chars:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Markdown too large for LLM preview (len={len(markdown)} > max_chars={body.max_chars}).",
+        )
+    prompt_selection = _resolve_llm_clean_prompt_selection(body=body, db=db, tenant_id=tenant_id, account_id=account_id)
+    return prompt_selection
+
+
+@router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse)
 async def llm_clean_preview(
     body: LLMCleanPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
+) -> LLMCleanPreviewResponse:
     """
     Use an LLM to preview governance-style cleaning for Markdown (no persistence).
 
@@ -1577,22 +1286,15 @@ async def llm_clean_preview(
     - This endpoint calls an LLM (requires `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`).
     - PromptTemplate can override the cleaning strategy via `prompt_template_id` / `template_key` / `ab_experiment_key`.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    markdown = body.markdown or ""
-    if len(markdown) > int(body.max_chars):
-        raise HTTPException(
-            status_code=413,
-            detail=f"Markdown too large for LLM preview (len={len(markdown)} > max_chars={body.max_chars}).",
-        )
-
-    prompt_selection = _resolve_llm_clean_prompt_selection(body=body, db=db, tenant_id=tenant_id, account_id=account_id)
+    markdown = body.markdown
+    prompt_selection = await _run_pipeline_db_call(
+        _prepare_llm_clean_preview, body=body, tenant_id=tenant_id, account_id=account_id
+    )
     resp = await _request_llm_clean_preview(markdown=markdown, body=body, system_prompt=prompt_selection.system_prompt)
     cleaned, warnings = _parse_llm_clean_response(resp, markdown)
-
     return LLMCleanPreviewResponse(
         markdown=cleaned,
-        changed=(cleaned != markdown),
+        changed=cleaned != markdown,
         model_used=body.model or settings.LLM_MODEL,
         prompt_template_id=prompt_selection.prompt_template_id,
         template_key=prompt_selection.template_key,
@@ -1602,20 +1304,13 @@ async def llm_clean_preview(
     )
 
 
-@router.post(
-    "/upload-zip-with-images",
-    response_model=ZipWithImagesResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/upload-zip-with-images", response_model=ZipWithImagesResponse)
 async def upload_zip_with_images(
-    file: Annotated[UploadFile, File(...)],
-    dataset_id: Annotated[str, Form(...)],
-    document_id: Annotated[str | None, Form()] = None,
+    form: Annotated[PipelineZipUploadForm, Form(media_type="multipart/form-data")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
+) -> ZipWithImagesResponse:
     """
     Upload a ZIP that contains Markdown + images.
 
@@ -1641,55 +1336,44 @@ async def upload_zip_with_images(
         raise HTTPException(
             status_code=503, detail="MinIO is disabled; cannot process image uploads. Set MINIO_ENABLED=true"
         )
-
-    # Validate file type.
-    if not file.filename.endswith(".zip"):
+    if not form.file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only ZIP format files are supported")
-
     try:
-        dataset_uuid = UUID(str(dataset_id))
+        dataset_uuid = UUID(form.dataset_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid dataset_id") from exc
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
-
-    # Save to a temporary file.
+    await _run_pipeline_db_call(
+        _assert_pipeline_dataset_writable, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_uuid
+    )
     temp_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "temp_zip"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
     temp_zip_path = temp_dir / f"{uuid.uuid4()}.zip"
-
     try:
-        # Write to a temporary file (streamed, size-limited).
-        await save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
-
-        # Process ZIP: extract images and upload to MinIO.
-        doc_id = document_id or file.filename.rsplit(".", 1)[0]
-        result = zip_image_processor.process_zip_with_images(
-            zip_path=temp_zip_path, tenant_id=str(tenant_id), dataset_id=dataset_id, document_id=doc_id
+        await save_upload_file(form.file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
+        doc_id = form.document_id if form.document_id else form.file.filename.rsplit(".", 1)[0]
+        result = await run_blocking_in_thread(
+            process_zip_with_images,
+            zip_path=temp_zip_path,
+            tenant_id=str(tenant_id),
+            dataset_id=form.dataset_id,
+            document_id=doc_id,
         )
-
-        return {
+        payload = {
             "markdown": result["markdown"],
             "images": result["images"],
             "image_count": result["image_count"],
-            "dataset_id": dataset_id,
+            "dataset_id": form.dataset_id,
             "document_id": doc_id,
         }
-
     except HTTPException:
         raise
     except (ValueError, zipfile.BadZipFile) as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid ZIP format/content: {str(e)}",
-        ) from e
+        raise HTTPException(status_code=400, detail=f"Invalid ZIP format/content: {str(e)}") from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ZIP processing failed: {str(e)}") from e
     finally:
-        # Clean up temporary files.
         try:
-            if temp_zip_path.exists():
-                temp_zip_path.unlink()
+            with anyio.fail_after(5.0, shield=True):
+                await run_blocking_in_thread(temp_zip_path.unlink, missing_ok=True)
         except Exception as exc:
-            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
+            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc, exc_info=True)
+    return ZipWithImagesResponse.model_validate(payload)

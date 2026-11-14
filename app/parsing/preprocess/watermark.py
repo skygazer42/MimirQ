@@ -7,41 +7,39 @@ This provides three best-effort paths:
 3) Local ONNX inpainting with OCR/rule/geometry-derived mask boxes.
 """
 
+from __future__ import annotations
 
 import math
+import re
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from PIL import Image, ImageDraw
 
 from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.parsing.enrich.watermark_suppressor import suppress_watermark_file
-from app.parsing.preprocess.model_loader import get_preprocess_model_loader
+from app.parsing.preprocess.model_loader import get_preprocess_model_loader, positive_onnx_dimension
 from app.rag.core.logging import get_logger
 
+if TYPE_CHECKING:
+    from onnxruntime import InferenceSession
+
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+_WATERMARK_KEYWORD_RE = re.compile(
+    r"(draft|company confidential|for internal use only|仅供内部使用|机密|保密)", re.IGNORECASE
+)
 logger = get_logger(__name__)
-
-
-def _positive_int(value: Any) -> int | None:
-    try:
-        number = int(value)
-    except Exception:
-        return None
-    return number if number > 0 else None
 
 
 def _infer_onnx_layout(shape: Any) -> str:
     dims = list(shape or [])
     if len(dims) != 4:
         return "nchw"
-    if _positive_int(dims[-1]) in {1, 3, 4}:
+    if positive_onnx_dimension(dims[-1]) in {1, 3, 4}:
         return "nhwc"
-    if _positive_int(dims[1]) in {1, 3, 4}:
-        return "nchw"
     return "nchw"
 
 
@@ -157,9 +155,6 @@ def _watermark_reason(
     height: int,
     gray: Image.Image,
 ) -> str:
-    import re
-
-    keyword_re = re.compile(r"(draft|company confidential|for internal use only|仅供内部使用|机密|保密)", re.IGNORECASE)
     x0, y0, x1, y1 = bbox
     box_width = max(1.0, float(x1) - float(x0))
     box_height = max(1.0, float(y1) - float(y0))
@@ -169,7 +164,7 @@ def _watermark_reason(
     low_contrast = _crop_stddev(gray, bbox) <= 28.0
     centerish = _is_center_region(bbox=bbox, width=width, height=height)
 
-    if keyword_re.search(text):
+    if _WATERMARK_KEYWORD_RE.search(text):
         return "keyword"
     if centerish and low_contrast and (width_ratio >= 0.22 or area_ratio >= 0.035 or (12.0 <= angle <= 78.0)):
         return "geometry"
@@ -197,11 +192,9 @@ def _watermark_box_from_ocr_item(
     height: int,
     gray: Image.Image,
 ) -> dict[str, Any] | None:
-    bbox = list(item.get("bbox") or [])
-    points = list(item.get("points") or [])
-    text = str(item.get("text") or "").strip()
-    if len(bbox) != 4 or not text:
-        return None
+    bbox = item["bbox"]
+    points = item["points"]
+    text = item["text"]
 
     reason = _watermark_reason(text=text, bbox=bbox, points=points, width=width, height=height, gray=gray)
     if not reason:
@@ -209,7 +202,7 @@ def _watermark_box_from_ocr_item(
     return {
         "bbox": _padded_watermark_box(bbox=bbox, width=width, height=height),
         "text": text,
-        "score": item.get("score"),
+        "score": item["score"],
         "reason": reason,
     }
 
@@ -232,10 +225,7 @@ def _mask_image_from_boxes(*, size: tuple[int, int], boxes: list[dict[str, Any]]
     mask = Image.new("L", size, color=0)
     draw = ImageDraw.Draw(mask)
     for item in boxes:
-        bbox = list(item.get("bbox") or [])
-        if len(bbox) != 4:
-            continue
-        draw.rectangle(tuple(float(v) for v in bbox), fill=255)
+        draw.rectangle(tuple(item["bbox"]), fill=255)
     return mask
 
 
@@ -243,8 +233,8 @@ def _onnx_target_size(*, dims: list[Any], layout: str) -> tuple[int | None, int 
     if len(dims) != 4:
         return None, None
     if layout == "nhwc":
-        return _positive_int(dims[2]), _positive_int(dims[1])
-    return _positive_int(dims[3]), _positive_int(dims[2])
+        return positive_onnx_dimension(dims[2]), positive_onnx_dimension(dims[1])
+    return positive_onnx_dimension(dims[3]), positive_onnx_dimension(dims[2])
 
 
 def _prepare_onnx_images(
@@ -272,7 +262,7 @@ def _onnx_feeds(
 ) -> dict[str, Any]:
     import numpy as np
 
-    image_name = str(getattr(image_input, "name", "") or "image")
+    image_name = str(image_input.name or "image")
     if mask_input is None:
         if layout == "nhwc":
             combined = np.concatenate([image_arr, mask_arr[..., None]], axis=-1)[None, ...]
@@ -280,7 +270,7 @@ def _onnx_feeds(
             combined = np.concatenate([np.transpose(image_arr, (2, 0, 1)), mask_arr[None, ...]], axis=0)[None, ...]
         return {image_name: combined}
 
-    mask_name = str(getattr(mask_input, "name", "") or "mask")
+    mask_name = str(mask_input.name or "mask")
     if layout == "nhwc":
         return {image_name: image_arr[None, ...], mask_name: mask_arr[None, ..., None]}
     return {image_name: np.transpose(image_arr, (2, 0, 1))[None, ...], mask_name: mask_arr[None, None, ...]}
@@ -312,7 +302,9 @@ def _output_changed(*, input_path: Path, output_path: Path) -> bool:
         return True
 
 
-def _run_local_onnx_inpaint(*, input_path: Path, output_path: Path, session: Any, mask_image: Image.Image) -> bool:
+def _run_local_onnx_inpaint(
+    *, input_path: Path, output_path: Path, session: InferenceSession, mask_image: Image.Image
+) -> bool:
     import numpy as np
 
     if input_path.suffix.lower() not in _RASTER_EXTS:
@@ -364,7 +356,7 @@ def _annotation_name_and_subject(annot: Any) -> tuple[str, str]:
     typ = getattr(annot, "type", None)
     name = ""
     if isinstance(typ, (tuple, list)) and len(typ) >= 2:
-        name = str(typ[1] or "")
+        name = typ[1]
     info = getattr(annot, "info", None) or {}
     subject = str((info or {}).get("subject") or (info or {}).get("title") or "")
     return name, subject
@@ -389,11 +381,10 @@ def _remove_watermark_annots_from_page(page: Any) -> int:
     return removed
 
 
-def _strip_pdf_meta(meta: dict[str, Any], *, removed: int, scanned_pages: int, start: float) -> dict[str, Any]:
-    meta["removed"] = int(removed)
-    meta["scanned_pages"] = int(scanned_pages)
+def _strip_pdf_meta(meta: dict[str, Any], *, removed: int, scanned_pages: int, start: float) -> None:
+    meta["removed"] = removed
+    meta["scanned_pages"] = scanned_pages
     meta["elapsed_ms"] = _elapsed_ms(start)
-    return meta
 
 
 def strip_pdf_watermark_annotations(
@@ -512,9 +503,9 @@ def _resolve_watermark_backend(
     auto_selected = normalized_backend == "auto"
     if not auto_selected:
         return normalized_backend, False
-    if str(model_path or "").strip():
+    if model_path.strip():
         return "local", True
-    if str(api_url or "").strip():
+    if api_url.strip():
         return "http", True
     if input_path.suffix.lower() in _RASTER_EXTS:
         return "heuristic", True
@@ -522,8 +513,8 @@ def _resolve_watermark_backend(
 
 
 def _record_mask_info(info: dict[str, Any], boxes: list[dict[str, Any]]) -> None:
-    info["mask_box_count"] = int(len(boxes))
-    info["mask_reasons"] = [str(item.get("reason") or "") for item in boxes if str(item.get("reason") or "")]
+    info["mask_box_count"] = len(boxes)
+    info["mask_reasons"] = [item["reason"] for item in boxes]
 
 
 def _collect_mask_boxes_for_path(input_path: Path, info: dict[str, Any]) -> list[dict[str, Any]]:
@@ -550,20 +541,10 @@ def _cleanup_watermark_heuristic(
         changed, suppress_meta = suppress_watermark_file(input_path=input_path, output_path=output_path, boxes=boxes)
         info["suppressor"] = suppress_meta
     except Exception as exc:  # noqa: BLE001
-        if auto_selected and not str(api_url or "").strip():
+        if auto_selected and not api_url.strip():
             return False, "missing_api_url", info
         return False, f"heuristic_failed:{exc.__class__.__name__}", info
     return changed, "watermark_ok" if changed else "watermark_no_change", info
-
-
-def _load_watermark_onnx(model_path: str, info: dict[str, Any]) -> Any | None:
-    model_ref = str(model_path or "").strip()
-    if not model_ref:
-        return None
-    loaded = get_preprocess_model_loader().load_onnx(name="watermark_removal", model_path=model_ref)
-    info["model_backend"] = str(loaded.backend or "")
-    info["model_name"] = str(loaded.name or "")
-    return loaded
 
 
 def _cleanup_watermark_local(
@@ -573,14 +554,15 @@ def _cleanup_watermark_local(
     model_path: str,
     info: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    if not str(model_path or "").strip():
+    model_ref = model_path.strip()
+    if not model_ref:
         return False, "missing_model_path", info
     try:
-        loaded = _load_watermark_onnx(model_path, info)
+        loaded = get_preprocess_model_loader().load_onnx(name="watermark_removal", model_path=model_ref)
+        info["model_backend"] = loaded.backend
+        info["model_name"] = loaded.name
     except Exception as exc:  # noqa: BLE001
         return False, f"model_unavailable:{exc.__class__.__name__}", info
-    if loaded is None:
-        return False, "missing_model_path", info
     if input_path.suffix.lower() not in _RASTER_EXTS:
         return False, "unsupported_input_type", info
     try:
@@ -611,7 +593,7 @@ def _cleanup_watermark_http(
     timeout_sec: float,
     info: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    target_url = str(api_url or "").strip()
+    target_url = api_url.strip()
     if not target_url:
         return False, "missing_api_url", info
     changed, note = remove_watermark_via_http(

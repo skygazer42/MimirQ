@@ -1,8 +1,8 @@
-
 from typing import Any
 from uuid import UUID
 
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
+from app.rag.pipeline_plugins.contracts import _value_from_metadata as _metadata_value
 from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1
 
 
@@ -12,20 +12,7 @@ def _meta(chunk: Any) -> dict[str, Any]:
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _metadata_value(meta: dict[str, Any], key: str) -> Any:
-    if key in meta:
-        return meta.get(key)
-    if "." not in key:
-        return meta.get(key)
-    cur: Any = meta
-    for part in key.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
+    return "" if value is None else str(value).strip()
 
 
 def _metadata_values_from_public_layers(meta: dict[str, Any], key: str) -> list[Any]:
@@ -41,6 +28,7 @@ def _metadata_values_from_public_layers(meta: dict[str, Any], key: str) -> list[
 
 def _format_question(template: str, meta: dict[str, Any]) -> str | None:
     values: dict[str, str] = {}
+    parts: list[str] = []
     cursor = 0
     while True:
         start = template.find("{", cursor)
@@ -49,8 +37,9 @@ def _format_question(template: str, meta: dict[str, Any]) -> str | None:
         end = template.find("}", start + 1)
         if end < 0:
             return None
-        key = template[start + 1 : end].strip()
-        if not key:
+        raw_key = template[start + 1 : end]
+        key = raw_key.strip()
+        if not key or key != raw_key or any(char in key for char in "!:[]{}") or key.partition(".")[0].isdecimal():
             return None
         raw = _metadata_value(meta, key)
         if isinstance(raw, (list, tuple, set)):
@@ -59,10 +48,14 @@ def _format_question(template: str, meta: dict[str, Any]) -> str | None:
             value = _text(raw)
         if not value:
             return None
-        values[key] = value
+        slot = f"field_{len(values)}"
+        values[slot] = value
+        parts.append(template[cursor:start])
+        parts.append("{" + slot + "}")
         cursor = end + 1
+    parts.append(template[cursor:])
     try:
-        question = template.format(**values).strip()
+        question = "".join(parts).format(**values).strip()
     except Exception:
         return None
     return question or None
@@ -251,7 +244,7 @@ def _golden_draft_item(
         extra["answer_key_points"] = answer_key_points
     return {
         "question": question,
-        "expected_answer": _text(getattr(chunk, "content", None)) or None,
+        "expected_answer": chunk.content,
         "reference_sources": [_reference_source(chunk, meta)],
         "tags": _tags(plugin_id, meta, golden_rules),
         "extra": extra,

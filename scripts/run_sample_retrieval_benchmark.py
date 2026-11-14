@@ -162,7 +162,7 @@ def _dcg_at_k_binary(ranked_chunk_ids: list[str], expected_ids: set[str], k: int
             score += rel
         else:
             score += rel / math.log2(float(rank + 1))
-    return float(score)
+    return score
 
 
 def _ndcg_at_k_binary(ranked_chunk_ids: list[str], expected_ids: set[str], k: int) -> float:
@@ -175,7 +175,7 @@ def _ndcg_at_k_binary(ranked_chunk_ids: list[str], expected_ids: set[str], k: in
     idcg = _dcg_at_k_binary(ideal_ranked, ideal_set, k)
     if idcg <= 0.0:
         return 0.0
-    return float(dcg / idcg)
+    return dcg / idcg
 
 
 def _ranked_retrieval_lists(
@@ -279,17 +279,17 @@ def _evaluate_query(
         "ranked_chunk_ids": ranked[:top_k],
         "expected_family_keys": expected_families,
         "ranked_family_keys": ranked_family_unique,
-        "hit_at_k": round(float(hit), 6),
-        "reciprocal_rank": round(float(rr), 6),
-        "ndcg_at_k": round(float(ndcg), 6),
-        "family_hit_at_k": round(float(family_hit), 6),
-        "family_reciprocal_rank": round(float(family_rr), 6),
-        "family_ndcg_at_k": round(float(family_ndcg), 6),
-        "distinct_documents": int(distinct_docs),
-        "distinct_families": int(distinct_fams),
-        "top_doc_share": round(float(top_doc_share), 6),
-        "top_family_share": round(float(top_family_share), 6),
-        "latency_ms": round(float(elapsed_ms), 3),
+        "hit_at_k": round(hit, 6),
+        "reciprocal_rank": round(rr, 6),
+        "ndcg_at_k": round(ndcg, 6),
+        "family_hit_at_k": round(family_hit, 6),
+        "family_reciprocal_rank": round(family_rr, 6),
+        "family_ndcg_at_k": round(family_ndcg, 6),
+        "distinct_documents": distinct_docs,
+        "distinct_families": distinct_fams,
+        "top_doc_share": round(top_doc_share, 6),
+        "top_family_share": round(top_family_share, 6),
+        "latency_ms": round(elapsed_ms, 3),
     }
 
 
@@ -316,14 +316,12 @@ def run_benchmark(
     _validate_fixture(fixture_obj)
 
     defaults = fixture_obj.get("defaults") if isinstance(fixture_obj.get("defaults"), dict) else {}
-    default_top_k = _safe_int((defaults or {}).get("top_k"), 5)
-    default_mode = str((defaults or {}).get("retrieval_mode") or "keyword").strip().lower() or "keyword"
+    default_top_k = _safe_int(defaults.get("top_k"), 5)
+    default_mode = str(defaults.get("retrieval_mode") or "keyword").strip().lower() or "keyword"
     effective_top_k = max(1, int(top_k if top_k is not None else default_top_k))
     effective_mode = str(retrieval_mode or default_mode).strip().lower() or "keyword"
-    default_colbert_enabled = bool((defaults or {}).get("colbert_retrieval_enabled"))
-    default_colbert_provider = (
-        str((defaults or {}).get("colbert_retrieval_provider") or "deterministic").strip().lower()
-    )
+    default_colbert_enabled = bool(defaults.get("colbert_retrieval_enabled"))
+    default_colbert_provider = str(defaults.get("colbert_retrieval_provider") or "deterministic").strip().lower()
     effective_colbert_enabled = (
         bool(colbert_retrieval_enabled) if colbert_retrieval_enabled is not None else default_colbert_enabled
     )
@@ -359,7 +357,7 @@ def run_benchmark(
         app_settings.LEXICAL_DB_ENABLED = False
         app_settings.SPARSE_RETRIEVAL_ENABLED = bool(sparse_retrieval_enabled)
         app_settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
-        app_settings.COLBERT_RETRIEVAL_ENABLED = bool(effective_colbert_enabled)
+        app_settings.COLBERT_RETRIEVAL_ENABLED = effective_colbert_enabled
         app_settings.COLBERT_RETRIEVAL_PROVIDER = effective_colbert_provider
         app_settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED = False
         app_settings.ENABLE_QUERY_REWRITE = False
@@ -428,7 +426,7 @@ def run_benchmark(
 
     lat_sorted = sorted(latencies)
     p95_idx = min(len(lat_sorted) - 1, max(0, int(round(0.95 * (len(lat_sorted) - 1)))))
-    p95_latency = float(lat_sorted[p95_idx]) if lat_sorted else 0.0
+    p95_latency = lat_sorted[p95_idx] if lat_sorted else 0.0
 
     llm_mock_env = os.getenv("LLM_MOCK_ENABLED")
     llm_mock_norm = str(llm_mock_env or "").strip().lower()
@@ -439,27 +437,27 @@ def run_benchmark(
         "fixture_schema": str(fixture_obj.get("schema") or ""),
         "fixture_path": str(fixture_path),
         "fixture_hash": stable_hash(fixture_raw, length=24),
-        "llm_mock": bool(llm_mock),
+        "llm_mock": llm_mock,
         "llm_mock_env": llm_mock_env,
         "retrieval_mode": effective_mode,
-        "top_k": int(effective_top_k),
+        "top_k": effective_top_k,
         "runtime": {
             "sparse_retrieval_enabled": bool(sparse_retrieval_enabled),
             "sparse_retrieval_provider": sparse_provider,
-            "colbert_retrieval_enabled": bool(effective_colbert_enabled),
+            "colbert_retrieval_enabled": effective_colbert_enabled,
             "colbert_retrieval_provider": effective_colbert_provider,
         },
         "summary": {
-            "cases_total": int(len(cases)),
-            "hit_at_k": round(float(sum(hits) / len(hits)), 6) if hits else 0.0,
-            "mrr": round(float(sum(rrs) / len(rrs)), 6) if rrs else 0.0,
-            "ndcg_at_k": round(float(sum(ndcgs) / len(ndcgs)), 6) if ndcgs else 0.0,
-            "family_hit_at_k": round(float(sum(fam_hits) / len(fam_hits)), 6) if fam_hits else 0.0,
-            "family_mrr": round(float(sum(fam_rrs) / len(fam_rrs)), 6) if fam_rrs else 0.0,
-            "family_ndcg_at_k": round(float(sum(fam_ndcgs) / len(fam_ndcgs)), 6) if fam_ndcgs else 0.0,
+            "cases_total": len(cases),
+            "hit_at_k": round(sum(hits) / len(hits), 6) if hits else 0.0,
+            "mrr": round(sum(rrs) / len(rrs), 6) if rrs else 0.0,
+            "ndcg_at_k": round(sum(ndcgs) / len(ndcgs), 6) if ndcgs else 0.0,
+            "family_hit_at_k": round(sum(fam_hits) / len(fam_hits), 6) if fam_hits else 0.0,
+            "family_mrr": round(sum(fam_rrs) / len(fam_rrs), 6) if fam_rrs else 0.0,
+            "family_ndcg_at_k": round(sum(fam_ndcgs) / len(fam_ndcgs), 6) if fam_ndcgs else 0.0,
             "distinct_families_mean": round(float(statistics.mean(fam_counts)), 3) if fam_counts else 0.0,
             "avg_latency_ms": round(float(statistics.mean(latencies)), 3) if latencies else 0.0,
-            "p95_latency_ms": round(float(p95_latency), 3),
+            "p95_latency_ms": round(p95_latency, 3),
         },
         "cases": cases,
     }

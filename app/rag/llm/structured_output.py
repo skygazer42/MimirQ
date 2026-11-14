@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.rag.core.text import parse_json_from_text
+from app.rag.core.json_text import parse_json_from_text
 
 
 class _StructuredBase(BaseModel):
@@ -59,8 +59,10 @@ _DEFAULT_STRUCTURED_OUTPUT_INSTRUCTIONS = (
 )
 
 
-def normalize_structured_preset_key(preset: str | None) -> str:
-    key = str(preset or "").strip().lower()
+def normalize_structured_preset_key(preset: str | None) -> str | None:
+    if preset is None:
+        return None
+    key = preset.strip().lower()
     return key if key in STRUCTURED_OUTPUT_MODELS else ""
 
 
@@ -77,7 +79,7 @@ def build_structured_abstain_payload(
 ) -> dict[str, Any]:
     key = normalize_structured_preset_key(preset)
     payload: dict[str, Any] = {
-        "answer": str(answer or ""),
+        "answer": answer,
         "citations": list(citations or []),
     }
     if key == "faq":
@@ -103,17 +105,18 @@ def _repair_with_schema(
         answer=fallback_answer,
         citations=fallback_citations,
     )
-    if isinstance(data, dict):
+    if data is not None:
         merged.update(data)
 
     model = STRUCTURED_OUTPUT_MODELS.get(key)
     if model is None:
-        return merged, not isinstance(data, dict)
+        return merged, data is None
 
     try:
         validated = model.model_validate(merged)
-        repaired = not isinstance(data, dict) or dict(validated.model_dump(mode="json")) != data
-        return dict(validated.model_dump(mode="json")), repaired
+        payload = validated.model_dump(mode="json")
+        repaired = data is None or payload != data
+        return payload, repaired
     except ValidationError:
         fallback_validated = model.model_validate(
             build_structured_abstain_payload(
@@ -122,7 +125,7 @@ def _repair_with_schema(
                 citations=fallback_citations,
             )
         )
-        return dict(fallback_validated.model_dump(mode="json")), True
+        return fallback_validated.model_dump(mode="json"), True
 
 
 def parse_and_repair_structured_output(
@@ -134,14 +137,14 @@ def parse_and_repair_structured_output(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     parsed, meta = parse_json_from_text(text, expected="object")
     payload, repaired = _repair_with_schema(
-        parsed if isinstance(parsed, dict) else None,
+        parsed,
         preset=preset,
         fallback_answer=fallback_answer,
         fallback_citations=fallback_citations,
     )
-    out_meta = dict(meta or {})
+    out_meta = dict(meta)
     out_meta["schema_key"] = normalize_structured_preset_key(preset) or "default"
-    out_meta["repaired"] = bool(repaired)
+    out_meta["repaired"] = repaired
     out_meta["fallback_used"] = not bool(out_meta.get("ok"))
     return payload, out_meta
 

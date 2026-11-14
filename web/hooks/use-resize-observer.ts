@@ -1,12 +1,17 @@
 'use client'
 
-import { useState, useEffect, RefObject } from 'react'
+import { useState, useEffect, useRef, type RefObject } from 'react'
 
 export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null>) {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  const observationRef = useRef<{ target: T; cleanup: () => void } | null>(null)
 
+  // A stable ref can point to a new element after a conditional render.
   useEffect(() => {
     const observeTarget = ref.current
+    if (observationRef.current?.target === observeTarget) return
+    observationRef.current?.cleanup()
+    observationRef.current = null
     if (!observeTarget) return
 
     let rafId: number | null = null
@@ -14,9 +19,7 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
 
     const commit = (width: number, height: number) => {
       if (width <= 0 || height <= 0) return
-      setDimensions((prev) =>
-        prev.width === width && prev.height === height ? prev : { width, height }
-      )
+      setDimensions((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
     }
 
     const scheduleCommit = (width: number, height: number) => {
@@ -43,13 +46,23 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
 
     resizeObserver.observe(observeTarget)
 
-    return () => {
-      resizeObserver.disconnect()
-      if (rafId != null) cancelAnimationFrame(rafId)
-      rafId = null
-      pending = null
+    observationRef.current = {
+      target: observeTarget,
+      cleanup: () => {
+        resizeObserver.disconnect()
+        if (rafId != null) cancelAnimationFrame(rafId)
+        rafId = null
+        pending = null
+      },
     }
-  }, [ref])
+  })
+
+  useEffect(() => {
+    return () => {
+      observationRef.current?.cleanup()
+      observationRef.current = null
+    }
+  }, [])
 
   return dimensions
 }

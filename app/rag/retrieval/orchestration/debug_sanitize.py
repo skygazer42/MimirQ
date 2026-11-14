@@ -18,14 +18,14 @@ def _copy_present_debug_keys(out: dict[str, Any], source: dict[str, Any], keys: 
 
 def _sanitize_query_normalization_debug(raw: Any) -> dict[str, Any] | None:
     qn = raw if isinstance(raw, dict) else {}
-    normalized = qn.get("normalized") if isinstance(qn.get("normalized"), str) else ""
+    normalized = qn.get("normalized")
     applied_rules = qn.get("applied_rules") if isinstance(qn.get("applied_rules"), list) else []
     if not normalized and not applied_rules:
         return None
     return {
         "applied_rules": [str(x) for x in applied_rules if x is not None][:20],
-        "original_chars": len(str(qn.get("original") or "")),
-        "normalized_chars": len(str(normalized or "")),
+        "original_chars": len(qn["original"]),
+        "normalized_chars": len(normalized) if normalized is not None else None,
     }
 
 
@@ -46,7 +46,7 @@ def _sanitize_diversity_debug(raw: Any) -> dict[str, int] | None:
     ):
         if key in raw:
             out[key] = _safe_int(raw.get(key), minimum=0, maximum=1_000_000_000)
-    return out or None
+    return out if out else None
 
 
 def _bounded_string_sample(raw: Any, *, limit: int) -> list[str]:
@@ -141,10 +141,10 @@ def _sanitize_governance_policy_debug(raw: Any) -> dict[str, Any] | None:
     for key in ("avg_boost", "max_boost"):
         if key in raw:
             out[key] = _safe_float(raw.get(key))
-    skip_reason = str(raw.get("skip_reason") or "").strip() if raw.get("skip_reason") is not None else ""
+    skip_reason = str(raw["skip_reason"]).strip() if raw.get("skip_reason") is not None else None
     if skip_reason:
         out["skip_reason"] = skip_reason[:80]
-    return out or None
+    return out if out else None
 
 
 def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -155,21 +155,25 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
     - Debug payloads may include large generated queries (HyDE) and verbose internal stats.
     - Evidence API returns metrics to downstream systems; keep payloads bounded and avoid leaking scope identifiers.
     """
-    if not isinstance(dbg, dict) or not dbg:
+    if dbg is None:
         return None
 
     out: dict[str, Any] = {}
-    _copy_present_debug_keys(out, dbg, (
-        "requested_k",
-        "search_k",
-        "fetch_k",
-        "overfetch_enabled",
-        "overfetch_reasons",
-        "overfetch_multiplier",
-        "overfetch_cap_k",
-        "milvus_doc_id_pushdown_skipped",
-        "milvus_expr_max_doc_ids",
-    ))
+    _copy_present_debug_keys(
+        out,
+        dbg,
+        (
+            "requested_k",
+            "search_k",
+            "fetch_k",
+            "overfetch_enabled",
+            "overfetch_reasons",
+            "overfetch_multiplier",
+            "overfetch_cap_k",
+            "milvus_doc_id_pushdown_skipped",
+            "milvus_expr_max_doc_ids",
+        ),
+    )
 
     qn = _sanitize_query_normalization_debug(dbg.get("query_normalization"))
     if qn is not None:
@@ -201,4 +205,4 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
     if isinstance(channels, dict):
         out["channels"] = channels
 
-    return out or None
+    return out

@@ -1,13 +1,16 @@
 <div align="center">
 
-<img src="./web/public/brand/mimirq-mark.png" alt="MimirQ Logo" width="136"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/ragvia/logo-inverse.svg"/>
+  <img src="./web/public/brand/ragvia/logo.svg" alt="Ragvia" width="230"/>
+</picture>
 
-<h1>MimirQ</h1>
+<h1>Ragvia</h1>
 
 <p><b>Full-stack, open-source, Chinese-first enterprise RAG knowledge base</b><br/>Turns parsing, governance, chunking, retrieval, reranking, and citations into an inspectable, replaceable, regression-tested knowledge pipeline.</p>
 
 <p>
-  <a href="#why-mimirq"><b>Why MimirQ</b></a> ·
+  <a href="#why-ragvia"><b>Why Ragvia</b></a> ·
   <a href="#product-screenshots"><b>Screenshots</b></a> ·
   <a href="#quick-start"><b>Quick Start</b></a> ·
   <a href="#dify-integration"><b>Dify Integration</b></a> ·
@@ -31,13 +34,15 @@
 
 </div>
 
+The product is **Ragvia**. Ongoing development uses [`feat/ragvia-ui`](https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui); `main` remains the historical baseline. The GitHub repository address is still `skygazer42/MimirQ`.
+
 ---
 
-## Why MimirQ
+## Why Ragvia
 
 **The hard part of an enterprise knowledge base is not embedding documents. It is locating failures, replacing strategies, and proving quality did not regress.**
 
-MimirQ began with a real government knowledge-base delivery. When an answer was wrong, the team needed to determine whether parsing lost a table, governance missed a rule, chunking broke the meaning, retrieval missed the evidence, reranking misplaced it, or generation departed from its citations. Hiding that path behind an “upload and chat” button makes prototypes fast, but long-term delivery difficult to estimate, validate, and govern.
+Ragvia began with a real government knowledge-base delivery. When an answer was wrong, the team needed to determine whether parsing lost a table, governance missed a rule, chunking broke the meaning, retrieval missed the evidence, reranking misplaced it, or generation departed from its citations. Hiding that path behind an “upload and chat” button makes prototypes fast, but long-term delivery difficult to estimate, validate, and govern.
 
 > **A controllable enterprise knowledge pipeline**
 >
@@ -47,62 +52,64 @@ A real project starts with representative samples: measure scanned pages, images
 
 After scripts, rule DSLs, or plugins govern the parsed output, content is chunked by headings, sections, business records, or parent-child structure instead of one fixed length and overlap window. The index can combine Milvus or another vector store with BM25, vector retrieval, and reranking. The application above it can be Dify, LangGraph, PydanticAI, or a small API service.
 
-MimirQ does not try to replace every platform:
+Ragvia does not try to replace every platform:
 
 - **For simple, stable, low-code applications**, Dify or RAGFlow is usually the faster path.
 - **For an integrated DeepDoc and GraphRAG experience**, RAGFlow is a mature choice.
-- **When the knowledge path must be replaceable, auditable, and regression-tested**, MimirQ keeps that capability independent from the chat application and can serve as Dify's external knowledge layer.
+- **When the knowledge path must be replaceable, auditable, and regression-tested**, Ragvia keeps that capability independent from the chat application and can serve as Dify's external knowledge layer.
 
 The repository currently covers 30 parsing backends, 86 chunking strategies, 13 reranker families, and a fixed 800-question evaluation trail. Those counts show breadth; the product goal is to inspect every stage, trace citations and versions, and protect releases with Golden sets. See the [enterprise knowledge-pipeline design principles](./docs/guides/rag_platform_design_principles.md).
 
-> Latest stable release: v1.0.1. See the [release notes](./docs/releases/v1.0.1.md) and [release index](./docs/releases/README.md).
+> Historical release baseline: v1.0.1. See the [release notes](./docs/releases/v1.0.1.md) and [release index](./docs/releases/README.md). The current Ragvia development version is on `feat/ragvia-ui`.
 
 ---
 
 ## Product Screenshots
+
+These screenshots show the MimirQ baseline before the rename. The current branch uses the approved Ragvia interface and branding; updated screenshots are pending.
 
 These screens use the public government-service plugin samples included in the repository. No production knowledge-base data is shown.
 
 <table>
   <tr>
     <td colspan="2" align="center">
-      <img src="./docs/images/screenshots/knowledge-graph.png" alt="MimirQ knowledge graph interface" width="100%"/>
+      <img src="./docs/images/screenshots/knowledge-graph.png" alt="Ragvia knowledge graph interface" width="100%"/>
       <br/><strong>Knowledge Graph</strong>
       <br/><sub>Search and analyze entities, events, and relations on one canvas.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/dataset-management.png" alt="MimirQ dataset management interface" width="100%"/>
+      <img src="./docs/images/screenshots/dataset-management.png" alt="Ragvia dataset management interface" width="100%"/>
       <br/><strong>Dataset Management</strong>
       <br/><sub>Track datasets, documents, chunks, and ingestion status in one place.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ Golden regression evaluation interface" width="100%"/>
+      <img src="./docs/images/screenshots/rag-evaluation.png" alt="Ragvia Golden regression evaluation interface" width="100%"/>
       <br/><strong>Golden Regression Evaluation</strong>
       <br/><sub>Inspect golden cases, run history, Recall, MRR, and related metrics together.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/settings.png" alt="MimirQ system settings interface" width="100%"/>
+      <img src="./docs/images/screenshots/settings.png" alt="Ragvia system settings interface" width="100%"/>
       <br/><strong>System Settings</strong>
       <br/><sub>Review dependency health, parsing capabilities, and model-service integrations.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/chat-history.png" alt="MimirQ conversation history and evidence review interface" width="100%"/>
+      <img src="./docs/images/screenshots/chat-history.png" alt="Ragvia conversation history and evidence review interface" width="100%"/>
       <br/><strong>Conversation History and Evidence</strong>
       <br/><sub>Search previous sessions and review complete answers, sources, and feedback controls.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="MimirQ ingestion execution monitor" width="100%"/>
+      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="Ragvia ingestion execution monitor" width="100%"/>
       <br/><strong>Ingestion Execution Monitor</strong>
       <br/><sub>Track parsing, chunking, governance, export, and retry status per dataset.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ data governance workspace" width="100%"/>
+      <img src="./docs/images/screenshots/data-governance.png" alt="Ragvia data governance workspace" width="100%"/>
       <br/><strong>Data Governance</strong>
       <br/><sub>Preview documents and run quality checks, cleaning, and annotation in one workspace.</sub>
     </td>
@@ -123,7 +130,7 @@ These screens use the public government-service plugin samples included in the r
 ### Initialize
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -154,12 +161,12 @@ make api-ping
 
 Open [http://localhost:3000](http://localhost:3000) after startup. If no administrator was preconfigured, register the first account in the UI. First-build, proxy, production-secret, and network guidance is in the [Docker Compose deployment guide](./docs/deployment/docker_compose.md).
 
-Use `make down` to stop the stack, `make docker-reset` to delete persisted data, or `make docker-purge` to also delete this project's service images. MimirQ uses the isolated Compose project name `mimirq`, so a Dify stack on the same host is not part of its cleanup scope. The last two commands are destructive; see the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) for PowerShell commands, ownership checks, legacy-data migration, recovery, and the exact deletion scope.
+Use `make down` to stop the stack, `make docker-reset` to delete persisted data, or `make docker-purge` to also delete this project's service images. Ragvia uses the isolated Compose project name `mimirq`, so a Dify stack on the same host is not part of its cleanup scope. The last two commands are destructive; see the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) for PowerShell commands, ownership checks, legacy-data migration, recovery, and the exact deletion scope.
 
 <details>
 <summary><b>Optional parsers by document workload</b></summary>
 
-MimirQ uses built-in DeepDoc by default. Start other parsers only when required:
+Ragvia uses built-in DeepDoc by default. Start other parsers only when required:
 
 | Document workload | Recommended parser | Extra requirement | Start after the main stack |
 |:---|:---|:---|:---|
@@ -218,32 +225,32 @@ Advanced model, parser, proxy, and Windows guidance is in the [Development Guide
 
 ## Dify Integration
 
-MimirQ can plug into existing Dify applications as a governable RAG layer, without re-implementing the workflow canvas. Two integration modes are supported today:
+Ragvia can plug into existing Dify applications as a governable RAG layer, without re-implementing the workflow canvas. Two integration modes are supported today:
 
-- **External Knowledge API**: Dify handles orchestration and generation; MimirQ handles document governance, retrieval, reranking, permission filtering, and evidence return.
-- **Workflow HTTP node**: Dify handles custom routing and parameters; MimirQ returns evidence and a trace scoped to the requested knowledge range.
+- **External Knowledge API**: Dify handles orchestration and generation; Ragvia handles document governance, retrieval, reranking, permission filtering, and evidence return.
+- **Workflow HTTP node**: Dify handles custom routing and parameters; Ragvia returns evidence and a trace scoped to the requested knowledge range.
 
 ### Workflow HTTP node
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="A Dify HTTP node calls MimirQ's retrieval API and merges the evidence" width="1100" style="max-width: 100%; height: auto;"/>
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="A Dify HTTP node calls Ragvia's retrieval API and merges the evidence" width="1100" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>A real Dify HTTP sub-chain (redacted): safely build the JSON request → HTTP node calls MimirQ's retrieval endpoint → transform the result → merge knowledge evidence.</sub>
+  <sub>A real Dify HTTP sub-chain (redacted): safely build the JSON request → HTTP node calls Ragvia's retrieval endpoint → transform the result → merge knowledge evidence.</sub>
 </p>
 
 ### External Knowledge API
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="A Dify workflow routes by region into eight MimirQ government knowledge bases" width="560" style="max-width: 100%; height: auto;"/>
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="A Dify workflow routes by region into eight Ragvia government knowledge bases" width="560" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>A real Dify Chatflow (redacted): the green knowledge-retrieval node calls MimirQ through the External Knowledge API, then merges evidence uniformly; click to view the full image.</sub>
+  <sub>A real Dify Chatflow (redacted): the green knowledge-retrieval node calls Ragvia through the External Knowledge API, then merges evidence uniformly; click to view the full image.</sub>
 </p>
 
-> The regional routing in the diagram comes from the optional sample plugin; the MimirQ core ships no region, service-item, or industry rules.
+> The regional routing in the diagram comes from the optional sample plugin; the Ragvia core ships no region, service-item, or industry rules.
 
 The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify/retrieval`; `POST /api/v1/integrations/dify/conversation-turns` optionally reports answers, citations, and a conversation identifier. See [`.env.example`](./.env.example) for configuration, the [readiness gate](./scripts/README.md) for pre-deploy validation, and [Real-world Validation](#real-world-validation) for measured results.
 
@@ -255,11 +262,11 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 <summary><b>Expand to compare with Dify, RAGFlow, FastGPT, AnythingLLM, and LangChain</b></summary>
 
 
-| Capability | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
+| Capability | **Ragvia** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
 | **Document parsing** | **30 backends** for PDF, OCR, layout, tables, formulas, and VLM | Knowledge Pipeline for PDF, PPT, and other common formats | **DeepDoc** for complex layouts and scans; MinerU / Docling | PDF and scans with tables and formulas converted to Markdown | Document pipeline for PDF, TXT, DOCX, and more | Document Loaders and third-party parser integrations |
 | **Chunking** | **86 strategies** including recursive, semantic, parent-child, RAPTOR, and late chunking; visual preview | General, parent-child, Q&A, and pipeline-defined processing | Template-based chunking with visual human intervention | Automatic, manual, Q&A, and enhanced processing | Automatic document-pipeline chunking | Text Splitters composed in application code |
-| **Retrieval / reranking** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **13 rerankers** | Semantic, full-text, and hybrid retrieval with optional reranking | Multiple recall with fused reranking | Semantic, full-text, and hybrid retrieval + RRF + reranking | Multiple vector databases with source citations | Retriever and reranker components assembled by the application |
+| **Retrieval / reranking** | Milvus + BM25 / SPLADE / ColBERT / RRF | Semantic, full-text, and hybrid retrieval with optional reranking | Multiple recall with fused reranking | Semantic, full-text, and hybrid retrieval + RRF + reranking | Multiple vector databases with source citations | Retriever and reranker components assembled by the application |
 | **Knowledge graph** | Entity, relation, and event extraction; entity resolution, community discovery, and multi-hop retrieval | Connected through workflows, plugins, or external services | Built-in GraphRAG | Connected through workflows or external services | Connected through agents or tools | Graph integrations and custom chains |
 | **Agents / MCP** | LangGraph agents, Self-RAG / CRAG / FLARE, and MCP client / server | Function Calling / ReAct agents, tools, and MCP | Agentic Workflow, MCP, and code executor | Agent V2, tools, MCP, and VM execution | No-code Agent Builder, MCP, and scheduled tasks | Agents / LangGraph / MCP with a code-first model |
 | **Visual workflows** | **No general node canvas**; focused on RAG debugging, governance screens, and APIs | **Core feature** for application and agent orchestration | Agent and ingestion-pipeline orchestration | **Core feature** with flow-node orchestration | No-code Agent Builder | No built-in product UI; supplied by the application |
@@ -278,7 +285,7 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 
 ## Real-world Validation
 
-MimirQ has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. On 2026-07-27, the same fixed 800 questions were rerun with real self-hosted models; all five paths ultimately completed **800 / 800**.
+Ragvia has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. On 2026-07-27, the same fixed 800 questions were rerun with real self-hosted models; all five paths ultimately completed **800 / 800**.
 
 <!-- Data sources: artifacts/dify_4way_800_20260727/comparison_report.json, artifacts/dify_4way_800_20260727/summary_for_sharing.md, and artifacts/changzhou_local_3model_800_20260727/summary.json; input SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
 
@@ -288,27 +295,27 @@ MimirQ has powered a **municipal government Q&A assistant** across seven distric
 
 | Evidence path | Accuracy | Usability | Evidence coverage | Latency (mean / P95) |
 |:---|---:|---:|---:|---:|
-| **MimirQ retrieval core** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
+| **Ragvia retrieval core** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
 
 ### End-to-End Answers (With LLM Generation)
 
 | Answer path | Accuracy | Usability | Coverage (evidence / answer) | Latency (mean / P95) |
 |:---|---:|---:|---:|---:|
-| **MimirQ RAG generation** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
-| **Dify HTTP → MimirQ** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
-| **Dify External → MimirQ** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
+| **Ragvia RAG generation** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
+| **Dify HTTP → Ragvia** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
+| **Dify External → Ragvia** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
 | **Dify native knowledge¹** | 38.6% | 74.5% | 83.8% / 66.1% | 13.67s / 29.55s |
 
-¹ Dify native knowledge does not use MimirQ. See the detailed report for accurate, partially accurate, and insufficient-evidence counts.
+¹ Dify native knowledge does not use Ragvia. See the detailed report for accurate, partially accurate, and insufficient-evidence counts.
 
-Dify HTTP / External reached 96.3% / 99.7% retrieval-evidence coverage, while generated-answer clause coverage was 83.6% / 83.8%. The main loss was in Dify answer generation rather than MimirQ retrieval.
+Dify HTTP / External reached 96.3% / 99.7% retrieval-evidence coverage, while generated-answer clause coverage was 83.6% / 83.8%. The main loss was in Dify answer generation rather than Ragvia retrieval.
 
 <details>
 <summary><b>Test boundary, concurrency, and generality notes</b></summary>
 
 - The retrieval core returns evidence; the other four paths return generated answers. Accuracy and latency across the two tables are not direct like-for-like comparisons.
 - Retrieval concurrency 5 initially triggered 15 configured admission-backpressure responses. Retrying only those cases at concurrency 3 restored 800 / 800.
-- MimirQ contains no region, service-item, or question-specific special cases. A generic retrieval layer shards multi-dataset requests across different embedding runtimes.
+- Ragvia contains no region, service-item, or question-specific special cases. A generic retrieval layer shards multi-dataset requests across different embedding runtimes.
 
 </details>
 
@@ -324,7 +331,7 @@ Supported deployment modes:
 |:---:|:---|:---|
 | **Standard** | `make up` | Full stack: Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **Standard + Web** | `make up-web` | Recommended first run; initializes local config and starts the complete web stack |
-| **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
+| **API/Worker mode** | `make up-lite` | Shared Milvus with its internal dependencies; document object storage disabled, no frontend |
 | **Dev Mode** | `make infra-up` | Infrastructure only, run backend/frontend locally |
 | **Helm / K8s** | `helm install` | Production-grade with HPA, PDB, CronJob, PrometheusRule |
 | **Parser Extensions** | [Docker Compose guide](./docs/deployment/docker_compose.md) | Start CPU / GPU profiles as required |
@@ -389,7 +396,7 @@ Before contributing code, reporting an issue, or proposing a feature, read [CONT
 
 ```bash
 # Fork and clone
-git clone https://github.com/<your-username>/MimirQ.git
+git clone --branch feat/ragvia-ui https://github.com/<your-username>/MimirQ.git
 cd MimirQ
 make init
 
@@ -415,7 +422,7 @@ This project is licensed under the [Apache License 2.0](LICENSE). Attribution fo
 
 ## Acknowledgements
 
-MimirQ is built on the shoulders of outstanding open-source projects:
+Ragvia is built on the shoulders of outstanding open-source projects:
 
 [Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
 

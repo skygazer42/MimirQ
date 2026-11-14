@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -7,7 +6,7 @@ _MULTIHOP_RE = re.compile(r"根据.+和.+|为什么|原因|compare|analyze|多�
 
 
 def classify_query_complexity(query: str) -> dict[str, Any]:
-    text = str(query or "").strip()
+    text = query.strip()
     label = "simple"
     reasons: list[str] = []
     if _STRUCTURED_RE.search(text):

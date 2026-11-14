@@ -1,4 +1,3 @@
-
 from collections.abc import Iterable
 from typing import Any
 
@@ -17,7 +16,9 @@ def normalize_source_keys(raw: Any) -> list[str]:
         values = []
 
     for v in values:
-        s = str(v or "").strip()
+        if v is None:
+            continue
+        s = str(v).strip()
         if not s:
             continue
         key = s.casefold()
@@ -79,7 +80,7 @@ def _match_required_source_keys(
         if folded not in present:
             missing.append(exp)
             continue
-        matched_display = display.get(folded) or exp
+        matched_display = display[folded]
         matched.append(matched_display)
         matched_by_required[exp] = matched_display
     return missing, matched, matched_by_required
@@ -108,11 +109,11 @@ def evaluate_required_source_keys(
     present, display = _collect_present_source_keys(citations)
     missing, matched, matched_by_required = _match_required_source_keys(expected, present, display)
 
-    present_out = [display[k] for k in sorted(display.keys())[:200]]
-    required_n = int(len(expected))
-    missing_n = int(len(missing))
-    matched_n = max(0, required_n - missing_n)
-    coverage_ratio = float(matched_n / required_n) if required_n > 0 else 1.0
+    present_out = [display[k] for k in sorted(display)[:200]]
+    required_n = len(expected)
+    missing_n = len(missing)
+    matched_n = required_n - missing_n
+    coverage_ratio = matched_n / required_n
     return {
         "required_source_keys": expected,
         "required_source_keys_count": required_n,
@@ -123,7 +124,7 @@ def evaluate_required_source_keys(
         "matched_source_keys_count": matched_n,
         "missing_source_keys_count": missing_n,
         "coverage_ratio": round(coverage_ratio, 6),
-        "passed": bool(len(missing) == 0),
+        "passed": not missing,
     }
 
 
@@ -136,11 +137,11 @@ def build_must_recall_fail_reasons(
     second_pass_used: bool,
 ) -> list[str]:
     reasons: list[str] = []
-    if int(citations_count or 0) <= 0:
+    if citations_count <= 0:
         reasons.append("no_citations")
     if missing_source_keys:
         reasons.append("missing_required_source_keys")
-    if int(anchor_missing_any or 0) > 0:
+    if anchor_missing_any > 0:
         reasons.append("missing_required_anchor_fields")
     if second_pass_attempted and not second_pass_used:
         reasons.append("secondary_pass_no_effect")

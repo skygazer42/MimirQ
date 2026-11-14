@@ -6,7 +6,6 @@ change blocks (lines like "# aws_instance.example will be created") while
 preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -36,10 +35,9 @@ def _parse_change_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return None
-    s = s.lstrip()
     if not s.startswith("#"):
         return None
     rest = s[1:].strip()
@@ -55,7 +53,7 @@ def _parse_change_line(line: str) -> tuple[str, str] | None:
 
 
 def _build_change_blocks(text: str) -> list[_ChangeBlock]:
-    raw = text or ""
+    raw = text
     if not raw:
         return []
 
@@ -70,7 +68,7 @@ def _build_change_blocks(text: str) -> list[_ChangeBlock]:
         if not parsed:
             continue
         addr, action = parsed
-        starts.append(int(line_start))
+        starts.append(line_start)
         addrs.append(addr)
         actions.append(action)
 
@@ -79,9 +77,9 @@ def _build_change_blocks(text: str) -> list[_ChangeBlock]:
     blocks: list[_ChangeBlock] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
-        addr = (addrs[idx] or "").strip()[:300]
-        action = (actions[idx] or "").strip()[:80]
-        blocks.append(_ChangeBlock(start=int(start), end=int(end), index=int(idx), address=addr, action=action))
+        addr = addrs[idx][:300]
+        action = actions[idx][:80]
+        blocks.append(_ChangeBlock(start=start, end=end, index=idx, address=addr, action=action))
     return blocks
 
 
@@ -96,7 +94,7 @@ def looks_like_terraform_plan(text: str) -> bool:
 
 
 class TerraformPlanChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -136,8 +134,8 @@ class TerraformPlanChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -176,8 +174,8 @@ class TerraformPlanChunker(BaseChunker):
                     extra_meta={
                         "terraform_address": blk.address,
                         "terraform_action": blk.action,
-                        "terraform_change_index": int(blk.index),
-                        "terraform_change_count": int(len(blocks)),
+                        "terraform_change_index": blk.index,
+                        "terraform_change_count": len(blocks),
                     },
                 )
 

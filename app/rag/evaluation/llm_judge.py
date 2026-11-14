@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from statistics import median
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.prompts import PromptTemplate
@@ -10,11 +10,16 @@ from app.rag.core.logging import get_logger
 from app.rag.core.text import parse_json_from_text
 from app.services.prompt_resolver import resolve_prompt_template
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
 logger = get_logger(__name__)
 
 
 def clip_text(value: Any, *, max_len: int = 400) -> str:
-    text = str(value or "").strip()
+    if value is None:
+        return ""
+    text = str(value).strip()
     max_len = max(0, int(max_len or 0))
     if not max_len:
         return ""
@@ -33,7 +38,9 @@ def clip_contexts_for_judge(
     cap_chars = max(50, int(max_chars or 50))
     out: list[str] = []
     for raw in contexts or []:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text:
             continue
         out.append(text[:cap_chars])
@@ -127,7 +134,7 @@ def render_llm_judge_prompt(
     prompt_content: str | None = None,
     prompt_variables: list[str] | None = None,
 ) -> str:
-    if kind != "generation" or not str(prompt_content or "").strip():
+    if kind != "generation" or prompt_content is None or not prompt_content.strip():
         return default_llm_judge_prompt(kind=kind, question=question, answer=answer, contexts=contexts)
 
     variable_names = [str(item).strip() for item in (prompt_variables or []) if str(item).strip()]
@@ -136,9 +143,9 @@ def render_llm_judge_prompt(
     contexts_text = "\n".join([f"[C{i + 1}] {c}" for i, c in enumerate(contexts or [])]).strip()
     payload: dict[str, Any] = {}
     if "question" in variable_names:
-        payload["question"] = str(question or "")
+        payload["question"] = question
     if "answer" in variable_names:
-        payload["answer"] = str(answer or "")
+        payload["answer"] = answer
     if "contexts" in variable_names:
         payload["contexts"] = contexts_text
     prompt = PromptTemplate(template=str(prompt_content), input_variables=variable_names)
@@ -198,9 +205,12 @@ def _coerce_judge_details(value: Any, *, allowed_fields: set[str]) -> list[dict[
 def coerce_llm_judge_payload(raw: Any) -> dict[str, Any]:
     obj = raw if isinstance(raw, dict) else {}
     quotes_raw = obj.get("evidence_quotes") or obj.get("quotes") or obj.get("evidence") or []
+    reason = obj.get("reason")
+    if reason is None:
+        reason = obj.get("explanation")
     out = {
         "score": _coerce_judge_score(obj.get("score")),
-        "reason": clip_text(obj.get("reason") or obj.get("explanation") or "", max_len=240),
+        "reason": clip_text(reason, max_len=240),
         "evidence_quotes": _coerce_judge_quotes(quotes_raw),
     }
 
@@ -238,7 +248,7 @@ def _invoke_llm_judge_once(
     err: str | None = None
     try:
         response = llm.invoke(prompt)
-        content = str(getattr(response, "content", None) or response or "")
+        content = str(response.content if hasattr(response, "content") else response)
     except Exception as exc:  # noqa: BLE001
         err = f"invoke_error:{type(exc).__name__}:{str(exc)[:120]}"
 
@@ -263,13 +273,13 @@ def _median_score(rows: list[dict[str, Any]]) -> float | None:
     values = _score_values(rows)
     if not values:
         return None
-    return round(float(median(values)), 4)
+    return round(median(values), 4)
 
 
 def _mean_abs_deviation(values: list[float], center: float | None) -> float | None:
     if center is None or not values:
         return None
-    return round(sum(abs(float(value) - float(center)) for value in values) / float(len(values)), 4)
+    return round(sum(abs(value - center) for value in values) / float(len(values)), 4)
 
 
 def _pick_representative(rows: list[dict[str, Any]], target_score: float | None) -> dict[str, Any]:
@@ -284,7 +294,7 @@ def _pick_representative(rows: list[dict[str, Any]], target_score: float | None)
         score = row.get("score")
         if not isinstance(score, (int, float)) or isinstance(score, bool):
             continue
-        distance = abs(float(score) - float(target_score))
+        distance = abs(float(score) - target_score)
         if distance < best_distance:
             best_row = row
             best_distance = distance
@@ -338,7 +348,7 @@ def run_llm_judge(
             reversed_score = round(float(score), 4)
 
     final_candidates = [value for value in (primary_median, reversed_score) if value is not None]
-    final_score = round(float(median(final_candidates)), 4) if final_candidates else primary_median
+    final_score = round(median(final_candidates), 4) if final_candidates else primary_median
 
     out = dict(representative)
     out["score"] = final_score
@@ -347,7 +357,7 @@ def run_llm_judge(
         "n": sample_count,
         "median_score": primary_median,
         "score_mad": _mean_abs_deviation(primary_scores, primary_median),
-        "valid_samples": int(len(primary_scores)),
+        "valid_samples": len(primary_scores),
         "samples": [
             {
                 "score": row.get("score"),
@@ -363,7 +373,7 @@ def run_llm_judge(
         "forward_median_score": primary_median,
         "reversed_score": reversed_score,
         "delta": (
-            round(abs(float(primary_median) - float(reversed_score)), 4)
+            round(abs(primary_median - reversed_score), 4)
             if primary_median is not None and reversed_score is not None
             else None
         ),
@@ -382,7 +392,7 @@ def run_llm_judge(
 
 def _resolve_generation_judge_prompt(
     *,
-    db: Any | None,
+    db: "Session | None",
     tenant_id: UUID | None,
     template_id: UUID | None,
     template_key: str | None,
@@ -390,9 +400,7 @@ def _resolve_generation_judge_prompt(
     ab_user_key: str | None,
 ) -> tuple[str | None, list[str] | None, int | None, dict[str, Any]]:
     selection_requested = bool(
-        db is not None
-        and tenant_id is not None
-        and (template_id or (template_key or "").strip() or (ab_experiment_key or "").strip())
+        db is not None and tenant_id is not None and (template_id or template_key or ab_experiment_key)
     )
     if not selection_requested:
         return None, None, None, {}
@@ -411,14 +419,14 @@ def _resolve_generation_judge_prompt(
     if template is None:
         return None, None, None, {}
 
-    content = str(getattr(template, "content", "") or "").strip() or None
-    variables = list(getattr(template, "variables", None) or [])
-    version = int(getattr(template, "version", 0) or 0) or None
+    content = template.content.strip()
+    variables = list(template.variables or [])
+    version = template.version
     metadata = {
-        "prompt_template_id": str(getattr(template, "id", "") or "") or None,
-        "prompt_template_key": str(getattr(template, "template_key", "") or "").strip() or None,
-        "prompt_ab_experiment_key": str(getattr(template, "ab_experiment_key", "") or "").strip() or None,
-        "prompt_ab_variant": str(getattr(template, "ab_variant", "") or "").strip() or None,
+        "prompt_template_id": str(template.id),
+        "prompt_template_key": template.template_key,
+        "prompt_ab_experiment_key": template.ab_experiment_key,
+        "prompt_ab_variant": template.ab_variant,
         "prompt_template_version": version,
     }
     return content, variables, version, metadata
@@ -444,10 +452,10 @@ def _attach_llm_judge_item(
 ) -> tuple[float | None, float | None, float | None] | None:
     if not isinstance(item, dict):
         return None
-    question = str(item.get("question") or "")
+    question = item["question"]
     if not question.strip():
         return None
-    answer = str(item.get("response") or "")
+    answer = item["response"]
     contexts = clip_contexts_for_judge(item.get("retrieved_contexts"), max_contexts=6, max_chars=900)
     retrieval = run_llm_judge(
         llm=llm,
@@ -527,7 +535,7 @@ def attach_llm_judge_to_eval_items(
     *,
     eval_items: list[dict[str, Any]],
     llm: Any,
-    db: Any | None = None,
+    db: "Session | None" = None,
     tenant_id: UUID | None = None,
     judge_prompt_template_id: UUID | None = None,
     judge_prompt_template_key: str | None = None,
@@ -584,9 +592,9 @@ def attach_llm_judge_to_eval_items(
         )
 
     return {
-        "llm_judge_model_used": str(model_used or "") or None,
+        "llm_judge_model_used": model_used,
         "llm_judge_version_hash": judge_version,
-        "llm_judge_items": int(len(overall_scores)),
+        "llm_judge_items": len(overall_scores),
         "llm_judge_retrieval_avg": _mean_judge_score(retrieval_scores),
         "llm_judge_generation_avg": _mean_judge_score(generation_scores),
         "llm_judge_overall_avg": _mean_judge_score(overall_scores),
@@ -599,7 +607,7 @@ def attach_llm_judge_to_eval_items(
         "llm_judge_position_bias_enabled": bool(position_bias_enabled),
         "llm_judge_tokens_input": prompt_tokens,
         "llm_judge_tokens_output": completion_tokens,
-        "llm_judge_estimated_cost_usd": (round(float(total_cost), 6) if total_cost is not None else None),
+        "llm_judge_estimated_cost_usd": (round(total_cost, 6) if total_cost is not None else None),
     }
 
 

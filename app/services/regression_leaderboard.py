@@ -8,11 +8,14 @@ Goal:
 
 import json
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 from app.rag.core.query_rewrite_strategy import build_query_rewrite_strategy_spec
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+
+if TYPE_CHECKING:
+    from app.models.evaluation import RagasRegressionRun
 
 
 def _to_float(v: Any) -> float | None:
@@ -57,31 +60,31 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
         except Exception:
             top_n = 0
         top_n = max(0, top_n)
-        out.append({"provider": provider, "top_n": top_n or None})
+        out.append({"provider": provider, "top_n": top_n})
         if len(out) >= 4:
             break
     return out
 
 
-def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | None:
-    rp = _safe_dict(rag_params)
+def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str:
+    rp = rag_params
     mode = str(rp.get("retrieval_mode") or "").strip().lower() or "hybrid"
 
-    rewrite_enabled = bool(getattr(settings, "ENABLE_QUERY_REWRITE", False))
+    rewrite_enabled = bool(settings.ENABLE_QUERY_REWRITE)
     rewrite_strategy_id: str | None = None
     rewrite_strategy_hash: str | None = None
     rewrite_temp: float | None = None
     rewrite_max_chars: int | None = None
     if rewrite_enabled:
-        spec = build_query_rewrite_strategy_spec(getattr(settings, "QUERY_REWRITE_STRATEGY", None))
-        rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
-        rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
+        spec = build_query_rewrite_strategy_spec(settings.QUERY_REWRITE_STRATEGY)
+        rewrite_strategy_id = spec["strategy_id"]
+        rewrite_strategy_hash = spec["strategy_hash"]
         try:
-            rewrite_temp = float(getattr(settings, "QUERY_REWRITE_TEMPERATURE", 0.0) or 0.0)
+            rewrite_temp = float(settings.QUERY_REWRITE_TEMPERATURE or 0.0)
         except Exception:
             rewrite_temp = 0.0
         try:
-            rewrite_max_chars = int(getattr(settings, "QUERY_REWRITE_MAX_CHARS", 0) or 0)
+            rewrite_max_chars = int(settings.QUERY_REWRITE_MAX_CHARS or 0)
         except Exception:
             rewrite_max_chars = 0
 
@@ -91,10 +94,10 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             "retrieval_mode": mode,
             "retrieval_mode_auto_routed": False,
             "retrieval_profile": None,
-            "top_k": int(rp.get("top_k") or 0) or None,
+            "top_k": rp.get("top_k"),
             "score_threshold": _to_float(rp.get("score_threshold")) or 0.0,
             "alpha": _to_float(rp.get("alpha")) or 0.0,
-            "fusion_strategy": str(getattr(settings, "RETRIEVAL_FUSION_STRATEGY", "") or "linear"),
+            "fusion_strategy": str(settings.RETRIEVAL_FUSION_STRATEGY or "linear"),
             "fusion_budgets": None,
             "fusion_min_scores": None,
             "enable_weight_rerank": bool(rp.get("enable_weight_rerank", True)),
@@ -105,29 +108,25 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             "reranker_provider": str(rp.get("reranker_provider") or ""),
             "reranker_top_n": int(rp.get("reranker_top_n") or 0),
             "visible_evidence_only": False,
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-            "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
-            "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
-            "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
-            "sparse_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
-            "sparse_index_persist_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
-            "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-            "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
-            "colbert_index_persist_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
-            "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
-            "parent_child_auto_merge_enabled": bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)),
-            "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
-            "kg_query_expansion_enabled": bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
-            "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
-            "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
-            "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
-            "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
-            "evidence_post_rerank_pipeline_enabled": bool(
-                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)
-            ),
-            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(
-                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")
-            ),
+            "vector_backend": settings.VECTOR_BACKEND,
+            "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
+            "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
+            "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
+            "sparse_provider": settings.SPARSE_RETRIEVAL_PROVIDER,
+            "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
+            "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
+            "colbert_provider": settings.COLBERT_RETRIEVAL_PROVIDER,
+            "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
+            "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
+            "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
+            "parent_child_auto_merge_mode": settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE,
+            "kg_query_expansion_enabled": bool(settings.RAG_KG_QUERY_EXPANSION_ENABLED),
+            "kg_chunk_injection_enabled": bool(settings.RAG_KG_CHUNK_INJECTION_ENABLED),
+            "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
+            "evidence_post_rerank_provider": settings.EVIDENCE_POST_RERANK_PROVIDER,
+            "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
+            "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
+            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(settings.EVIDENCE_POST_RERANK_PIPELINE),
             "query_rewrite": {
                 "enabled": bool(rewrite_enabled),
                 "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
@@ -137,13 +136,12 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             },
         }
     )
-    out = str(fp.get("hash") or "").strip()
-    return out or None
+    return fp["hash"]
 
 
 def build_regression_run_leaderboard(
     *,
-    runs: Iterable[object],
+    runs: "Iterable[RagasRegressionRun]",
     metric_key: str,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
@@ -152,13 +150,13 @@ def build_regression_run_leaderboard(
 
     The function is intentionally tolerant of partially-populated run rows.
     """
-    metric_key = str(metric_key or "").strip() or "retrieval_mrr"
+    metric_key = metric_key.strip() or "retrieval_mrr"
     limit = max(1, min(int(limit or 0), 500))
 
     items: list[dict[str, Any]] = []
-    for r in runs or []:
-        summary = _safe_dict(getattr(r, "summary", None))
-        params = _safe_dict(getattr(r, "params", None))
+    for r in runs:
+        summary = _safe_dict(r.summary)
+        params = _safe_dict(r.params)
         rag_params = _safe_dict(params.get("rag_params"))
 
         metric_value = _to_float(summary.get(metric_key))
@@ -166,10 +164,10 @@ def build_regression_run_leaderboard(
 
         items.append(
             {
-                "run_id": str(getattr(r, "id", "") or ""),
-                "status": str(getattr(r, "status", "") or ""),
-                "created_at": getattr(r, "created_at", None),
-                "finished_at": getattr(r, "finished_at", None),
+                "run_id": str(r.id),
+                "status": r.status,
+                "created_at": r.created_at,
+                "finished_at": r.finished_at,
                 "metric_key": metric_key,
                 "metric_value": metric_value,
                 "retrieval_config_hash": cfg_hash,
@@ -177,7 +175,7 @@ def build_regression_run_leaderboard(
         )
 
     # Sort: higher is better; missing metrics go last.
-    items.sort(key=lambda x: (x.get("metric_value") is None, -(x.get("metric_value") or 0.0)))
+    items.sort(key=lambda item: (item["metric_value"] is None, -(item["metric_value"] or 0.0)))
     return items[:limit]
 
 

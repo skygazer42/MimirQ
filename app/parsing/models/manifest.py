@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,15 +67,15 @@ class SmallModelManifest:
     defaults: Mapping[str, str]
 
     def get_default(self, task: str) -> SmallModelSpec:
-        task_key = str(task or "").strip()
+        task_key = task.strip()
         model_id = self.defaults.get(task_key)
         if not model_id:
             raise KeyError(f"missing default model for task '{task_key}'")
         return self.get(task_key, model_id=model_id)
 
     def get(self, task: str, *, model_id: str) -> SmallModelSpec:
-        task_key = str(task or "").strip()
-        model_key = str(model_id or "").strip()
+        task_key = task.strip()
+        model_key = model_id.strip()
         models = self.tasks.get(task_key)
         if not models:
             raise KeyError(f"unknown small-model task '{task_key}'")
@@ -86,12 +85,12 @@ class SmallModelManifest:
         return spec
 
     def list_task_models(self, task: str) -> list[SmallModelSpec]:
-        return list((self.tasks.get(str(task or "").strip()) or {}).values())
+        return list(self.tasks.get(task.strip(), {}).values())
 
 
 def _coerce_bool(value: Any, *, default: bool = False) -> bool:
     if value is None:
-        return bool(default)
+        return default
     if isinstance(value, bool):
         return value
     raw = str(value).strip().lower()
@@ -99,7 +98,7 @@ def _coerce_bool(value: Any, *, default: bool = False) -> bool:
         return True
     if raw in {"0", "false", "no", "off"}:
         return False
-    return bool(default)
+    return default
 
 
 def _coerce_str_tuple(value: Any) -> tuple[str, ...]:
@@ -122,8 +121,10 @@ def _coerce_float(value: Any) -> float | None:
 
 
 def _parse_spec(*, task: str, model_id: str, raw: Mapping[str, Any], base_dir: Path) -> SmallModelSpec:
-    kind = str(raw.get("kind") or "").strip()
-    if kind not in {"onnx", "hf_transformers"}:
+    kind = raw.get("kind")
+    if isinstance(kind, str):
+        kind = kind.strip()
+    if kind not in ("onnx", "hf_transformers"):
         raise ValueError(f"invalid small-model kind for {task}.{model_id}: {kind!r}")
 
     metadata = raw.get("metadata")
@@ -163,7 +164,8 @@ def load_small_model_manifest(path: str | Path, *, base_dir: str | Path | None =
             continue
         if not isinstance(section, Mapping):
             raise ValueError(f"small-model task section must be a mapping: {task_key}")
-        default_id = str(section.get("default") or "").strip()
+        raw_default = section.get("default")
+        default_id = str(raw_default).strip() if raw_default is not None else None
         models_raw = section.get("models")
         if not default_id or not isinstance(models_raw, Mapping):
             raise ValueError(f"small-model task '{task_key}' requires default and models")

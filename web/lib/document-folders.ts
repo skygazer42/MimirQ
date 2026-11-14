@@ -6,4 +6,3 @@ export function toSourcePathPrefix(folderPath: string | null | undefined): strin
   // (e.g. "foo/" should not match "foobar/").
   return raw.endsWith('/') ? raw : `${raw}/`
 }
-

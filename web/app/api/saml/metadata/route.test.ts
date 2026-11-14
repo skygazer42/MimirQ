@@ -3,6 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
+vi.mock('server-only', () => ({}))
+
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
 }))
@@ -51,7 +53,7 @@ describe('SAML metadata route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(mocks.fetch).toHaveBeenCalledWith(
       new URL('https://api.example.com/api/v1/auth/saml/metadata?provider_id=default'),
-      { method: 'GET', cache: 'no-store' }
+      { method: 'GET', cache: 'no-store' },
     )
   })
 

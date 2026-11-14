@@ -26,11 +26,11 @@ _POSITION_TAG_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##"
 def normalize_docling_base_url(value: str) -> str:
     """Accept either a service base URL or a stable-v1 conversion endpoint."""
 
-    raw = (value or "").strip().rstrip("/")
+    raw = (value).strip().rstrip("/")
     if not raw:
         return ""
     parsed = urlparse(raw)
-    path = (parsed.path or "").rstrip("/")
+    path = (parsed.path).rstrip("/")
     for suffix in _CONVERT_PATH_SUFFIXES:
         if path.endswith(suffix):
             path = path[: -len(suffix)]
@@ -62,30 +62,18 @@ class DoclingServiceParser:
         ocr_enabled: bool | None = None,
         session: requests.Session | None = None,
     ) -> None:
-        self.enabled = bool(getattr(settings, "DOCLING_ENABLED", False))
-        self.api_url = normalize_docling_base_url(
-            api_url if api_url is not None else str(getattr(settings, "DOCLING_API_URL", "") or "")
-        )
-        self.api_key = (
-            api_key if api_key is not None else str(getattr(settings, "DOCLING_API_KEY", "") or "")
-        ).strip()
+        self.enabled = bool(settings.DOCLING_ENABLED)
+        self.api_url = normalize_docling_base_url(api_url if api_url is not None else settings.DOCLING_API_URL)
+        self.api_key = (api_key if api_key is not None else settings.DOCLING_API_KEY).strip()
         self.request_timeout_sec = float(
-            request_timeout_sec
-            if request_timeout_sec is not None
-            else (getattr(settings, "DOCLING_REQUEST_TIMEOUT_SEC", 600) or 600)
+            request_timeout_sec if request_timeout_sec is not None else (settings.DOCLING_REQUEST_TIMEOUT_SEC or 600)
         )
         self.health_timeout_sec = float(
-            health_timeout_sec
-            if health_timeout_sec is not None
-            else (getattr(settings, "DOCLING_HEALTH_TIMEOUT_SEC", 5) or 5)
+            health_timeout_sec if health_timeout_sec is not None else (settings.DOCLING_HEALTH_TIMEOUT_SEC or 5)
         )
-        self.trust_env = bool(
-            getattr(settings, "DOCLING_HTTP_TRUST_ENV", False) if trust_env is None else trust_env
-        )
-        self.ocr_enabled = bool(
-            getattr(settings, "DOCLING_OCR_ENABLED", True) if ocr_enabled is None else ocr_enabled
-        )
-        self._session = session or requests.Session()
+        self.trust_env = bool(settings.DOCLING_HTTP_TRUST_ENV if trust_env is None else trust_env)
+        self.ocr_enabled = bool(settings.DOCLING_OCR_ENABLED if ocr_enabled is None else ocr_enabled)
+        self._session = requests.Session() if session is None else session
         if session is None:
             self._session.trust_env = self.trust_env
         self.unavailable_reason = ""
@@ -208,7 +196,9 @@ class DoclingServiceParser:
         if not isinstance(payload, dict):
             raise RuntimeError("Docling service returned an invalid response payload.")
 
-        status = str(payload.get("status") or "").strip().lower()
+        status = payload.get("status")
+        if status is not None:
+            status = str(status).strip().lower()
         markdown = self._response_markdown(payload)
         if status not in _SUCCESS_STATUSES:
             raise RuntimeError(f"Docling conversion failed: {self._error_summary(payload)}")
@@ -228,4 +218,4 @@ class DoclingServiceParser:
 
     @staticmethod
     def remove_tag(text: str) -> str:
-        return _POSITION_TAG_RE.sub("", text or "")
+        return _POSITION_TAG_RE.sub("", text)

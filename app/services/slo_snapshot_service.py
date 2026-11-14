@@ -6,7 +6,6 @@ Sources (priority order):
 2) Metrics JSONL aggregates (fallback)
 """
 
-
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,13 +25,13 @@ def _now_utc() -> datetime:
 
 
 def _base_url() -> str:
-    raw = str(getattr(settings, "PROMETHEUS_QUERY_BASE_URL", "") or "").strip()
+    raw = settings.PROMETHEUS_QUERY_BASE_URL.strip()
     return raw.rstrip("/")
 
 
 def _timeout() -> float:
     try:
-        return max(0.5, float(getattr(settings, "PROMETHEUS_QUERY_TIMEOUT_SEC", 3.0) or 3.0))
+        return max(0.5, float(settings.PROMETHEUS_QUERY_TIMEOUT_SEC or 3.0))
     except Exception:
         return 3.0
 
@@ -50,7 +49,7 @@ def _safe_float(v: object) -> float | None:
 def _extract_prometheus_values(data: object) -> list[float]:
     if not isinstance(data, dict) or str(data.get("status") or "") != "success":
         return []
-    result = ((data.get("data") or {}) if isinstance(data.get("data"), dict) else {}).get("result")
+    result = (data.get("data") if isinstance(data.get("data"), dict) else {}).get("result")
     if not isinstance(result, list) or not result:
         return []
 
@@ -70,7 +69,7 @@ def _extract_prometheus_values(data: object) -> list[float]:
 async def _prom_query(client: httpx.AsyncClient, *, base_url: str, promql: str) -> float | None:
     if not base_url:
         return None
-    q = str(promql or "").strip()
+    q = promql.strip()
     if not q:
         return None
 
@@ -83,7 +82,7 @@ async def _prom_query(client: httpx.AsyncClient, *, base_url: str, promql: str) 
         return None
     if len(values) == 1:
         return values[0]
-    return float(sum(values))
+    return sum(values)
 
 
 @dataclass(frozen=True)
@@ -136,7 +135,7 @@ async def _build_window_from_prometheus(*, window_minutes: int) -> SloWindowSnap
 def _build_window_from_metrics_jsonl(*, tenant_id: str | None, window_minutes: int) -> SloWindowSnapshot:
     summary = summarize_rag_query_analytics(tenant_id=tenant_id, window_minutes=window_minutes)
 
-    errors = summary.timeseries.get("errors") if isinstance(summary.timeseries, dict) else None
+    errors = summary.timeseries.get("errors")
     error_count = 0
     if isinstance(errors, list):
         for v in errors:
@@ -149,9 +148,9 @@ def _build_window_from_metrics_jsonl(*, tenant_id: str | None, window_minutes: i
     error_rate = (float(error_count) / float(summary.rag_trace_count)) if summary.rag_trace_count else None
 
     return SloWindowSnapshot(
-        window_minutes=int(summary.window_minutes),
+        window_minutes=summary.window_minutes,
         source="metrics_jsonl",
-        rag_trace_count=int(summary.rag_trace_count),
+        rag_trace_count=summary.rag_trace_count,
         retrieval_p95_elapsed_sec=summary.retrieval_p95_elapsed_sec,
         retrieval_p99_elapsed_sec=summary.retrieval_p99_elapsed_sec,
         zero_hit_rate=summary.zero_hit_rate,

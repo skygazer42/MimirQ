@@ -7,7 +7,6 @@ Design goals:
 - Practical: works with current schema (processed_at may be null for many rows).
 """
 
-
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -24,6 +23,7 @@ _TERMINAL_STATUSES = ("completed", "failed", "quarantined", "cancelled")
 
 def _now_utc() -> datetime:
     return datetime.now(UTC)
+
 
 def _coerce_bucket_config(bucket_minutes: int) -> tuple[int, str]:
     """
@@ -74,10 +74,10 @@ def _build_throughput_timeseries(
     for b in buckets:
         ts_ms.append(int(b.timestamp() * 1000))
         counts = bucket_counts.get(b, {})
-        completed.append(int(counts.get("completed", 0)))
-        failed.append(int(counts.get("failed", 0)))
-        quarantined.append(int(counts.get("quarantined", 0)))
-        cancelled.append(int(counts.get("cancelled", 0)))
+        completed.append(counts.get("completed", 0))
+        failed.append(counts.get("failed", 0))
+        quarantined.append(counts.get("quarantined", 0))
+        cancelled.append(counts.get("cancelled", 0))
 
     return {
         "ts_ms": ts_ms,
@@ -97,7 +97,9 @@ def _normalize_error_reason(message: Any) -> str:
     - Take the prefix before ':' when present (many errors are "code: details").
     - Keep a conservative ASCII subset and bound the length.
     """
-    raw = str(message or "").strip()
+    if message is None:
+        return "unknown"
+    raw = str(message).strip()
     if not raw:
         return "unknown"
 
@@ -136,10 +138,7 @@ def summarize_ingestion_dashboard(
 
     # Current state distribution (backlog/health).
     rows = (
-        db.query(DBDocument.status, func.count(DBDocument.id))
-        .filter(*base_filters)
-        .group_by(DBDocument.status)
-        .all()
+        db.query(DBDocument.status, func.count(DBDocument.id)).filter(*base_filters).group_by(DBDocument.status).all()
     )
     by_status: dict[str, int] = {str(status or "unknown"): int(cnt or 0) for status, cnt in rows}
 
@@ -223,14 +222,14 @@ def summarize_ingestion_dashboard(
         avg_completed_sec = None
 
     return {
-        "window_hours": int(window_hours),
-        "bucket_minutes": int(bucket_minutes),
+        "window_hours": window_hours,
+        "bucket_minutes": bucket_minutes,
         "window_start": since,
         "window_end": now,
         "dataset_id": str(dataset_id) if dataset_id is not None else None,
-        "created_count": int(created_count),
-        "by_status": dict(by_status),
-        "by_stage_processing": dict(by_stage_processing),
+        "created_count": created_count,
+        "by_status": by_status,
+        "by_stage_processing": by_stage_processing,
         "avg_completed_latency_sec": avg_completed_sec,
         "top_error_reasons": top_errors,
         "timeseries": timeseries,

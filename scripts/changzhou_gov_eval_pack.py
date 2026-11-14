@@ -18,13 +18,16 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
 import pandas as pd
 from docx import Document as DocxDocument
 from sqlalchemy import and_
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -989,7 +992,7 @@ def _iter_search_terms(case: dict[str, Any]) -> list[str]:
 
 def _search_reference_matches(
     *,
-    db: Any,
+    db: "Session",
     dataset_uuid: UUID,
     tenant_uuid: UUID,
     term_cache: dict[tuple[str, str], list[dict[str, Any]]],
@@ -1037,7 +1040,7 @@ def _search_reference_matches(
 def _add_reference_matches(
     refs: list[dict[str, Any]],
     *,
-    db: Any,
+    db: "Session",
     dataset_uuid: UUID,
     tenant_uuid: UUID,
     term_cache: dict[tuple[str, str], list[dict[str, Any]]],
@@ -1065,7 +1068,7 @@ def _add_reference_matches(
 def _resolve_case_reference_sources(
     case: dict[str, Any],
     *,
-    db: Any,
+    db: "Session",
     dataset_uuid: UUID,
     tenant_uuid: UUID,
     term_cache: dict[tuple[str, str], list[dict[str, Any]]],
@@ -1098,7 +1101,7 @@ def _resolve_case_reference_sources(
 def _build_reference_target(case: dict[str, Any], refs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "question": _text(case.get("question")),
-        "expected_answer": _text(case.get("expected_answer")) or None,
+        "expected_answer": (case.get("expected_answer")),
         "reference_sources": refs,
         "tags": [
             _text(case.get("case_type")),
@@ -1355,6 +1358,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     payload = None
+    records: dict[str, list[SourceRecord]] | None = None
     cases: list[dict[str, Any]] = []
     dataset_id = _text(args.dataset_id)
     resolved_bundle = None
@@ -1467,10 +1471,10 @@ def main(argv: list[str] | None = None) -> int:
     summary = {
         "cases_total": len(cases) if cases else len((resolved_bundle or {}).get("items") or []),
         "case_type_counts": (payload or {}).get("generation_policy", {}).get("summary", {}).get("case_types", {}),
-        "service_records": len(records["service_records"]) if "records" in locals() else None,
-        "qa_records": len(records["qa_records"]) if "records" in locals() else None,
-        "one_thing_records": len(records["one_thing_records"]) if "records" in locals() else None,
-        "dataset_id": dataset_id or None,
+        "service_records": len(records["service_records"]) if records is not None else None,
+        "qa_records": len(records["qa_records"]) if records is not None else None,
+        "one_thing_records": len(records["one_thing_records"]) if records is not None else None,
+        "dataset_id": (dataset_id),
         "resolved_bundle_items": len((resolved_bundle or {}).get("items") or []) if resolved_bundle else 0,
         "imported_created": (import_result or {}).get("created") if import_result else None,
         "imported_updated": (import_result or {}).get("updated") if import_result else None,

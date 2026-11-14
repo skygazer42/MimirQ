@@ -43,11 +43,11 @@ def observe_evidence_retrieve(
     citations_count: int,
     top_relevance_score: float,
 ) -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not bool(settings.PROMETHEUS_ENABLED):
         return
 
-    mode = (retrieval_mode or "").strip().lower() or "unknown"
-    sel = (selected_pass or "").strip().lower() or "primary"
+    mode = (retrieval_mode).strip().lower() or "unknown"
+    sel = (selected_pass).strip().lower() or "primary"
     EVIDENCE_RETRIEVE_TOTAL.labels(
         has_evidence=str(bool(has_evidence)).lower(),
         abstain_triggered=str(bool(abstain_triggered)).lower(),

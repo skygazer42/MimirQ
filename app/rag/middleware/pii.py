@@ -11,8 +11,6 @@ Implements lightweight detection/redaction for common sensitive patterns:
 This middleware is disabled by default (see settings.PII_REDACTION_ENABLED).
 """
 
-
-
 from typing import Any
 
 from app.core.pii_redaction import PIIRedactor

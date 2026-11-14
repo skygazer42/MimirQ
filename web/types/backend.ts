@@ -8,7 +8,8 @@ export type OpenApiSchema<K extends keyof OpenApiSchemas> = OpenApiSchemas[K]
 
 export type HealthResponse = paths['/api/v1/health']['get']['responses'][200]['content']['application/json']
 export type ReadyResponse = paths['/api/v1/health/ready']['get']['responses'][200]['content']['application/json']
-export type HealthDetailsResponse = paths['/api/v1/health/details']['get']['responses'][200]['content']['application/json']
+export type HealthDetailsResponse =
+  paths['/api/v1/health/details']['get']['responses'][200]['content']['application/json']
 export type MetaResponse = paths['/api/v1/meta']['get']['responses'][200]['content']['application/json']
 export type MetaDetailsResponse = paths['/api/v1/meta/details']['get']['responses'][200]['content']['application/json']
 
@@ -17,10 +18,13 @@ export type MetaDetailsResponse = paths['/api/v1/meta/details']['get']['response
 export type UserProfile = OpenApiSchema<'UserPublic'>
 export type AuthToken = OpenApiSchema<'TokenResponse'>
 export type AuthResponse = OpenApiSchema<'AuthResponse'>
+export type AuthPolicy = OpenApiSchema<'AuthPolicy'>
 export type RegisterRequest = OpenApiSchema<'RegisterRequest'>
 export type LoginRequest = OpenApiSchema<'LoginRequest'>
 
 // ==================== Groups (Tenant Directory) ====================
+
+export type TenantMemberUpdateRequest = OpenApiSchema<'TenantMemberUpdateRequest'>
 
 export type TenantGroupOut = OpenApiSchema<'TenantGroupOut'>
 export type TenantGroupListResponse = OpenApiSchema<'TenantGroupListResponse'>

@@ -14,7 +14,7 @@ import json
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -23,7 +23,9 @@ logger = get_logger(__name__)
 
 
 def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
-    s = str(value or "").strip()
+    if value is None:
+        return None
+    s = str(value).strip()
     if not s:
         return None
     lim = max(0, int(max_len or 0))
@@ -86,7 +88,7 @@ def _safe_rag_config_template(raw: Any) -> dict[str, Any] | None:
     if ph:
         out["patch_hash"] = ph
 
-    return out or None
+    return out
 
 
 def _read_jsonl_tail_bytes(path: Path, *, max_bytes: int) -> tuple[bytes | None, bool]:
@@ -116,7 +118,7 @@ def _drop_partial_first_jsonl_line(raw: bytes, *, truncated: bool) -> bytes:
 def _parse_jsonl_dict_records(text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for raw_line in text.splitlines():
-        line = (raw_line or "").strip()
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -164,7 +166,7 @@ def build_rag_trace_index_from_records(
     - Prefer latest record per request_id by ts_ms
     - PII-safe: do not carry question/query text
     """
-    tenant_key = str(tenant_id or "").strip()
+    tenant_key = tenant_id.strip()
     cutoff = _to_int(cutoff_ms, default=0)
 
     best_by_request: dict[str, dict[str, Any]] = {}
@@ -173,9 +175,9 @@ def build_rag_trace_index_from_records(
     for r in records or []:
         if not isinstance(r, Mapping):
             continue
-        if str(r.get("event") or "") != "rag_trace":
+        if r.get("event") != "rag_trace":
             continue
-        if tenant_key and str(r.get("tenant_id") or "") != tenant_key:
+        if tenant_key and r.get("tenant_id") != tenant_key:
             continue
 
         ts_ms = _to_int(r.get("ts_ms"), default=0)
@@ -204,7 +206,7 @@ def build_rag_trace_index_from_records(
             citations_count = _coerce_nonneg_int(r.get("citations_count"), default=0)
         else:
             citations = r.get("citations") or []
-            citations_count = int(len(citations)) if isinstance(citations, list) else 0
+            citations_count = len(citations) if isinstance(citations, list) else 0
 
         errors = retrieval.get("errors") if isinstance(retrieval, Mapping) else None
         retrieval_error_kinds = _extract_error_kind_counts(errors)
@@ -242,7 +244,7 @@ def _merge_counts(dst: MutableMapping[str, int], src: Any) -> None:
             continue
         if iv <= 0:
             continue
-        dst[kk] = int(dst.get(kk, 0) or 0) + iv
+        dst[kk] = dst.get(kk, 0) + iv
 
 
 def _normalized_existing_ids(values: set[str]) -> set[str]:
@@ -273,7 +275,17 @@ def _feedback_cluster_identity(
     return feedback_id, request_id, question_hash, trace
 
 
-def _new_feedback_cluster(*, question_hash: str, trace: Mapping[str, Any], in_suite: bool) -> dict[str, Any]:
+class _FeedbackCluster(TypedDict):
+    question_hash: str
+    in_suite: bool
+    cluster_size: int
+    feedback_ids: list[str]
+    request_ids: list[str]
+    retrieval_error_kinds: dict[str, int]
+    representative_trace: dict[str, Any]
+
+
+def _new_feedback_cluster(*, question_hash: str, trace: Mapping[str, Any], in_suite: bool) -> _FeedbackCluster:
     return {
         "question_hash": question_hash,
         "in_suite": in_suite,
@@ -286,20 +298,20 @@ def _new_feedback_cluster(*, question_hash: str, trace: Mapping[str, Any], in_su
 
 
 def _update_feedback_cluster(
-    cluster: dict[str, Any],
+    cluster: _FeedbackCluster,
     *,
     feedback_id: str,
     request_id: str,
     trace: Mapping[str, Any],
 ) -> None:
-    cluster["cluster_size"] = int(cluster.get("cluster_size") or 0) + 1
+    cluster["cluster_size"] += 1
 
-    feedback_ids: list[str] = cluster.get("feedback_ids") or []
+    feedback_ids = cluster["feedback_ids"]
     if feedback_id not in feedback_ids and len(feedback_ids) < 50:
         feedback_ids.append(feedback_id)
     cluster["feedback_ids"] = feedback_ids
 
-    request_ids: list[str] = cluster.get("request_ids") or []
+    request_ids = cluster["request_ids"]
     added_new_request = False
     if request_id not in request_ids and len(request_ids) < 50:
         request_ids.append(request_id)
@@ -310,9 +322,9 @@ def _update_feedback_cluster(
     _maybe_replace_representative_trace(cluster, trace=trace)
 
 
-def _maybe_replace_representative_trace(cluster: dict[str, Any], *, trace: Mapping[str, Any]) -> None:
-    representative = cluster.get("representative_trace") or {}
-    representative_ts = _to_int(representative.get("ts_ms"), default=0) if isinstance(representative, Mapping) else 0
+def _maybe_replace_representative_trace(cluster: _FeedbackCluster, *, trace: Mapping[str, Any]) -> None:
+    representative = cluster["representative_trace"]
+    representative_ts = _to_int(representative.get("ts_ms"), default=0)
     trace_ts = _to_int(trace.get("ts_ms"), default=0)
     if trace_ts > representative_ts:
         cluster["representative_trace"] = dict(trace)
@@ -325,22 +337,18 @@ def _maybe_replace_representative_trace(cluster: dict[str, Any], *, trace: Mappi
         cluster["representative_trace"] = dict(trace)
 
 
-def _cluster_error_counts(cluster: dict[str, Any]) -> dict[str, int]:
-    raw_counts = cluster.get("retrieval_error_kinds")
-    if not isinstance(raw_counts, Mapping):
-        return {}
-    return {str(key): int(value) for key, value in raw_counts.items() if key is not None}
+def _cluster_error_counts(cluster: _FeedbackCluster) -> dict[str, int]:
+    return dict(cluster["retrieval_error_kinds"])
 
 
-def _build_feedback_hardcase_candidate(question_hash: str, cluster: dict[str, Any]) -> dict[str, Any]:
-    representative = cluster.get("representative_trace") or {}
-    representative_map = representative if isinstance(representative, Mapping) else {}
+def _build_feedback_hardcase_candidate(question_hash: str, cluster: _FeedbackCluster) -> dict[str, Any]:
+    representative_map = cluster["representative_trace"]
     candidate: dict[str, Any] = {
         "question_hash": question_hash,
-        "cluster_size": int(cluster.get("cluster_size") or 0),
-        "in_suite": bool(cluster.get("in_suite") or False),
-        "feedback_ids": list(cluster.get("feedback_ids") or []),
-        "request_ids": list(cluster.get("request_ids") or []),
+        "cluster_size": cluster["cluster_size"],
+        "in_suite": cluster["in_suite"],
+        "feedback_ids": list(cluster["feedback_ids"]),
+        "request_ids": list(cluster["request_ids"]),
         "retrieval_config_hash": representative_map.get("retrieval_config_hash"),
         "citations_count": representative_map.get("citations_count"),
         "retrieval_error_kinds": _cluster_error_counts(cluster),
@@ -370,7 +378,7 @@ def plan_feedback_hardcase_candidates(
 
     existing_fids = _normalized_existing_ids(existing_feedback_ids)
     existing_qh = _normalized_existing_ids(existing_question_hashes)
-    clusters: dict[str, dict[str, Any]] = {}
+    clusters: dict[str, _FeedbackCluster] = {}
 
     for fb in feedback_rows or []:
         if not isinstance(fb, Mapping):
@@ -389,12 +397,12 @@ def plan_feedback_hardcase_candidates(
 
     candidates: list[dict[str, Any]] = []
     for question_hash, cluster in clusters.items():
-        if bool(cluster.get("in_suite") or False) and not include_existing:
+        if cluster["in_suite"] and not include_existing:
             continue
         candidates.append(_build_feedback_hardcase_candidate(question_hash, cluster))
 
     # Deterministic ordering: larger clusters first, then hash.
-    candidates.sort(key=lambda x: (-int(x.get("cluster_size") or 0), str(x.get("question_hash") or "")))
+    candidates.sort(key=lambda x: (-x["cluster_size"], x["question_hash"]))
     return candidates[:cap]
 
 
@@ -427,21 +435,21 @@ def build_parse_risk_hardcase_candidate(
 
     dedupe_payload = {
         "reason": "parse_risk_tail",
-        "query_hash": str(query_hash or "").strip(),
-        "mode": str(retrieval_mode or "").strip(),
-        "profile": str(retrieval_profile or "").strip() or None,
+        "query_hash": query_hash.strip(),
+        "mode": retrieval_mode.strip(),
+        "profile": retrieval_profile,
         "cfg_hash": cfg_hash,
         "parse_risk_level": level,
     }
     return {
         "schema": "mimirq.hardcase_candidate.v1",
         "reason": "parse_risk_tail",
-        "query_hash": str(query_hash or "").strip(),
-        "retrieval_mode": str(retrieval_mode or "").strip(),
-        "retrieval_profile": (str(retrieval_profile or "").strip() or None),
+        "query_hash": query_hash.strip(),
+        "retrieval_mode": retrieval_mode.strip(),
+        "retrieval_profile": (retrieval_profile),
         "retrieval_config_hash": cfg_hash,
         "parse_risk_level": level,
-        "parse_risk_score": round(float(score), 3),
+        "parse_risk_score": round(score, 3),
         "parse_risk_reason": reason_text,
         "dedupe_key": stable_hash(json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True), length=32),
         "ts_ms": int(max(0, ts_ms)),
@@ -472,13 +480,13 @@ def evaluate_parse_risk_auto_enqueue_policy(
     if not enabled:
         enqueue = False
         reason = "disabled"
-    elif not bool(risk.get("hardcase_eligible")):
+    elif not risk.get("hardcase_eligible"):
         enqueue = False
         reason = "hardcase_not_eligible"
     elif level not in levels:
         enqueue = False
         reason = "level_filtered"
-    elif float(score) < float(min_score):
+    elif score < float(min_score):
         enqueue = False
         reason = "score_below_min"
     else:
@@ -487,10 +495,10 @@ def evaluate_parse_risk_auto_enqueue_policy(
 
     return {
         "enabled": bool(enabled),
-        "enqueue": bool(enqueue),
+        "enqueue": enqueue,
         "reason": reason,
         "level": level or "unknown",
-        "score": round(float(score), 3),
+        "score": round(score, 3),
         "allowed_levels": sorted(levels),
         "min_score": round(float(min_score), 3),
     }

@@ -9,15 +9,14 @@ import math
 import queue
 import re
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
 from fastapi import HTTPException
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.core.config import settings
@@ -59,9 +58,12 @@ from app.rag.pipeline_plugins.contracts import (
     INDEXED_METADATA_KEY,
     RECORD_IDENTITY_METADATA_KEY,
 )
+from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = get_logger(__name__)
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[A-Za-z0-9_]{2,}")
@@ -140,7 +142,7 @@ _DETERMINISTIC_SCORE_META_KEYS = {
 }
 
 
-def _run_with_wall_timeout(func, *, timeout_sec: float) -> Any:
+def _run_with_wall_timeout(func: Callable[[], Any], *, timeout_sec: float) -> Any:
     """Run a blocking evaluation without allowing it to hold a run forever."""
     timeout = float(timeout_sec or 0.0)
     if timeout <= 0:
@@ -177,7 +179,7 @@ class CitationRecord:
     payload: dict[str, Any] | None
     chunk_id: UUID | None
     document_id: UUID | None
-    fallback_text: str = ""
+    fallback_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -211,7 +213,7 @@ def _normalized_metric_names(metric_names: list[str] | None) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in metric_names or []:
-        key = str(raw or "").strip().lower()
+        key = raw.strip().lower()
         if not key or key in seen:
             continue
         seen.add(key)
@@ -295,7 +297,7 @@ def _build_regression_progress_summary(
 
 
 def _commit_regression_progress(
-    db: Any,
+    db: "Session",
     run: RagasRegressionRun,
     *,
     mode: str,
@@ -304,7 +306,7 @@ def _commit_regression_progress(
     evaluable_items: int,
 ) -> None:
     try:
-        summary = dict(getattr(run, "summary", None) or {})
+        summary = dict(run.summary or {})
         summary["progress"] = _build_regression_progress_summary(
             mode=mode,
             processed_cases=processed_cases,
@@ -314,13 +316,8 @@ def _commit_regression_progress(
         run.summary = summary
         db.commit()
     except Exception as exc:  # noqa: BLE001
-        rollback = getattr(db, "rollback", None)
-        if callable(rollback):
-            try:
-                rollback()
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-        logger.debug("Failed to persist regression progress: %s", exc)
+        db.rollback()
+        logger.warning("Failed to persist regression progress: %s", exc, exc_info=True)
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -329,7 +326,7 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     - If a SOCKS proxy is detected, disable trust_env to avoid httpx issues.
     """
     trust_env = httpx_trust_env(logger=logger)
-    timeout = float(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    timeout = float(settings.LLM_TIMEOUT)
     return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
 
 
@@ -382,9 +379,10 @@ def _collect_citation_records(citations: Any) -> tuple[list[CitationRecord], lis
             continue
         chunk_id = _coerce_uuid(payload.get("chunk_id"))
         document_id = _coerce_uuid(payload.get("document_id"))
-        fallback_text = str(
-            payload.get("chunk_content") or payload.get("quote") or payload.get("text") or ""
-        ).strip()
+        raw_text = next(
+            (payload[key] for key in ("chunk_content", "quote", "text") if payload.get(key) is not None), None
+        )
+        fallback_text = str(raw_text).strip() if raw_text is not None else None
         records.append(
             CitationRecord(
                 original=item,
@@ -401,7 +399,7 @@ def _collect_citation_records(citations: Any) -> tuple[list[CitationRecord], lis
 
 
 def _load_chunks_by_id(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     chunk_ids: list[UUID],
@@ -420,7 +418,7 @@ def _load_chunks_by_id(
 
 
 def _filter_allowed_documents_for_dataset(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     allowed_set: set[UUID],
@@ -435,7 +433,7 @@ def _filter_allowed_documents_for_dataset(
 
 
 def _resolve_context_allowed_document_ids(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     account_id: str,
@@ -447,7 +445,7 @@ def _resolve_context_allowed_document_ids(
     if allowed_document_ids:
         allowed_set: set[UUID] | None = set(allowed_document_ids)
     else:
-        candidate_doc_ids = {chunk.document_id for chunk in chunk_map.values() if getattr(chunk, "document_id", None)}
+        candidate_doc_ids = {chunk.document_id for chunk in chunk_map.values() if chunk.document_id}
         candidate_doc_ids |= {record.document_id for record in records if record.document_id is not None}
         if candidate_doc_ids:
             allowed_ids, _missing = get_allowed_document_id_sets(
@@ -471,7 +469,7 @@ def _resolve_context_allowed_document_ids(
 
 
 def _resolve_enrichment_allowed_document_ids(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     chunk_map: dict[UUID, DocumentChunk],
@@ -484,11 +482,7 @@ def _resolve_enrichment_allowed_document_ids(
     if dataset_id is None or not chunk_map:
         return allowed_set
 
-    candidate_doc_ids = {
-        chunk.document_id
-        for chunk in chunk_map.values()
-        if getattr(chunk, "document_id", None) is not None
-    }
+    candidate_doc_ids = {chunk.document_id for chunk in chunk_map.values() if chunk.document_id is not None}
     if not candidate_doc_ids:
         return allowed_set
 
@@ -512,12 +506,13 @@ def _build_contexts_from_citations(
     seen_context_keys: set[str] = set()
     for record in records:
         chunk = chunk_map.get(record.chunk_id) if record.chunk_id else None
-        doc_id = getattr(chunk, "document_id", None) if chunk is not None else record.document_id
+        doc_id = chunk.document_id if chunk is not None else record.document_id
         if allowed_set is not None and (doc_id is None or doc_id not in allowed_set):
             continue
 
-        content = (getattr(chunk, "content", None) if chunk is not None else None) or record.fallback_text or ""
-        content = str(content or "")
+        if chunk is None and record.fallback_text is None:
+            continue
+        content = chunk.content if chunk is not None else record.fallback_text
         if not content.strip():
             continue
         if max_context_chars and len(content) > max_context_chars:
@@ -533,7 +528,7 @@ def _build_contexts_from_citations(
 
 def _extract_contexts(
     *,
-    db,
+    db: "Session",
     tenant_id: UUID,
     account_id: str,
     citations: Any,
@@ -600,7 +595,7 @@ def _compact_chunk_metadata_for_regression(raw_metadata: Any) -> dict[str, Any]:
         view = raw_metadata.get(view_key)
         if not isinstance(view, dict):
             continue
-        view_copy = _json_safe(dict(view))
+        view_copy = _json_safe(view)
         out[view_key] = view_copy
         for key, value in view_copy.items():
             if key not in out:
@@ -608,14 +603,14 @@ def _compact_chunk_metadata_for_regression(raw_metadata: Any) -> dict[str, Any]:
 
     for key in _REGRESSION_CITATION_METADATA_SCALAR_KEYS:
         if key in raw_metadata and key not in out:
-            out[key] = _json_safe(raw_metadata.get(key))
+            out[key] = _json_safe(raw_metadata[key])
 
     return out
 
 
 def _enrich_citations_with_chunk_metadata(
     *,
-    db,
+    db: "Session",
     tenant_id: UUID,
     citations: Any,
     allowed_document_ids: list[UUID] | None = None,
@@ -632,10 +627,7 @@ def _enrich_citations_with_chunk_metadata(
         return citations
 
     records, chunk_ids = _collect_citation_records(citations)
-    normalized_items = [
-        record.payload if record.payload is not None else record.original
-        for record in records
-    ]
+    normalized_items = [record.payload if record.payload is not None else record.original for record in records]
     if not chunk_ids:
         return normalized_items
 
@@ -660,12 +652,12 @@ def _enrich_citations_with_chunk_metadata(
             enriched.append(out)
             continue
 
-        doc_id = getattr(chunk, "document_id", None)
+        doc_id = chunk.document_id
         if allowed_set is not None and (doc_id is None or doc_id not in allowed_set):
             enriched.append(out)
             continue
 
-        compact = _compact_chunk_metadata_for_regression(getattr(chunk, "doc_metadata", None))
+        compact = _compact_chunk_metadata_for_regression(chunk.doc_metadata)
         if compact:
             existing = out.get("metadata") if isinstance(out.get("metadata"), dict) else {}
             out["metadata"] = {**compact, **existing}
@@ -741,7 +733,7 @@ def _update_answer_quality_faithfulness_summary(
         return
     out["faithfulness_det"] = faith_det
     out["atomic_faithfulness"] = faith_det
-    out["hallucination_rate"] = round(1.0 - float(faith_det), 4)
+    out["hallucination_rate"] = round(1.0 - faith_det, 4)
     out["faithfulness"] = faith_det
 
 
@@ -784,7 +776,7 @@ def _build_refusal_quality_summary(metas: list[dict[str, Any]]) -> dict[str, Any
         "refusal_correctness": round(float(correct) / float(labeled), 4),
         "refusal_false_positive_rate": round(float(false_pos) / float(labeled), 4),
         "refusal_false_negative_rate": round(float(false_neg) / float(labeled), 4),
-        "refusal_labeled_items": int(labeled),
+        "refusal_labeled_items": labeled,
     }
 
 
@@ -872,7 +864,7 @@ def _build_regression_slice_summaries(
         groups: dict[str, list[dict[str, Any]]] = {}
         for m in metas:
             raw = m.get(key)
-            b = str(raw or "").strip().lower() or "unknown"
+            b = str(raw).strip().lower() or "unknown" if raw is not None else "unknown"
             if len(b) > 80:
                 b = b[:80]
             groups.setdefault(b, []).append(m)
@@ -880,14 +872,14 @@ def _build_regression_slice_summaries(
         rows: list[dict[str, Any]] = []
         for bucket, items in groups.items():
             summary = _build_retrieval_metrics_summary(items)
-            rows.append({"key": bucket, "items": int(len(items)), **summary})
+            rows.append({"key": bucket, "items": len(items), **summary})
 
-        rows.sort(key=lambda o: (-int(o.get("items") or 0), str(o.get("key") or "")))
+        rows.sort(key=lambda o: (-o["items"], o["key"]))
         truncated = False
         if max_buckets > 0 and len(rows) > max_buckets:
             rows = rows[:max_buckets]
             truncated = True
-        return {"buckets": rows, "truncated": bool(truncated)}
+        return {"buckets": rows, "truncated": truncated}
 
     return {
         "file_type": _bucketize(key="slice_file_type"),
@@ -910,8 +902,8 @@ def _merge_summary_with_regression_gate(
     out = dict(summary or {})
     gate = _build_regression_gate_summary(eval_items)
     # Do not override existing summary keys (e.g. RAGAS metrics like "faithfulness").
-    for k, v in (gate or {}).items():
-        if k in out and out.get(k) is not None:
+    for k, v in gate.items():
+        if k in out and out[k] is not None:
             continue
         out[k] = v
     out["retrieval_slices"] = _build_regression_slice_summaries(eval_items)
@@ -946,7 +938,7 @@ def _json_safe(value: Any) -> Any:
 
 def _resolve_case_scope(
     *,
-    db,
+    db: "Session",
     tenant_id: UUID,
     account_id: str,
     case: RagasRegressionCase,
@@ -957,13 +949,16 @@ def _resolve_case_scope(
     2) case.dataset_id -> dataset-scoped retrieval (no document_id enumeration)
     3) fallback: open-scope retrieval (tenant + ACL trimming)
     """
-    raw_doc_ids = _parse_uuid_list(case.document_ids or [])
-    if raw_doc_ids:
-        return filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids), None
+    if case.document_ids:
+        raw_doc_ids = _parse_uuid_list(case.document_ids)
+        if not raw_doc_ids:
+            raise HTTPException(status_code=400, detail="Regression case has no valid document identifiers")
+        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids)
+        return allowed_doc_ids, None
 
     if case.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, case.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, case.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         return None, case.dataset_id
 
     return None, None
@@ -1003,7 +998,7 @@ def _resolve_metrics(metric_names: list[str]):
     requested_names = metric_names or ["faithfulness", "response_relevancy"]
     resolved = []
     for name in requested_names:
-        key = (name or "").strip().lower()
+        key = name.strip().lower()
         factory = factory_map.get(key)
         if factory is None:
             raise ValueError(f"Unsupported RAGAS metric: {name}")
@@ -1028,7 +1023,7 @@ def _load_ragas_evaluation_runtime() -> tuple[Any, Any, Any, Any, Any]:
 
 
 def _resolve_response_relevancy_strictness() -> int:
-    configured = int(getattr(settings, "RAGAS_RESPONSE_RELEVANCY_STRICTNESS", 0) or 0)
+    configured = int(settings.RAGAS_RESPONSE_RELEVANCY_STRICTNESS)
     if configured > 0:
         return max(1, min(configured, 10))
 
@@ -1038,7 +1033,7 @@ def _resolve_response_relevancy_strictness() -> int:
 
 
 def _eval_llm_uses_deepseek() -> bool:
-    llm_hint = f"{getattr(settings, 'LLM_API_BASE', '')} {getattr(settings, 'LLM_MODEL', '')}".lower()
+    llm_hint = f"{settings.LLM_API_BASE} {settings.LLM_MODEL}".lower()
     return "deepseek" in llm_hint
 
 
@@ -1046,10 +1041,10 @@ def _build_ragas_run_config():
     from ragas.run_config import RunConfig
 
     return RunConfig(
-        timeout=max(5, int(getattr(settings, "RAGAS_RUN_TIMEOUT_SEC", 60) or 60)),
-        max_retries=max(0, int(getattr(settings, "RAGAS_RUN_MAX_RETRIES", 1) or 0)),
-        max_wait=max(1, int(getattr(settings, "RAGAS_RUN_MAX_WAIT_SEC", 2) or 2)),
-        max_workers=max(1, int(getattr(settings, "RAGAS_RUN_MAX_WORKERS", 4) or 4)),
+        timeout=max(5, int(settings.RAGAS_RUN_TIMEOUT_SEC)),
+        max_retries=max(0, int(settings.RAGAS_RUN_MAX_RETRIES)),
+        max_wait=max(1, int(settings.RAGAS_RUN_MAX_WAIT_SEC)),
+        max_workers=max(1, int(settings.RAGAS_RUN_MAX_WORKERS)),
     )
 
 
@@ -1059,11 +1054,11 @@ def _should_use_conversation_deterministic_eval(metric_names: list[str]) -> bool
     supported = {"faithfulness", "response_relevancy"}
     if not normalized.issubset(supported):
         return False
-    return bool(getattr(settings, "RAGAS_CONVERSATION_DETERMINISTIC_MODE_ENABLED", False)) or _eval_llm_uses_deepseek()
+    return bool(settings.RAGAS_CONVERSATION_DETERMINISTIC_MODE_ENABLED) or _eval_llm_uses_deepseek()
 
 
 def _token_set(text: str) -> set[str]:
-    return {match.group(0).casefold() for match in _TOKEN_RE.finditer(str(text or ""))}
+    return {match.group(0).casefold() for match in _TOKEN_RE.finditer(text)}
 
 
 def _deterministic_response_relevancy(user_input: str, response: str) -> float | None:
@@ -1089,7 +1084,7 @@ def _build_conversation_deterministic_scores(
         scores["faithfulness_det"] = faithfulness_det
         scores["faithfulness"] = faithfulness_det
         scores["atomic_faithfulness"] = faithfulness_det
-        scores["hallucination_rate"] = round(1.0 - float(faithfulness_det), 4)
+        scores["hallucination_rate"] = round(1.0 - faithfulness_det, 4)
 
     response_relevancy_det = _deterministic_response_relevancy(user_input, response)
     if response_relevancy_det is not None:
@@ -1105,7 +1100,7 @@ def _build_conversation_deterministic_scores(
 
 def _persist_conversation_deterministic_result(
     *,
-    db,
+    db: "Session",
     run: RagasEvaluationRun,
     run_id: UUID,
     tenant_id: UUID,
@@ -1201,6 +1196,10 @@ def _build_llm_and_embeddings():
     Build LangChain LLM + embeddings compatible with RAGAS wrappers.
     """
 
+    from app.core.model_execution import reject_retired_provider
+
+    provider = settings.EMBEDDING_PROVIDER.strip().lower()
+    reject_retired_provider(provider, capability="embedding")
     http_client, http_async_client = _build_http_clients()
     llm = ChatOpenAI(
         model=settings.LLM_MODEL,
@@ -1214,16 +1213,12 @@ def _build_llm_and_embeddings():
         http_async_client=http_async_client,
     )
 
-    provider = (settings.EMBEDDING_PROVIDER or "openai_compatible").lower()
-    if provider == "local":
-
-        embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
-    elif provider == "dashscope":
+    if provider == "dashscope":
         embeddings = create_langchain_embeddings_from_config(
             provider="dashscope",
             model=settings.EMBEDDING_MODEL,
-            api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or "",
-            base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "",
+            api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY,
+            base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE,
             dimension=None,
         )
     else:
@@ -1244,7 +1239,9 @@ def _utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _mark_run_running(db, run: Any, *, clear_error: bool = False) -> None:
+def _mark_run_running(
+    db: "Session", run: RagasEvaluationRun | RagasRegressionRun, *, clear_error: bool = False
+) -> None:
     run.status = "running"
     run.started_at = _utc_now_naive()
     if clear_error:
@@ -1252,7 +1249,7 @@ def _mark_run_running(db, run: Any, *, clear_error: bool = False) -> None:
     db.commit()
 
 
-def _mark_run_failed(db, run: Any, message: str) -> None:
+def _mark_run_failed(db: "Session", run: RagasEvaluationRun | RagasRegressionRun, message: str) -> None:
     run.status = "failed"
     run.error_message = str(message)
     run.finished_at = _utc_now_naive()
@@ -1260,9 +1257,9 @@ def _mark_run_failed(db, run: Any, message: str) -> None:
 
 
 def _fail_run_best_effort(
-    db,
+    db: "Session",
     *,
-    run_model: Any,
+    run_model: type[RagasEvaluationRun] | type[RagasRegressionRun],
     run_id: UUID,
     tenant_id: UUID,
     message: str,
@@ -1340,7 +1337,7 @@ def _evaluate_ragas_dataset(
 
 
 def _load_conversation_for_evaluation(
-    db,
+    db: "Session",
     run: RagasEvaluationRun,
     *,
     tenant_id: UUID,
@@ -1375,7 +1372,7 @@ def _load_conversation_for_evaluation(
 
 
 def _build_conversation_eval_items(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     account_id: str,
@@ -1452,7 +1449,7 @@ def _run_conversation_ragas(
 
     wall_timeout_sec = max(
         5.0,
-        float(getattr(settings, "RAGAS_CONVERSATION_WALL_TIMEOUT_SEC", 90) or 90),
+        float(settings.RAGAS_CONVERSATION_WALL_TIMEOUT_SEC),
     )
     result, eval_prompt_tokens, eval_completion_tokens, eval_total_cost = _run_with_wall_timeout(
         lambda: _evaluate_ragas_dataset(
@@ -1476,7 +1473,7 @@ def _run_conversation_ragas(
 
 def _persist_conversation_ragas_result(
     *,
-    db,
+    db: "Session",
     run: RagasEvaluationRun,
     run_id: UUID,
     tenant_id: UUID,
@@ -1518,12 +1515,12 @@ def _persist_conversation_ragas_result(
     summary["eval_llm_tokens_input_ragas"] = execution.eval_prompt_tokens
     summary["eval_llm_tokens_output_ragas"] = execution.eval_completion_tokens
     summary["eval_estimated_cost_usd_ragas"] = (
-        round(float(execution.eval_total_cost), 6) if execution.eval_total_cost is not None else None
+        round(execution.eval_total_cost, 6) if execution.eval_total_cost is not None else None
     )
     summary["eval_llm_tokens_input"] = execution.eval_prompt_tokens
     summary["eval_llm_tokens_output"] = execution.eval_completion_tokens
     summary["eval_estimated_cost_usd"] = (
-        round(float(execution.eval_total_cost), 6) if execution.eval_total_cost is not None else None
+        round(execution.eval_total_cost, 6) if execution.eval_total_cost is not None else None
     )
     summary.update(_build_regression_gate_summary(eval_items))
 
@@ -1567,7 +1564,7 @@ def run_conversation_ragas_evaluation(
 
         _mark_run_running(db, run, clear_error=True)
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
 
         conversation, allowed_doc_ids = _load_conversation_for_evaluation(
             db,
@@ -1615,7 +1612,7 @@ def run_conversation_ragas_evaluation(
         except TimeoutError as exc:
             wall_timeout_sec = max(
                 5.0,
-                float(getattr(settings, "RAGAS_CONVERSATION_WALL_TIMEOUT_SEC", 90) or 90),
+                float(settings.RAGAS_CONVERSATION_WALL_TIMEOUT_SEC),
             )
             logger.warning(
                 "Conversation RAGAS evaluation timed out after %.1fs; using deterministic fallback run_id=%s",
@@ -1665,7 +1662,7 @@ def run_conversation_ragas_evaluation(
 def _build_regression_run_mode(metric_names: list[str]) -> RegressionRunMode:
     normalized_metric_names = _normalized_metric_names(metric_names)
     metric_split = split_regression_metric_names(normalized_metric_names)
-    retrieval_only = not bool(normalized_metric_names)
+    retrieval_only = not normalized_metric_names
     deterministic_only = (not retrieval_only) and bool(metric_split.deterministic) and not metric_split.ragas
     progress_mode = "retrieval_only" if retrieval_only else ("deterministic_gate" if deterministic_only else "ragas")
     return RegressionRunMode(
@@ -1689,7 +1686,7 @@ def _normalize_regression_case_ids(case_ids: list[UUID]) -> list[UUID]:
 
 
 def _load_regression_cases(
-    db,
+    db: "Session",
     run: RagasRegressionRun,
     *,
     tenant_id: UUID,
@@ -1704,7 +1701,7 @@ def _load_regression_cases(
         normalized_case_ids = _normalize_regression_case_ids(case_ids)
         query = query.filter(RagasRegressionCase.id.in_(normalized_case_ids))
         fetched = query.all()
-        case_by_id = {case.id: case for case in fetched if getattr(case, "id", None)}
+        case_by_id = {case.id: case for case in fetched if case.id}
         missing = [case_id for case_id in normalized_case_ids if case_id not in case_by_id]
         if missing:
             _mark_run_failed(db, run, f"Missing regression cases: {len(missing)}")
@@ -1719,7 +1716,9 @@ def _load_regression_cases(
 
 
 def _normalize_access_mode(value: object) -> str:
-    normalized = str(value or "").strip().lower()
+    if value is None:
+        return "inherit"
+    normalized = str(value).strip().lower()
     if not normalized or normalized == "inherit":
         return "inherit"
     if normalized in {"only_me", "partial_members", "all_team_members"}:
@@ -1728,14 +1727,16 @@ def _normalize_access_mode(value: object) -> str:
 
 
 def _normalize_pipeline_hash(value: object) -> str:
-    normalized = str(value or "").strip()
+    if value is None:
+        return "unknown"
+    normalized = str(value).strip()
     if not normalized:
         return "unknown"
     return normalized[:16]
 
 
 def _stable_slice_bucket(values: set[str], *, default: str) -> str:
-    cleaned = {str(value or "").strip().lower() for value in values if str(value or "").strip()}
+    cleaned = {value.strip().lower() for value in values if value.strip()}
     if not cleaned:
         return default
     if len(cleaned) == 1:
@@ -1751,7 +1752,7 @@ def _collect_case_evidence_docs(
     for case in cases:
         doc_ids: list[UUID] = []
         seen: set[UUID] = set()
-        for src in getattr(case, "reference_sources", None) or []:
+        for src in case.reference_sources or []:
             raw = src.get("document_id") if isinstance(src, dict) else getattr(src, "document_id", None)
             document_id = _coerce_uuid(raw)
             if document_id is None or document_id in seen:
@@ -1785,7 +1786,10 @@ def _chunk_quality_bucket(meta_dict: dict[str, Any]) -> str:
     gate = meta_dict.get("chunk_quality_gate")
     if not isinstance(gate, dict):
         return "unknown"
-    grade = str(gate.get("grade") or "").strip().lower()
+    raw_grade = gate.get("grade")
+    if raw_grade is None:
+        return "unknown"
+    grade = str(raw_grade).strip().lower()
     if grade in {"pass", "warn", "fail"}:
         return grade
     if grade:
@@ -1794,7 +1798,7 @@ def _chunk_quality_bucket(meta_dict: dict[str, Any]) -> str:
 
 
 def _load_evidence_document_attributes(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     evidence_doc_ids: set[UUID],
@@ -1818,7 +1822,7 @@ def _load_evidence_document_attributes(
     for doc_id, file_type, access_mode, meta in rows:
         meta_dict = meta if isinstance(meta, dict) else {}
         doc_attr[doc_id] = {
-            "file_type": str(file_type or "").strip().lower() or "unknown",
+            "file_type": file_type.strip().lower() or "unknown",
             "language": extract_language_bucket(meta_dict),
             "directory": directory_bucket_from_source_path(meta_dict.get("source_path")),
             "pipeline_hash": _normalize_pipeline_hash(get_active_pipeline_hash(meta_dict)),
@@ -1878,9 +1882,13 @@ def _build_case_slice_meta(
 
 def _resolve_case_modality(case: RagasRegressionCase) -> tuple[str, dict[str, Any]]:
     multimodal_router_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
-    extra = case.extra if isinstance(getattr(case, "extra", None), dict) else {}
-    override = str(extra.get("modality") or extra.get("query_modality") or "").strip().lower()
-    if override in {"text", "table", "image"}:
+    extra = case.extra if isinstance(case.extra, dict) else {}
+    override = extra.get("modality")
+    if override is None:
+        override = extra.get("query_modality")
+    if isinstance(override, str):
+        override = override.strip().lower()
+    if override in ("text", "table", "image"):
         multimodal_router_meta["modality"] = override
         multimodal_router_meta["reasons"] = ["override"]
         return override, multimodal_router_meta
@@ -1901,7 +1909,7 @@ def _resolve_case_modality(case: RagasRegressionCase) -> tuple[str, dict[str, An
 
 
 def _resolve_table_tag_context(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     account_id: str,
@@ -1914,7 +1922,7 @@ def _resolve_table_tag_context(
 
         doc_ids_for_tag = list(scope_doc_ids or [])
         if not doc_ids_for_tag and scope_dataset_id is not None:
-            max_doc_ids = int(getattr(settings, "CHAT_TAG_MAX_DOC_IDS", 1000) or 1000)
+            max_doc_ids = int(settings.CHAT_TAG_MAX_DOC_IDS)
             candidate_rows = (
                 db.query(DBDocument.id)
                 .filter(
@@ -1944,48 +1952,8 @@ def _resolve_table_tag_context(
         return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
 
-def _resolve_image_context(
-    db,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    question: str,
-    scope_doc_ids: list[UUID] | None,
-    scope_dataset_id: UUID | None,
-) -> tuple[list[Any], dict[str, Any]]:
-    try:
-        from app.services.chat_image_service import build_chat_image_context_docs
-
-        dataset_for_images = scope_dataset_id
-        if dataset_for_images is None and scope_doc_ids:
-            rows = (
-                db.query(DBDocument.dataset_id)
-                .filter(
-                    DBDocument.tenant_id == tenant_id,
-                    DBDocument.id.in_(list(scope_doc_ids)),
-                )
-                .distinct()
-                .all()
-            )
-            dataset_ids = {row[0] for row in rows if row and row[0]}
-            if len(dataset_ids) == 1:
-                dataset_for_images = next(iter(dataset_ids))
-        if dataset_for_images is None:
-            return [], {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_for_images,
-            question=question,
-        )
-        return list(image_docs or []), image_meta
-    except Exception as exc:  # noqa: BLE001
-        return [], {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
-
-
 def _prepare_regression_case_routing(
-    db,
+    db: "Session",
     *,
     tenant_id: UUID,
     account_id: str,
@@ -2007,16 +1975,6 @@ def _prepare_regression_case_routing(
             scope_dataset_id=scope_dataset_id,
         )
         injected_docs.extend(tag_docs)
-    if modality == "image":
-        image_docs, image_meta = _resolve_image_context(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            question=case.question,
-            scope_doc_ids=scope_doc_ids,
-            scope_dataset_id=scope_dataset_id,
-        )
-        injected_docs.extend(image_docs)
     return RegressionCaseRoutingState(
         modality=modality,
         multimodal_router_meta=multimodal_router_meta,
@@ -2028,7 +1986,7 @@ def _prepare_regression_case_routing(
 
 def _build_regression_graph_state(
     *,
-    db,
+    db: "Session",
     tenant_id: UUID,
     account_id: str,
     case: RagasRegressionCase,
@@ -2042,7 +2000,7 @@ def _build_regression_graph_state(
     state = build_rag_state(
         question=case.question,
         history=[],
-        document_ids=(scope_doc_ids or None),
+        document_ids=scope_doc_ids,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=scope_dataset_id,
@@ -2112,15 +2070,15 @@ def _invoke_regression_graph(
         return "", graph_result.get("citations") or [], graph_result
 
     thread_id = f"regression:{run_id}:{case_id}"
-    use_functional_api = bool(getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True))
+    use_functional_api = bool(settings.LANGGRAPH_USE_FUNCTIONAL_API)
     if use_functional_api:
         graph_result = run_rag_workflow_functional(state, thread_id=thread_id, context=None) or {}
     else:
         app = build_rag_graph()
-        recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+        recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT))
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
         graph_result = app.invoke(state, config=config, context=None) or {}
-    return (graph_result or {}).get("answer") or "", (graph_result or {}).get("citations") or [], graph_result
+    return graph_result["answer"], (graph_result or {}).get("citations") or [], graph_result
 
 
 def _resolve_citation_eval_limit(rag_params: dict[str, Any]) -> int:
@@ -2134,7 +2092,9 @@ def _top_hit_type(citations: Any) -> str:
     try:
         citation = (citations or [])[0] if isinstance(citations, list) else None
         if isinstance(citation, dict):
-            raw_hit_type = str(citation.get("hit_type") or "").strip().lower()
+            raw_hit_type = citation.get("hit_type")
+            if isinstance(raw_hit_type, str):
+                raw_hit_type = raw_hit_type.strip().lower()
             if raw_hit_type in {"vector", "keyword", "hybrid", "mmr", "tag", "image", "table"}:
                 return raw_hit_type
     except Exception:
@@ -2162,7 +2122,7 @@ def _merge_regression_item_meta(
 
 
 def _build_regression_eval_item(
-    db,
+    db: "Session",
     *,
     run_id: UUID,
     tenant_id: UUID,
@@ -2253,7 +2213,7 @@ def _build_regression_eval_item(
 
 
 def _collect_regression_eval_items(
-    db,
+    db: "Session",
     run: RagasRegressionRun,
     *,
     run_id: UUID,
@@ -2297,12 +2257,12 @@ def _maybe_attach_llm_judge(
     use_llm_judge: bool,
     retrieval_only: bool,
     eval_items: list[dict[str, Any]],
-    db,
+    db: "Session",
     tenant_id: UUID,
     account_id: str,
     rag_params: dict[str, Any],
 ) -> tuple[dict[str, Any], Any | None, Any | None]:
-    if not bool(use_llm_judge) or retrieval_only:
+    if not use_llm_judge or retrieval_only:
         return {}, None, None
     try:
         shared_llm, shared_embeddings = _build_llm_and_embeddings()
@@ -2329,12 +2289,12 @@ def _maybe_attach_llm_judge(
 
 
 def _replace_regression_items(
-    db,
+    db: "Session",
     *,
     run_id: UUID,
     tenant_id: UUID,
     eval_items: list[dict[str, Any]],
-    score_builder: Any,
+    score_builder: Callable[[dict[str, Any], int], dict[str, Any]],
 ) -> None:
     db.query(RagasRegressionItem).filter(
         RagasRegressionItem.run_id == run_id,
@@ -2347,7 +2307,7 @@ def _replace_regression_items(
                 tenant_id=tenant_id,
                 case_id=item["case_id"],
                 question=item["question"],
-                response=item.get("response") or "",
+                response=item["response"],
                 retrieved_contexts=item["retrieved_contexts"],
                 citations=item["citations"],
                 scores=score_builder(item, idx),
@@ -2386,7 +2346,7 @@ def _apply_judge_only_eval_cost_summary(
     use_llm_judge: bool,
     llm_judge_summary: dict[str, Any],
 ) -> None:
-    if bool(use_llm_judge):
+    if use_llm_judge:
         judge_in = llm_judge_summary.get("llm_judge_tokens_input")
         judge_out = llm_judge_summary.get("llm_judge_tokens_output")
         judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd")
@@ -2401,7 +2361,7 @@ def _apply_judge_only_eval_cost_summary(
 
 def _persist_retrieval_only_regression_result(
     *,
-    db,
+    db: "Session",
     run: RagasRegressionRun,
     run_id: UUID,
     tenant_id: UUID,
@@ -2445,7 +2405,7 @@ def _persist_retrieval_only_regression_result(
 
 def _persist_deterministic_regression_result(
     *,
-    db,
+    db: "Session",
     run: RagasRegressionRun,
     run_id: UUID,
     tenant_id: UUID,
@@ -2545,28 +2505,28 @@ def _apply_combined_eval_cost_summary(
     summary["eval_llm_tokens_input_ragas"] = execution.eval_prompt_tokens
     summary["eval_llm_tokens_output_ragas"] = execution.eval_completion_tokens
     summary["eval_estimated_cost_usd_ragas"] = (
-        round(float(execution.eval_total_cost), 6) if execution.eval_total_cost is not None else None
+        round(execution.eval_total_cost, 6) if execution.eval_total_cost is not None else None
     )
-    judge_in = llm_judge_summary.get("llm_judge_tokens_input") if isinstance(llm_judge_summary, dict) else None
-    judge_out = llm_judge_summary.get("llm_judge_tokens_output") if isinstance(llm_judge_summary, dict) else None
-    judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd") if isinstance(llm_judge_summary, dict) else None
+    judge_in = llm_judge_summary.get("llm_judge_tokens_input")
+    judge_out = llm_judge_summary.get("llm_judge_tokens_output")
+    judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd")
     token_in_known = (execution.eval_prompt_tokens is not None) or (judge_in is not None)
     token_out_known = (execution.eval_completion_tokens is not None) or (judge_out is not None)
     cost_known = (execution.eval_total_cost is not None) or (judge_cost is not None)
     summary["eval_llm_tokens_input"] = (
-        int(execution.eval_prompt_tokens or 0) + int(judge_in or 0) if token_in_known else None
+        (execution.eval_prompt_tokens or 0) + int(judge_in or 0) if token_in_known else None
     )
     summary["eval_llm_tokens_output"] = (
-        int(execution.eval_completion_tokens or 0) + int(judge_out or 0) if token_out_known else None
+        (execution.eval_completion_tokens or 0) + int(judge_out or 0) if token_out_known else None
     )
     summary["eval_estimated_cost_usd"] = (
-        round(float(execution.eval_total_cost or 0.0) + float(judge_cost or 0.0), 6) if cost_known else None
+        round((execution.eval_total_cost or 0.0) + float(judge_cost or 0.0), 6) if cost_known else None
     )
 
 
 def _persist_ragas_regression_result(
     *,
-    db,
+    db: "Session",
     run: RagasRegressionRun,
     run_id: UUID,
     tenant_id: UUID,
@@ -2646,7 +2606,7 @@ def run_regression_ragas_evaluation(
 
         _mark_run_running(db, run)
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
         cases = _load_regression_cases(
             db,
             run,

@@ -1,6 +1,7 @@
 """
 Text / Markdown parsers.
 """
+
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -10,6 +11,7 @@ from app.parsing.utils.text import read_text_file
 
 class TextParser:
     """Plain text parser."""
+
     def parse(self, file_path: Path) -> list[Document]:
         """
         Parse a plain text file into Document list.
@@ -39,10 +41,6 @@ class MarkdownParser:
         """
         decoded = read_text_file(file_path)
         md_content = decoded.text
-
-        # If you need plain text later, enable the lines below:
-        # html = markdown.markdown(md_content)
-        # text = BeautifulSoup(html, "html.parser").get_text()
 
         metadata = {
             "source": str(file_path.name),

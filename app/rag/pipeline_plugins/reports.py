@@ -12,7 +12,7 @@ from app.rag.pipeline_plugins.contracts import (
     validate_kg_events_metadata,
 )
 from app.rag.pipeline_plugins.local_runner import load_plugin_test_input
-from app.rag.pipeline_plugins.registry import describe_plugin_dir
+from app.rag.pipeline_plugins.registry import PipelinePluginDescriptor, describe_plugin_dir
 from app.rag.pipeline_plugins.runtime import (
     apply_chunk_python_plugin,
     apply_governance_python_plugin,
@@ -38,7 +38,9 @@ EventResolver = Callable[[Any], str]
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _clean_one_line(value: Any, *, limit: int = 160) -> str:
@@ -50,7 +52,7 @@ def _clean_one_line(value: Any, *, limit: int = 160) -> str:
 
 def _metadata_value(metadata: Mapping[str, Any], key: str) -> Any:
     current: Any = metadata
-    for part in str(key or "").split("."):
+    for part in key.split("."):
         if not isinstance(current, Mapping):
             return None
         current = current.get(part)
@@ -154,7 +156,7 @@ def _chunk_example(
     example: dict[str, Any] = {
         "title": title_resolver(doc),
         "chunk_kind": _text(metadata.get("chunk_kind")) or "unknown",
-        "content_chars": len(doc.page_content or ""),
+        "content_chars": len(doc.page_content),
         "metadata_focus": _metadata_focus(metadata, metadata_highlight_keys),
         "content_preview": _clean_one_line(doc.page_content, limit=max(40, int(preview_chars or 0))),
     }
@@ -172,7 +174,7 @@ def _entity_types(events: Sequence[Any]) -> list[str]:
         if not isinstance(entities, list):
             continue
         for entity in entities:
-            value = _text(getattr(entity, "type", ""))
+            value = _text(entity.type)
             if value:
                 types.add(value)
     return sorted(types)
@@ -248,9 +250,9 @@ def _build_readiness(
         _contract_readiness_check("chunk_metadata_contract_valid", chunk_metadata_validation),
         _contract_readiness_check("kg_metadata_contract_valid", kg_metadata_validation, required=kg_required),
     ]
-    required_checks = [check for check in checks if bool(check.get("required"))]
+    required_checks = [check for check in checks if check["required"]]
     return {
-        "status": "passed" if all(bool(check.get("passed")) for check in required_checks) else "failed",
+        "status": "passed" if all(check["passed"] for check in required_checks) else "failed",
         "checks": checks,
     }
 
@@ -258,7 +260,7 @@ def _build_readiness(
 def _run_governance_stage(
     *,
     input_documents: Sequence[Document],
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     context: dict[str, Any],
     governance_params: dict[str, Any] | None,
 ) -> tuple[list[Document], dict[str, Any]]:
@@ -282,7 +284,7 @@ def _run_governance_stage(
 def _run_chunk_stage(
     *,
     governed: Sequence[Document],
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     context: dict[str, Any],
     chunk_params: dict[str, Any] | None,
     governance_metadata_validation: Mapping[str, Any],
@@ -309,7 +311,7 @@ def _run_chunk_stage(
 def _run_kg_stage(
     *,
     chunks: Sequence[Document],
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     context: dict[str, Any],
     kg_params: dict[str, Any] | None,
     chunk_metadata_validation: Mapping[str, Any],

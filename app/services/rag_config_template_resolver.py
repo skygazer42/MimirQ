@@ -9,29 +9,40 @@ Supports:
 This mirrors `app/services/prompt_resolver.py` but targets retrieval/rerank knobs.
 """
 
-
-import hashlib
 import json
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models.rag_config_template import RagConfigTemplate
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
+from app.services.prompt_resolver import _stable_unit_interval
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
 
 FeedbackRewardHook = Callable[
     [Session, UUID, str, Sequence[RagConfigTemplate]],
     dict[str, Any] | Sequence[Any] | None,
 ]
+logger = get_logger(__name__)
 
 
-def _stable_unit_interval(seed: str) -> float:
-    """Map a seed to a stable pseudo-random number in [0, 1) for A/B routing."""
-    raw = hashlib.sha256(seed.encode("utf-8")).digest()
-    num = int.from_bytes(raw[:8], "big", signed=False)
-    return (num % 1_000_000) / 1_000_000.0
+def record_rag_config_template_usage(db: Session, template: RagConfigTemplate) -> None:
+    template_id = template.id
+    try:
+        template.usage_count = int(template.usage_count or 0) + 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "RAG config template selected but usage counter update failed: template_id=%s",
+            template_id,
+            exc_info=True,
+        )
 
 
 def build_rag_config_patch_hash(patch: Any) -> str:
@@ -45,7 +56,7 @@ def build_rag_config_patch_hash(patch: Any) -> str:
     obj = patch if isinstance(patch, dict) else {}
     cleaned: dict[str, Any] = {}
     for k, v in obj.items():
-        key = str(k or "").strip()
+        key = k.strip()
         if not key:
             continue
         if v is None:
@@ -67,16 +78,16 @@ def build_adaptive_routing_reward_writeback(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema": "mimirq.rag_config_reward_writeback.v1",
-        "experiment_key": str(experiment_key or "").strip()[:120] or "unknown",
-        "variant": str(variant or "").strip()[:80] or "unknown",
-        "strategy": str(strategy or "").strip()[:80] or "adaptive_epsilon_greedy",
-        "decision": str(decision or "").strip()[:40] or "unknown",
-        "request_id": str(request_id or "").strip()[:128],
+        "experiment_key": experiment_key.strip()[:120] if experiment_key is not None else None,
+        "variant": variant.strip()[:80] if variant is not None else None,
+        "strategy": strategy.strip()[:80] if strategy is not None else None,
+        "decision": decision.strip()[:40] if decision is not None else None,
+        "request_id": request_id.strip()[:128] if request_id is not None else None,
     }
-    tid = str(template_id or "").strip()
+    tid = template_id.strip() if template_id is not None else None
     if tid:
         payload["template_id"] = tid[:80]
-    tkey = str(template_key or "").strip()
+    tkey = template_key.strip() if template_key is not None else None
     if tkey:
         payload["template_key"] = tkey[:120]
     return payload
@@ -92,14 +103,18 @@ def _as_float(value: Any) -> float | None:
 
 
 def _variant_key(variant: RagConfigTemplate) -> str:
-    return str(getattr(variant, "ab_variant", None) or "").strip() or str(getattr(variant, "id", ""))
+    if variant.ab_variant is not None:
+        label = variant.ab_variant.strip()
+        if label:
+            return label
+    return str(variant.id)
 
 
 def _normalize_variant_weights(variants: Sequence[RagConfigTemplate]) -> tuple[list[float], float]:
     weights: list[float] = []
     total = 0.0
     for variant in variants:
-        weight = float(getattr(variant, "ab_weight", 1.0) or 0.0)
+        weight = float(variant.ab_weight or 0.0)
         if weight < 0:
             weight = 0.0
         weights.append(weight)
@@ -117,10 +132,10 @@ def _weighted_pick(
     total_weight: float,
     seed: str,
 ) -> RagConfigTemplate:
-    r = _stable_unit_interval(seed) * float(total_weight or 1.0)
+    r = _stable_unit_interval(seed) * (total_weight or 1.0)
     acc = 0.0
     for variant, weight in zip(variants, weights, strict=False):
-        acc += float(weight or 0.0)
+        acc += weight or 0.0
         if r <= acc:
             return variant
     return variants[-1]
@@ -139,6 +154,13 @@ def _coerce_reward(value: Any) -> float | None:
     return reward
 
 
+class _FeedbackRewardTotals(TypedDict):
+    count: float
+    reward_sum: float
+    rating_sum: float
+    rating_count: float
+
+
 def aggregate_feedback_rewards(
     feedback_rows: Sequence[Any] | None,
     *,
@@ -146,10 +168,10 @@ def aggregate_feedback_rewards(
     rating_field: str = "rating",
     reward_field: str = "reward",
 ) -> dict[str, Any]:
-    bucket: dict[str, dict[str, float]] = {}
+    bucket: dict[str, _FeedbackRewardTotals] = {}
     total_feedback = 0
 
-    for row in (feedback_rows or []):
+    for row in feedback_rows or []:
         if isinstance(row, dict):
             variant_raw = row.get(variant_field)
             rating = _as_float(row.get(rating_field))
@@ -159,7 +181,9 @@ def aggregate_feedback_rewards(
             rating = _as_float(getattr(row, rating_field, None))
             reward = _as_float(getattr(row, reward_field, None))
 
-        variant = str(variant_raw or "").strip()
+        if variant_raw is None:
+            continue
+        variant = str(variant_raw).strip()
         if not variant:
             continue
         if reward is None:
@@ -169,26 +193,26 @@ def aggregate_feedback_rewards(
 
         stats = bucket.setdefault(variant, {"count": 0.0, "reward_sum": 0.0, "rating_sum": 0.0, "rating_count": 0.0})
         stats["count"] += 1.0
-        stats["reward_sum"] += float(reward)
+        stats["reward_sum"] += reward
         if rating is not None:
-            stats["rating_sum"] += float(rating)
+            stats["rating_sum"] += rating
             stats["rating_count"] += 1.0
         total_feedback += 1
 
     variants: dict[str, dict[str, Any]] = {}
     for key, stats in bucket.items():
-        count = max(1.0, float(stats.get("count") or 1.0))
-        rating_count = float(stats.get("rating_count") or 0.0)
-        avg_rating = float(stats.get("rating_sum") or 0.0) / rating_count if rating_count > 0 else None
+        count = stats["count"]
+        rating_count = stats["rating_count"]
+        avg_rating = stats["rating_sum"] / rating_count if rating_count > 0 else None
         variants[key] = {
             "count": int(count),
-            "avg_reward": round(float(stats.get("reward_sum") or 0.0) / count, 4),
-            "avg_rating": (round(float(avg_rating), 4) if avg_rating is not None else None),
+            "avg_reward": round(stats["reward_sum"] / count, 4),
+            "avg_rating": (round(avg_rating, 4) if avg_rating is not None else None),
         }
 
     return {
         "schema": "mimirq.rag_config_reward_snapshot.v1",
-        "total_feedback": int(total_feedback),
+        "total_feedback": total_feedback,
         "variants": variants,
     }
 
@@ -205,7 +229,7 @@ def _normalize_reward_snapshot(
         v_key = _variant_key(variant)
         candidate = raw_variants.get(v_key)
         if candidate is None:
-            candidate = raw_variants.get(str(getattr(variant, "id", "")))
+            candidate = raw_variants.get(str(variant.id))
         info = candidate if isinstance(candidate, dict) else {}
 
         reward = _as_float(info.get("avg_reward"))
@@ -218,7 +242,7 @@ def _normalize_reward_snapshot(
 
         normalized_variants[v_key] = {
             "count": int(info.get("count") or 0),
-            "avg_reward": round(float(reward), 4),
+            "avg_reward": round(reward, 4),
             "avg_rating": _as_float(info.get("avg_rating")),
         }
 
@@ -235,12 +259,8 @@ def _pick_highest_reward_variant(
     reward_snapshot: dict[str, Any],
     seed: str,
 ) -> RagConfigTemplate:
-    reward_map = reward_snapshot.get("variants") if isinstance(reward_snapshot.get("variants"), dict) else {}
-    scored: list[tuple[RagConfigTemplate, float]] = []
-    for variant in variants:
-        info = reward_map.get(_variant_key(variant))
-        score = _as_float((info or {}).get("avg_reward")) if isinstance(info, dict) else None
-        scored.append((variant, float(score or 0.0)))
+    reward_map = reward_snapshot["variants"]
+    scored = [(variant, reward_map[_variant_key(variant)]["avg_reward"]) for variant in variants]
 
     max_reward = max(score for _variant, score in scored)
     candidates = [variant for variant, score in scored if abs(score - max_reward) <= 1e-12]
@@ -259,8 +279,8 @@ def _resolver_debug_payload(
     strategy: str,
     decision: str,
     chosen: RagConfigTemplate | None,
-    epsilon: float | None = None,
-    reward_snapshot: dict[str, Any] | None = None,
+    epsilon: float | None,
+    reward_snapshot: dict[str, Any] | None,
     weights: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     debug: dict[str, Any] = {
@@ -288,7 +308,7 @@ def _resolve_experiment_variants(
     *,
     db: Session,
     tenant_id: UUID,
-    query: Any,
+    query: "Query[RagConfigTemplate]",
     ab_experiment_key: str,
     ab_user_key: str | None,
     routing_mode: str,
@@ -297,7 +317,7 @@ def _resolve_experiment_variants(
     feedback_reward_hook: FeedbackRewardHook | None,
     return_debug_metadata: bool,
 ) -> RagConfigTemplate | None | tuple[RagConfigTemplate | None, dict[str, Any] | None]:
-    exp = str(ab_experiment_key or "").strip()
+    exp = ab_experiment_key.strip()
     if not exp:
         return _return_with_optional_debug(chosen=None, debug=None, return_debug_metadata=return_debug_metadata)
 
@@ -332,7 +352,7 @@ def _resolve_experiment_variants(
         total_weight=total,
         seed=f"{seed}:weighted",
     )
-    weights_map = {str(_variant_key(v)): round(float(w), 4) for v, w in zip(variants, weights, strict=False)}
+    weights_map = {_variant_key(v): round(w, 4) for v, w in zip(variants, weights, strict=False)}
 
     routing = str(routing_mode or "weighted").strip().lower()
     if routing in {"adaptive_epsilon_greedy", "epsilon_greedy"}:
@@ -352,7 +372,7 @@ def _resolve_experiment_variants(
         )
 
     epsilon = _as_float(adaptive_epsilon)
-    epsilon = min(1.0, max(0.0, float(0.1 if epsilon is None else epsilon)))
+    epsilon = min(1.0, max(0.0, 0.1 if epsilon is None else epsilon))
     reward_snapshot = feedback_reward_snapshot if isinstance(feedback_reward_snapshot, dict) else None
     if reward_snapshot is None and feedback_reward_hook is not None:
         try:
@@ -366,17 +386,21 @@ def _resolve_experiment_variants(
 
     normalized_snapshot = _normalize_reward_snapshot(variants=variants, snapshot=reward_snapshot)
     explore = _stable_unit_interval(f"{seed}:adaptive:explore") < epsilon
-    chosen = weighted_choice if explore else _pick_highest_reward_variant(
-        variants=variants,
-        reward_snapshot=normalized_snapshot,
-        seed=seed,
+    chosen = (
+        weighted_choice
+        if explore
+        else _pick_highest_reward_variant(
+            variants=variants,
+            reward_snapshot=normalized_snapshot,
+            seed=seed,
+        )
     )
     decision = "explore" if explore else "exploit"
     return _return_with_optional_debug(
         chosen=chosen,
         debug=_resolver_debug_payload(
             strategy="adaptive_epsilon_greedy",
-            epsilon=round(float(epsilon), 4),
+            epsilon=round(epsilon, 4),
             decision=decision,
             chosen=chosen,
             reward_snapshot=normalized_snapshot,
@@ -392,8 +416,8 @@ def resolve_rag_config_template(
     tenant_id: UUID,
     rag_config_template_id: UUID | None = None,
     template_key: str | None = None,
-    ab_experiment_key: str | None = None,
-    ab_user_key: str | None = None,
+    ab_experiment_key: str | None,
+    ab_user_key: str | None,
     routing_mode: str = "weighted",
     adaptive_epsilon: float = 0.1,
     feedback_reward_snapshot: dict[str, Any] | None = None,
@@ -436,7 +460,7 @@ def resolve_rag_config_template(
     )
 
     if template_key:
-        key = str(template_key or "").strip()
+        key = template_key.strip()
         if key:
             chosen = (
                 query.filter(RagConfigTemplate.template_key == key)

@@ -1,5 +1,5 @@
-
 from math import ceil
+from typing import Any
 
 _BINS = (
     (0, 500, "0-500"),
@@ -11,26 +11,25 @@ _BINS = (
 def _percentile(values: list[int], pct: int) -> int:
     if not values:
         return 0
-    ordered = sorted(int(v) for v in values)
-    idx = max(0, min(len(ordered) - 1, ceil((pct / 100.0) * len(ordered)) - 1))
-    return int(ordered[idx])
+    idx = max(0, min(len(values) - 1, ceil((pct / 100.0) * len(values)) - 1))
+    return values[idx]
 
 
-def summarize_length_distribution(lengths: list[int | float]) -> dict:
-    values = [max(0, int(v or 0)) for v in (lengths or [])]
-    histogram = []
+def summarize_length_distribution(lengths: list[int | float]) -> dict[str, Any]:
+    values = sorted(max(0, int(v or 0)) for v in (lengths or []))
+    histogram: list[dict[str, str | int]] = []
     for start, end, label in _BINS:
         histogram.append(
             {
                 "label": label,
-                "count": int(sum(1 for v in values if start <= v < end)),
+                "count": sum(1 for v in values if start <= v < end),
             }
         )
-    histogram.append({"label": "10000+", "count": int(sum(1 for v in values if v >= 10000))})
+    histogram.append({"label": "10000+", "count": sum(1 for v in values if v >= 10000)})
 
     return {
         "schema": "mimirq.pre_poc.length_distribution.v1",
-        "summary": {"count": int(len(values))},
+        "summary": {"count": len(values)},
         "percentiles": {
             "p25": _percentile(values, 25),
             "p50": _percentile(values, 50),

@@ -43,7 +43,9 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def _norm_bucket(value: Any, *, fallback: str = "unknown") -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return fallback
+    s = str(value).strip().lower()
     return s or fallback
 
 
@@ -58,23 +60,23 @@ def _percentile(values: Sequence[float], pct: float) -> float | None:
     if not values:
         return None
     if pct <= 0:
-        return float(min(values))
+        return min(values)
     if pct >= 100:
-        return float(max(values))
-    vals = sorted(float(v) for v in values if v is not None and math.isfinite(float(v)))
+        return max(values)
+    vals = sorted(v for v in values if v is not None and math.isfinite(v))
     if not vals:
         return None
     # Nearest-rank percentile (1-indexed).
-    k = int(math.ceil((pct / 100.0) * len(vals))) - 1
+    k = math.ceil((pct / 100.0) * len(vals)) - 1
     k = max(0, min(k, len(vals) - 1))
-    return float(vals[k])
+    return vals[k]
 
 
 def _mean(values: Sequence[float]) -> float | None:
-    vals = [float(v) for v in values if v is not None and math.isfinite(float(v))]
+    vals = [v for v in values if v is not None and math.isfinite(v)]
     if not vals:
         return None
-    return float(sum(vals) / len(vals))
+    return sum(vals) / len(vals)
 
 
 def _get_attr(obj: Any, name: str) -> Any:
@@ -119,33 +121,33 @@ def compute_suite_throughput(
             approved_7d += 1
 
         if isinstance(created_at, datetime) and isinstance(reviewed_at, datetime) and reviewed_at >= created_at:
-            draft_to_reviewed.append(float((reviewed_at - created_at).total_seconds()))
+            draft_to_reviewed.append((reviewed_at - created_at).total_seconds())
         if isinstance(reviewed_at, datetime) and isinstance(approved_at, datetime) and approved_at >= reviewed_at:
-            reviewed_to_approved.append(float((approved_at - reviewed_at).total_seconds()))
+            reviewed_to_approved.append((approved_at - reviewed_at).total_seconds())
         if isinstance(created_at, datetime) and isinstance(approved_at, datetime) and approved_at >= created_at:
-            draft_to_approved.append(float((approved_at - created_at).total_seconds()))
+            draft_to_approved.append((approved_at - created_at).total_seconds())
 
     return {
         "window_days": int(window_days),
         "last_window": {
-            "created": int(created_7d),
-            "reviewed": int(reviewed_7d),
-            "approved": int(approved_7d),
+            "created": created_7d,
+            "reviewed": reviewed_7d,
+            "approved": approved_7d,
         },
         "draft_to_reviewed": {
-            "count": int(len(draft_to_reviewed)),
+            "count": len(draft_to_reviewed),
             "p50_sec": _percentile(draft_to_reviewed, 50.0),
             "p90_sec": _percentile(draft_to_reviewed, 90.0),
             "mean_sec": _mean(draft_to_reviewed),
         },
         "reviewed_to_approved": {
-            "count": int(len(reviewed_to_approved)),
+            "count": len(reviewed_to_approved),
             "p50_sec": _percentile(reviewed_to_approved, 50.0),
             "p90_sec": _percentile(reviewed_to_approved, 90.0),
             "mean_sec": _mean(reviewed_to_approved),
         },
         "draft_to_approved": {
-            "count": int(len(draft_to_approved)),
+            "count": len(draft_to_approved),
             "p50_sec": _percentile(draft_to_approved, 50.0),
             "p90_sec": _percentile(draft_to_approved, 90.0),
             "mean_sec": _mean(draft_to_approved),
@@ -160,14 +162,6 @@ class CoverageBucket:
     references: int
 
 
-@dataclass(frozen=True, slots=True)
-class CoverageHeatmap:
-    x: list[str]
-    y: list[str]
-    z: list[list[int]]
-    metric: str
-
-
 def _top_n_buckets(
     buckets: dict[str, tuple[set[str], int]],
     *,
@@ -176,7 +170,7 @@ def _top_n_buckets(
     """
     buckets: {bucket_key: (item_ids, ref_count)}
     """
-    items = [(k, len(v[0]), int(v[1])) for k, v in (buckets or {}).items() if k is not None]
+    items = [(k, len(v[0]), v[1]) for k, v in (buckets or {}).items() if k is not None]
     items.sort(key=lambda x: (-x[2], -x[1], str(x[0])))
 
     out: list[CoverageBucket] = []
@@ -185,12 +179,12 @@ def _top_n_buckets(
     cap = max(1, min(50, int(top_n or 0))) if top_n else 12
     for idx, (k, item_cnt, ref_cnt) in enumerate(items):
         if idx < cap:
-            out.append(CoverageBucket(key=str(k), items=int(item_cnt), references=int(ref_cnt)))
+            out.append(CoverageBucket(key=str(k), items=item_cnt, references=ref_cnt))
         else:
-            rest_items += int(item_cnt)
-            rest_refs += int(ref_cnt)
+            rest_items += item_cnt
+            rest_refs += ref_cnt
     if rest_refs or rest_items:
-        out.append(CoverageBucket(key="__other__", items=int(rest_items), references=int(rest_refs)))
+        out.append(CoverageBucket(key="__other__", items=rest_items, references=rest_refs))
     return out
 
 
@@ -198,7 +192,8 @@ def _build_hit_type_index(citations: list[Any]) -> dict[str, str]:
     hit_by_chunk: dict[str, str] = {}
     for citation in citations:
         citation_dict = _as_dict(citation)
-        chunk_id = str(citation_dict.get("chunk_id") or "").strip()
+        raw_chunk_id = citation_dict.get("chunk_id")
+        chunk_id = str(raw_chunk_id).strip() if raw_chunk_id is not None else None
         if not chunk_id:
             continue
         hit_by_chunk[chunk_id] = _norm_hit_type(citation_dict.get("hit_type"))
@@ -209,7 +204,7 @@ def _coverage_dimensions(
     *,
     documents: dict[UUID, dict[str, Any]],
     document_id: UUID,
-    chunk_id: str,
+    chunk_id: str | None,
     hit_by_chunk: dict[str, str],
 ) -> tuple[str, str, str, str]:
     document = documents.get(document_id) or {}
@@ -243,7 +238,7 @@ def _update_coverage_buckets(
             current = (set(), 0)
         item_ids, ref_count = current
         item_ids.add(item_id)
-        buckets[dim][bucket_key] = (item_ids, int(ref_count) + 1)
+        buckets[dim][bucket_key] = (item_ids, ref_count + 1)
 
 
 def _update_heatmap_state(
@@ -257,8 +252,8 @@ def _update_heatmap_state(
 ) -> None:
     cell_key = (language, file_type)
     cell_items.setdefault(cell_key, set()).add(item_id)
-    lang_refs[language] = int(lang_refs.get(language, 0)) + 1
-    ft_refs[file_type] = int(ft_refs.get(file_type, 0)) + 1
+    lang_refs[language] = lang_refs.get(language, 0) + 1
+    ft_refs[file_type] = ft_refs.get(file_type, 0) + 1
 
 
 def compute_suite_coverage(
@@ -304,7 +299,8 @@ def compute_suite_coverage(
         for ref in refs:
             ref_dict = _as_dict(ref)
             document_id = _as_uuid(ref_dict.get("document_id"))
-            chunk_id = str(ref_dict.get("chunk_id") or "").strip()
+            raw_chunk_id = ref_dict.get("chunk_id")
+            chunk_id = str(raw_chunk_id).strip() if raw_chunk_id is not None else None
             if document_id is None:
                 continue
 
@@ -352,15 +348,15 @@ def compute_suite_coverage(
 
     # Heatmap: pick top-N langs and file types by ref volume to keep payload bounded.
     h_n = max(2, min(20, int(heatmap_top_n or 0))) if heatmap_top_n else 8
-    langs = sorted(lang_refs.items(), key=lambda x: (-int(x[1]), str(x[0])))[:h_n]
-    fts = sorted(ft_refs.items(), key=lambda x: (-int(x[1]), str(x[0])))[:h_n]
-    y = [k for k, _v in langs] or []
-    x = [k for k, _v in fts] or []
+    langs = sorted(lang_refs.items(), key=lambda x: (-x[1], str(x[0])))[:h_n]
+    fts = sorted(ft_refs.items(), key=lambda x: (-x[1], str(x[0])))[:h_n]
+    y = [k for k, _v in langs]
+    x = [k for k, _v in fts]
     z: list[list[int]] = []
     for ly in y:
         row: list[int] = []
         for fx in x:
-            row.append(int(len(cell_items.get((ly, fx), set()))))
+            row.append(len(cell_items.get((ly, fx), set())))
         z.append(row)
 
     out["heatmaps"] = {"language_x_file_type": {"x": x, "y": y, "z": z, "metric": "items"}}

@@ -149,8 +149,8 @@ class APIReranker(BaseReranker):
         api_key: str,
         base_url: str,
         timeout: float = 30.0,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self.url = base_url
         self.model = model_name
         self.api_key = api_key
@@ -170,16 +170,16 @@ class APIReranker(BaseReranker):
         self._cb_failures = 0
         self._cb_open_until = 0.0
 
-    def _cache_key(self, query: str, document: str, *, max_length: int) -> str:
-        q = (query or "").strip()
-        d = (document or "").strip()
+    def _cache_key(self, query: str, document: str, *, max_length: int, normalize: bool) -> str:
+        q = (query).strip()
+        d = (document).strip()
         if not q or not d:
             return ""
-        payload = f"{q}\n\n{d}\n\nmax_length={int(max_length)}".encode("utf-8", errors="ignore")
+        payload = f"{q}\n\n{d}\n\nmax_length={int(max_length)}\nnormalize={normalize}".encode("utf-8", errors="ignore")
         return hashlib.sha256(payload).hexdigest()
 
     def _rate_limit_sync(self) -> None:
-        qps = float(settings.RERANKER_API_RATE_LIMIT_QPS or 0.0)
+        qps = float(settings.RERANKER_API_RATE_LIMIT_QPS)
         if qps <= 0:
             return
         min_interval = 1.0 / qps if qps > 0 else 0.0
@@ -198,7 +198,7 @@ class APIReranker(BaseReranker):
             time.sleep(wait)
 
     async def _rate_limit_async(self) -> None:
-        qps = float(settings.RERANKER_API_RATE_LIMIT_QPS or 0.0)
+        qps = float(settings.RERANKER_API_RATE_LIMIT_QPS)
         if qps <= 0:
             return
         min_interval = 1.0 / qps if qps > 0 else 0.0
@@ -227,8 +227,8 @@ class APIReranker(BaseReranker):
             self._cb_open_until = 0.0
 
     def _record_failure(self) -> None:
-        threshold = max(1, int(settings.RERANKER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD or 5))
-        reset_sec = max(1, int(settings.RERANKER_API_CIRCUIT_BREAKER_RESET_SEC or 60))
+        threshold = max(1, int(settings.RERANKER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD))
+        reset_sec = max(1, int(settings.RERANKER_API_CIRCUIT_BREAKER_RESET_SEC))
         now = time.monotonic()
         with self._cb_lock:
             self._cb_failures += 1
@@ -281,13 +281,11 @@ class APIReranker(BaseReranker):
         backoff: float,
     ) -> tuple[int, list[float]]:
         async with sem:
-            last_exc: Exception | None = None
             for attempt in range(max_retries + 1):
                 try:
                     scores = await self._batch_rerank(query, batch_docs, max_length=max_length)
                     return batch_idx, scores
                 except Exception as exc:  # noqa: BLE001
-                    last_exc = exc
                     status = getattr(exc, "status", None)
                     retryable = status in RETRYABLE_HTTP_CODES or isinstance(
                         exc, (aiohttp.ClientError, asyncio.TimeoutError)
@@ -296,7 +294,6 @@ class APIReranker(BaseReranker):
                         await asyncio.sleep(backoff * (2**attempt))
                         continue
                     raise
-            raise last_exc or RuntimeError("reranker request failed")
 
     def _sync_should_retry(self, exc: Exception) -> bool:
         if isinstance(exc, httpx.HTTPStatusError):
@@ -326,7 +323,7 @@ class APIReranker(BaseReranker):
 
     def _scores_from_result(self, result: dict[str, Any], *, document_count: int) -> list[float]:
         scores = [0.0] * document_count
-        for entry in self._extract_results(result) or []:
+        for entry in self._extract_results(result):
             if not isinstance(entry, dict):
                 continue
             try:
@@ -354,7 +351,6 @@ class APIReranker(BaseReranker):
         max_retries: int,
         backoff: float,
     ) -> list[float]:
-        last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
                 result = self._sync_request_result(
@@ -367,17 +363,15 @@ class APIReranker(BaseReranker):
                 )
                 return self._scores_from_result(result, document_count=len(batch_docs))
             except Exception as exc:  # noqa: BLE001
-                last_exc = exc
                 if attempt < max_retries and self._sync_should_retry(exc):
                     time.sleep(backoff * (2**attempt))
                     continue
                 raise
-        raise last_exc or RuntimeError("reranker request failed")
 
     def _circuit_open_stats(self, *, query: str, docs: int, provider: str) -> dict[str, Any]:
         if settings.ENABLE_METRICS_LOG:
             try:
-                query_hash = hashlib.sha256((query or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+                query_hash = hashlib.sha256((query).encode("utf-8", errors="ignore")).hexdigest()[:12]
             except Exception:
                 query_hash = None
             log_metrics(
@@ -387,7 +381,7 @@ class APIReranker(BaseReranker):
                     "model": self.model,
                     "url": self.url,
                     "query_hash": query_hash,
-                    "query_chars": len(query or ""),
+                    "query_chars": len(query),
                     "docs": docs,
                     "skipped": True,
                     "skip_reason": "circuit_open",
@@ -401,13 +395,11 @@ class APIReranker(BaseReranker):
         }
 
     def _configure_result_cache(self) -> bool:
-        cache_enabled = (
-            bool(settings.RERANKER_API_CACHE_ENABLED) and int(settings.RERANKER_API_CACHE_MAX_ENTRIES or 0) > 0
-        )
+        cache_enabled = bool(settings.RERANKER_API_CACHE_ENABLED) and int(settings.RERANKER_API_CACHE_MAX_ENTRIES) > 0
         if cache_enabled:
             self._score_cache.configure(
-                max_entries=int(settings.RERANKER_API_CACHE_MAX_ENTRIES or 0),
-                ttl_sec=float(settings.RERANKER_API_CACHE_TTL_SEC or 0),
+                max_entries=int(settings.RERANKER_API_CACHE_MAX_ENTRIES),
+                ttl_sec=float(settings.RERANKER_API_CACHE_TTL_SEC),
             )
         else:
             self._score_cache.configure(max_entries=0, ttl_sec=0.0)
@@ -423,7 +415,7 @@ class APIReranker(BaseReranker):
         documents: list[str] = []
         for candidate in candidates:
             candidate_ids.append(str(candidate.id))
-            text = (candidate.text or "").strip()
+            text = (candidate.text).strip()
             if max_chars > 0 and len(text) > max_chars:
                 text = text[:max_chars] + "..."
             documents.append(text)
@@ -435,6 +427,7 @@ class APIReranker(BaseReranker):
         query: str,
         documents: list[str],
         max_length: int,
+        normalize: bool,
         cache_enabled: bool,
     ) -> tuple[list[float | None], int, int, list[str], list[int]]:
         scores: list[float | None] = [None] * len(documents)
@@ -445,7 +438,7 @@ class APIReranker(BaseReranker):
         if not cache_enabled:
             return scores, cache_hits, cache_misses, list(documents), list(range(len(documents)))
         for index, doc in enumerate(documents):
-            key = self._cache_key(query, doc, max_length=max_length)
+            key = self._cache_key(query, doc, max_length=max_length, normalize=normalize)
             cached = self._score_cache.get(key)
             if cached is None:
                 cache_misses += 1
@@ -463,15 +456,15 @@ class APIReranker(BaseReranker):
         query: str,
         documents: list[str],
         max_length: int,
+        normalize: bool,
         cache_enabled: bool,
-        missing_docs: list[str],
         missing_indices: list[int],
         network_scores: list[float],
     ) -> None:
         for idx, score in zip(missing_indices, network_scores, strict=False):
             scores[idx] = float(score)
             if cache_enabled:
-                key = self._cache_key(query, documents[idx], max_length=max_length)
+                key = self._cache_key(query, documents[idx], max_length=max_length, normalize=normalize)
                 self._score_cache.set(key, float(score))
 
     def _rerank_failure_metrics(
@@ -492,7 +485,7 @@ class APIReranker(BaseReranker):
         if not settings.ENABLE_METRICS_LOG:
             return
         try:
-            query_hash = hashlib.sha256((query or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+            query_hash = hashlib.sha256((query).encode("utf-8", errors="ignore")).hexdigest()[:12]
         except Exception:
             query_hash = None
         log_metrics(
@@ -502,14 +495,14 @@ class APIReranker(BaseReranker):
                 "model": self.model,
                 "url": self.url,
                 "query_hash": query_hash,
-                "query_chars": len(query or ""),
+                "query_chars": len(query),
                 "docs": len(candidates),
                 "missing_docs": len(missing_docs),
                 "elapsed_sec": round(float(elapsed), 3),
                 "batch_size": batch_size,
-                "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY or 1),
-                "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS or 0.0),
-                "max_retries": int(settings.RERANKER_API_MAX_RETRIES or 0),
+                "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY),
+                "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS),
+                "max_retries": int(settings.RERANKER_API_MAX_RETRIES),
                 "cache_enabled": bool(cache_enabled),
                 "cache_hits": int(cache_hits),
                 "cache_misses": int(cache_misses),
@@ -538,26 +531,26 @@ class APIReranker(BaseReranker):
         ordered_ids = [cid for cid, _score in ordered if cid]
         if top_n:
             ordered_ids = ordered_ids[: int(top_n)]
-            score_map = {cid: score_map[cid] for cid in ordered_ids if cid in score_map}
+            score_map = {cid: score_map[cid] for cid in ordered_ids}
 
         elapsed = time.time() - start
         stats = {
             "provider": provider,
             "model": self.model,
             "url": self.url,
-            "query_chars": len(query or ""),
+            "query_chars": len(query),
             "docs": len(candidates),
             "batch_size": batch_size,
-            "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY or 1),
-            "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS or 0.0),
-            "max_retries": int(settings.RERANKER_API_MAX_RETRIES or 0),
+            "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY),
+            "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS),
+            "max_retries": int(settings.RERANKER_API_MAX_RETRIES),
             "cache_enabled": bool(cache_enabled),
             "cache_hits": int(cache_hits),
             "cache_misses": int(cache_misses),
         }
         if settings.ENABLE_METRICS_LOG:
             try:
-                query_hash = hashlib.sha256((query or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+                query_hash = hashlib.sha256((query).encode("utf-8", errors="ignore")).hexdigest()[:12]
             except Exception:
                 query_hash = None
             log_metrics(
@@ -567,13 +560,13 @@ class APIReranker(BaseReranker):
                     "model": self.model,
                     "url": self.url,
                     "query_hash": query_hash,
-                    "query_chars": len(query or ""),
+                    "query_chars": len(query),
                     "docs": len(candidates),
                     "elapsed_sec": round(float(elapsed), 3),
                     "batch_size": batch_size,
-                    "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY or 1),
-                    "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS or 0.0),
-                    "max_retries": int(settings.RERANKER_API_MAX_RETRIES or 0),
+                    "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY),
+                    "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS),
+                    "max_retries": int(settings.RERANKER_API_MAX_RETRIES),
                     "cache_enabled": bool(cache_enabled),
                     "cache_hits": int(cache_hits),
                     "cache_misses": int(cache_misses),
@@ -618,9 +611,9 @@ class APIReranker(BaseReranker):
         self._ensure_session()
 
         batch_size = max(1, int(batch_size))
-        max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES or 0))
-        backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC or 0.0))
-        max_concurrency = max(1, int(settings.RERANKER_API_MAX_CONCURRENCY or 1))
+        max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES))
+        backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC))
+        max_concurrency = int(settings.RERANKER_API_MAX_CONCURRENCY)
         batches = self._document_batches(documents, batch_size=batch_size)
         sem = asyncio.Semaphore(max_concurrency)
 
@@ -670,22 +663,7 @@ class APIReranker(BaseReranker):
             response.raise_for_status()
             result: dict[str, Any] = await response.json()
 
-        scores = [0.0] * len(documents)
-        for entry in self._extract_results(result) or []:
-            if not isinstance(entry, dict):
-                continue
-            try:
-                idx = int(entry.get("index", -1))
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if idx < 0 or idx >= len(documents):
-                continue
-            try:
-                scores[idx] = float(entry.get("relevance_score", 0.0) or 0.0)
-            except Exception:
-                scores[idx] = 0.0
-        return scores
+        return self._scores_from_result(result, document_count=len(documents))
 
     def compute_score(
         self,
@@ -710,10 +688,10 @@ class APIReranker(BaseReranker):
             raise RuntimeError("reranker circuit is open")
 
         batch_size = max(1, int(batch_size))
-        timeout_sec = float(settings.RERANKER_API_TIMEOUT_SEC or getattr(self.timeout, "total", None) or 30.0)
-        max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES or 0))
-        backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC or 0.0))
-        max_concurrency = max(1, int(settings.RERANKER_API_MAX_CONCURRENCY or 1))
+        timeout_sec = float(settings.RERANKER_API_TIMEOUT_SEC or self.timeout.total or 30.0)
+        max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES))
+        backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC))
+        max_concurrency = int(settings.RERANKER_API_MAX_CONCURRENCY)
         trust_env = httpx_trust_env(logger=logger)
         batches = self._document_batches(documents, batch_size=batch_size)
 
@@ -793,11 +771,11 @@ class APIReranker(BaseReranker):
 
         start = time.time()
         top_n = kwargs.get("top_n")
-        batch_size = int(kwargs.get("batch_size") or settings.RERANKER_API_BATCH_SIZE or 32)
+        batch_size = int(kwargs.get("batch_size") or settings.RERANKER_API_BATCH_SIZE)
         batch_size = max(1, batch_size)
         max_length = int(kwargs.get("max_length") or 512)
         normalize = bool(kwargs.get("normalize", True))
-        max_chars = int(kwargs.get("max_chars") or settings.RERANKER_MAX_CHARS or 0)
+        max_chars = int(kwargs.get("max_chars") or settings.RERANKER_MAX_CHARS)
 
         cache_enabled = self._configure_result_cache()
         candidate_ids, documents = self._prepare_rerank_documents(candidates, max_chars=max_chars)
@@ -805,6 +783,7 @@ class APIReranker(BaseReranker):
             query=query,
             documents=documents,
             max_length=max_length,
+            normalize=normalize,
             cache_enabled=cache_enabled,
         )
 
@@ -849,8 +828,8 @@ class APIReranker(BaseReranker):
                 query=query,
                 documents=documents,
                 max_length=max_length,
+                normalize=normalize,
                 cache_enabled=cache_enabled,
-                missing_docs=missing_docs,
                 missing_indices=missing_indices,
                 network_scores=network_scores,
             )
@@ -889,7 +868,7 @@ class APIReranker(BaseReranker):
         if not candidates:
             return []
 
-        documents = [c.get("text", "") for c in candidates]
+        documents = [c["text"] for c in candidates]
         scores = await self.acompute_score(query, documents)
 
         results = []
@@ -956,6 +935,10 @@ class DocumentReranker(BaseReranker):
         """
         raise NotImplementedError
 
+    def _rerank_run_options(self, options: dict[str, Any]) -> dict[str, Any]:
+        """Select provider-specific options for the document run adapter."""
+        return {}
+
     def rerank(
         self,
         query: str,
@@ -982,7 +965,13 @@ class DocumentReranker(BaseReranker):
         # Call run().
         top_n = kwargs.get("top_n")
         score_threshold = kwargs.get("score_threshold")
-        reranked = self.run(query, docs, score_threshold=score_threshold, top_n=top_n)
+        reranked = self.run(
+            query,
+            docs,
+            score_threshold=score_threshold,
+            top_n=top_n,
+            **self._rerank_run_options(kwargs),
+        )
 
         # Extract results.
         ordered_ids: list[str] = []

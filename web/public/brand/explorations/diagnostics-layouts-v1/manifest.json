@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 诊断布局对比",
+  "round": "诊断 01",
+  "nativeViewport": "1600x1000",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC。五版共用设计数据：检索预览返回 6 条引用，漂移与性能门禁待执行，缺失评分保留未返回。读数、服务状态仅用于排版；真实开发环境为 memory，未运行手动探针。本轮是静态首屏对比，选定后再应用正式页面。",
+  "candidates": [
+    {
+      "id": "a-workbench",
+      "name": "A · 诊断工作台",
+      "source": "a-workbench.html",
+      "concept": "查询和数据范围留在左侧，右侧连续核对检索过程、读数与配置依据。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#3D7771", "#31754D", "#75658F"],
+      "traits": ["查询与结果双栏", "紧凑配置", "连续结果区"]
+    },
+    {
+      "id": "b-categories",
+      "name": "B · 分类工作区",
+      "source": "b-categories.html",
+      "concept": "把独立诊断类型放进目录，每次聚焦一个探针及其结果。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#3D7771", "#31754D", "#75658F"],
+      "traits": ["诊断类型目录", "聚焦当前探针", "宽主工作区"]
+    },
+    {
+      "id": "c-ledger",
+      "name": "C · 结果宽表",
+      "source": "c-ledger.html",
+      "concept": "逐项对照指标、读数和来源，在侧边核对响应上下文。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#3D7771", "#31754D", "#75658F"],
+      "traits": ["八项读数宽表", "来源对照", "响应上下文侧栏"]
+    },
+    {
+      "id": "d-flow",
+      "name": "D · 检索链路",
+      "source": "d-flow.html",
+      "concept": "先沿检索链路定位通道、过滤、融合与引用输出，再检查对应配置。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#3D7771", "#31754D", "#75658F"],
+      "traits": ["横向检索链路", "双通道关系", "配置与读数对应"]
+    },
+    {
+      "id": "e-report",
+      "name": "E · 检查报告",
+      "source": "e-report.html",
+      "concept": "沿连续报告阅读环境、检索结果和指标可用性，旁边保留章节定位与运行摘要。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#3D7771", "#31754D", "#75658F"],
+      "traits": ["连续检查记录", "章节定位", "适合阅读与复制摘要"]
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "source": "current.png",
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1280x720",
+      "concept": "真实开发页面：memory 后端，手动探针均待执行。用于比较容器、控件与信息层级。",
+      "traits": ["真实运行页面", "原有诊断结构", "1280×720 基线"]
+    }
+  ]
+}

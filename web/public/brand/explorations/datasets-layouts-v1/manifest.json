@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 数据集布局",
+  "brief": "雾灰／墨色基底，统一 Manrope / Noto Sans SC；恢复项目已有的数据集、文件格式识别色和正常／异常／待处理状态色。四版共用内容与颜色含义，比较构图、层级和操作位置。",
+  "round": "数据集 02",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "baseline",
+      "name": "当前页面",
+      "concept": "对照现有的分类、列表和完整详情三栏。",
+      "typography": "用户提供的当前页面截图",
+      "palette": [
+        "#F6F3EC",
+        "#8C6C45",
+        "#413E36"
+      ],
+      "traits": [
+        "分类 / 列表 / 详情三栏",
+        "原有容器与组件",
+        "来自用户截图"
+      ],
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1911x1015",
+      "source": "E:/MimirQ/artifacts/rebrand/datasets-layouts-v1/baseline.png"
+    },
+    {
+      "id": "a-table",
+      "name": "A · 宽表",
+      "concept": "把数据集放到同一张宽表里，快速比较状态、内容量与权限。",
+      "typography": "Manrope / Noto Sans SC；紧凑表头、对齐数值、对象名称与描述分层",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#3C726F",
+        "#1D7C40",
+        "#B92727",
+        "#8B5A1E",
+        "#655694"
+      ],
+      "traits": [
+        "单一宽表",
+        "顶部分类与状态",
+        "行内操作",
+        "取消常驻详情"
+      ],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-directory",
+      "name": "B · 目录清单",
+      "concept": "先按分类找到资料，再沿开放式清单阅读和进入数据集。",
+      "typography": "Manrope / Noto Sans SC；轻目录、明确分组、连贯的对象阅读线",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#3C726F",
+        "#1D7C40",
+        "#B92727",
+        "#8B5A1E",
+        "#655694"
+      ],
+      "traits": [
+        "分类目录",
+        "按类分组清单",
+        "开放式对象行",
+        "无常驻详情"
+      ],
+      "source": "b-directory.html"
+    },
+    {
+      "id": "c-workspace",
+      "name": "C · 队列详情",
+      "concept": "数据集直接成为切换队列，把主要空间留给当前对象的内容和操作。",
+      "typography": "Manrope / Noto Sans SC；紧凑队列、对象标题、文档与属性分别排版",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#3C726F",
+        "#1D7C40",
+        "#B92727",
+        "#8B5A1E",
+        "#655694"
+      ],
+      "traits": [
+        "数据集队列",
+        "宽对象工作台",
+        "直接查看文档",
+        "操作集中在内容附近"
+      ],
+      "source": "c-workspace.html"
+    },
+    {
+      "id": "d-shelves",
+      "name": "D · 双列资料架",
+      "concept": "像浏览资料目录一样挑选数据集，在两列开放单元里看名称、摘要与内容量。",
+      "typography": "Manrope / Noto Sans SC；名称 15px、摘要 13px、数字轻量分层",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#3C726F",
+        "#1D7C40",
+        "#B92727",
+        "#8B5A1E",
+        "#655694"
+      ],
+      "traits": [
+        "两列开放资料单元",
+        "顶部分类页签",
+        "平铺属性",
+        "细线分隔"
+      ],
+      "source": "d-shelves.html"
+    }
+  ]
+}

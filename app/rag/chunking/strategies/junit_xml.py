@@ -5,7 +5,6 @@ Targets JUnit-style XML reports with repeated <testcase> elements and splits by
 testcase blocks while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -35,8 +34,8 @@ def _extract_attr(tag_text: str, key: str) -> str | None:
     if not tag_text:
         return None
     for m in _ATTR_RE.finditer(tag_text[:800]):
-        if (m.group("key") or "").strip() == key:
-            val = (m.group("val") or "").strip()
+        if (m.group("key")).strip() == key:
+            val = (m.group("val")).strip()
             return val[:200] or None
     return None
 
@@ -47,7 +46,7 @@ def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
     blocks: list[_CaseBlock] = []
     for m in _TESTCASE_ANY_RE.finditer(text):
         start = m.start()
-        tag = (m.group(0) or "")
+        tag = m.group(0)
         if tag.rstrip().endswith("/>"):
             end = m.end()
         else:
@@ -83,26 +82,20 @@ def _append_split_documents(
         meta.setdefault("doc_type_kwd", "junit")
         if extra_meta:
             meta.update(extra_meta)
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=split_doc.page_content, metadata=meta))
 
 
 def _case_block_meta(block: _CaseBlock, block_count: int) -> dict[str, Any]:
     meta: dict[str, Any] = {
-        "junit_case_index": int(block.index),
-        "junit_case_count": int(block_count),
+        "junit_case_index": block.index,
+        "junit_case_count": block_count,
     }
     if block.name:
         meta["junit_case"] = block.name
     if block.classname:
         meta["junit_classname"] = block.classname
     return meta
-
-
-def _assign_chunk_indexes(chunks: list[Document]) -> None:
-    for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta["chunk_index"] = idx
-        chunk.metadata = meta
 
 
 def looks_like_junit_xml(text: str) -> bool:
@@ -118,7 +111,7 @@ def looks_like_junit_xml(text: str) -> bool:
 
 
 class JUnitXMLChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -134,8 +127,8 @@ class JUnitXMLChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -164,7 +157,5 @@ class JUnitXMLChunker(BaseChunker):
                     offset_base=blk.start,
                     extra_meta=_case_block_meta(blk, len(blocks)),
                 )
-
-        _assign_chunk_indexes(out)
 
         return out

@@ -7,28 +7,24 @@ This module is intentionally deterministic and bounded:
 - Expansion provenance is included with each generated variant.
 """
 
-
 import re
 from pathlib import Path
 from typing import Any
 
 
-def _rule_values(raw: Any) -> list[Any] | None:
-    if isinstance(raw, str):
-        return [raw]
-    if isinstance(raw, list):
-        return raw
-    return None
-
-
 def _unique_rule_values(key: str, raw: Any) -> list[str]:
-    values = _rule_values(raw)
-    if values is None:
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, list):
+        values = raw
+    else:
         return []
     seen: set[str] = set()
     unique: list[str] = []
     for item in values:
-        value = str(item or "").strip()
+        if item is None:
+            continue
+        value = str(item).strip()
         if not value or value == key:
             continue
         signature = value.casefold() if value.isascii() else value
@@ -54,7 +50,9 @@ def coerce_expansion_rules(raw: Any) -> dict[str, list[str]]:
 
     out: dict[str, list[str]] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        if k is None:
+            continue
+        key = str(k).strip()
         if not key:
             continue
         unique = _unique_rule_values(key, v)
@@ -72,16 +70,12 @@ def _term_pattern(term: str) -> re.Pattern[str]:
 
 
 def _contains(query: str, term: str) -> bool:
-    if not query or not term:
-        return False
     if term.isascii():
-        return bool(_term_pattern(term).search(query))
+        return _term_pattern(term).search(query) is not None
     return term in query
 
 
 def _replace(query: str, term: str, replacement: str) -> str:
-    if not query or not term:
-        return query
     if term.isascii():
         return _term_pattern(term).sub(replacement, query)
     return query.replace(term, replacement)
@@ -115,8 +109,6 @@ def _append_rule_expansions(
     for target in targets:
         if len(expansions) >= max_expansions_total or per_rule >= max_expansions_per_rule:
             break
-        if not target:
-            continue
         expanded = _bounded_expansion_text(
             base,
             source,
@@ -156,7 +148,7 @@ def generate_dictionary_expansions(
       - expansions: list[dict] each containing {expanded_text, source_rule_id, weight, ...}
       - meta: small dict for traces/metrics
     """
-    base = (query or "").strip()
+    base = query.strip()
     if not base:
         return [], {"enabled": False, "used": False, "reason": "empty_query"}
 
@@ -211,9 +203,7 @@ def _dictionary_list_value(stripped: str) -> str | None:
     value = stripped[1:].strip()
     if not value:
         return None
-    quoted = (value.startswith('"') and value.endswith('"')) or (
-        value.startswith("'") and value.endswith("'")
-    )
+    quoted = (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))
     if quoted and len(value) >= 2:
         return value[1:-1]
     return value
@@ -236,7 +226,7 @@ def load_base_dictionary_rules() -> dict[str, list[str]]:
         return {}
     parsed: dict[str, list[str]] = {}
     current_key: str | None = None
-    for ln in (raw or "").splitlines():
+    for ln in raw.splitlines():
         line = ln.rstrip("\r\n")
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):

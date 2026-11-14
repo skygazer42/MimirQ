@@ -40,9 +40,7 @@ export type GraphDatasetDocumentSummary = {
 }
 
 export type GraphContextMenuTarget =
-  | { type: 'node'; node: GraphNodeLike }
-  | { type: 'link'; link: GraphLinkLike }
-  | { type: 'background' }
+  { type: 'node'; node: GraphNodeLike } | { type: 'link'; link: GraphLinkLike } | { type: 'background' }
 
 export type GraphContextMenuState = {
   x: number
@@ -114,12 +112,7 @@ export function parseCsvList(value: string | null): string[] {
     .filter(Boolean)
 }
 
-export function coerceBoundedInt(
-  value: string | null,
-  fallback: number,
-  min: number,
-  max: number
-): number {
+export function coerceBoundedInt(value: string | null, fallback: number, min: number, max: number): number {
   const num = Math.floor(Number(value))
   if (!Number.isFinite(num)) return fallback
   return Math.min(max, Math.max(min, num))
@@ -138,11 +131,11 @@ export function isPendingScopedDocument(item: GraphDatasetDocumentSummary): bool
 export function isGraphData(value: unknown): value is GraphData {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      'nodes' in value &&
-      'links' in value &&
-      Array.isArray((value as GraphData).nodes) &&
-      Array.isArray((value as GraphData).links)
+    typeof value === 'object' &&
+    'nodes' in value &&
+    'links' in value &&
+    Array.isArray((value as GraphData).nodes) &&
+    Array.isArray((value as GraphData).links),
   )
 }
 
@@ -186,7 +179,7 @@ export function buildGraphFromTrace(trace: RagTrace): {
 
   nodes.push(
     { id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' },
-    { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2, color: '#2563eb' }
+    { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2, color: '#2563eb' },
   )
   if (hasRerank) {
     nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2, color: '#14b8a6' })
@@ -197,7 +190,7 @@ export function buildGraphFromTrace(trace: RagTrace): {
   if (hasRerank) {
     links.push(
       { source: idRetrieve, target: idRerank, label: 'rerank' },
-      { source: idRerank, target: idCitations, label: 'cite' }
+      { source: idRerank, target: idCitations, label: 'cite' },
     )
   } else {
     links.push({ source: idRetrieve, target: idCitations, label: 'cite' })

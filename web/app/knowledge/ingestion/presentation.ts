@@ -3,19 +3,15 @@ import {
   CircleDashed,
   FileDigit,
   FileSearch,
-  LucideIcon,
+  PlatformIcon,
   ShieldAlert,
   TableProperties,
   Workflow,
-} from 'lucide-react'
+} from '@/components/icons'
 
 import type { DatasetPrecheckFileOut, Document } from '@/types'
 
-import {
-  estimatePdfPageCountFromSignals,
-  getDocumentRuntimeStats,
-  stringifyForDisplay,
-} from './document-signals'
+import { estimatePdfPageCountFromSignals, getDocumentRuntimeStats, stringifyForDisplay } from './document-signals'
 import type { IngestionMode, SampleDisposition } from './types'
 
 export type SalesProcessingLane = {
@@ -33,13 +29,13 @@ export type SalesEvidenceTableRow = {
   primaryRisk: string
   riskDescription: string
   actionLabel: string
-  icon: LucideIcon
+  icon: PlatformIcon
   iconTone: string
 }
 
 export type RiskTagPresentation = {
   actionLabel: string
-  icon: LucideIcon
+  icon: PlatformIcon
   iconTone: string
   primaryRisk: string
 }
@@ -62,14 +58,13 @@ export type BatchProfileFile = {
 
 export const SALES_PANEL_CLASS =
   'rounded-[1rem] border border-border/55 bg-background/92 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.12)]'
-export const SALES_PANEL_INSET_CLASS =
-  'rounded-[0.9rem] border border-border/50 bg-background/82'
+export const SALES_PANEL_INSET_CLASS = 'rounded-[0.9rem] border border-border/50 bg-background/82'
 export const SALES_SUMMARY_STRIP_CLASS =
   'overflow-hidden rounded-[1rem] border border-border/55 bg-background/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.1)]'
 
 export function resolveThroughputRowsSource(
   hasBackendRows: boolean,
-  documentRowsLength: number
+  documentRowsLength: number,
 ): 'backend' | 'documents' {
   if (hasBackendRows) return 'backend'
   if (documentRowsLength) return 'documents'
@@ -226,7 +221,7 @@ export function getPdfSplitColor(name: string): string {
   }
 }
 
-export function getSalesCoreIcon(index: number): LucideIcon {
+export function getSalesCoreIcon(index: number): PlatformIcon {
   switch (index) {
     case 0:
       return FileSearch
@@ -347,8 +342,12 @@ export function getDocumentStatusLabel(status: string | null | undefined): strin
       return '已完成'
     case 'failed':
       return '失败'
+    case 'quarantined':
+      return '已隔离'
+    case 'cancelled':
+      return '已取消'
     case 'processing':
-      return '进行中'
+      return '处理中'
     case 'pending':
       return '等待中'
     default:
@@ -363,7 +362,9 @@ export function getDocumentStatusTone(status: string | null | undefined): string
     case 'failed':
       return 'text-rose'
     case 'processing':
-      return 'text-info'
+      return 'text-info dark:text-foreground'
+    case 'quarantined':
+      return 'text-warning'
     default:
       return 'text-muted-foreground'
   }
@@ -427,10 +428,7 @@ export function getHeaderAnimation({
   }
 }
 
-export function getHeaderBodyVisibilityClass(
-  mode: IngestionMode,
-  headerCollapsed: boolean
-): string {
+export function getHeaderBodyVisibilityClass(mode: IngestionMode, headerCollapsed: boolean): string {
   if (mode !== 'sales-audit') return 'mt-1.5 max-h-28 opacity-100'
   if (headerCollapsed) return 'mt-0 max-h-0 opacity-0'
   return 'mt-1.5 max-h-28 opacity-100'

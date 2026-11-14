@@ -645,8 +645,8 @@ def build_output(
     return {
         "ok": summary.get("ok"),
         "artifact_dir": summary.get("artifact_dir"),
-        "dataset_id": dataset_id or None,
-        "document_id": document_id or None,
+        "dataset_id": (dataset_id),
+        "document_id": (document_id),
         "error": summary.get("error"),
     }
 

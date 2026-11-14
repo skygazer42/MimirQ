@@ -28,18 +28,9 @@ export function mapDocumentChunksToPreviewItems(chunks: DocumentChunk[]): ChunkP
   return list.map((chunk) => {
     const meta = toJsonObject(chunk.metadata)
 
-    const start =
-      toInt(chunk.start_char) ??
-      toInt(meta.start_char) ??
-      toInt(meta.start_index) ??
-      toInt(meta.start) ??
-      0
+    const start = toInt(chunk.start_char) ?? toInt(meta.start_char) ?? toInt(meta.start_index) ?? toInt(meta.start) ?? 0
 
-    const endRaw =
-      toInt(chunk.end_char) ??
-      toInt(meta.end_char) ??
-      toInt(meta.end_index) ??
-      toInt(meta.end)
+    const endRaw = toInt(chunk.end_char) ?? toInt(meta.end_char) ?? toInt(meta.end_index) ?? toInt(meta.end)
 
     const content = String(chunk.content || '')
     const end = Math.max(start, endRaw ?? start + content.length)

@@ -1,4 +1,3 @@
-
 from collections.abc import Callable
 from typing import Any
 
@@ -17,7 +16,7 @@ def expand_neighbors_by_score(
     for item in ranked_items or []:
         if not isinstance(item, dict):
             continue
-        chunk_id = str(item.get("id") or "").strip()
+        chunk_id = str(item["id"]).strip()
         if not chunk_id:
             continue
         expanded_ids.add(chunk_id)
@@ -36,7 +35,7 @@ def expand_neighbors_by_score(
 
         expansion_map[chunk_id] = span
         for adj in get_adjacent_ids(chunk_id, span) or []:
-            adj_id = str(adj or "").strip()
+            adj_id = adj.strip()
             if adj_id:
                 expanded_ids.add(adj_id)
 

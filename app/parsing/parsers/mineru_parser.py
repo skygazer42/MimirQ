@@ -10,9 +10,12 @@ Supports:
 - Formula recognition
 - Complex layout analysis
 """
+
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
@@ -30,33 +33,26 @@ class MinerUParser(BaseAdvancedParser):
     """
 
     def __init__(self):
-        api = settings.MINERU_LOCAL_SERVER_URL.strip()
-        self._api = api.rstrip("/") if api else ""
-
-        server_url = settings.MINERU_VL_SERVER.strip()
-        self._server_url = server_url.rstrip("/") if server_url else ""
+        self._api = settings.MINERU_LOCAL_SERVER_URL.strip().rstrip("/")
+        self._server_url = settings.MINERU_VL_SERVER.strip().rstrip("/")
         super().__init__()
 
     def _get_parser_name(self) -> str:
         return "mineru"
 
-    def _create_parser(self) -> Any:
+    def _create_parser(self) -> DeepDocMinerUParser:
+        return DeepDocMinerUParser(mineru_api=self._api, mineru_server_url=self._server_url)
 
-        return DeepDocMinerUParser(
-            mineru_api=self._api,
-            mineru_server_url=self._server_url
-        )
-
-    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
+    def _check_parser_installation(self, parser: DeepDocMinerUParser) -> tuple[bool, str]:
         return parser.check_installation()
 
     def _call_parse_method(
         self,
-        parser: Any,
+        parser: DeepDocMinerUParser,
         file_path: Path,
         binary: bytes | None,
         callback: Callable[[float, str], None],
-        **kwargs
+        **kwargs: Any,
     ) -> tuple[list, list]:
         return parser.parse_pdf(
             filepath=str(file_path),
@@ -65,19 +61,19 @@ class MinerUParser(BaseAdvancedParser):
             backend=settings.MINERU_BACKEND,
             server_url=self._server_url,
             delete_output=True,
-            **kwargs
+            **kwargs,
         )
 
-    def parse(self, file_path: Path, **kwargs) -> list:
+    def parse(self, file_path: Path, **kwargs: Any) -> list[Document]:
         """
         Prefer the project's MinerU integrations when configured:
-        - Local ZIP mode: MINERU_LOCAL_SERVER_URL (+ optional MINERU_VL_SERVER). When dataset/document ids
-          are provided, we parse via `MinerUService.parse_file_local()` so images can be uploaded to MinIO.
+        - Local ZIP mode: MINERU_LOCAL_SERVER_URL (+ optional MINERU_VL_SERVER). Parse via
+          `MinerUService.parse_file_local()`; dataset/document ids allow images to be uploaded to MinIO.
         - Online API mode: MINERU_API_TOKEN. When no local API server is configured, we parse via
           `MinerUService.parse_file()`.
 
-        Fallback to DeepDoc's MinerU adapter when a local API server is configured but we cannot use the
-        ZIP->MinIO path (e.g. preview endpoints without ids).
+        Fall back to DeepDoc's MinerU adapter if the local ZIP integration fails or neither service mode
+        is configured.
         """
         file_path = Path(file_path)
         self._validate_file(file_path)
@@ -90,7 +86,7 @@ class MinerUParser(BaseAdvancedParser):
         # 1) Prefer local ZIP mode whenever a local MinerU service is configured.
         # When dataset/document ids are unavailable (preview flows), the service
         # still returns markdown and preview-local images without requiring MinIO.
-        if getattr(settings, "MINERU_LOCAL_SERVER_URL", ""):
+        if settings.MINERU_LOCAL_SERVER_URL:
             try:
                 return mineru_service.parse_file_local(
                     file_path=file_path,
@@ -104,7 +100,7 @@ class MinerUParser(BaseAdvancedParser):
                 self._logger.debug("Local MinerU preview parse failed; falling back to DeepDoc adapter: %s", exc)
 
         # 2) If we don't have a local API server configured, fall back to online MinerU API when possible.
-        if not self._api and getattr(settings, "MINERU_API_TOKEN", ""):
+        if not self._api and settings.MINERU_API_TOKEN:
             data_id = str(document_id) if document_id else file_path.stem
             return mineru_service.parse_file(
                 file_path=file_path,

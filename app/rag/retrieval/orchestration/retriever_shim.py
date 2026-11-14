@@ -10,7 +10,7 @@ class _VectorStoreShim:
 
 class _HybridRetrieverShim:
     def __init__(self, state: dict[str, Any] | None = None) -> None:
-        self._state = dict(state or {})
+        self._state = dict((state if state is not None else {}))
         self._last_debug_metrics: dict[str, Any] = {}
 
     def model_copy(self, *, update: dict[str, Any] | None = None):  # noqa: ANN001
@@ -37,14 +37,16 @@ def _real_hybrid_retriever() -> Any | None:
 
 def get_vector_store():
     try:
-        from app.rag.retriever import get_vector_store as real_get_vector_store
+        from app.storage.vector.factory import get_vector_store as real_get_vector_store
 
         return real_get_vector_store()
     except Exception:
         return _VectorStoreShim()
 
 
-hybrid_retriever = _real_hybrid_retriever() or _HybridRetrieverShim()
+hybrid_retriever = _real_hybrid_retriever()
+if hybrid_retriever is None:
+    hybrid_retriever = _HybridRetrieverShim()
 
 
 __all__ = ["get_vector_store", "hybrid_retriever"]

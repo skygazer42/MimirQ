@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 高级切块配置布局对比",
+  "round": "高级配置 01",
+  "brief": "沿用雾灰／墨色、Manrope 与 Noto Sans SC，比较高级配置的三种布局。数据、开关状态一致，现状一起放在旁边。候选为静态首屏；选定后再接入正式页面。",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-drawer",
+      "name": "A · 分组抽屉",
+      "source": "a-drawer.html",
+      "concept": "常用配置在连续设置行里展开，保留原文上下文，改完直接返回。",
+      "typography": "Manrope / Noto Sans SC；20px 标题、14px 设置项、13px 说明",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#DCE1E6",
+        "#476F8B",
+        "#736084",
+        "#805E18"
+      ],
+      "traits": [
+        "620px 右侧抽屉",
+        "连续设置行，分组按需展开",
+        "统计合并成底部横排"
+      ]
+    },
+    {
+      "id": "b-workbench",
+      "name": "B · 并排调参",
+      "source": "b-workbench.html",
+      "concept": "参数与上次预览结果并列，对照切分质量后再生成新预览。",
+      "typography": "Manrope / Noto Sans SC；20px 标题、14px 设置项、13px 说明",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#DCE1E6",
+        "#476F8B",
+        "#736084",
+        "#805E18"
+      ],
+      "traits": [
+        "宽居中弹窗",
+        "左侧编辑、右侧预览依据",
+        "适合反复调整与比较"
+      ]
+    },
+    {
+      "id": "c-directory",
+      "name": "C · 目录面板",
+      "source": "c-directory.html",
+      "concept": "先按用途找到配置分区，每次只处理当前一组参数。",
+      "typography": "Manrope / Noto Sans SC；20px 标题、14px 设置项、13px 说明",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#DCE1E6",
+        "#476F8B",
+        "#736084",
+        "#805E18"
+      ],
+      "traits": [
+        "900px 右侧宽面板",
+        "分类目录与单组详情",
+        "预设、统计和记录有独立入口"
+      ]
+    },
+    {
+      "id": "current",
+      "name": "当前抽屉 · 参照",
+      "source": "current.png",
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1254x948",
+      "concept": "实际页面中与用户截图相同的图谱、预设和统计区域，补充周围工作区作为参照。",
+      "traits": [
+        "原始截图",
+        "分组中仍有卡片容器",
+        "与三个新布局对照"
+      ]
+    }
+  ]
+}

@@ -3,15 +3,7 @@
  */
 
 export const SEPARATOR_PRESET_OPTIONS: Array<{
-  value:
-    | 'paragraph'
-    | 'line'
-    | 'sentence_cn'
-    | 'sentence_en'
-    | 'markdown_hr'
-    | 'markdown_h1'
-    | 'markdown_h2'
-    | 'custom'
+  value: 'paragraph' | 'line' | 'sentence_cn' | 'sentence_en' | 'markdown_hr' | 'markdown_h1' | 'markdown_h2' | 'custom'
   label: string
   hint: string
 }> = [

@@ -39,14 +39,14 @@ class _MetadataAwareChunker(BaseChunker):
         metadata_generate_questions: bool,
     ) -> None:
         self._inner = inner
-        self._enrich_document_metadata = bool(enrich_document_metadata)
-        self._inject_metadata_header = bool(inject_metadata_header)
-        self._metadata_keywords_provider = str(metadata_keywords_provider or "auto")
-        self._metadata_keyword_top_k = int(metadata_keyword_top_k or 8)
-        self._metadata_keyword_max_chars = int(metadata_keyword_max_chars or 4000)
-        self._metadata_summary_max_chars = int(metadata_summary_max_chars or 220)
-        self._metadata_question_count = int(metadata_question_count or 3)
-        self._metadata_generate_questions = bool(metadata_generate_questions)
+        self._enrich_document_metadata = enrich_document_metadata
+        self._inject_metadata_header = inject_metadata_header
+        self._metadata_keywords_provider = metadata_keywords_provider
+        self._metadata_keyword_top_k = metadata_keyword_top_k or 8
+        self._metadata_keyword_max_chars = metadata_keyword_max_chars or 4000
+        self._metadata_summary_max_chars = metadata_summary_max_chars or 220
+        self._metadata_question_count = metadata_question_count or 3
+        self._metadata_generate_questions = metadata_generate_questions
 
     def _enrichment_kwargs(self) -> dict[str, Any]:
         return {
@@ -59,7 +59,7 @@ class _MetadataAwareChunker(BaseChunker):
         }
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
-        working = list(documents or [])
+        working = list(documents)
         if self._enrich_document_metadata:
             working = enrich_documents_metadata(working, **self._enrichment_kwargs())
 
@@ -69,11 +69,11 @@ class _MetadataAwareChunker(BaseChunker):
 
         out: list[Document] = []
         for chunk in chunks:
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             if not meta.get("document_summary") or not meta.get("document_questions"):
                 meta.update(
                     build_document_metadata_enrichment(
-                        chunk.page_content or "",
+                        chunk.page_content,
                         metadata=meta,
                         **self._enrichment_kwargs(),
                     )
@@ -82,13 +82,10 @@ class _MetadataAwareChunker(BaseChunker):
             if not header:
                 out.append(chunk)
                 continue
-            payload = f"{header}\n\nContent:\n{chunk.page_content or ''}".strip()
+            payload = f"{header}\n\nContent:\n{chunk.page_content}".strip()
             meta["rich_metadata_header_applied"] = True
             meta["rich_metadata_header_chars"] = len(header)
-            try:
-                out.append(chunk.model_copy(update={"page_content": payload, "metadata": meta}))
-            except Exception:
-                out.append(Document(page_content=payload, metadata=meta, id=getattr(chunk, "id", None)))
+            out.append(chunk.model_copy(update={"page_content": payload, "metadata": meta}))
         return out
 
 
@@ -213,7 +210,9 @@ class ChunkerFactory:
         Raises:
             ValueError: If strategy is not supported.
         """
-        normalized = (strategy or settings.DEFAULT_CHUNK_STRATEGY).lower()
+        normalized = "" if strategy is None else strategy.lower()
+        if normalized == "":
+            normalized = settings.DEFAULT_CHUNK_STRATEGY.lower()
 
         if normalized in self.STRATEGY_ALIASES:
             normalized = self.STRATEGY_ALIASES[normalized]
@@ -260,7 +259,7 @@ class ChunkerFactory:
         if resolved in self.INTEGRATED_PIPELINE_STRATEGIES:
             raise ValueError(
                 f"Chunk strategy '{resolved}' is handled by the integrated parse+chunk pipeline. "
-                f"Use 'chunk_file' from app.rag.chunking.integrated_pipeline.bridge instead."
+                f"Use 'chunk_file' from app.third_party.integrated_pipeline.bridge instead."
             )
 
         enrich_document_metadata = bool(kwargs.pop("enrich_document_metadata", False))

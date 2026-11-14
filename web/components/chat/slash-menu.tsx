@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Sparkles, FileText, Eraser, Settings2, Database, History } from 'lucide-react'
+import { Sparkles, FileText, Eraser, Settings2, Database, History } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import {
@@ -13,13 +13,9 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-interface SlashMenuProps {
+type SlashMenuProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (command: string) => void
@@ -48,7 +44,7 @@ export function SlashMenu({ open, onOpenChange, onSelect, position }: Readonly<S
         description: t(`commands.${id}.description`),
         keywords: t.raw(`commands.${id}.keywords`) as string[],
       })),
-    [t]
+    [t],
   )
 
   return (

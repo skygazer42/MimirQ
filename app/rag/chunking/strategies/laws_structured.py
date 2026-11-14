@@ -10,7 +10,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -76,7 +75,7 @@ def _has_heading_boundary(text: str, idx: int) -> bool:
 
 
 def _parse_en_prefixed_heading(line: str, *, prefix: str, max_segments: int) -> str | None:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
     low = s.lower()
@@ -94,22 +93,14 @@ def _parse_en_prefixed_heading(line: str, *, prefix: str, max_segments: int) -> 
     return s[start:end]
 
 
-def _parse_en_article_heading(line: str) -> str | None:
-    return _parse_en_prefixed_heading(line, prefix="article", max_segments=1)
-
-
-def _parse_en_section_heading(line: str) -> str | None:
-    return _parse_en_prefixed_heading(line, prefix="section", max_segments=4)
-
-
 def _heading_match(line: str) -> tuple[str, int, str] | None:
     candidates = (
         ("chapter", 1, parse_cn_prefixed_heading(line, suffixes="章")),
         ("section", 2, parse_cn_prefixed_heading(line, suffixes="节")),
         ("article", 3, parse_cn_prefixed_heading(line, suffixes="条")),
         ("clause", 4, parse_cn_clause_marker(line)),
-        ("article", 3, _parse_en_article_heading(line)),
-        ("section", 2, _parse_en_section_heading(line)),
+        ("article", 3, _parse_en_prefixed_heading(line, prefix="article", max_segments=1)),
+        ("section", 2, _parse_en_prefixed_heading(line, prefix="section", max_segments=4)),
     )
     for kind, level, number in candidates:
         if number is not None:
@@ -137,17 +128,6 @@ def _parse_heading(raw_line: str, *, line_start: int) -> LawHeading | None:
     )
 
 
-def _dedupe_headings(headings: list[LawHeading]) -> list[LawHeading]:
-    deduped: list[LawHeading] = []
-    last_start = -1
-    for heading in headings:
-        if heading.start == last_start:
-            continue
-        deduped.append(heading)
-        last_start = heading.start
-    return deduped
-
-
 def _iter_headings(text: str) -> list[LawHeading]:
     if not text:
         return []
@@ -160,7 +140,7 @@ def _iter_headings(text: str) -> list[LawHeading]:
         heading = _parse_heading(raw_line, line_start=line_start)
         if heading is not None:
             headings.append(heading)
-    return _dedupe_headings(headings)
+    return headings
 
 
 def _build_sections(text: str, headings: list[LawHeading]) -> list[_Section]:
@@ -203,7 +183,7 @@ class LawsStructuredChunker(BaseChunker):
     Chunker optimized for legal-style documents (laws, policies, contracts).
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -237,7 +217,7 @@ class LawsStructuredChunker(BaseChunker):
         meta["end_char"] = abs_end
         if heading is not None:
             meta["law_heading"] = heading.text
-            meta["law_level"] = int(heading.level)
+            meta["law_level"] = heading.level
             meta["law_kind"] = heading.kind
             if heading.number:
                 meta["law_number"] = heading.number
@@ -276,7 +256,7 @@ class LawsStructuredChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

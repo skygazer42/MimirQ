@@ -26,7 +26,7 @@ class SemanticSentenceChunker(BaseChunker):
     _FENCED_CODE_PATTERN = re.compile(r"```.*?```", flags=re.S)
     _LIST_ITEM_RE = re.compile(r"^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)")
 
-    def __init__(self, chunk_size: int, chunk_overlap: int, min_chunk_size: int | None = 256):
+    def __init__(self, chunk_size: int, chunk_overlap: int, min_chunk_size: int | None = 256) -> None:
         self.chunk_size = max(chunk_size, 1)
         self.chunk_overlap = max(chunk_overlap, 0)
         self.min_chunk_size = max(0, int(256 if min_chunk_size is None else min_chunk_size))
@@ -51,15 +51,15 @@ class SemanticSentenceChunker(BaseChunker):
 
     def _extract_fenced_code_spans(self, text: str) -> list[tuple[int, int]]:
         spans: list[tuple[int, int]] = []
-        for m in self._FENCED_CODE_PATTERN.finditer(text or ""):
-            s, e = int(m.start()), int(m.end())
+        for m in self._FENCED_CODE_PATTERN.finditer(text):
+            s, e = m.start(), m.end()
             if e > s:
                 spans.append((s, e))
         spans.sort(key=lambda x: x[0])
         return spans
 
     def _is_list_item_start(self, line: str) -> bool:
-        return bool(self._LIST_ITEM_RE.match(line or ""))
+        return bool(self._LIST_ITEM_RE.match(line))
 
     def _is_list_item_continuation(self, line: str) -> bool:
         if not line:
@@ -114,7 +114,7 @@ class SemanticSentenceChunker(BaseChunker):
 
         This intentionally ignores list items inside fenced code blocks.
         """
-        raw = text or ""
+        raw = text
         lines = raw.splitlines(keepends=True)
         if not lines:
             return []
@@ -170,14 +170,14 @@ class SemanticSentenceChunker(BaseChunker):
 
         local_units: list[SemanticSentenceChunker._Unit] = []
         for match in self.SENTENCE_PATTERN.finditer(seg):
-            start = seg_start + int(match.start())
-            end = seg_start + int(match.end())
+            start = seg_start + match.start()
+            end = seg_start + match.end()
             if end > start:
                 local_units.append(self._Unit(text=raw[start:end], start=start, end=end, kind="text"))
         return self._merge_numeric_dot_runs(raw, local_units)
 
     def _build_units(self, text: str) -> list[_Unit]:
-        raw = text or ""
+        raw = text
         if not raw:
             return []
 
@@ -239,7 +239,7 @@ class SemanticSentenceChunker(BaseChunker):
     def _build_chunk_document(self, doc: Document, buffer: list[_Unit], effective_floor: int) -> Document:
         start_idx = buffer[0].start
         end_idx = buffer[-1].end
-        meta = dict(doc.metadata or {})
+        meta = dict(doc.metadata)
         meta["start_char"] = start_idx
         meta["end_char"] = end_idx
         meta["chunk_strategy"] = "semantic_sentence"
@@ -260,11 +260,11 @@ class SemanticSentenceChunker(BaseChunker):
         merged_chunks = list(doc_chunks)
         while len(merged_chunks) >= 2:
             tail = merged_chunks[-1]
-            if len(tail.page_content or "") >= effective_floor:
+            if len(tail.page_content) >= effective_floor:
                 break
             prev = merged_chunks[-2]
-            merged_meta = dict(prev.metadata or {})
-            tail_meta = dict(tail.metadata or {})
+            merged_meta = dict(prev.metadata)
+            tail_meta = dict(tail.metadata)
             start_idx = int(merged_meta.get("start_char", 0) or 0)
             end_idx = int(tail_meta.get("end_char", merged_meta.get("end_char", start_idx)) or start_idx)
             merged_meta["end_char"] = end_idx
@@ -274,12 +274,12 @@ class SemanticSentenceChunker(BaseChunker):
             if 0 <= start_idx <= end_idx <= len(text):
                 merged_content = text[start_idx:end_idx]
             else:
-                merged_content = self._merge_text_with_overlap(prev.page_content or "", tail.page_content or "")
+                merged_content = self._merge_text_with_overlap(prev.page_content, tail.page_content)
             merged_chunks[-2:] = [Document(page_content=merged_content, metadata=merged_meta)]
         return merged_chunks
 
     def _split_document(self, doc: Document, *, effective_floor: int) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         units = self._build_units(text)
         if not units:
             return []

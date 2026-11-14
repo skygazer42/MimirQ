@@ -38,7 +38,7 @@ def _select_quote_needle(quote: str) -> str:
     """
     import re
 
-    raw = " ".join(str(quote or "").split()).strip()
+    raw = " ".join(quote.split()).strip()
     if not raw:
         return ""
     # Prefer longer contiguous alnum/CJK runs (more specific than punctuation-heavy prefixes).
@@ -50,7 +50,7 @@ def _select_quote_needle(quote: str) -> str:
 
 
 def _escape_like(s: str) -> str:
-    return (s or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return (s).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,14 +97,14 @@ class RepairReport:
         return {
             "suite_id": str(suite_id),
             "dataset_id": str(suite_dataset_id),
-            "applied": bool(applied),
-            "scanned_items": int(scanned_items),
-            "scanned_references": int(self.scanned_refs),
-            "drifted_references": int(self.drifted_refs),
-            "repaired_references": int(self.repaired_refs),
-            "skipped_approved_items": int(self.skipped_approved),
-            "skipped_archived_items": int(self.skipped_archived),
-            "changes_truncated": bool(self.changes_truncated),
+            "applied": applied,
+            "scanned_items": scanned_items,
+            "scanned_references": self.scanned_refs,
+            "drifted_references": self.drifted_refs,
+            "repaired_references": self.repaired_refs,
+            "skipped_approved_items": self.skipped_approved,
+            "skipped_archived_items": self.skipped_archived,
+            "changes_truncated": self.changes_truncated,
             "changes": list(self.changes),
         }
 
@@ -154,11 +154,11 @@ def _load_suite_items(db: Session, *, tenant_id: UUID, suite_id: UUID, params: R
 
 
 def _normalize_item_status(item: EvidenceItem) -> str:
-    return str(getattr(item, "status", "") or "").strip().lower() or "unknown"
+    return item.status.strip().lower() or "unknown"
 
 
 def _limited_reference_sources(item: EvidenceItem, *, max_refs_per_item: int) -> list[Any]:
-    raw_refs = getattr(item, "reference_sources", None)
+    raw_refs = item.reference_sources
     refs = raw_refs if isinstance(raw_refs, list) else []
     return refs[:max_refs_per_item]
 
@@ -611,7 +611,7 @@ def _process_item(
         _persist_repaired_item(
             db,
             item=item,
-            patched_refs=patched_refs,
+            patched_refs=patched_refs + item.reference_sources[len(refs) :],
             tenant_id=tenant_id,
             suite_id=suite_id,
             suite_dataset_id=suite_dataset_id,

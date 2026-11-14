@@ -240,7 +240,7 @@ def test_persist_document_chunks_touches_retrieval_scope_before_commit() -> None
 def test_non_milvus_delete_skips_legacy_dataset_embedding_config(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import indexer
 
-    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(
         indexer.Indexer,
         "_embedding_runtime_for_document",
@@ -468,16 +468,18 @@ def test_upsert_document_chunk_vector_uses_dataset_scoped_collection(
         indexer,
         "get_milvus_adapter",
         lambda name: SimpleNamespace(
-            add_vectors=lambda items, embeddings, batch_size, upsert: writes.append(
-                {
-                    "collection": name,
-                    "items": items,
-                    "embeddings": embeddings,
-                    "batch_size": batch_size,
-                    "upsert": upsert,
-                }
+            add_vectors=lambda items, embeddings, batch_size, upsert: (
+                writes.append(
+                    {
+                        "collection": name,
+                        "items": items,
+                        "embeddings": embeddings,
+                        "batch_size": batch_size,
+                        "upsert": upsert,
+                    }
+                )
+                or ["vector-1"]
             )
-            or ["vector-1"]
         ),
     )
     monkeypatch.setattr(
@@ -580,9 +582,7 @@ def test_delete_document_chunk_vectors_cleans_scoped_and_default_collections(
         indexer,
         "get_vector_store",
         lambda: SimpleNamespace(
-            delete_by_document_id_and_filter=lambda **kwargs: deletes.append(
-                {"store": "default", **kwargs}
-            )
+            delete_by_document_id_and_filter=lambda **kwargs: deletes.append({"store": "default", **kwargs})
         ),
     )
 

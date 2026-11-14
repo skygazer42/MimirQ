@@ -3,8 +3,9 @@
 import hashlib
 import re
 import unicodedata
+from typing import Unpack
 
-from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
 
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
 _MODEL_NAME = "mimirq-deterministic-test-v1"
@@ -13,7 +14,7 @@ _MODEL_NAME = "mimirq-deterministic-test-v1"
 class DeterministicTestEmbedding(BaseEmbeddingModel):
     """Stable lexical hashing vectors; not intended for production retrieval quality."""
 
-    def __init__(self, **kwargs):  # noqa: ANN003
+    def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
         kwargs["model"] = str(kwargs.get("model") or _MODEL_NAME)
         kwargs["dimension"] = int(kwargs.get("dimension") or 256)
         super().__init__(**kwargs)
@@ -30,7 +31,7 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
         vector[bucket] += sign * weight
 
     def _encode_one(self, text: str) -> list[float]:
-        normalized = unicodedata.normalize("NFKC", str(text or "")).casefold()[:4096]
+        normalized = unicodedata.normalize("NFKC", text).casefold()[:4096]
         vector = [0.0] * int(self.dimension or 256)
         features = 0
 
@@ -40,8 +41,8 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
 
         compact = "".join(character for character in normalized if not character.isspace())
         for width, weight in ((2, 0.35), (3, 0.5)):
-            for index in range(max(0, len(compact) - width + 1)):
-                self._add_feature(vector, f"char:{width}:{compact[index:index + width]}", weight)
+            for index in range(len(compact) - width + 1):
+                self._add_feature(vector, f"char:{width}:{compact[index : index + width]}", weight)
                 features += 1
 
         if features == 0:

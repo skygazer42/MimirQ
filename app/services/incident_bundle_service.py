@@ -5,7 +5,6 @@ These are thin utilities intended for ops tooling (scripts/CLI) to package a sma
 set of diagnostics artifacts into a single zip file for sharing/debugging.
 """
 
-
 import json
 import zipfile
 from collections.abc import Mapping
@@ -66,8 +65,8 @@ def write_incident_bundle_zip(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     bundle = IncidentBundle(
-        request_id=str(request_id or "").strip(),
-        base_url=str(base_url or "").strip(),
+        request_id=request_id.strip(),
+        base_url=base_url.strip(),
         tenant_id=(str(tenant_id).strip() if tenant_id else None),
         created_at=_utc_now_iso(),
         meta=meta if isinstance(meta, dict) else None,
@@ -85,12 +84,12 @@ def write_incident_bundle_zip(
         "base_url": bundle.base_url,
         "tenant_id": bundle.tenant_id,
         "files": {
-            "meta": bool(bundle.meta),
-            "health_ready": bool(bundle.health_ready),
-            "config_snapshot": bool(bundle.config_snapshot),
-            "trace_bundle": bool(bundle.trace_bundle),
-            "access_graph_summary": bool(bundle.access_graph_summary),
-            "periodic_job_freshness": bool(bundle.periodic_job_freshness),
+            "meta": bundle.meta is not None,
+            "health_ready": bundle.health_ready is not None,
+            "config_snapshot": bundle.config_snapshot is not None,
+            "trace_bundle": bundle.trace_bundle is not None,
+            "access_graph_summary": bundle.access_graph_summary is not None,
+            "periodic_job_freshness": bundle.periodic_job_freshness is not None,
         },
     }
 

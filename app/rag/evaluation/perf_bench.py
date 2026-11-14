@@ -1,4 +1,3 @@
-
 import math
 from datetime import datetime, timezone
 from typing import Any
@@ -18,8 +17,8 @@ def percentile(sorted_values: list[float], p: float) -> float | None:
 
     n = len(sorted_values)
     pos = (p / 100.0) * (n - 1)
-    lo = int(math.floor(pos))
-    hi = int(math.ceil(pos))
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
     if lo == hi:
         return float(sorted_values[lo])
     frac = pos - lo
@@ -43,12 +42,12 @@ def summarize_latencies_ms(latencies_ms: list[float]) -> dict[str, float | int |
     avg = sum(sorted_values) / float(count)
     return {
         "count": count,
-        "avg": float(avg),
-        "min": float(sorted_values[0]),
+        "avg": avg,
+        "min": sorted_values[0],
         "p50": percentile(sorted_values, 50.0),
         "p95": percentile(sorted_values, 95.0),
         "p99": percentile(sorted_values, 99.0),
-        "max": float(sorted_values[-1]),
+        "max": sorted_values[-1],
     }
 
 

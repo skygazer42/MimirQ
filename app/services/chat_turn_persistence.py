@@ -1,13 +1,13 @@
-
 from dataclasses import dataclass
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
-from app.models.chat import Message
+from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
 from app.services.chat_memory_runtime import _touch_conversation_after_turn
@@ -22,44 +22,52 @@ class ChatTurnPersistInput:
     tenant_id: UUID
     conversation_id: UUID
     account_id: str
+    audit_action: Literal["chat.ask", "chat.stream"]
     assistant_message_id: UUID
     request_id: str
     question: str
     document_count: int
     content: str
-    citations: list
-    metrics: dict
+    citations: list[Any]
+    metrics: dict[str, Any]
     dataset_id_used: UUID | None
     cache_hit: bool
     ip: str | None
     user_agent: str | None
     enable_structured_memory: bool
+    increment_message_count: bool = False
+    touch_conversation: bool = True
 
 
 def build_chat_message_metadata(
     *,
     request_id: str,
-    original_question: str | None,
-    metrics: dict[str, Any] | None,
-    citations: list[dict[str, Any]] | None,
+    original_question: str,
+    metrics: dict[str, Any],
+    citations: list[Any],
 ) -> dict[str, Any]:
-    out = dict(metrics or {})
-    out["request_id"] = str(request_id)
+    out = dict(metrics)
+    out["request_id"] = request_id
 
-    rewritten = str((out.get("query_for_retrieval") or "")).strip()
-    question = str(original_question or "").strip()
+    rewritten = out.get("query_for_retrieval")
+    if rewritten is not None:
+        rewritten = rewritten.strip()
+    question = original_question.strip()
     out["rewritten_query"] = rewritten if rewritten and rewritten != question else None
 
     retrieved_docs: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for item in citations or []:
+    for item in citations:
         if not isinstance(item, dict):
             continue
         document_id = item.get("document_id")
         document_name = item.get("document_name") or item.get("source")
         chunk_id = item.get("chunk_id")
         page_number = item.get("page_number")
-        key = str(document_id or document_name or chunk_id or "").strip()
+        key = next((value for value in (document_id, document_name, chunk_id) if value is not None), None)
+        if key is None:
+            continue
+        key = str(key).strip()
         if not key or key in seen:
             continue
         seen.add(key)
@@ -100,9 +108,58 @@ async def auto_update_summary_background(*, tenant_id: UUID, conversation_id: UU
             try:
                 db2.close()
             except Exception as exc:
-                logger.debug("Ignoring summary update session close failure: %s", exc)
-    except Exception:
+                logger.warning(
+                    "Summary update session close failed: tenant_id=%s conversation_id=%s error_type=%s",
+                    tenant_id,
+                    conversation_id,
+                    type(exc).__name__,
+                )
+    except Exception as exc:
+        logger.warning(
+            "Conversation summary update failed: tenant_id=%s conversation_id=%s error_type=%s",
+            tenant_id,
+            conversation_id,
+            type(exc).__name__,
+        )
+
+
+def _add_structured_memory_metadata(
+    *,
+    message_metadata: dict[str, Any],
+    question: str,
+    content: str,
+    enabled: bool,
+    log_context: str,
+) -> None:
+    if not enabled or not settings.STRUCTURED_MEMORY_ENABLED:
         return
+    try:
+        message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+            user_text=question,
+            assistant_text=content,
+            max_entities=settings.STRUCTURED_MEMORY_MAX_ENTITIES,
+            max_facts=settings.STRUCTURED_MEMORY_MAX_FACTS,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Structured memory extraction failed: context=%s error_type=%s",
+            log_context,
+            type(exc).__name__,
+        )
+
+
+def _increment_conversation_message_count(*, db: Session, tenant_id: UUID, conversation_id: UUID) -> None:
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if conversation is not None:
+        conversation.message_count = int(conversation.message_count or 0) + 1
+        conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
 
 def persist_chat_turn_sync(
@@ -111,21 +168,18 @@ def persist_chat_turn_sync(
     options: ChatTurnPersistInput,
 ) -> None:
     message_metadata = build_chat_message_metadata(
-        request_id=str(options.request_id),
+        request_id=options.request_id,
         original_question=options.question,
         metrics=options.metrics,
         citations=options.citations if isinstance(options.citations, list) else [],
     )
-    if options.enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
-        try:
-            message_metadata["structured_memory"] = extract_structured_memory_for_turn(
-                user_text=str(options.question or ""),
-                assistant_text=str(options.content or ""),
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
-            )
-        except Exception as exc:
-            logger.debug("Ignoring structured memory extraction failure for chat turn: %s", exc)
+    _add_structured_memory_metadata(
+        message_metadata=message_metadata,
+        question=options.question,
+        content=options.content,
+        enabled=options.enable_structured_memory,
+        log_context="chat turn",
+    )
 
     assistant_message = Message(
         id=options.assistant_message_id,
@@ -134,7 +188,7 @@ def persist_chat_turn_sync(
         role="assistant",
         content=options.content,
         citations=options.citations,
-        token_count=num_tokens_from_string(options.content or ""),
+        token_count=num_tokens_from_string(options.content),
         message_metadata=message_metadata,
     )
     db.add(assistant_message)
@@ -143,23 +197,30 @@ def persist_chat_turn_sync(
         db,
         tenant_id=options.tenant_id,
         actor_id=options.account_id,
-        action="chat.ask",
+        action=options.audit_action,
         resource_type="conversation",
         resource_id=str(options.conversation_id),
-        request_id=str(options.request_id),
+        request_id=options.request_id,
         ip=options.ip,
         user_agent=options.user_agent,
         details=build_chat_audit_details(
             question=options.question,
-            document_count=int(options.document_count or 0),
+            document_count=options.document_count,
             dataset_id=options.dataset_id_used,
             cache_hit=options.cache_hit,
         ),
     )
 
-    _touch_conversation_after_turn(
-        db=db,
-        tenant_id=options.tenant_id,
-        conversation_id=options.conversation_id,
-    )
+    if options.touch_conversation:
+        _touch_conversation_after_turn(
+            db=db,
+            tenant_id=options.tenant_id,
+            conversation_id=options.conversation_id,
+        )
+    if options.increment_message_count:
+        _increment_conversation_message_count(
+            db=db,
+            tenant_id=options.tenant_id,
+            conversation_id=options.conversation_id,
+        )
     db.commit()

@@ -1,8 +1,8 @@
-"use client"
+'use client'
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
-import type { HTMLMotionProps } from "framer-motion"
-import * as React from "react"
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import type { HTMLMotionProps } from 'framer-motion'
+import type { ReactNode } from 'react'
 
 const presets = {
   fade: {
@@ -11,7 +11,7 @@ const presets = {
     exit: { opacity: 0 },
     transition: { duration: 0.2 },
   },
-  "slide-up": {
+  'slide-up': {
     initial: { opacity: 0, y: 8 },
     animate: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: 4 },
@@ -23,7 +23,7 @@ const presets = {
     exit: { opacity: 0, scale: 0.97 },
     transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
   },
-  "slide-left": {
+  'slide-left': {
     initial: { opacity: 0, x: 12 },
     animate: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: -8 },
@@ -33,19 +33,19 @@ const presets = {
 
 type Preset = keyof typeof presets
 
-interface AnimatedPresenceProps extends Omit<HTMLMotionProps<"div">, "initial" | "animate" | "exit" | "transition"> {
+type AnimatedPresenceProps = Omit<HTMLMotionProps<'div'>, 'initial' | 'animate' | 'exit' | 'transition'> & {
   show: boolean
   preset?: Preset
-  children: React.ReactNode
-  mode?: "wait" | "sync" | "popLayout"
+  children: ReactNode
+  mode?: 'wait' | 'sync' | 'popLayout'
   className?: string
 }
 
 export function AnimatedPresence({
   show,
-  preset = "fade",
+  preset = 'fade',
   children,
-  mode = "wait",
+  mode = 'wait',
   className,
   ...rest
 }: Readonly<AnimatedPresenceProps>) {

@@ -1,6 +1,8 @@
 'use client'
 
-import type { ChatRequest, ChatResponse, Citation, JsonObject, Message } from '@/types'
+import type { ChatRequest, ChatResponse, Message } from '@/types/chat'
+import type { JsonObject } from '@/types/common'
+import type { Citation } from '@/types/processing'
 
 export type ChatRagConfig = Partial<Omit<NonNullable<ChatRequest['rag_config']>, 'metadata_filter'>> & {
   metadata_filter?: JsonObject | null
@@ -136,7 +138,7 @@ export function formatRewriteStep(data: unknown): string | null {
 export function formatAssistantContent(
   content: string,
   structuredOutput: boolean | undefined,
-  structuredData: unknown
+  structuredData: unknown,
 ): string {
   if (!structuredOutput || structuredData == null) {
     return content
@@ -168,7 +170,7 @@ export function buildChatRequest({
         Object.entries({
           ...ragConfig,
           metadata_filter: ragConfig.metadata_filter ?? undefined,
-        }).filter(([, value]) => value !== undefined)
+        }).filter(([, value]) => value !== undefined),
       )
     : undefined
 
@@ -184,10 +186,7 @@ export function buildChatRequest({
     structured_preset: structuredPreset || undefined,
     enable_long_term_memory: Boolean(enableLongTermMemory),
     enable_summary_memory: Boolean(enableSummaryMemory),
-    rag_config:
-      normalizedRagConfig && Object.keys(normalizedRagConfig).length > 0
-        ? normalizedRagConfig
-        : undefined,
+    rag_config: normalizedRagConfig && Object.keys(normalizedRagConfig).length > 0 ? normalizedRagConfig : undefined,
   }
 }
 
@@ -264,7 +263,8 @@ export function getStreamEventMessage(type: string, data: unknown): string | nul
 }
 
 export function getTokenContent(data: unknown): string {
-  return asTrimmedString(asRecord(data)?.content)
+  const content = asRecord(data)?.content
+  return typeof content === 'string' ? content : ''
 }
 
 export function getConversationId(value: unknown): string {

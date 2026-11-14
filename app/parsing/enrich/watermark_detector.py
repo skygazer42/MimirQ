@@ -1,11 +1,12 @@
-
 import re
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.parsing.enrich.document_noise_rules import classify_document_noise_text
+from app.parsing.enrich.document_noise_rules import is_known_document_noise_text
+from app.parsing.utils.block_schema import block_page, block_text
+from app.parsing.utils.scalars import coerce_float as _coerce_float
 
 _SPACE_RE = re.compile(r"\s+")
 _COMMON_SHORT_REPEAT_TEXT = {"项目", "名称", "序号", "日期", "金额", "备注", "合计", "小计"}
@@ -26,8 +27,8 @@ class WatermarkRemovalResult:
         return {
             "schema": "mimirq.watermark_removal.v1",
             "method": self.method,
-            "changed": bool(self.changed),
-            "removed_count": int(self.removed_count),
+            "changed": self.changed,
+            "removed_count": self.removed_count,
             "removed_ids": list(self.removed_ids),
             "pages": list(self.pages),
             "reasons": dict(self.reasons),
@@ -35,45 +36,11 @@ class WatermarkRemovalResult:
         }
 
 
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return out
-    except Exception:
-        return None
-
-
-def _text_value(element: Mapping[str, Any]) -> str:
-    return str(element.get("text") or element.get("element_text") or "").strip()
-
-
-def _kind_value(element: Mapping[str, Any]) -> str:
-    return str(element.get("kind") or element.get("element_kind") or "").strip().lower()
-
-
-def _page_value(element: Mapping[str, Any]) -> int | None:
-    page = _coerce_int(element.get("page"))
-    if page is not None and page > 0:
-        return int(page)
-    pages = element.get("pages")
-    if isinstance(pages, list) and pages:
-        first = _coerce_int(pages[0])
-        if first is not None and first > 0:
-            return int(first)
-    return None
+def _kind_value(element: Mapping[str, Any]) -> str | None:
+    kind = element.get("kind")
+    if kind is None:
+        kind = element.get("element_kind")
+    return kind.strip().lower() if isinstance(kind, str) else None
 
 
 def _bbox_center_key(element: Mapping[str, Any]) -> tuple[int, int] | None:
@@ -93,7 +60,7 @@ def _bbox_center_key(element: Mapping[str, Any]) -> tuple[int, int] | None:
 def _page_bounds(elements: Sequence[Mapping[str, Any]]) -> dict[int, tuple[float, float]]:
     bounds: dict[int, tuple[float, float]] = {}
     for element in elements:
-        page = _page_value(element)
+        page = block_page(element)
         bbox = element.get("bbox")
         if page is None or not isinstance(bbox, Mapping):
             continue
@@ -102,15 +69,15 @@ def _page_bounds(elements: Sequence[Mapping[str, Any]]) -> dict[int, tuple[float
         if y0 is None or y1 is None:
             continue
         if page not in bounds:
-            bounds[int(page)] = (float(y0), float(y1))
+            bounds[page] = (y0, y1)
             continue
-        top, bottom = bounds[int(page)]
-        bounds[int(page)] = (min(top, float(y0)), max(bottom, float(y1)))
+        top, bottom = bounds[page]
+        bounds[page] = (min(top, y0), max(bottom, y1))
     return bounds
 
 
 def _is_center_overlay_candidate(element: Mapping[str, Any], bounds: Mapping[int, tuple[float, float]]) -> bool:
-    page = _page_value(element)
+    page = block_page(element)
     bbox = element.get("bbox")
     if page is None or not isinstance(bbox, Mapping):
         return False
@@ -118,24 +85,15 @@ def _is_center_overlay_candidate(element: Mapping[str, Any], bounds: Mapping[int
     y1 = _coerce_float(bbox.get("y1"))
     if y0 is None or y1 is None:
         return False
-    top, bottom = bounds.get(int(page), (0.0, 0.0))
-    height = max(1.0, float(bottom) - float(top))
-    cy = ((float(y0) + float(y1)) / 2.0) - float(top)
+    top, bottom = bounds[page]
+    height = max(1.0, bottom - top)
+    cy = ((y0 + y1) / 2.0) - top
     ratio = cy / height
     return 0.18 <= ratio <= 0.82
 
 
-def _normalize_text(text: str) -> str:
-    normalized = _SPACE_RE.sub("", str(text or "").strip().lower())
-    return normalized
-
-
-def _is_known_export_noise(text: str) -> bool:
-    return classify_document_noise_text(text) is not None
-
-
-def _is_removable_kind(kind: str) -> bool:
-    return str(kind or "").strip().lower() not in {"table", "equation", "formula", "seal"}
+def _is_removable_kind(kind: str | None) -> bool:
+    return kind is None or kind.strip().lower() not in {"table", "equation", "formula", "seal"}
 
 
 def _repeated_overlay_key(
@@ -143,12 +101,12 @@ def _repeated_overlay_key(
     *,
     bounds: Mapping[int, tuple[float, float]],
 ) -> tuple[str, tuple[int, int] | None] | None:
-    text = _text_value(element)
+    text = block_text(element)
     kind = _kind_value(element)
-    page = _page_value(element)
+    page = block_page(element)
     if not text or page is None or not _is_removable_kind(kind):
         return None
-    normalized = _normalize_text(text)
+    normalized = _SPACE_RE.sub("", text.strip().lower())
     if (
         len(normalized) < 4
         or len(normalized) > 80
@@ -169,17 +127,17 @@ def _collect_remove_indexes(
     reason_by_index: dict[int, str] = {}
     repeated_candidates: dict[tuple[str, tuple[int, int] | None], list[tuple[int, int]]] = defaultdict(list)
     for index, element in enumerate(original):
-        text = _text_value(element)
-        if text and _is_known_export_noise(text):
+        text = block_text(element)
+        if text and is_known_document_noise_text(text):
             remove_indexes.add(index)
             reason_by_index[index] = "pdf_export_noise"
             continue
         candidate = _repeated_overlay_key(element, bounds=bounds)
         if candidate is None:
             continue
-        page = _page_value(element)
+        page = block_page(element)
         if page is not None:
-            repeated_candidates[candidate].append((index, int(page)))
+            repeated_candidates[candidate].append((index, page))
 
     for entries in repeated_candidates.values():
         candidate_pages = {page for _index, page in entries}
@@ -204,13 +162,13 @@ def _result_from_removed_indexes(
     for index, element in enumerate(original):
         if index in remove_indexes:
             removed_ids.append(str(element.get("id") or index))
-            reasons[reason_by_index.get(index, "watermark_noise")] += 1
+            reasons[reason_by_index[index]] += 1
             continue
         kept.append(dict(element))
     return WatermarkRemovalResult(
         elements=kept,
         changed=True,
-        removed_count=int(len(remove_indexes)),
+        removed_count=len(remove_indexes),
         removed_ids=removed_ids,
         pages=pages,
         reasons=dict(reasons),
@@ -226,9 +184,9 @@ def remove_document_watermark_elements(
     if not original:
         return WatermarkRemovalResult(elements=[], changed=False, removed_count=0, removed_ids=[], pages=[])
 
-    pages = sorted({int(page) for item in original if (page := _page_value(item)) is not None})
+    pages = sorted({page for item in original if (page := block_page(item)) is not None})
     bounds = _page_bounds(original)
-    threshold = max(2, int(min_pages or 2))
+    threshold = max(2, min_pages)
     remove_indexes, reason_by_index = _collect_remove_indexes(original, bounds=bounds, threshold=threshold)
     if not remove_indexes:
         return WatermarkRemovalResult(elements=original, changed=False, removed_count=0, removed_ids=[], pages=pages)

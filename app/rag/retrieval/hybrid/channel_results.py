@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
@@ -53,7 +52,7 @@ def prepare_hybrid_channel_results(
         ):
             channel_annotated = 0
             channel_promoted = 0
-            for item in channel_items or []:
+            for item in channel_items:
                 if not isinstance(item, dict):
                     continue
                 before = _float_or_default(item.get("score"), 0.0)
@@ -69,15 +68,11 @@ def prepare_hybrid_channel_results(
                         channel_promoted += 1
             if channel_annotated:
                 metadata_exact_pre_fusion_stats[channel_name] = {
-                    "annotated": int(channel_annotated),
-                    "promoted": int(channel_promoted),
+                    "annotated": channel_annotated,
+                    "promoted": channel_promoted,
                 }
-                metadata_exact_pre_fusion_stats["annotated"] = int(
-                    metadata_exact_pre_fusion_stats.get("annotated", 0) or 0
-                ) + int(channel_annotated)
-                metadata_exact_pre_fusion_stats["promoted"] = int(
-                    metadata_exact_pre_fusion_stats.get("promoted", 0) or 0
-                ) + int(channel_promoted)
+                metadata_exact_pre_fusion_stats["annotated"] += channel_annotated
+                metadata_exact_pre_fusion_stats["promoted"] += channel_promoted
 
     return HybridChannelResults(
         vector_results=normalized_vector_results,

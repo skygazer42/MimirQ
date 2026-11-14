@@ -5,10 +5,14 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from scripts.remote_kb_boundary_matrix import ApiResponse, LiveApi
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
@@ -22,17 +26,17 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 
 @dataclass(frozen=True)
 class RuntimeDeps:
-    live_api_cls: Any
-    citation_document_ids_fn: Any
-    ensure_success_fn: Any
-    evaluate_boundary_case_fn: Any
-    exported_document_ids_fn: Any
-    make_fixture_files_fn: Any
-    parsed_text_from_response_fn: Any
-    record_step_fn: Any
-    response_text_from_body_fn: Any
-    wait_for_document_completed_fn: Any
-    force_member_role_via_docker_fn: Any
+    live_api_cls: type["LiveApi"]
+    citation_document_ids_fn: Callable[[Any], list[str]]
+    ensure_success_fn: Callable[[str, "ApiResponse"], None]
+    evaluate_boundary_case_fn: Callable[..., list[str]]
+    exported_document_ids_fn: Callable[[Any], list[str]]
+    make_fixture_files_fn: Callable[[Path], dict[str, Path]]
+    parsed_text_from_response_fn: Callable[[Any], str]
+    record_step_fn: Callable[..., None]
+    response_text_from_body_fn: Callable[[Any], str]
+    wait_for_document_completed_fn: Callable[..., dict[str, Any]]
+    force_member_role_via_docker_fn: Callable[..., tuple[bool, str]]
 
 
 @lru_cache(maxsize=1)
@@ -67,7 +71,7 @@ def get_runtime_deps() -> RuntimeDeps:
     )
 
 
-def build_live_api(*args: Any) -> Any:
+def build_live_api(*args: Any) -> "LiveApi":
     return get_runtime_deps().live_api_cls(*args)
 
 
@@ -75,7 +79,7 @@ def citation_document_ids(body: Any) -> list[str]:
     return get_runtime_deps().citation_document_ids_fn(body)
 
 
-def ensure_success(name: str, resp: Any) -> None:
+def ensure_success(name: str, resp: "ApiResponse") -> None:
     get_runtime_deps().ensure_success_fn(name, resp)
 
 
@@ -106,7 +110,7 @@ def parsed_text_from_response(body: Any) -> str:
     return get_runtime_deps().parsed_text_from_response_fn(body)
 
 
-def record_step(steps: list[dict[str, Any]], name: str, resp: Any, **extra: Any) -> None:
+def record_step(steps: list[dict[str, Any]], name: str, resp: "ApiResponse", **extra: Any) -> None:
     get_runtime_deps().record_step_fn(steps, name, resp, **extra)
 
 
@@ -115,7 +119,7 @@ def response_text_from_body(body: Any) -> str:
 
 
 def wait_for_document_completed(
-    api: Any,
+    api: "LiveApi",
     *,
     steps: list[dict[str, Any]],
     filename: str,
@@ -197,13 +201,13 @@ def document_access_summary(body: Any) -> dict[str, Any]:
         }
     return {
         "mode": str(body.get("mode") or "").strip().lower(),
-        "owner_id": str(body.get("owner_id") or "").strip() or None,
+        "owner_id": (body.get("owner_id")),
         "partial_member_list": _normalized_text_list(body.get("partial_member_list")),
         "partial_group_list": _normalized_text_list(body.get("partial_group_list")),
     }
 
 
-def _response_id(resp: Any, *keys: str) -> str:
+def _response_id(resp: "ApiResponse", *keys: str) -> str:
     body = resp.body if hasattr(resp, "body") else None
     if not isinstance(body, dict):
         return ""
@@ -215,7 +219,7 @@ def _response_id(resp: Any, *keys: str) -> str:
 
 
 def create_dataset(
-    api: Any,
+    api: "LiveApi",
     *,
     steps: list[dict[str, Any]],
     name: str,
@@ -269,7 +273,7 @@ def _chunk_count_from_body(body: Any) -> int:
 
 
 def upload_fixture(
-    api: Any,
+    api: "LiveApi",
     *,
     steps: list[dict[str, Any]],
     dataset_id: str,
@@ -326,7 +330,7 @@ def upload_fixture(
 
 
 def cleanup_dataset(
-    api: Any,
+    api: "LiveApi",
     *,
     steps: list[dict[str, Any]],
     dataset_id: str,
@@ -444,7 +448,7 @@ def append_check_result(
     checks: list[dict[str, Any]],
     *,
     name: str,
-    resp: Any,
+    resp: "ApiResponse",
     failures: list[str],
 ) -> None:
     checks.append(
@@ -460,7 +464,7 @@ def append_check_result(
 
 
 def run_inventory_check(
-    api: Any,
+    api: "LiveApi",
     *,
     steps: list[dict[str, Any]],
     checks: list[dict[str, Any]],
@@ -489,7 +493,7 @@ def run_inventory_check(
 
 
 def run_permission_check(
-    api: Any,
+    api: "LiveApi",
     *,
     steps: list[dict[str, Any]],
     checks: list[dict[str, Any]],
@@ -514,14 +518,14 @@ def run_permission_check(
     append_check_result(checks, name=name, resp=resp, failures=failures)
 
 
-def verify_health(admin_api: Any, *, steps: list[dict[str, Any]]) -> None:
+def verify_health(admin_api: "LiveApi", *, steps: list[dict[str, Any]]) -> None:
     resp = admin_api.json("GET", "/api/v1/health")
     record_step(steps, "health", resp)
     ensure_success("health", resp)
 
 
 def normalize_outsider_role(
-    outsider_api: Any,
+    outsider_api: "LiveApi",
     *,
     args: argparse.Namespace,
     steps: list[dict[str, Any]],
@@ -545,7 +549,7 @@ def normalize_outsider_role(
 
 
 def create_group(
-    admin_api: Any,
+    admin_api: "LiveApi",
     *,
     args: argparse.Namespace,
     run_id: str,
@@ -582,7 +586,7 @@ def create_group(
 
 
 def create_datasets_for_run(
-    admin_api: Any,
+    admin_api: "LiveApi",
     *,
     args: argparse.Namespace,
     run_id: str,
@@ -621,7 +625,7 @@ def create_datasets_for_run(
 
 
 def update_group_dataset_acl(
-    admin_api: Any,
+    admin_api: "LiveApi",
     *,
     args: argparse.Namespace,
     group_id: str,
@@ -647,7 +651,7 @@ def write_fixture(path: Path, content: str) -> Path:
 
 
 def upload_documents(
-    admin_api: Any,
+    admin_api: "LiveApi",
     *,
     artifact_dir: Path,
     fixtures: dict[str, Path],
@@ -723,7 +727,7 @@ def upload_documents(
 
 
 def configure_document_access(
-    admin_api: Any,
+    admin_api: "LiveApi",
     *,
     args: argparse.Namespace,
     group_id: str,
@@ -777,7 +781,7 @@ def update_dataset_summary(
 
 
 def run_inventory_checks(
-    outsider_api: Any,
+    outsider_api: "LiveApi",
     *,
     datasets: dict[str, str],
     documents: dict[str, dict[str, Any]],
@@ -836,8 +840,8 @@ def run_inventory_checks(
 
 
 def run_retrieve_checks(
-    admin_api: Any,
-    outsider_api: Any,
+    admin_api: "LiveApi",
+    outsider_api: "LiveApi",
     *,
     datasets: dict[str, str],
     documents: dict[str, dict[str, Any]],
@@ -1093,7 +1097,7 @@ def run_retrieve_checks(
 
 
 def run_chat_checks(
-    outsider_api: Any,
+    outsider_api: "LiveApi",
     *,
     datasets: dict[str, str],
     documents: dict[str, dict[str, Any]],
@@ -1309,7 +1313,7 @@ def run_chat_checks(
 
 
 def build_cleanup_summary(
-    admin_api: Any,
+    admin_api: "LiveApi",
     *,
     datasets: dict[str, str],
     group_id: str,

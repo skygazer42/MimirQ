@@ -5,7 +5,6 @@ Targets sitemap.xml / sitemap index XML and splits by <url> or <sitemap> entry
 blocks while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -33,10 +32,10 @@ _LOC_RE = re.compile(r"(?is)<loc\b[^>]*>(?P<body>.*?)</loc\s*>")
 
 
 def _extract_loc(block_text: str) -> str | None:
-    m = _LOC_RE.search(block_text or "")
+    m = _LOC_RE.search(block_text)
     if not m:
         return None
-    loc = (m.group("body") or "").strip()
+    loc = (m.group("body")).strip()
     loc = re.sub(r"\s+", " ", loc)
     return loc[:300] or None
 
@@ -56,7 +55,7 @@ def _iter_entries(text: str, *, kind: str) -> list[_Entry]:
             continue
         start = sm.start()
         end = em.end()
-        if end < len(text) and text[end : end + 1] == "\n":
+        if text[end : end + 1] == "\n":
             end += 1
         blk_text = text[start:end]
         entries.append(
@@ -107,7 +106,7 @@ def _build_split_documents(
 
 
 class SitemapXMLChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -123,7 +122,7 @@ class SitemapXMLChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -158,13 +157,11 @@ class SitemapXMLChunker(BaseChunker):
 
             for ent in entries:
                 ent_text = text[ent.start : ent.end]
-                if not ent_text.strip():
-                    continue
                 split_docs = self._fallback_splitter.create_documents(texts=[ent_text], metadatas=[base_meta])
                 extra_meta: dict[str, Any] = {
                     "sitemap_kind": ent.kind,
-                    "sitemap_index": int(ent.index),
-                    "sitemap_count": int(len(entries)),
+                    "sitemap_index": ent.index,
+                    "sitemap_count": len(entries),
                 }
                 if ent.loc:
                     extra_meta["sitemap_loc"] = ent.loc

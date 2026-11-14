@@ -9,14 +9,14 @@ sidebar_position: 5
 
 ## 场景描述
 
-MimirQ 支持从文档中抽取实体与关系构建知识图谱，KG 抽取是异步任务，需在文档处理完成后触发。
+Ragvia 支持从文档中抽取实体与关系构建知识图谱，KG 抽取是异步任务，需在文档处理完成后触发。
 
 ## API 调用时序
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant API as MimirQ API
+    participant API as Ragvia API
     participant KG as KG Worker
     Client->>API: 1. 确认文档 completed
     Client->>API: 2. POST 触发 KG 抽取任务

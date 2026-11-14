@@ -10,7 +10,6 @@ This parser is intentionally optional because it relies on external CLIs:
 - soffice (LibreOffice) for legacy formats
 """
 
-
 import re
 from pathlib import Path
 from subprocess import PIPE, CalledProcessError, TimeoutExpired
@@ -27,38 +26,38 @@ logger = get_logger("parsing.pandoc")
 
 
 def _sanitize_run_id(value: str) -> str:
-    value = (value or "").strip()
+    value = value.strip()
     value = re.sub(r"[^a-zA-Z0-9._-]+", "_", value)[:120]
     return value or "pandoc"
 
 
 class PandocParser:
     def __init__(self, *, force_enabled: bool = False, force_libreoffice: bool = False) -> None:
-        self._enabled = bool(force_enabled) or bool(getattr(settings, "PANDOC_ENABLED", False))
-        self._cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
-        self._timeout_sec = float(getattr(settings, "PANDOC_TIMEOUT_SEC", 180) or 180)
-        self._to_format = (getattr(settings, "PANDOC_TO_FORMAT", "") or "gfm").strip() or "gfm"
-        self._wrap = (getattr(settings, "PANDOC_WRAP", "") or "none").strip() or "none"
-        self._extract_media = bool(getattr(settings, "PANDOC_EXTRACT_MEDIA", True))
-        self._html_use_readability = bool(getattr(settings, "PANDOC_HTML_USE_READABILITY", True))
+        enabled = force_enabled or settings.PANDOC_ENABLED
+        cli = (settings.PANDOC_CLI or "pandoc").strip() or "pandoc"
+        self._timeout_sec = float(settings.PANDOC_TIMEOUT_SEC or 180)
+        self._to_format = (settings.PANDOC_TO_FORMAT or "gfm").strip() or "gfm"
+        self._wrap = (settings.PANDOC_WRAP or "none").strip() or "none"
+        self._extract_media = settings.PANDOC_EXTRACT_MEDIA
+        self._html_use_readability = settings.PANDOC_HTML_USE_READABILITY
 
-        self._lo_enabled = bool(force_libreoffice) or bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
-        self._lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
-        self._lo_timeout_sec = float(getattr(settings, "LIBREOFFICE_TIMEOUT_SEC", 300) or 300)
+        lo_enabled = force_libreoffice or settings.LIBREOFFICE_ENABLED
+        lo_cli = (settings.LIBREOFFICE_CLI or "soffice").strip() or "soffice"
+        self._lo_timeout_sec = float(settings.LIBREOFFICE_TIMEOUT_SEC or 300)
 
-        if not self._enabled:
+        if not enabled:
             raise RuntimeError("Pandoc parser is disabled (PANDOC_ENABLED=false).")
 
-        pandoc_path = resolve_cli_command(self._cli)
+        pandoc_path = resolve_cli_command(cli)
         if not pandoc_path:
-            raise RuntimeError(f"Pandoc CLI not found: {self._cli}")
+            raise RuntimeError(f"Pandoc CLI not found: {cli}")
         self._pandoc_path = pandoc_path
 
         self._soffice_path: str | None = None
-        if self._lo_enabled:
-            soffice_path = resolve_cli_command(self._lo_cli)
+        if lo_enabled:
+            soffice_path = resolve_cli_command(lo_cli)
             if not soffice_path:
-                raise RuntimeError(f"LibreOffice CLI not found: {self._lo_cli}")
+                raise RuntimeError(f"LibreOffice CLI not found: {lo_cli}")
             self._soffice_path = soffice_path
 
     def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
@@ -91,7 +90,7 @@ class PandocParser:
             stdin = None
         else:
             args.extend(["-f", "html", "-"])  # stdin as HTML
-            stdin = (input_text or "").encode("utf-8")
+            stdin = input_text.encode("utf-8")
 
         try:
             proc = run_resolved_cli(
@@ -113,9 +112,7 @@ class PandocParser:
 
     def _convert_via_libreoffice(self, *, file_path: Path, artifact_root: Path) -> Path:
         if not self._soffice_path:
-            raise RuntimeError(
-                "LibreOffice conversion requested but LIBREOFFICE_ENABLED=false or soffice is missing."
-            )
+            raise RuntimeError("LibreOffice conversion requested but LIBREOFFICE_ENABLED=false or soffice is missing.")
 
         source_path = file_path.resolve(strict=False)
         ext = file_path.suffix.lower()
@@ -164,9 +161,9 @@ class PandocParser:
             raise RuntimeError(f"soffice produced no .{target_ext} output")
 
         # Prefer a name-matched candidate when possible.
-        stem = (file_path.stem or "").strip().lower()
+        stem = (file_path.stem).strip().lower()
         for c in candidates:
-            if (c.stem or "").strip().lower() == stem:
+            if (c.stem).strip().lower() == stem:
                 return c
         return candidates[0]
 
@@ -180,17 +177,16 @@ class PandocParser:
         # HTML: best-effort readability extraction, keep local image refs (no media extraction).
         if ext in {".html", ".htm"}:
             decoded = read_text_file(file_path)
-            raw_html = decoded.text or ""
-            html_text = raw_html
-            if self._html_use_readability and raw_html.strip():
+            html_text = decoded.text
+            if self._html_use_readability and html_text.strip():
                 try:
                     from readability import Document as ReadabilityDocument  # type: ignore
 
-                    rd = ReadabilityDocument(raw_html)
-                    title = (rd.short_title() or rd.title() or None) if raw_html.strip() else None
-                    html_text = rd.summary() or raw_html
-                except Exception:
-                    html_text = raw_html
+                    rd = ReadabilityDocument(html_text)
+                    title = rd.short_title() or rd.title() or None
+                    html_text = rd.summary() or html_text
+                except Exception as exc:
+                    logger.debug("[pandoc] readability extraction failed; using original HTML: %s", exc)
 
             markdown = self._run_pandoc(
                 input_path=None,
@@ -223,7 +219,8 @@ class PandocParser:
         # Notes:
         # - .docx/.pptx: Office formats (image extraction is common)
         # - .epub/.rtf/.odt: common "document-like" formats (Phase1 coverage)
-        if ext not in {".docx", ".pptx", ".epub", ".rtf", ".odt"}:
+        # - .html: LibreOffice output for spreadsheets
+        if ext not in {".docx", ".pptx", ".epub", ".rtf", ".odt", ".html"}:
             raise ValueError(f"Pandoc parser does not support: {file_path.suffix.lower()}")
 
         artifact_root.mkdir(parents=True, exist_ok=True)

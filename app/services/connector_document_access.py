@@ -1,0 +1,650 @@
+import contextlib
+from datetime import UTC, datetime
+from typing import Any, Literal, TypedDict
+from uuid import UUID
+
+from sqlalchemy.orm import Query, Session
+
+from app.api.schemas.sources import ConnectorSourceAclConfig, SourceAcl, SourcePrincipal
+from app.models.connector import ConnectorRun, ConnectorRunDocument
+from app.models.document import Document as DBDocument
+from app.models.tenant_group import TenantGroup
+from app.rag.core.logging import get_logger
+from app.services.connector_source_acl_mapping import resolve_document_access_from_source_acl
+from app.services.document_permission_service import (
+    clear_partial_group_list,
+    clear_partial_member_list,
+    update_partial_group_list,
+    update_partial_member_list,
+)
+
+logger = get_logger(__name__)
+
+
+def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> list[str]:
+    ids = list(dict.fromkeys(group_ids))[:200]
+    if not ids:
+        return []
+    rows = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id.in_(ids)).all()
+    found = {row[0] for row in rows if row and row[0]}
+    return [str(group_id) for group_id in ids if group_id not in found]
+
+
+class ConnectorSourceAccessSettings(TypedDict):
+    access: dict[str, Any] | None
+    source_acl: dict[str, Any] | None
+    access_mode: str
+    source_acl_mode: str
+    source_acl_fallback_mode: str
+    has_manual_access_override: bool
+    enable_source_acl: bool
+
+
+def build_source_access_settings(config: dict[str, Any]) -> ConnectorSourceAccessSettings:
+    access = config.get("access") if isinstance(config.get("access"), dict) else None
+    source_acl = config.get("source_acl") if isinstance(config.get("source_acl"), dict) else None
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if access is not None else "inherit"
+    has_manual_access_override = access is not None and access_mode != "inherit"
+    source_acl_mode = (
+        str(source_acl.get("mode") or "disabled").strip().lower() if source_acl is not None else "disabled"
+    )
+    source_acl_fallback_mode = (
+        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
+        if source_acl is not None
+        else "partial_members"
+    )
+    return {
+        "access": access,
+        "source_acl": source_acl,
+        "access_mode": access_mode,
+        "source_acl_mode": source_acl_mode,
+        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "has_manual_access_override": has_manual_access_override,
+        "enable_source_acl": source_acl_mode == "inherit" and not has_manual_access_override,
+    }
+
+
+def resolve_configured_source_access(
+    *,
+    source_system: Literal["github", "confluence", "jira", "drive", "generic"],
+    source_acl_config: dict[str, Any],
+    principal_keys: list[str],
+    has_anyone: bool = False,
+) -> tuple[dict[str, Any], set[UUID]]:
+    config = ConnectorSourceAclConfig.model_validate(source_acl_config)
+    principals = []
+    for raw_key in principal_keys:
+        system, separator, remainder = raw_key.partition(":")
+        kind, kind_separator, identifier = remainder.partition(":")
+        if not separator or not kind_separator or system != source_system:
+            continue
+        principals.append(SourcePrincipal(system=source_system, kind=kind, id=identifier))
+    if has_anyone:
+        principals.append(SourcePrincipal(system=source_system, kind="anyone"))
+
+    access_request = resolve_document_access_from_source_acl(
+        source_acl=SourceAcl(principals=principals),
+        config=config,
+    )
+    if access_request is None:
+        raise ValueError("Source ACL access requested without inherit policy")
+    return access_request.model_dump(mode="json", exclude_none=True), set(access_request.partial_group_list or [])
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _apply_document_access_from_config(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    requested_by: str,
+    doc: DBDocument,
+    access: dict[str, Any] | None,
+    connector_id: str | None = None,
+) -> None:
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+    access_members = access.get("partial_member_list") if isinstance(access, dict) else None
+    if not isinstance(access_members, list):
+        access_members = []
+    access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
+    access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
+    if not isinstance(access_groups, list):
+        access_groups = []
+    access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
+
+    try:
+        doc.access_mode = None if access_mode == "inherit" else access_mode
+        if doc.owner_id is None or not doc.owner_id.strip():
+            doc.owner_id = requested_by
+
+        if access_mode == "partial_members":
+            update_partial_member_list(db, tenant_id, doc.id, list(access_members))
+            update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
+        else:
+            clear_partial_member_list(db, tenant_id, doc.id)
+            clear_partial_group_list(db, tenant_id, doc.id)
+    except Exception:
+        with contextlib.suppress(Exception):
+            from app.services.connector_acl_prometheus_metrics import (
+                observe_connector_acl_apply_error,
+            )
+
+            observe_connector_acl_apply_error(connector_id=connector_id, mode=access_mode)
+        raise
+    else:
+        with contextlib.suppress(Exception):
+            from app.services.connector_acl_prometheus_metrics import (
+                observe_connector_acl_apply,
+            )
+
+            observe_connector_acl_apply(
+                connector_id=connector_id,
+                mode=access_mode,
+                member_count=len(access_members),
+                group_count=len(access_groups),
+            )
+
+
+def _active_connector_documents_query(
+    db: Session, *, tenant_id: UUID, dataset_id: UUID, connector_id: str
+) -> Query[DBDocument]:
+    return (
+        db.query(DBDocument)
+        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
+        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRun.dataset_id == dataset_id,
+            ConnectorRun.connector_id == connector_id.strip(),
+        )
+    )
+
+
+def _delta_sync_connector_documents_acl_by_source_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_url: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    connector_config_id: UUID | str | None = None,
+    max_docs: int = 50_000,
+) -> int:
+    if dataset_id is None:
+        return 0
+    source_url = source_url.strip()
+    if not source_url:
+        return 0
+
+    q = (
+        _active_connector_documents_query(db, tenant_id=tenant_id, dataset_id=dataset_id, connector_id=connector_id)
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+    if connector_config_id is not None:
+        q = q.filter(ConnectorRun.stats["config_id"].astext == str(connector_config_id))  # type: ignore[attr-defined]
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    updated = 0
+    for doc in q.yield_per(200):
+        _apply_document_access_from_config(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=doc,
+            access=access,
+            connector_id=connector_id,
+        )
+        if isinstance(acl_provenance, dict):
+            try:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                meta0["acl_provenance"] = dict(acl_provenance)
+                doc.doc_metadata = meta0
+            except Exception as exc:
+                logger.debug("Ignoring connector ACL provenance metadata update failure: %s", exc)
+        updated += 1
+
+    return updated
+
+
+def _soft_disable_connector_documents_by_source_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_url: str,
+    connector_config_id: UUID | str | None = None,
+    max_docs: int = 50_000,
+) -> int:
+    if dataset_id is None:
+        return 0
+    source_url = source_url.strip()
+    if not source_url:
+        return 0
+
+    q = (
+        _active_connector_documents_query(db, tenant_id=tenant_id, dataset_id=dataset_id, connector_id=connector_id)
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+    if connector_config_id is not None:
+        q = q.filter(ConnectorRun.stats["config_id"].astext == str(connector_config_id))  # type: ignore[attr-defined]
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    now = _now()
+    disabled = 0
+    for doc in q.yield_per(200):
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return disabled
+
+
+def _soft_disable_connector_documents_by_source_ref(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    connector_id: str,
+    source_ref: str,
+    connector_config_id: UUID | str | None = None,
+    exclude_document_id: UUID | None = None,
+    max_docs: int = 50_000,
+) -> int:
+    if dataset_id is None:
+        return 0
+    source_ref = source_ref.strip()
+    if not source_ref:
+        return 0
+
+    q = (
+        _active_connector_documents_query(db, tenant_id=tenant_id, dataset_id=dataset_id, connector_id=connector_id)
+        .filter(ConnectorRunDocument.source_ref == source_ref)
+        .distinct()
+        .order_by(DBDocument.created_at.desc())
+    )
+    if connector_config_id is not None:
+        q = q.filter(ConnectorRun.stats["config_id"].astext == str(connector_config_id))  # type: ignore[attr-defined]
+    if exclude_document_id is not None:
+        q = q.filter(DBDocument.id != exclude_document_id)
+
+    max_docs = max(0, int(max_docs or 0))
+    if max_docs:
+        q = q.limit(max_docs)
+
+    now = _now()
+    disabled = 0
+    for doc in q.yield_per(200):
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+
+    return disabled
+
+
+def _delta_sync_confluence_documents_acl_by_page_id(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    space_key: str,
+    page_id: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    max_docs_scan: int = 5000,
+) -> int:
+    if dataset_id is None:
+        return 0
+    normalized_page_id = page_id.strip()
+    normalized_base_url = base_url.strip()
+    normalized_space_key = space_key.strip()
+    if not normalized_page_id:
+        return 0
+
+    base_query = db.query(DBDocument).filter(
+        DBDocument.tenant_id == tenant_id,
+        DBDocument.dataset_id == dataset_id,
+        DBDocument.archived_at.is_(None),
+        DBDocument.disabled_at.is_(None),
+    )
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "postgresql":
+        rows = (
+            base_query.filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "confluence_space")
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == normalized_base_url)
+            .filter(DBDocument.doc_metadata["connector"]["space_key"].astext == normalized_space_key)
+            .filter(DBDocument.doc_metadata["connector"]["page_id"].astext == normalized_page_id)
+            .order_by(DBDocument.created_at.desc())
+            .yield_per(200)
+        )
+    else:
+        scan_limit = max(0, int(max_docs_scan or 0)) or 5000
+        rows = base_query.order_by(DBDocument.created_at.desc()).limit(scan_limit).all()
+
+    updated = 0
+    for document in rows:
+        if dialect_name != "postgresql":
+            metadata = document.doc_metadata if isinstance(document.doc_metadata, dict) else {}
+            connector = metadata.get("connector") if isinstance(metadata.get("connector"), dict) else {}
+            if (
+                connector.get("connector_id") != "confluence_space"
+                or connector.get("base_url") != normalized_base_url
+                or connector.get("space_key") != normalized_space_key
+                or connector.get("page_id") != normalized_page_id
+            ):
+                continue
+        _apply_document_access_from_config(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=document,
+            access=access,
+            connector_id="confluence_space",
+        )
+        _apply_acl_provenance(
+            document,
+            acl_provenance=acl_provenance,
+            message="Ignoring Confluence connector ACL provenance metadata update failure: %s",
+        )
+        updated += 1
+    return updated
+
+
+def _normalize_jira_issue_scope(
+    *,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_urls: set[str] | None = None,
+) -> tuple[UUID, str, str, str, set[str]] | None:
+    if dataset_id is None:
+        return None
+    normalized_base_url = base_url.strip().rstrip("/")
+    normalized_project_key = project_key.strip().upper()
+    normalized_issue_url = issue_url.strip()
+    normalized_seen_urls = {url.strip() for url in (seen_urls or set()) if url.strip()}
+    if not normalized_base_url or not normalized_project_key or not normalized_issue_url:
+        return None
+    return dataset_id, normalized_base_url, normalized_project_key, normalized_issue_url, normalized_seen_urls
+
+
+def _connector_metadata(doc: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+    return meta, conn
+
+
+def _jira_issue_connector_matches(
+    conn: dict[str, Any],
+    *,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    doc_kind: str | None = None,
+) -> bool:
+    if conn.get("connector_id") != "jira_project":
+        return False
+    if doc_kind is not None and conn.get("doc_kind") != doc_kind:
+        return False
+    stored_base_url = conn.get("base_url")
+    if stored_base_url is None or stored_base_url.strip().rstrip("/") != base_url:
+        return False
+    stored_project_key = conn.get("project_key")
+    if stored_project_key is None or stored_project_key.strip().upper() != project_key:
+        return False
+    stored_issue_url = conn.get("issue_url")
+    return stored_issue_url is not None and stored_issue_url.strip() == issue_url
+
+
+def _recent_active_dataset_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_docs_scan: int,
+) -> list[Any]:
+    scan_limit = max(0, int(max_docs_scan or 0)) or 5000
+    return (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+        )
+        .order_by(DBDocument.created_at.desc())
+        .limit(scan_limit)
+        .all()
+    )
+
+
+def _query_jira_issue_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    doc_kind: str | None = None,
+    max_docs_scan: int = 5000,
+) -> list[Any]:
+    try:
+        q = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "jira_project")  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
+        )
+        if doc_kind is not None:
+            q = q.filter(DBDocument.doc_metadata["connector"]["doc_kind"].astext == doc_kind)  # type: ignore[attr-defined]
+        return q.order_by(DBDocument.created_at.desc()).all()
+    except Exception:
+        docs = _recent_active_dataset_documents(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            max_docs_scan=max_docs_scan,
+        )
+        return [
+            doc
+            for doc in docs
+            if _jira_issue_connector_matches(
+                _connector_metadata(doc)[1],
+                base_url=base_url,
+                project_key=project_key,
+                issue_url=issue_url,
+                doc_kind=doc_kind,
+            )
+        ]
+
+
+def _apply_acl_provenance(doc: Any, *, acl_provenance: dict | None, message: str) -> None:
+    if not isinstance(acl_provenance, dict):
+        return
+    try:
+        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+        meta0["acl_provenance"] = dict(acl_provenance)
+        doc.doc_metadata = meta0
+    except Exception as exc:
+        logger.debug(message, exc)
+
+
+def _disable_missing_jira_issue_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_urls: set[str],
+    doc_kind: str,
+    url_field: str,
+    max_docs_scan: int = 5000,
+) -> int:
+    scope = _normalize_jira_issue_scope(
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_urls=seen_urls,
+    )
+    if scope is None:
+        return 0
+    dataset_id, base_url, project_key, issue_url, seen_urls = scope
+    docs = _query_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        doc_kind=doc_kind,
+        max_docs_scan=max_docs_scan,
+    )
+    now = _now()
+    disabled = 0
+    for doc in docs:
+        meta, conn = _connector_metadata(doc)
+        resource_url = conn.get(url_field)
+        if resource_url is None:
+            resource_url = meta.get("source_url")
+        if resource_url is not None:
+            resource_url = resource_url.strip()
+        if not resource_url or resource_url in seen_urls:
+            continue
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+    return disabled
+
+
+def _delta_sync_jira_documents_acl_by_issue_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    max_docs_scan: int = 5000,
+) -> int:
+    scope = _normalize_jira_issue_scope(
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+    )
+    if scope is None:
+        return 0
+    dataset_id, base_url, project_key, issue_url, _seen_urls = scope
+    apply_access = _apply_document_access_from_config
+    docs = _query_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        max_docs_scan=max_docs_scan,
+    )
+    updated = 0
+    for doc in docs:
+        apply_access(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=doc,
+            access=access,
+            connector_id="jira_project",
+        )
+        _apply_acl_provenance(
+            doc,
+            acl_provenance=acl_provenance,
+            message="Ignoring Jira connector ACL provenance metadata update failure: %s",
+        )
+        updated += 1
+    return updated
+
+
+def _soft_disable_jira_attachment_documents_missing_from_issue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_attachment_urls: set[str],
+    max_docs_scan: int = 5000,
+) -> int:
+    return _disable_missing_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_urls=seen_attachment_urls,
+        doc_kind="attachment",
+        url_field="download_url",
+        max_docs_scan=max_docs_scan,
+    )
+
+
+def _soft_disable_jira_linked_artifact_documents_missing_from_issue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_link_urls: set[str],
+    max_docs_scan: int = 5000,
+) -> int:
+    return _disable_missing_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_urls=seen_link_urls,
+        doc_kind="linked_artifact",
+        url_field="artifact_url",
+        max_docs_scan=max_docs_scan,
+    )

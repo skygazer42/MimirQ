@@ -29,7 +29,7 @@ def test_global_chunk_preset_mutation_requires_editor_role(monkeypatch: pytest.M
         return SimpleNamespace(id=uuid4(), name="shared", description=None, payload={})
 
     monkeypatch.setattr(
-        chunk_presets.DatasetService,
+        chunk_presets.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
     )

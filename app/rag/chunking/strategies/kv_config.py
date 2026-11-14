@@ -18,13 +18,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -70,7 +64,7 @@ def _parse_kv_line(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").rstrip("\r\n")
+    raw = line.rstrip("\r\n")
     if not raw:
         return None
     s = raw.lstrip()
@@ -86,33 +80,19 @@ def _parse_kv_line(line: str) -> str | None:
     return key if _is_valid_kv_key(key) else None
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
-
-
 def _build_sections(text: str) -> list[_Section]:
     lines = _iter_lines(text)
     headers: list[tuple[int, str]] = []
     for ln in lines:
-        m = _SECTION_RE.match(ln.text.strip())
+        m = _SECTION_RE.match(ln.plain.strip())
         if not m:
             continue
-        name = (m.group("name") or "").strip() or "section"
+        name = (m.group("name")).strip() or "section"
         headers.append((ln.start, name))
 
     if not headers:
         return [_Section(start=0, end=len(text), name=None)]
 
-    headers = sorted(headers, key=lambda x: x[0])
     sections: list[_Section] = []
     if headers[0][0] > 0:
         sections.append(_Section(start=0, end=headers[0][0], name=None))
@@ -126,7 +106,7 @@ def _iter_kv(text: str, *, start: int, end: int) -> list[_KV]:
     lines = _iter_lines(text[start:end])
     kvs: list[_KV] = []
     for ln in lines:
-        key = _parse_kv_line(ln.text)
+        key = _parse_kv_line(ln.plain)
         if not key:
             continue
         kvs.append(_KV(start=start + ln.start, end=start + ln.end, key=key))
@@ -136,7 +116,7 @@ def _iter_kv(text: str, *, start: int, end: int) -> list[_KV]:
 def looks_like_kv_config(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    raw_lines = [ln for ln in (text).splitlines() if ln.strip()]
     if len(raw_lines) < 6:
         return False
     kv_lines = 0
@@ -145,7 +125,7 @@ def looks_like_kv_config(text: str) -> bool:
             kv_lines += 1
     if kv_lines < 5:
         return False
-    ratio = kv_lines / max(1, len(raw_lines))
+    ratio = kv_lines / len(raw_lines)
     return ratio >= 0.2
 
 
@@ -176,7 +156,7 @@ def _kv_window_end(
         if end_idx != start_idx and candidate_end - candidate_start > chunk_size:
             break
         end_idx += 1
-    return max(start_idx + 1, end_idx)
+    return end_idx
 
 
 def _unique_kv_keys(kvs: list[_KV], *, start_idx: int, end_idx: int) -> list[str]:
@@ -203,11 +183,11 @@ def _next_kv_start(
                 break
             desired -= 1
         next_start = desired if desired > start_idx else end_idx - 1
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 class KVConfigChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -286,7 +266,7 @@ class KVConfigChunker(BaseChunker):
                     "chunk_strategy": "kv_config",
                     "start_char": chunk_start,
                     "end_char": chunk_end,
-                    "kv_count": int(end_idx - start_idx),
+                    "kv_count": end_idx - start_idx,
                 }
             )
             meta.setdefault("doc_type_kwd", "config")
@@ -306,18 +286,16 @@ class KVConfigChunker(BaseChunker):
             first = False
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
-        base_meta = dict(doc.metadata or {})
+        text = doc.page_content
+        base_meta = dict(doc.metadata)
         if not text.strip():
             return
 
-        any_kv = False
         for section in _build_sections(text):
             if not text[section.start : section.end].strip():
                 continue
             kvs = _iter_kv(text, start=section.start, end=section.end)
             if kvs:
-                any_kv = True
                 self._append_kv_section_chunks(
                     out,
                     text=text,
@@ -333,15 +311,6 @@ class KVConfigChunker(BaseChunker):
                 end=section.end,
                 base_meta=base_meta,
                 section_name=section.name,
-            )
-
-        if not any_kv:
-            self._append_fallback_chunks(
-                out,
-                text=text,
-                start=0,
-                end=len(text),
-                base_meta=base_meta,
             )
 
     def split_documents(self, documents: list[Document]) -> list[Document]:

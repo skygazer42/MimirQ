@@ -14,12 +14,13 @@ pipeline services without pulling in FastAPI-specific code.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.schemas.governance_profile import (
+from app.api.schemas.pipelines import (
     GovernanceProfileOut,
     GovernanceProfilePayload,
     GovernanceProfileSummary,
@@ -40,18 +41,18 @@ class ResolvedGovernanceProfile:
 
 def _profile_identity(profile: GovernanceProfileOut) -> str:
     # Custom profiles have id; builtins do not. key is always present.
-    if getattr(profile, "id", None):
+    if profile.id:
         return str(profile.id)
-    return str(profile.key or "")
+    return profile.key
 
 
 def _summary(profile: GovernanceProfileOut) -> GovernanceProfileSummary:
     return GovernanceProfileSummary(
-        id=getattr(profile, "id", None),
-        key=str(getattr(profile, "key", "") or ""),
-        name=str(getattr(profile, "name", "") or ""),
-        description=getattr(profile, "description", None),
-        is_system=bool(getattr(profile, "is_system", False)),
+        id=profile.id,
+        key=profile.key,
+        name=profile.name,
+        description=profile.description,
+        is_system=profile.is_system,
     )
 
 
@@ -72,7 +73,9 @@ def _resolve_profile_chain(
         seen.add(ident)
         chain_leaf_to_root.append(current)
 
-        parent_ref = str(getattr(current.payload, "extends", None) or "").strip()
+        parent_ref = current.payload.extends
+        if parent_ref is not None:
+            parent_ref = parent_ref.strip()
         if not parent_ref:
             return list(reversed(chain_leaf_to_root))
         current = fetch_by_ref(parent_ref)
@@ -81,33 +84,25 @@ def _resolve_profile_chain(
 
 
 def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfilePayload:
-    input_formats: list[str] = []
+    input_formats: list[Literal["markdown", "html"]] = []
     pipeline_patch: dict = {}
     regex_rules: list[RegexRuleModel] = []
     processing_scripts: list = []
 
     for profile in chain:
-        for fmt in getattr(profile.payload, "input_formats", None) or []:
-            value = str(fmt or "").strip().lower()
-            if value in {"markdown", "html"} and value not in input_formats:
-                input_formats.append(value)
+        payload = profile.payload
+        for fmt in payload.input_formats:
+            if fmt not in input_formats:
+                input_formats.append(fmt)
 
-        patch = getattr(profile.payload, "pipeline_patch", None) or {}
-        if isinstance(patch, dict):
-            pipeline_patch.update(dict(patch))
-
-        for rule in getattr(profile.payload, "regex_rules", None) or []:
-            if isinstance(rule, RegexRuleModel):
-                regex_rules.append(rule)
-            elif isinstance(rule, dict):
-                regex_rules.append(RegexRuleModel(**rule))
-
-        processing_scripts.extend(list(getattr(profile.payload, "processing_scripts", None) or []))
+        pipeline_patch.update(payload.pipeline_patch)
+        regex_rules.extend(payload.regex_rules)
+        processing_scripts.extend(payload.processing_scripts)
 
     return GovernanceProfilePayload(
         version="1",
         extends=None,
-        input_formats=input_formats or ["markdown"],  # type: ignore[arg-type]
+        input_formats=input_formats or ["markdown"],
         pipeline_patch=pipeline_patch,
         regex_rules=regex_rules,
         processing_scripts=processing_scripts[:10],
@@ -145,7 +140,7 @@ def _load_governance_profile_ref(
     tenant_id: UUID,
     profile_ref: str,
 ) -> GovernanceProfileOut:
-    ref = str(profile_ref or "").strip()
+    ref = profile_ref.strip()
     if not ref:
         raise ValueError("profile_ref is required")
 
@@ -157,32 +152,33 @@ def _load_governance_profile_ref(
     # Allow UUID lookup.
     try:
         ref_uuid = UUID(ref)
-    except Exception:
+    except ValueError:
         ref_uuid = None
 
     q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
     row = (
         q.filter(DBGovernanceProfile.id == ref_uuid).first()
-        if ref_uuid
+        if ref_uuid is not None
         else q.filter(DBGovernanceProfile.key == ref).first()
     )
     if row is None:
         raise ValueError("governance profile not found")
 
-    payload_raw = getattr(row, "payload", None)
+    payload_raw = row.payload
     if not isinstance(payload_raw, dict):
         payload_raw = {}
 
+    key = row.key.strip() if row.key is not None else None
     try:
         return GovernanceProfileOut(
             id=row.id,
-            key=(str(getattr(row, "key", "") or "").strip() or f"custom:{str(row.id)}"),
-            name=str(getattr(row, "name", "") or ""),
-            description=getattr(row, "description", None),
-            is_system=bool(getattr(row, "is_system", False)),
+            key=key or f"custom:{row.id}",
+            name=row.name,
+            description=row.description,
+            is_system=bool(row.is_system),
             payload=payload_raw,  # pydantic validates nested payload
-            created_at=getattr(row, "created_at", None),
-            updated_at=getattr(row, "updated_at", None),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
     except ValidationError as exc:
         raise ValueError("invalid governance profile payload in DB") from exc

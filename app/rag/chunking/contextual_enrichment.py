@@ -1,8 +1,8 @@
-
 import re
 from collections import Counter
+from typing import Any
 
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
@@ -67,17 +67,14 @@ _STOPWORDS_ZH = frozenset(
 
 
 def _is_mostly_cjk(text: str) -> bool:
-    raw = str(text or "")
+    raw = text
     if not raw:
         return False
-    try:
-        cjk = len(_CJK_RE.findall(raw))
-    except Exception:
-        return False
-    return (cjk / max(1, len(raw))) >= 0.12
+    cjk = len(_CJK_RE.findall(raw))
+    return (cjk / len(raw)) >= 0.12
 
 
-def _extract_section(meta: dict) -> str | None:
+def _extract_section(meta: dict[str, Any]) -> str | None:
     if not isinstance(meta, dict):
         return None
     header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context")
@@ -93,12 +90,12 @@ def _extract_section(meta: dict) -> str | None:
 
 
 def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
-    text = str(content or "").strip()
+    text = content.strip()
     if not text:
         return []
     sample = text[: max(0, int(max_chars or 0))] if max_chars else text
 
-    tokens = tokenize_for_bm25(sample)
+    tokens = tokenize_lexical_text(sample)
     if not tokens:
         return []
 
@@ -106,7 +103,7 @@ def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
     stop = _STOPWORDS_ZH if mostly_cjk else _STOPWORDS_EN
     filtered: list[str] = []
     for t in tokens:
-        tok = str(t or "").strip()
+        tok = t.strip()
         if not tok:
             continue
         if len(tok) <= 1:
@@ -121,10 +118,7 @@ def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
     counts = Counter(filtered)
     out: list[str] = []
     for tok, _n in counts.most_common(max(0, int(top_k or 0))):
-        tok_norm = str(tok).strip()
-        if not tok_norm:
-            continue
-        out.append(tok_norm[:40])
+        out.append(tok[:40])
     return out
 
 
@@ -163,7 +157,7 @@ def build_context_prefix(
     content: str,
     *,
     document_title: str | None,
-    meta: dict,
+    meta: dict[str, Any],
     max_prefix_chars: int = 240,
     keywords_top_k: int = 6,
     keywords_max_chars: int = 2000,
@@ -176,11 +170,11 @@ def build_context_prefix(
     - Avoid copying large raw content into the prefix.
     - Keep it short and bounded (stable embeddings).
     """
-    body = str(content or "").strip()
+    body = content.strip()
     if not body:
         return None
 
-    title = str(document_title or "").strip()
+    title = str((document_title if document_title is not None else "")).strip()
     section = _extract_section(meta)
     keywords = _extract_keywords(body, top_k=int(keywords_top_k or 0), max_chars=int(keywords_max_chars or 0))
 
@@ -193,8 +187,6 @@ def build_context_prefix(
     ]
 
     prefix = " ".join([p for p in parts if p]).strip()
-    if not prefix:
-        return None
     return _cap_prefix(prefix, max_prefix_chars=max_prefix_chars, mostly_cjk=mostly_cjk)
 
 

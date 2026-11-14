@@ -11,12 +11,11 @@ This helper normalizes an extracted directory into a stable layout:
 - Markdown image references rewritten to `images/<new_name>`
 """
 
-
 import re
 import shutil
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 from app.rag.core.logging import get_logger
 
@@ -25,8 +24,15 @@ logger = get_logger(__name__)
 _ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical artifact normalization fallback failure: %s"
 
 
+class _ArtifactNormalizationResult(TypedDict):
+    markdown_file: Path | None
+    image_dir: Path
+    image_count: int
+    mapping: dict[str, str]
+
+
 def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
-    child = Path(str(name or "").strip())
+    child = Path(name.strip())
     if child.is_absolute() or len(child.parts) != 1 or child.name in {"", ".", ".."}:
         raise ValueError(f"invalid {field}: {name}")
     resolved_root = root.resolve(strict=False)
@@ -38,7 +44,7 @@ def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
     return resolved_child
 
 
-def _choose_markdown_file(markdown_files: list[Path]) -> Path:
+def choose_markdown_file(markdown_files: list[Path]) -> Path:
     preferred = {"output.md", "result.md", "index.md", "readme.md"}
 
     candidates: list[Path] = []
@@ -85,7 +91,7 @@ def _normalize_ref_path(raw: str) -> str:
     - strips leading './'
     - strips query/hash
     """
-    val = (raw or "").strip()
+    val = (raw).strip()
     if not val:
         return ""
     # Drop optional title: (path "title")
@@ -135,13 +141,13 @@ def _find_img_src_span(tag: str) -> tuple[int, int, str] | None:
         if eq_at >= len(tag) or tag[eq_at] != "=":
             continue
         src_span = _read_quoted_attribute_value(tag, _skip_spaces(tag, eq_at + 1))
-        if src_span:
+        if src_span is not None:
             return src_span
 
 
-def rewrite_html_image_refs(text: str, resolver: Any) -> str:
+def rewrite_html_image_refs(text: str, resolver: Callable[[str], str | None]) -> str:
     """Rewrite quoted src values inside HTML img tags using a linear scan."""
-    source = str(text or "")
+    source = text
     lower = source.lower()
     out: list[str] = []
     cursor = 0
@@ -157,7 +163,7 @@ def rewrite_html_image_refs(text: str, resolver: Any) -> str:
             break
         tag = source[start : end + 1]
         src_span = _find_img_src_span(tag)
-        if not src_span:
+        if src_span is None:
             out.append(tag)
             cursor = end + 1
             continue
@@ -171,40 +177,24 @@ def rewrite_html_image_refs(text: str, resolver: Any) -> str:
     return "".join(out)
 
 
-def _artifact_normalizer_empty_result(root_path: Path, *, output_image_dir: str) -> dict[str, Any]:
-    return {
-        "markdown_file": None,
-        "image_dir": _safe_direct_child(root_path, output_image_dir, field="output_image_dir"),
-        "image_count": 0,
-        "mapping": {},
-    }
-
-
 def _artifact_mapping_keys(img: Path, *, root_path: Path, markdown_parent: Path) -> list[str]:
     keys: list[str] = []
     try:
         keys.append(img.relative_to(root_path).as_posix())
-    except Exception as exc:
+    except ValueError as exc:
         logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
     try:
         keys.append(img.relative_to(markdown_parent).as_posix())
-    except Exception as exc:
+    except ValueError as exc:
         logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
     keys.append(img.name)
     return keys
 
 
-def _register_artifact_mapping_keys(*, mapping: dict[str, str], keys: list[str], new_rel: str) -> None:
-    for key in keys:
-        normalized = _normalize_ref_path(key)
-        if normalized and normalized not in mapping:
-            mapping[normalized] = new_rel
-
-
 def _move_or_copy_artifact_image(img: Path, new_path: Path) -> None:
     try:
         shutil.move(str(img), str(new_path))
-    except Exception:
+    except OSError:
         # If move fails (e.g. cross-device), fall back to copy.
         shutil.copy2(img, new_path)
 
@@ -212,24 +202,19 @@ def _move_or_copy_artifact_image(img: Path, new_path: Path) -> None:
 def _rewrite_artifact_markdown_refs(md_text: str, *, mapping: dict[str, str]) -> str:
     md_img_pattern = r"!\[([^\]]*)\]\(([^)]+)\)"
 
+    def _resolve_ref(raw_path: str) -> str | None:
+        key = _normalize_ref_path(raw_path)
+        return mapping.get(key) or mapping.get(Path(key).name)
+
     def _replace_md(m: re.Match) -> str:
         alt = m.group(1)
-        raw_path = m.group(2)
-        key = _normalize_ref_path(raw_path)
-        new_rel = mapping.get(key) or mapping.get(Path(key).name)
+        new_rel = _resolve_ref(m.group(2))
         if new_rel:
             return f"![{alt}]({new_rel})"
         return m.group(0)
 
-    def _resolve_html_src(raw_path: str) -> str | None:
-        key = _normalize_ref_path(raw_path)
-        new_rel = mapping.get(key) or mapping.get(Path(key).name)
-        if new_rel:
-            return new_rel
-        return None
-
     rewritten = re.sub(md_img_pattern, _replace_md, md_text)
-    return rewrite_html_image_refs(rewritten, _resolve_html_src)
+    return rewrite_html_image_refs(rewritten, _resolve_ref)
 
 
 def normalize_extracted_artifacts(
@@ -237,7 +222,7 @@ def normalize_extracted_artifacts(
     *,
     output_markdown_name: str = "result.md",
     output_image_dir: str = "images",
-) -> dict[str, Any]:
+) -> _ArtifactNormalizationResult:
     """
     Normalize an extracted external-parser output directory in-place.
 
@@ -255,9 +240,14 @@ def normalize_extracted_artifacts(
 
     md_files = list(root.rglob("*.md"))
     if not md_files:
-        return _artifact_normalizer_empty_result(root, output_image_dir=output_image_dir)
+        return {
+            "markdown_file": None,
+            "image_dir": _safe_direct_child(root, output_image_dir, field="output_image_dir"),
+            "image_count": 0,
+            "mapping": {},
+        }
 
-    md_file = _choose_markdown_file(md_files)
+    md_file = choose_markdown_file(md_files)
     md_text = md_file.read_text(encoding="utf-8", errors="ignore")
 
     image_dir = _safe_direct_child(root, output_image_dir, field="output_image_dir")
@@ -272,7 +262,7 @@ def normalize_extracted_artifacts(
         try:
             img.relative_to(image_dir)
             continue
-        except Exception as exc:
+        except ValueError as exc:
             logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
 
         new_name = f"image_{counter:03d}{img.suffix.lower()}"
@@ -282,7 +272,10 @@ def normalize_extracted_artifacts(
         # Multiple keys to match common reference habits.
         keys = _artifact_mapping_keys(img, root_path=root, markdown_parent=md_file.parent)
         _move_or_copy_artifact_image(img, new_path)
-        _register_artifact_mapping_keys(mapping=mapping, keys=keys, new_rel=new_rel)
+        for key in keys:
+            normalized = _normalize_ref_path(key)
+            if normalized and normalized not in mapping:
+                mapping[normalized] = new_rel
         counter += 1
 
     if mapping:
@@ -301,6 +294,7 @@ def normalize_extracted_artifacts(
 
 
 __all__ = [
+    "choose_markdown_file",
     "normalize_extracted_artifacts",
     "rewrite_html_image_refs",
 ]

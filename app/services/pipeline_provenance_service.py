@@ -1,10 +1,10 @@
 import hashlib
 import json
-import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.build_info import get_build_sha
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -12,23 +12,6 @@ logger = get_logger(__name__)
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def get_build_sha() -> str | None:
-    """
-    Best-effort build SHA for provenance/debug.
-
-    Mirrors the safe-to-expose metadata used by `/api/v1/meta` but is kept local to
-    avoid import cycles.
-    """
-    value = (
-        os.getenv("MIMIRQ_BUILD_SHA")
-        or os.getenv("GIT_SHA")
-        or os.getenv("SOURCE_VERSION")
-        or os.getenv("GITHUB_SHA")
-        or ""
-    ).strip()
-    return value or None
 
 
 def canonical_json_sha256(value: Any) -> str:
@@ -45,7 +28,7 @@ def canonical_json_sha256(value: Any) -> str:
 
 
 def _coerce_versions_dict(meta: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
-    raw = (dict(meta or {}).get("pipeline_provenance_versions") or {}) if isinstance(meta, Mapping) else {}
+    raw = (dict(meta).get("pipeline_provenance_versions") or {}) if isinstance(meta, Mapping) else {}
     if not isinstance(raw, dict):
         return {}
     out: dict[str, dict[str, Any]] = {}
@@ -76,13 +59,13 @@ def upsert_pipeline_provenance_version(
     Capping:
     - Best-effort cap by `created_at` (ISO string) to keep metadata bounded.
     """
-    base = dict(meta or {})
-    ph = str(pipeline_hash or "").strip()
+    base = dict((meta if meta is not None else {}))
+    ph = pipeline_hash.strip()
     if not ph:
         return base
 
     versions = _coerce_versions_dict(base)
-    snap = dict(snapshot or {})
+    snap = dict((snapshot if snapshot is not None else {}))
     snap.setdefault("pipeline_hash", ph)
     snap.setdefault("created_at", _now_iso())
     versions[ph] = snap
@@ -92,9 +75,7 @@ def upsert_pipeline_provenance_version(
         # Remove oldest by created_at string (ISO sorts lexicographically).
         items: list[tuple[str, str]] = []
         for key, payload in versions.items():
-            ts = ""
-            if isinstance(payload, dict):
-                ts = str(payload.get("created_at") or "")
+            ts = str(payload.get("created_at") or "")
             items.append((ts, key))
         items.sort(key=lambda item: (item[0] or "", item[1]))
 
@@ -163,17 +144,16 @@ def build_pipeline_version_snapshot(
     """
     Build a stable, UI-facing provenance snapshot for a specific pipeline_hash version.
 
-    This is intentionally "best-effort":
-    - It should never raise (used in ingest completion paths).
+    The snapshot uses the supplied version and existing metadata:
     - It avoids large payloads (no markdown/chunk text).
     - It prioritizes stable hashes over exhaustive config capture.
     """
-    m = meta or {}
-    ph = str(pipeline_hash or (m.get("pipeline_hash") if isinstance(m, Mapping) else "") or "").strip()
-    if not ph:
-        ph = "unknown"
+    m = meta if meta is not None else {}
+    ph = m.get("pipeline_hash") if pipeline_hash is None else pipeline_hash
+    if ph is not None:
+        ph = ph.strip()
 
-    created = str(created_at or _now_iso())
+    created = _now_iso() if created_at is None else created_at
     build = build_sha if build_sha is not None else get_build_sha()
 
     if embedding_space_hash is None:
@@ -184,10 +164,10 @@ def build_pipeline_version_snapshot(
         else:
             emb = current_embedding_space_hash()
     else:
-        emb = str(embedding_space_hash or "").strip() or None
+        emb = embedding_space_hash
 
-    parser_backend = str((m.get("parser_backend") if isinstance(m, Mapping) else "") or "").strip() or None
-    chunk_strategy = str((m.get("chunk_strategy") if isinstance(m, Mapping) else "") or "").strip() or None
+    parser_backend = m.get("parser_backend")
+    chunk_strategy = m.get("chunk_strategy")
 
     ingestion = m.get("ingestion") if isinstance(m.get("ingestion"), dict) else {}
     preprocess_cfg = ingestion.get("preprocess") if isinstance(ingestion.get("preprocess"), dict) else {}
@@ -213,7 +193,7 @@ def build_pipeline_version_snapshot(
     pipeline_meta = m.get("pipeline") if isinstance(m.get("pipeline"), dict) else {}
 
     governance_rule_packs = _clean_rule_packs(m.get("governance_rule_packs"))
-    governance_version = str(m.get("governance_version") or "").strip() or None
+    governance_version = m.get("governance_version")
 
     # ---- Transform hashes (per step) ----
     preprocess_obj = {
@@ -230,8 +210,8 @@ def build_pipeline_version_snapshot(
         "pipeline_hash": ph,
         "parser_backend": parser_backend,
         # Include the user-requested backend if present (helps explain diffs).
-        "parser_backend_requested": str(m.get("parser_backend_requested") or "").strip() or None,
-        "file_type": str(m.get("file_type") or "").strip() or None,
+        "parser_backend_requested": m.get("parser_backend_requested"),
+        "file_type": m.get("file_type"),
     }
     parse_hash = canonical_json_sha256(parse_obj)
 
@@ -254,7 +234,7 @@ def build_pipeline_version_snapshot(
         "build_sha": build,
         "pipeline_hash": ph,
         "chunk_strategy": chunk_strategy,
-        "chunk_strategy_requested": str(m.get("chunk_strategy_requested") or "").strip() or None,
+        "chunk_strategy_requested": m.get("chunk_strategy_requested"),
         "chunk_size": pipeline_effective.get("chunk_size"),
         "chunk_overlap": pipeline_effective.get("chunk_overlap"),
         "chunk_merge_small_min_chars": pipeline_effective.get("chunk_merge_small_min_chars"),
@@ -289,7 +269,7 @@ def build_pipeline_version_snapshot(
     except Exception as exc:
         logger.debug("Ignoring settings import failure while building index provenance: %s", exc)
     else:
-        index_obj["vector_backend"] = str(getattr(settings, "VECTOR_BACKEND", None) or "") or None
+        index_obj["vector_backend"] = settings.VECTOR_BACKEND
     index_hash = canonical_json_sha256(index_obj)
 
     pipeline_run_hash = canonical_json_sha256(
@@ -335,7 +315,7 @@ def build_pipeline_version_snapshot(
                 "version": "1",
                 "hash": index_hash,
                 "embedding_space_hash": emb,
-                "vector_backend": index_obj.get("vector_backend"),
+                "vector_backend": index_obj["vector_backend"],
             },
         },
         "pipeline_run_hash": pipeline_run_hash,

@@ -172,7 +172,7 @@ def discover_corpus_files(
         if path.suffix.lower() not in allowed:
             continue
         rel = (Path(root.name) / local_rel).as_posix() if include_root_name else local_rel.as_posix()
-        size = int(path.stat().st_size)
+        size = path.stat().st_size
         if skip_empty and size <= 0:
             skipped.append({"path": rel, "reason": "empty_file", "size": size})
             continue
@@ -727,46 +727,44 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     client = CorpusApiClient(
-        base_url=str(args.base_url),
-        tenant_id=str(args.tenant_id),
-        account_id=str(args.account_id),
-        user_id=str(args.user_id),
-        bearer=str(args.bearer or ""),
-        timeout_sec=float(args.timeout),
+        base_url=args.base_url,
+        tenant_id=args.tenant_id,
+        account_id=args.account_id,
+        user_id=args.user_id,
+        bearer=args.bearer,
+        timeout_sec=args.timeout,
     )
     try:
         plugin_pipeline = resolve_plugin_pipeline_for_run(
             client,
-            chunk_plugin_ref=str(args.plugin_ref or "").strip(),
-            pipeline_patch_json=str(args.pipeline_patch_json or ""),
+            chunk_plugin_ref=args.plugin_ref.strip(),
+            pipeline_patch_json=args.pipeline_patch_json,
         )
         result = run_corpus_closed_loop_smoke(
             client=client,
             source_dir=Path(args.source_dir).expanduser().resolve(),
-            dataset_id=str(args.dataset_id or ""),
-            dataset_name=str(args.dataset_name or "") or _default_dataset_name(),
-            chunk_plugin_ref=str(args.plugin_ref or "").strip(),
-            pipeline_patch=dict(plugin_pipeline.get("pipeline_patch") or {}),
-            governance_plugin_ref=str(plugin_pipeline.get("governance_plugin_ref") or ""),
-            kg_plugin_ref=str(plugin_pipeline.get("kg_plugin_ref") or ""),
-            extensions=str(args.extensions or ""),
-            skip_empty=not bool(args.include_empty_files),
-            max_files=int(args.max_files),
-            max_files_per_group=int(args.max_files_per_group),
-            sample_group_depth=int(args.sample_group_depth),
-            include_root_name=bool(args.include_source_root_name),
-            include_hidden=bool(args.include_hidden),
-            upload_batch_size=int(args.upload_batch_size or 0),
-            processing_timeout_sec=float(args.processing_timeout),
-            poll_interval_sec=float(args.poll_interval),
-            golden_max_items=int(args.golden_max_items),
-            golden_max_chunks=int(args.golden_max_chunks),
-            regression_top_k=int(args.regression_top_k),
-            regression_reranker_top_n=(
-                int(args.regression_reranker_top_n) if int(args.regression_reranker_top_n or 0) > 0 else None
-            ),
-            regression_score_threshold=float(args.regression_score_threshold),
-            overwrite_goldens=bool(args.overwrite_goldens),
+            dataset_id=args.dataset_id,
+            dataset_name=args.dataset_name or _default_dataset_name(),
+            chunk_plugin_ref=args.plugin_ref.strip(),
+            pipeline_patch=plugin_pipeline["pipeline_patch"],
+            governance_plugin_ref=plugin_pipeline["governance_plugin_ref"],
+            kg_plugin_ref=plugin_pipeline["kg_plugin_ref"],
+            extensions=args.extensions,
+            skip_empty=not args.include_empty_files,
+            max_files=args.max_files,
+            max_files_per_group=args.max_files_per_group,
+            sample_group_depth=args.sample_group_depth,
+            include_root_name=args.include_source_root_name,
+            include_hidden=args.include_hidden,
+            upload_batch_size=args.upload_batch_size,
+            processing_timeout_sec=args.processing_timeout,
+            poll_interval_sec=args.poll_interval,
+            golden_max_items=args.golden_max_items,
+            golden_max_chunks=args.golden_max_chunks,
+            regression_top_k=args.regression_top_k,
+            regression_reranker_top_n=(args.regression_reranker_top_n if args.regression_reranker_top_n > 0 else None),
+            regression_score_threshold=args.regression_score_threshold,
+            overwrite_goldens=args.overwrite_goldens,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-corpus-smoke] ERR: {exc}", file=sys.stderr)

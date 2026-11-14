@@ -1,4 +1,3 @@
-
 import re
 import tempfile
 import uuid
@@ -88,7 +87,7 @@ def test_table_store_import_csv_and_query(monkeypatch):  # noqa: ANN001
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
                 table_id=assets[0].table_id,
-                sql='SELECT 1; SELECT 2',
+                sql="SELECT 1; SELECT 2",
                 max_rows=10,
                 max_cols=10,
                 max_bytes=100_000,

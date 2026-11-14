@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
-from app.api.schemas.chat import ChatRAGConfig
+from app.api.schemas.conversations import ChatRAGConfig
 from app.rag.core.logging import get_logger
 
 logger = get_logger("rag.engine")
@@ -132,9 +132,4 @@ def _resolve_stream_chat_inputs(
         unknown = ", ".join(sorted(remaining))
         raise TypeError(f"Unexpected stream_chat options: {unknown}")
 
-    return (
-        context or RAGChatContext(),
-        rag_config or ChatRAGConfig(),
-        response_options or RAGResponseOptions(),
-        prompt_selection or RAGPromptSelection(),
-    )
+    return context, rag_config, response_options, prompt_selection

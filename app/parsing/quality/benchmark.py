@@ -6,7 +6,6 @@ benchmark parsing backends in CI/nightly jobs without requiring heavyweight
 evaluation packages in the core backend image.
 """
 
-
 import difflib
 import re
 from collections import Counter
@@ -28,20 +27,19 @@ def markdown_to_text(markdown: str) -> str:
     """
     Best-effort Markdown -> plain text (bounded, deterministic).
     """
-    raw = str(markdown or "")
-    if not raw.strip():
+    if not markdown.strip():
         return ""
 
     out_lines: list[str] = []
     in_fence = False
-    for line in raw.splitlines():
-        if _FENCE_RE.match(line or ""):
+    for line in markdown.splitlines():
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
 
-        s = str(line or "")
+        s = line
         s = _MD_IMAGE_RE.sub(" ", s)
         s = _HTML_TAG_RE.sub(" ", s)
         # Keep link label, drop URL.
@@ -62,29 +60,25 @@ def normalized_text_similarity(a: str, b: str) -> float:
     bb = markdown_to_text(b)
     if not aa and not bb:
         return 1.0
-    return float(difflib.SequenceMatcher(a=aa, b=bb).ratio())
+    return difflib.SequenceMatcher(a=aa, b=bb).ratio()
 
 
 def extract_markdown_images(markdown: str) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
-    raw = str(markdown or "")
-    if not raw:
-        return out
+    for src in _MD_IMAGE_RE.findall(markdown):
+        out.append({"src": src, "kind": "markdown"})
 
-    for src in _MD_IMAGE_RE.findall(raw):
-        out.append({"src": str(src or ""), "kind": "markdown"})
-
-    for tag in _HTML_IMG_TAG_RE.findall(raw):
+    for tag in _HTML_IMG_TAG_RE.findall(markdown):
         src = ""
         alt = ""
         for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
+            k = key.strip().lower()
             if k == "src":
                 src = val
             elif k == "alt":
                 alt = val
         if src or alt:
-            out.append({"src": str(src or ""), "alt": str(alt or ""), "kind": "html"})
+            out.append({"src": src, "alt": alt, "kind": "html"})
 
     return out
 
@@ -95,11 +89,10 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
 
     This is intentionally simple; it is used as a fallback when true TEDS is not available.
     """
-    raw = str(markdown or "")
-    if not raw.strip():
+    if not markdown.strip():
         return []
 
-    lines = raw.splitlines()
+    lines = markdown.splitlines()
     tables: list[list[list[str]]] = []
     buf: list[str] = []
 
@@ -110,11 +103,11 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
             return
         rows: list[list[str]] = []
         for line in buf:
-            s = (line or "").strip()
+            s = line.strip()
             if not (s.startswith("|") and s.endswith("|") and s.count("|") >= 2):
                 continue
             parts = [p.strip() for p in s.strip("|").split("|")]
-            if parts and all(re.fullmatch(r"[:\s-]+", p or "") for p in parts):
+            if parts and all(re.fullmatch(r"[:\s-]+", p) for p in parts):
                 # separator line like | --- | --- |
                 continue
             rows.append(parts)
@@ -123,7 +116,7 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
         buf = []
 
     for line in lines:
-        s = (line or "").strip()
+        s = line.strip()
         looks_like_row = s.startswith("|") and s.endswith("|") and s.count("|") >= 2
         if looks_like_row:
             buf.append(line)
@@ -135,10 +128,10 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
 
 def _normalized_table_cells(tables: list[list[list[str]]]) -> list[str]:
     cells: list[str] = []
-    for table in tables or []:
+    for table in tables:
         for row in table:
             for cell in row:
-                normalized = _WS_RE.sub(" ", str(cell or "")).strip().lower()
+                normalized = _WS_RE.sub(" ", cell).strip().lower()
                 if normalized:
                     cells.append(normalized)
     return cells
@@ -159,13 +152,13 @@ def table_cell_f1(pred_tables: list[list[list[str]]], gold_tables: list[list[lis
 
     pred_counter = Counter(pred_cells)
     gold_counter = Counter(gold_cells)
-    overlap = sum(min(pred_counter[k], gold_counter.get(k, 0)) for k in pred_counter.keys())
+    overlap = sum(min(count, gold_counter[cell]) for cell, count in pred_counter.items())
     pred_total = sum(pred_counter.values())
     gold_total = sum(gold_counter.values())
     if pred_total <= 0 or gold_total <= 0:
         return 0.0
-    precision = float(overlap) / float(pred_total)
-    recall = float(overlap) / float(gold_total)
+    precision = overlap / pred_total
+    recall = overlap / gold_total
     if precision + recall <= 0:
         return 0.0
     return 2.0 * precision * recall / (precision + recall)
@@ -179,37 +172,32 @@ def compute_parsing_proxy_metrics(
     """
     Compute proxy metrics for parser benchmarking.
     """
-    pred = str(parsed_markdown or "")
-    gold = str(golden_markdown or "")
-
-    text_sim = normalized_text_similarity(pred, gold)
-    pred_tables = extract_pipe_tables(pred)
-    gold_tables = extract_pipe_tables(gold)
+    text_sim = normalized_text_similarity(parsed_markdown, golden_markdown)
+    pred_tables = extract_pipe_tables(parsed_markdown)
+    gold_tables = extract_pipe_tables(golden_markdown)
     table_sim = table_cell_f1(pred_tables, gold_tables)
     table_grits = compute_table_collection_grits(pred_tables=pred_tables, gold_tables=gold_tables)
 
-    pred_imgs = extract_markdown_images(pred)
-    gold_imgs = extract_markdown_images(gold)
+    pred_imgs = extract_markdown_images(parsed_markdown)
+    gold_imgs = extract_markdown_images(golden_markdown)
     gold_img_count = len(gold_imgs)
     image_recall: float | None = None
     if gold_img_count > 0:
-        image_recall = min(1.0, float(len(pred_imgs)) / float(gold_img_count))
+        image_recall = min(1.0, len(pred_imgs) / gold_img_count)
 
-    ro = score_reading_order(pred)
-    reading_order_score = None
-    if isinstance(ro, dict):
-        reading_order_score = ro.get("score")
+    ro = score_reading_order(parsed_markdown)
+    reading_order_score = ro["score"]
 
     return {
-        "text_similarity": round(float(text_sim), 4),
-        "table_cell_f1": (None if table_sim is None else round(float(table_sim), 4)),
+        "text_similarity": round(text_sim, 4),
+        "table_cell_f1": (None if table_sim is None else round(table_sim, 4)),
         "table_grits_topology": table_grits["topology"],
         "table_grits_content": table_grits["content"],
         "table_grits_f1": table_grits["f1"],
-        "reading_order_score": (None if reading_order_score is None else round(float(reading_order_score), 4)),
-        "images_pred": int(len(pred_imgs)),
-        "images_gold": int(gold_img_count),
-        "image_recall": (None if image_recall is None else round(float(image_recall), 4)),
+        "reading_order_score": (None if reading_order_score is None else round(reading_order_score, 4)),
+        "images_pred": len(pred_imgs),
+        "images_gold": gold_img_count,
+        "image_recall": (None if image_recall is None else round(image_recall, 4)),
     }
 
 

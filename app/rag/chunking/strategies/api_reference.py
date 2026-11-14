@@ -11,7 +11,6 @@ fallback RecursiveCharacterTextSplitter inside each block while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -39,7 +38,7 @@ _ENDPOINT_RE = re.compile(
 
 
 def _iter_endpoints(text: str) -> list[_Endpoint]:
-    matches = list(_ENDPOINT_RE.finditer(text or ""))
+    matches = list(_ENDPOINT_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -47,12 +46,10 @@ def _iter_endpoints(text: str) -> list[_Endpoint]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        method = (m.group("method") or "").strip().upper()
-        path = (m.group("path") or "").strip()
-        if not method or not path:
-            continue
+        method = m.group("method").upper()
+        path = m.group("path")
         endpoints.append(_Endpoint(start=start, end=end, index=len(endpoints), method=method, path=path))
-    return endpoints if len(endpoints) >= 2 else []
+    return endpoints
 
 
 def looks_like_api_reference(text: str) -> bool:
@@ -63,7 +60,7 @@ def looks_like_api_reference(text: str) -> bool:
 
 
 class APIReferenceChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -104,7 +101,7 @@ class APIReferenceChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -122,7 +119,7 @@ class APIReferenceChunker(BaseChunker):
                 continue
 
             # Prefix before first endpoint (overview, auth, etc.).
-            if endpoints[0].start > 0 and (text[: endpoints[0].start] or "").strip():
+            if endpoints[0].start > 0 and (text[: endpoints[0].start]).strip():
                 prefix = text[: endpoints[0].start]
                 self._append_chunks(
                     out,
@@ -135,8 +132,6 @@ class APIReferenceChunker(BaseChunker):
 
             for ep in endpoints:
                 ep_text = text[ep.start : ep.end]
-                if not ep_text.strip():
-                    continue
                 sig = f"{ep.method} {ep.path}"
                 self._append_chunks(
                     out,
@@ -144,7 +139,7 @@ class APIReferenceChunker(BaseChunker):
                     base_meta=base_meta,
                     offset=ep.start,
                     extra_meta={
-                        "endpoint_index": int(ep.index),
+                        "endpoint_index": ep.index,
                         "http_method": ep.method,
                         "api_path": ep.path,
                         "endpoint_signature": sig,

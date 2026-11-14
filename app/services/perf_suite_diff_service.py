@@ -29,8 +29,8 @@ def _policy_block(policy: dict[str, Any] | None, *, case_name: str) -> dict[str,
 def _threshold(cfg: dict[str, Any], key: str, default: float) -> float:
     v = _as_float(cfg.get(key))
     if v is None:
-        return float(default)
-    return float(v)
+        return default
+    return v
 
 
 def _compare_metric(
@@ -50,17 +50,15 @@ def _compare_metric(
     if baseline_ms is None or current_ms is None:
         return out
 
-    delta_ms = float(current_ms - baseline_ms)
+    delta_ms = current_ms - baseline_ms
     out["delta_ms"] = delta_ms
 
     ratio = None
     if baseline_ms > 0:
-        ratio = float((current_ms / baseline_ms) - 1.0)
+        ratio = (current_ms / baseline_ms) - 1.0
         out["delta_ratio"] = ratio
 
-    regressed = bool(
-        delta_ms > float(max_abs_increase_ms) and (ratio is not None and ratio > float(max_ratio_increase))
-    )
+    regressed = delta_ms > max_abs_increase_ms and ratio is not None and ratio > max_ratio_increase
     out["regressed"] = regressed
     return out
 
@@ -71,7 +69,8 @@ def _cases_by_name(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for row in raw:
         if not isinstance(row, dict):
             continue
-        name = str(row.get("name") or "").strip()
+        raw_name = row.get("name")
+        name = str(raw_name).strip() if raw_name is not None else None
         if not name:
             continue
         out[name] = row
@@ -90,8 +89,8 @@ def diff_perf_suite_reports(
     This is intended for CI/nightly gating. It is PII-safe by construction: only numeric
     aggregates and case names are included in the diff.
     """
-    base_cases = _cases_by_name(baseline or {})
-    curr_cases = _cases_by_name(current or {})
+    base_cases = _cases_by_name(baseline)
+    curr_cases = _cases_by_name(current)
 
     case_names = sorted(set(base_cases.keys()) | set(curr_cases.keys()))
     cases_out: dict[str, Any] = {}
@@ -128,7 +127,7 @@ def diff_perf_suite_reports(
             max_abs_increase_ms=p99_abs,
         )
 
-        regressed = bool(p95.get("regressed") or p99.get("regressed"))
+        regressed = p95["regressed"] or p99["regressed"]
         if regressed:
             regressions += 1
 
@@ -139,12 +138,12 @@ def diff_perf_suite_reports(
             "p99": p99,
         }
 
-    strict_gate = {"passed": regressions == 0, "regressions": int(regressions)}
+    strict_gate = {"passed": regressions == 0, "regressions": regressions}
 
     return {
         "schema": PERF_SUITE_DIFF_SCHEMA_V1,
-        "baseline_suite": str((baseline or {}).get("suite") or ""),
-        "current_suite": str((current or {}).get("suite") or ""),
+        "baseline_suite": baseline.get("suite"),
+        "current_suite": current.get("suite"),
         "policy_schema": str((policy or {}).get("schema") or PERF_REGRESSION_POLICY_SCHEMA_V1),
         "strict_gate": strict_gate,
         "cases": cases_out,

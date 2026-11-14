@@ -30,7 +30,7 @@ def should_attempt_pdf_fallback(
     - too-short content retries
     - low parse quality score retries when threshold > 0
     """
-    grade_norm = str(grade or "").strip().lower()
+    grade_norm = grade.strip().lower() if isinstance(grade, str) else None
     if grade_norm == "fail":
         return True
 
@@ -94,33 +94,24 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
 
 
 def _magicpdf_available() -> bool:
-    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+    if not settings.MAGIC_PDF_ENABLED:
         return False
-    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+    if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    return bool(
-        resolve_cli_command(cli)
-        and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-    )
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR))
 
 
 def _etl4llm_available() -> bool:
-    return bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
-        (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
-    )
+    return settings.ETL4LLM_ENABLED and bool(settings.ETL4LLM_API_URL.strip())
 
 
 def _deepseek_ocr_available() -> bool:
-    return bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
-        (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
-    )
+    return settings.DEEPSEEK_OCR_ENABLED and bool(settings.SILICONFLOW_API_KEY.strip())
 
 
 def _qianfan_ocr_available() -> bool:
-    return bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
-        (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
-    )
+    return settings.QIANFAN_OCR_ENABLED and bool(settings.QIANFAN_OCR_API_URL.strip())
 
 
 def _mineru_available() -> bool:
@@ -128,9 +119,7 @@ def _mineru_available() -> bool:
 
 
 def _docling_available() -> bool:
-    return bool(getattr(settings, "DOCLING_ENABLED", False)) and bool(
-        (getattr(settings, "DOCLING_API_URL", "") or "").strip()
-    )
+    return settings.DOCLING_ENABLED and bool(settings.DOCLING_API_URL.strip())
 
 
 def _should_use_basic_for_scanned_pdf(*, is_scanned: bool, score: float, text_quality_score: float) -> bool:

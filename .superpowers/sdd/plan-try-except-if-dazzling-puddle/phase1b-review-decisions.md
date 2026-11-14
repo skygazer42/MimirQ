@@ -1,0 +1,84 @@
+# 待总指挥裁决的安全上限
+
+保留原兜底，未改变运行安全策略。配置声明未明确零语义且未确认既有正数校验/下限的资源限制，需裁决后再改。
+
+- `app/api/v1/scim.py:200` `SCIM_PAGE_SIZE_MAX`：0会使 `if max_page_size > 0` 跳过上限；已恢复 `or 200`，新回归固定未决前仍封顶200。独立审查发现并纠正后缀 `_MAX` 漏筛。
+- `app/api/utils/document_pipeline_input.py:21` `PIPELINE_FORM_JSON_MAX_CHARS`（config.py:481，默认 `200000`）：`settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/utils/pipeline_options.py:40` `PIPELINE_FORM_JSON_MAX_CHARS`（config.py:481，默认 `200000`）：`settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/utils/url_ingest.py:327` `MAX_FILE_SIZE`（config.py:412，默认 `50000000`）：`settings.MAX_FILE_SIZE or 50_000_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:561` `TABLE_SEM_FILTER_MAX_COLS`（config.py:1601，默认 `30`）：`settings.TABLE_SEM_FILTER_MAX_COLS or 30`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1019` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1020` `TABLE_QUERY_MAX_COLS`（config.py:1562，默认 `200`）：`body.max_cols or settings.TABLE_QUERY_MAX_COLS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1101` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1231` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:557` `TABLE_LOTUS_MAX_ROWS`（config.py:1598，默认 `20000`）：`settings.TABLE_LOTUS_MAX_ROWS or 20_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:558` `TABLE_SEM_FILTER_MAX_IN_ROWS`（config.py:1600，默认 `2000`）：`settings.TABLE_SEM_FILTER_MAX_IN_ROWS or 2000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1102` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1232` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:709` `TABLE_QUERY_MAX_COLS`（config.py:1562，默认 `200`）：`settings.TABLE_QUERY_MAX_COLS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:710` `TABLE_QUERY_MAX_BYTES`（config.py:1563，默认 `1000000`）：`settings.TABLE_QUERY_MAX_BYTES or 1_000_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:968` `TABLE_QUERY_MAX_COLS`（config.py:1562，默认 `200`）：`settings.TABLE_QUERY_MAX_COLS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:969` `TABLE_QUERY_MAX_BYTES`（config.py:1563，默认 `1000000`）：`settings.TABLE_QUERY_MAX_BYTES or 1_000_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1029` `TABLE_QUERY_MAX_BYTES`（config.py:1563，默认 `1000000`）：`settings.TABLE_QUERY_MAX_BYTES or 1_000_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1128` `TABLE_QUERY_MAX_COLS`（config.py:1562，默认 `200`）：`settings.TABLE_QUERY_MAX_COLS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1129` `TABLE_QUERY_MAX_BYTES`（config.py:1563，默认 `1000000`）：`settings.TABLE_QUERY_MAX_BYTES or 1_000_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:967` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1027` `TABLE_QUERY_MAX_ROWS`（config.py:1561，默认 `200`）：`settings.TABLE_QUERY_MAX_ROWS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/dataset_tables.py:1028` `TABLE_QUERY_MAX_COLS`（config.py:1562，默认 `200`）：`settings.TABLE_QUERY_MAX_COLS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/integrations_dify.py:6138` `DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC`（config.py:892，默认 `60.0`）：`settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC or 60.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/parsing.py:1289` `VLM_CORRECTION_TIMEOUT_SEC`（config.py:552，默认 `60`）：`settings.VLM_CORRECTION_TIMEOUT_SEC or 60`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/parsing.py:1290` `VLM_CORRECTION_MAX_PAGES`（config.py:1833，默认 `2`）：`settings.VLM_CORRECTION_MAX_PAGES or 3`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/parsing.py:1291` `VLM_CORRECTION_MAX_CHARS`（config.py:553，默认 `40000`）：`settings.VLM_CORRECTION_MAX_CHARS or 40_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/parsing.py:1363` `IMAGE_OCR_MAX_IMAGES`（config.py:579，默认 `20`）：`settings.IMAGE_OCR_MAX_IMAGES or 20`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/parsing.py:1364` `IMAGE_OCR_MAX_CHARS`（config.py:578，默认 `2000`）：`settings.IMAGE_OCR_MAX_CHARS or 2000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/pipeline.py:1293` `GOVERNANCE_REGEX_TIMEOUT_MS`（config.py:1758，默认 `100`）：`settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/settings.py:483` `CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES`（config.py:199，默认 `200000`）：`settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 200_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/api/v1/settings.py:588` `MAGIC_PDF_REQUEST_TIMEOUT_SEC`（config.py:1980，默认 `600`）：`settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/core/config_validation.py:268` `PASSWORD_MIN_LENGTH`（config.py:976，默认 `8`）：`settings.PASSWORD_MIN_LENGTH or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_evidence.py:291` `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS`（config.py:1706，默认 `24000`）：`settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_evidence.py:35` `RAG_TEMPORAL_INTENT_MAX_DOCS`（config.py:1702，默认 `200`）：`settings.RAG_TEMPORAL_INTENT_MAX_DOCS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_evidence.py:303` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_generation.py:155` `VISION_RAG_GENERATION_MAX_IMAGES`（config.py:1952，默认 `Field(default=2, validation_alias=AliasChoices('MIMIRQ_VISION_RAG_GENERATION_MAX_IMAGES', 'VISION_RAG_GENERATION_MAX_IMAGES'))`）：`settings.VISION_RAG_GENERATION_MAX_IMAGES or 2`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_generation.py:313` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_generation.py:410` `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS`（config.py:1706，默认 `24000`）：`settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_generation.py:258` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_generation.py:422` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/engine_support/standard_stream_generation.py:387` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/api/routes_support/projection.py:239` `KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT`（config.py:2089，默认 `60`）：`settings.KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT or 60`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/extraction/extractor.py:2379` `KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK`（config.py:2020，默认 `10`）：`settings.KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK or 10`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/extraction/extractor.py:2469` `KG_RELATION_MAX_RELATIONS_PER_CHUNK`（config.py:2015，默认 `20`）：`settings.KG_RELATION_MAX_RELATIONS_PER_CHUNK or 20`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/extraction/processor.py:27` `KG_EXTRACT_CONTEXT_MAX_CHARS`（config.py:2068，默认 `8000`）：`settings.KG_EXTRACT_CONTEXT_MAX_CHARS or 8000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/recall.py:422` `KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS`（config.py:2123，默认 `200`）：`settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/recall.py:423` `KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES`（config.py:2124，默认 `400`）：`settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES or 400`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/recall.py:424` `KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS`（config.py:2125，默认 `1500`）：`settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS or 1500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/searcher.py:400` `KG_COMMUNITY_MAX_EVENTS`（config.py:2176，默认 `200`）：`settings.KG_COMMUNITY_MAX_EVENTS or 200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/searcher.py:115` `KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES`（config.py:2189，默认 `1024`）：`settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES or 1024`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/searcher.py:410` `KG_COMMUNITY_MAX_ENTITIES_PER_EVENT`（config.py:2177，默认 `12`）：`settings.KG_COMMUNITY_MAX_ENTITIES_PER_EVENT or 12`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/searcher.py:414` `KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY`（config.py:2181，默认 `12`）：`settings.KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY or 12`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/searcher.py:415` `KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY`（config.py:2182，默认 `6`）：`settings.KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY or 6`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/kg/search/searcher.py:416` `KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS`（config.py:2183，默认 `3200`）：`settings.KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS or 3200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/claim_nli_verifier.py:104` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:267` `VISION_LLM_MAX_TOKENS`（config.py:1914，默认 `Field(default=4096, validation_alias=AliasChoices('MIMIRQ_VISION_LLM_MAX_TOKENS', 'VISION_LLM_MAX_TOKENS'))`）：`settings.VISION_LLM_MAX_TOKENS or 4096`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:353` `VISION_LLM_TIMEOUT_SEC`（config.py:1910，默认 `Field(default=120, validation_alias=AliasChoices('MIMIRQ_VISION_LLM_TIMEOUT_SEC', 'VISION_LLM_TIMEOUT_SEC'))`）：`settings.VISION_LLM_TIMEOUT_SEC or 120`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:457` `VISION_LLM_TIMEOUT_SEC`（config.py:1910，默认 `Field(default=120, validation_alias=AliasChoices('MIMIRQ_VISION_LLM_TIMEOUT_SEC', 'VISION_LLM_TIMEOUT_SEC'))`）：`settings.VISION_LLM_TIMEOUT_SEC or 120`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:476` `VISION_RAG_READER_MAX_IMAGES`（config.py:1932，默认 `Field(default=2, validation_alias=AliasChoices('MIMIRQ_VISION_RAG_READER_MAX_IMAGES', 'VISION_RAG_READER_MAX_IMAGES'))`）：`settings.VISION_RAG_READER_MAX_IMAGES or 2`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:478` `VISION_RAG_READER_MAX_OUTPUT_CHARS`（config.py:1940，默认 `Field(default=1500, validation_alias=AliasChoices('MIMIRQ_VISION_RAG_READER_MAX_OUTPUT_CHARS', 'VISION_RAG_READER_MAX_OUTPUT_CHARS'))`）：`settings.VISION_RAG_READER_MAX_OUTPUT_CHARS or 1500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/evaluation/ragas.py:329` `LLM_TIMEOUT`（config.py:299，默认 `60`）：`settings.LLM_TIMEOUT or 60`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/evaluation/test_generator.py:68` `LLM_TIMEOUT`（config.py:299，默认 `60`）：`settings.LLM_TIMEOUT or 60`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/middleware/agent_logging.py:99` `AGENT_LOG_MAX_PREVIEW_CHARS`（config.py:1473，默认 `500`）：`settings.AGENT_LOG_MAX_PREVIEW_CHARS or 500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/middleware/tool_logging.py:199` `TOOL_CALL_LOG_MAX_PREVIEW_CHARS`（config.py:1469，默认 `500`）：`settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS or 500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/pipelines/langgraph.py:738` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/pipelines/langgraph.py:985` `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS`（config.py:1706，默认 `24000`）：`settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/pipelines/langgraph.py:1016` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/preprocessing/processor.py:271` `GOVERNANCE_REGEX_TIMEOUT_MS`（config.py:1758，默认 `100`）：`settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/preprocessing/tokenization.py:269` `BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS`（config.py:1529，默认 `128`）：`settings.BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS or 128`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:698` `RERANKER_API_TIMEOUT_SEC`（config.py:1859，默认 `30.0`）：`settings.RERANKER_API_TIMEOUT_SEC or self.timeout.total or 30.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:551` `RERANKER_API_MAX_CONCURRENCY`（config.py:1861，默认 `4`）：`settings.RERANKER_API_MAX_CONCURRENCY or 1`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:510` `RERANKER_API_MAX_CONCURRENCY`（config.py:1861，默认 `4`）：`settings.RERANKER_API_MAX_CONCURRENCY or 1`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:574` `RERANKER_API_MAX_CONCURRENCY`（config.py:1861，默认 `4`）：`settings.RERANKER_API_MAX_CONCURRENCY or 1`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/llm_based.py:452` `RERANKER_MAX_CHARS`（config.py:1852，默认 `800`）：`settings.RERANKER_MAX_CHARS or 800`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/pre_poc_scanner/settings.py:70` `PRECHECK_NEAR_DUP_MAX_PAIRS`（config.py:447，默认 `5000`）：`settings.PRECHECK_NEAR_DUP_MAX_PAIRS or 5000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/web_search.py:85` `WEB_SEARCH_TIMEOUT_SEC`（config.py:1361，默认 `8.0`）：`settings.WEB_SEARCH_TIMEOUT_SEC or 8.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/web_search.py:135` `WEB_SEARCH_TIMEOUT_SEC`（config.py:1361，默认 `8.0`）：`settings.WEB_SEARCH_TIMEOUT_SEC or 8.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/web_search.py:181` `WEB_SEARCH_TIMEOUT_SEC`（config.py:1361，默认 `8.0`）：`settings.WEB_SEARCH_TIMEOUT_SEC or 8.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/workflows/crag_streaming.py:75` `RAG_CRAG_STREAMING_MAX_RESULTS`（config.py:1732，默认 `5`）：`max_results or settings.RAG_CRAG_STREAMING_MAX_RESULTS or 5`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。

@@ -188,7 +188,7 @@ describe('auth storage scope', () => {
         key: 'mimirq_user_id',
         oldValue: 'user-a',
         newValue: 'user-b',
-      })
+      }),
     )
 
     expect(getAccessToken()).toBeNull()
@@ -209,14 +209,14 @@ describe('auth storage scope', () => {
         key: 'mimirq_tenant_id',
         oldValue: 'tenant-a',
         newValue: 'tenant-b',
-      })
+      }),
     )
     window.dispatchEvent(
       new StorageEvent('storage', {
         key: 'mimirq_tenant_id',
         oldValue: 'tenant-b',
         newValue: 'tenant-b',
-      })
+      }),
     )
 
     expect(listener).toHaveBeenCalledOnce()
@@ -236,7 +236,7 @@ describe('auth storage scope', () => {
           source: 'tab:remote',
           type: 'session-cleared',
         }),
-      })
+      }),
     )
 
     expect(getAccessToken()).toBeNull()
@@ -258,7 +258,7 @@ describe('auth storage scope', () => {
           source: 'tab:remote',
           type: 'session-cleared',
         }),
-      })
+      }),
     )
     setAuthSession({ token: { ...token, access_token: 'token-b' }, user: { id: 'user-b' } as never })
 

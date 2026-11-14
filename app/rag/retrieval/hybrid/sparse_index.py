@@ -15,10 +15,10 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.retrieval.hybrid.common import (
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
-    SPARSE_INDEX_DIR_FALLBACK,
     _log_retriever_fallback,
     logger,
 )
+from app.rag.retrieval.hybrid.result_values import candidate_metadata_from_doc
 from app.rag.retrieval.sparse import SparseVector
 
 
@@ -39,29 +39,10 @@ class SparseIndexMixin:
         get_sparse_encoder: Any,
         parse_synonyms: Any,
     ) -> tuple[dict[str, Any], Any]:
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS)
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
+        encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
         return provider_config, encoder
 
     @staticmethod
@@ -89,7 +70,7 @@ class SparseIndexMixin:
             if doc is None or doc.id is None:
                 continue
             doc_ids.append(str(doc.id))
-            texts.append(str(doc.page_content or ""))
+            texts.append(doc.page_content)
 
         vectors = encoder.encode_batch(texts)
         out: dict[str, SparseVector] = {}
@@ -109,19 +90,17 @@ class SparseIndexMixin:
         version_token: str | None,
         context: str,
     ) -> str | None:
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED):
             return None
 
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
                 corpus_fingerprint=self._sparse_corpus_fingerprint(corpus_docs),
                 vectors=vectors,
-                version_token=str(version_token or "").strip(),
+                version_token=str((version_token if version_token is not None else "")).strip(),
             )
             return "ok"
         except Exception as exc:
@@ -138,18 +117,16 @@ class SparseIndexMixin:
         version_token: str | None,
         context: str,
     ) -> tuple[dict[str, SparseVector], str]:
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED):
             return {}, "skipped"
 
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
                 expected_fingerprint=self._sparse_corpus_fingerprint(corpus_docs),
-                expected_version_token=str(version_token or "").strip(),
+                expected_version_token=str((version_token if version_token is not None else "")).strip(),
             )
             if loaded:
                 return loaded, "hit"
@@ -178,7 +155,7 @@ class SparseIndexMixin:
             if not doc_id:
                 continue
             doc_ids.append(doc_id)
-            texts.append(str(doc.page_content or ""))
+            texts.append(doc.page_content)
         return doc_ids, texts
 
     @classmethod
@@ -202,9 +179,8 @@ class SparseIndexMixin:
         """
         Build (or rebuild) a sparse retrieval index for the current scope key.
 
-        This is SPLADE-style sparse retrieval:
-        - deterministic provider for tests/offline
-        - optional SPLADE provider (HF/transformers) for production experiments (opt-in)
+        Only the deterministic provider for tests/offline is supported.
+        The in-process SPLADE model provider has been retired.
 
         Indices can be persisted to disk when enabled.
         """
@@ -333,7 +309,7 @@ class SparseIndexMixin:
                 self._build_sparse_index(
                     cache_key=cache_key,
                     docs=corpus_docs,
-                    version_token=str(version_token or "").strip(),
+                    version_token=str((version_token if version_token is not None else "")).strip(),
                 )
                 return
 
@@ -394,34 +370,6 @@ class SparseIndexMixin:
             h.update(b"\n")
         return h.hexdigest()[:24]
 
-    def _sync_sparse_index_after_bm25_upsert(
-        self,
-        *,
-        cache_key: str,
-        tenant_id: UUID,
-        dataset_scope_ids: tuple[UUID, ...],
-        merged_docs: list[Document],
-        upsert_docs: list[Document],
-    ) -> None:
-        if not self._effective_sparse_enabled():
-            return
-
-        try:
-            with self._get_sparse_build_lock(cache_key):
-                sparse_version_token = self._resolve_candidate_cache_corpus_token(
-                    tenant_id=tenant_id,
-                    document_ids=None,
-                    dataset_ids=dataset_scope_ids,
-                )
-                self._upsert_sparse_index_incremental(
-                    cache_key=cache_key,
-                    corpus_docs=merged_docs,
-                    upsert_docs=upsert_docs,
-                    version_token=sparse_version_token,
-                )
-        except Exception as exc:
-            logger.warning("Sparse index update failed for scope %s: %s", cache_key, str(exc)[:200])
-
     def _remove_sparse_vectors_for_deleted_chunks(self, *, scope_key: str, removed_ids: set[str]) -> None:
         if not removed_ids or not self._effective_sparse_enabled():
             return
@@ -443,18 +391,9 @@ class SparseIndexMixin:
         build_sparse_provider_config: Any,
         parse_synonyms: Any,
     ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS)
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         return synonyms_raw, synonyms, provider_config
 
     def _load_persisted_sparse_vectors_for_search(
@@ -468,21 +407,19 @@ class SparseIndexMixin:
         store_cls: Any,
         observe_sparse_index_load: Any,
     ) -> tuple[dict[str, SparseVector], bool]:
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED):
             observe_sparse_index_load(provider=provider, outcome="skipped")
             return {}, False
 
         load_outcome = "miss"
         try:
             fp = self._sparse_corpus_fingerprint(docs)
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
                 expected_fingerprint=fp,
-                expected_version_token=str(version_token or "").strip(),
+                expected_version_token=str((version_token if version_token is not None else "")).strip(),
             )
             if loaded:
                 self._sparse_doc_vectors[cache_key] = loaded
@@ -573,7 +510,7 @@ class SparseIndexMixin:
                 matcher=self._match_metadata_filter,
             ):
                 continue
-            out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
+            out_meta = candidate_metadata_from_doc(meta, chunk_id=doc.id)
             out_meta["sparse_score"] = float(score)
             results.append(
                 {
@@ -690,17 +627,7 @@ class SparseIndexMixin:
             docs=docs,
         )
 
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
         scored = topk_scores(
             query_vec=self._sparse_query_vector(encoder, raw_query),
             docs=sparse_vecs,
@@ -733,13 +660,13 @@ class SparseIndexMixin:
         - Uses the same BM25-scoped in-memory corpus as the sparse index source.
         - Uses a deterministic encoder by default (no model downloads).
         """
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
         if not self._effective_sparse_enabled():
             return []
 
-        tenant_uuid, dataset_scope_ids, cache_key, docs = self._bm25_scope_docs(
+        tenant_uuid, dataset_scope_ids, cache_key, docs = self._resolve_derived_corpus_snapshot(
             tenant_id=tenant_id,
             document_ids=document_ids,
             metadata_filter=metadata_filter,

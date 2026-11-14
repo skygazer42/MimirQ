@@ -1,5 +1,5 @@
-
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
 
 def _filter_vector_results_by_document_ids(
@@ -32,16 +32,12 @@ def _apply_vector_client_filter(
     runtime_shards_present: bool,
     match_metadata_filter: Callable[[dict[str, Any], dict[str, Any]], bool],
 ) -> list[dict[str, Any]]:
-    vector_client_filter = dict(vector_filter or {})
+    vector_client_filter = dict((vector_filter if vector_filter is not None else {}))
     if runtime_shards_present:
         vector_client_filter.pop("embedding_space_hash", None)
     if not vector_client_filter:
         return results
-    return [
-        result
-        for result in results
-        if match_metadata_filter((result.get("metadata") or {}), vector_client_filter)
-    ]
+    return [result for result in results if match_metadata_filter((result.get("metadata") or {}), vector_client_filter)]
 
 
 def _backfill_chunk_ids(
@@ -49,7 +45,7 @@ def _backfill_chunk_ids(
     *,
     chunk_id_lookup: Mapping[str, str] | None,
 ) -> None:
-    lookup = chunk_id_lookup or {}
+    lookup = chunk_id_lookup if chunk_id_lookup is not None else {}
     for result in results:
         metadata = result.get("metadata") or {}
         existing_chunk_id = result.get("chunk_id") or metadata.get("chunk_id")

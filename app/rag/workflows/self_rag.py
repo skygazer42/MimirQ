@@ -1,8 +1,23 @@
-
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.faithfulness import compute_faithfulness_score
+
+
+class SelfRagReflection(TypedDict):
+    schema: str
+    need_retrieval: bool
+    is_relevant: bool
+    is_supported: bool
+    is_useful: bool
+    verdict: str
+    faithfulness_score: float | None
+    supported_claims: int
+    total_claims: int
+    unsupported_claims: list[str]
+    citation_count: int
+    reason_codes: list[str]
+
 
 _QUESTION_TOKEN_RE = re.compile(r"\w+", flags=re.ASCII)
 _QUESTION_STOPWORDS = {
@@ -32,16 +47,16 @@ def run_self_rag_reflection(
     answer: str,
     evidence_text: str,
     citations: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    raw_question = str(question or "").strip()
-    raw_answer = str(answer or "").strip()
-    evidence_raw = str(evidence_text or "").strip()
+) -> SelfRagReflection:
+    raw_question = question.strip()
+    raw_answer = answer.strip()
+    evidence_raw = evidence_text.strip()
     faithfulness = compute_faithfulness_score(
         answer=raw_answer,
         evidence_text=evidence_raw,
     )
-    score = faithfulness.get("score")
-    unsupported = list(faithfulness.get("unsupported_claims") or [])
+    score = faithfulness["score"]
+    unsupported = list(faithfulness["unsupported_claims"])
     citation_count = len(citations or [])
 
     answer_cf = raw_answer.casefold()
@@ -71,16 +86,16 @@ def run_self_rag_reflection(
 
     return {
         "schema": "mimirq.self_rag_reflection.v1",
-        "need_retrieval": bool(need_retrieval),
-        "is_relevant": bool(is_relevant),
-        "is_supported": bool(is_supported),
-        "is_useful": bool(is_useful),
+        "need_retrieval": need_retrieval,
+        "is_relevant": is_relevant,
+        "is_supported": is_supported,
+        "is_useful": is_useful,
         "verdict": verdict,
         "faithfulness_score": score,
-        "supported_claims": int(faithfulness.get("supported_claims") or 0),
-        "total_claims": int(faithfulness.get("total_claims") or 0),
+        "supported_claims": faithfulness["supported_claims"],
+        "total_claims": faithfulness["total_claims"],
         "unsupported_claims": unsupported,
-        "citation_count": int(citation_count),
+        "citation_count": citation_count,
         "reason_codes": reason_codes,
     }
 

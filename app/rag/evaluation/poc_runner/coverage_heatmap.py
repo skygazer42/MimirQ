@@ -1,5 +1,11 @@
 from collections import Counter
-from typing import Any
+from typing import Any, TypedDict
+
+
+class _CoverageRow(TypedDict):
+    filename: str
+    retrieval_hit_count: int
+    negative_feedback_count: int
 
 
 def build_document_heatmap(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -10,9 +16,11 @@ def build_document_heatmap(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not isinstance(row, dict):
             continue
         filenames = [
-            str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()
+            str(name).strip()
+            for name in (row.get("final_context_filenames") or [])
+            if name is not None and str(name).strip()
         ]
-        is_negative = str(row.get("feedback_polarity") or "").strip().lower() == "negative"
+        is_negative = row.get("feedback_polarity") == "negative"
         for filename in filenames:
             retrieval_counts[filename] += 1
             if is_negative:
@@ -22,11 +30,11 @@ def build_document_heatmap(rows: list[dict[str, Any]]) -> dict[str, Any]:
         set(retrieval_counts.keys()) | set(negative_counts.keys()),
         key=lambda name: (-retrieval_counts.get(name, 0), -negative_counts.get(name, 0), name),
     )
-    rows_out = [
+    rows_out: list[_CoverageRow] = [
         {
             "filename": filename,
-            "retrieval_hit_count": int(retrieval_counts.get(filename, 0)),
-            "negative_feedback_count": int(negative_counts.get(filename, 0)),
+            "retrieval_hit_count": retrieval_counts.get(filename, 0),
+            "negative_feedback_count": negative_counts.get(filename, 0),
         }
         for filename in all_files
     ]

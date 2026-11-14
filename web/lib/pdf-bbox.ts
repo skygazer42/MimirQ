@@ -2,7 +2,7 @@ import type { ParsingPosition } from '@/lib/parsing-positions'
 
 export type PdfBboxCoordinateSpace = 'absolute' | 'normalized-1000'
 
-export interface PdfOverlayRect {
+export type PdfOverlayRect = {
   left: number
   top: number
   width: number
@@ -89,14 +89,7 @@ export function computePdfOverlayScrollTop(params: {
   overlayTop: number
   pageTop: number
 }): number {
-  const {
-    containerHeight,
-    containerScrollTop,
-    containerTop,
-    overlayHeight,
-    overlayTop,
-    pageTop,
-  } = params
+  const { containerHeight, containerScrollTop, containerTop, overlayHeight, overlayTop, pageTop } = params
 
   if (
     !isFiniteNumber(containerHeight) ||

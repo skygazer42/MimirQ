@@ -1,32 +1,16 @@
-
 import io
 import json
 import zipfile
 from pathlib import Path
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_float as _as_float
+from app.parsing.utils.scalars import coerce_int as _as_int
 from app.rag.core.logging import get_logger
 
 
-def _as_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
-
-
-def _as_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return float(out)
-    except Exception:
-        return None
+def _layout_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def _as_lines(value: Any) -> list[str]:
@@ -37,7 +21,7 @@ def _as_lines(value: Any) -> list[str]:
         return []
     out: list[str] = []
     for item in value:
-        text = str(item or "").strip()
+        text = _layout_text(item)
         if text:
             out.append(text)
     return out
@@ -97,9 +81,7 @@ def _load_page_sizes(zf: zipfile.ZipFile) -> dict[int, tuple[float, float]]:
     return {}
 
 
-def _collect_normalized_pages(
-    items: list[dict[str, Any]], page_sizes: dict[int, tuple[float, float]]
-) -> set[int]:
+def _collect_normalized_pages(items: list[dict[str, Any]], page_sizes: dict[int, tuple[float, float]]) -> set[int]:
     needs_normalization: set[int] = set()
     if not items or not page_sizes:
         return needs_normalization
@@ -155,18 +137,18 @@ def _build_position_tag(
             top = (top / 1000.0) * page_height
             bottom = (bottom / 1000.0) * page_height
 
-    return f"@@{int(page_idx) + 1}\t{float(left):.1f}\t{float(right):.1f}\t{float(top):.1f}\t{float(bottom):.1f}##"
+    return f"@@{page_idx + 1}\t{left:.1f}\t{right:.1f}\t{top:.1f}\t{bottom:.1f}##"
 
 
 def _extract_block_text(item: dict[str, Any]) -> str:
-    text = str(item.get("text") or "").strip()
+    text = _layout_text(item.get("text"))
     if text:
         return text
 
     item_type = str(item.get("type") or "").strip().lower()
     if item_type == "table":
         parts = _as_lines(item.get("table_caption"))
-        body = str(item.get("table_body") or "").strip()
+        body = _layout_text(item.get("table_body"))
         if body:
             parts.append(body)
         parts.extend(_as_lines(item.get("table_footnote")))
@@ -183,7 +165,7 @@ def _extract_block_text(item: dict[str, Any]) -> str:
 
     if item_type == "code":
         parts = _as_lines(item.get("code_caption"))
-        body = str(item.get("code_body") or "").strip()
+        body = _layout_text(item.get("code_body"))
         if body:
             parts.insert(0, body)
         return "\n".join(parts).strip()

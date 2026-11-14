@@ -10,10 +10,6 @@ from typing import Any
 from uuid import UUID
 
 
-def _now_utc() -> datetime:
-    return datetime.now(UTC)
-
-
 def _as_float(v: Any) -> float | None:
     if v is None:
         return None
@@ -35,8 +31,8 @@ def _diff_metric(*, key: str, before: Any, after: Any) -> dict[str, Any]:
     a = _as_float(after)
     delta: float | None = None
     if b is not None and a is not None:
-        delta = round(float(a - b), 6)
-    return {"key": str(key), "before": before, "after": after, "delta": delta}
+        delta = round(a - b, 6)
+    return {"key": key, "before": before, "after": after, "delta": delta}
 
 
 _RETRIEVAL_DIFF_KEYS = (
@@ -92,8 +88,8 @@ def _build_diff_score(*, base_summary: dict[str, Any], target_summary: dict[str,
         a = _as_float(target_summary.get(key))
         if b is None or a is None:
             continue
-        base_vals[key] = float(b)
-        target_vals[key] = float(a)
+        base_vals[key] = b
+        target_vals[key] = a
 
     used_keys = sorted(base_vals.keys())
     if not used_keys:
@@ -108,24 +104,21 @@ def _build_diff_score(*, base_summary: dict[str, Any], target_summary: dict[str,
             "target_metrics": {},
         }
 
-    weight_sum = float(sum(float(_DIFF_SCORE_WEIGHTS_V1.get(k) or 0.0) for k in used_keys))
-    if weight_sum <= 0:
-        weight_sum = 1.0
-
-    weights_used = {k: round(float(_DIFF_SCORE_WEIGHTS_V1.get(k) or 0.0) / weight_sum, 6) for k in used_keys}
-    base_score = sum(float(weights_used.get(k) or 0.0) * float(base_vals.get(k) or 0.0) for k in used_keys)
-    target_score = sum(float(weights_used.get(k) or 0.0) * float(target_vals.get(k) or 0.0) for k in used_keys)
-    delta = round(float(target_score - base_score), 6)
+    weight_sum = sum(_DIFF_SCORE_WEIGHTS_V1[k] for k in used_keys)
+    weights_used = {k: round(_DIFF_SCORE_WEIGHTS_V1[k] / weight_sum, 6) for k in used_keys}
+    base_score = sum(weights_used[k] * base_vals[k] for k in used_keys)
+    target_score = sum(weights_used[k] * target_vals[k] for k in used_keys)
+    delta = round(target_score - base_score, 6)
 
     return {
         "version": "1",
         "used_metric_keys": used_keys,
         "weights": weights_used,
-        "base_score": round(float(base_score), 6),
-        "target_score": round(float(target_score), 6),
+        "base_score": round(base_score, 6),
+        "target_score": round(target_score, 6),
         "delta": delta,
-        "base_metrics": {k: round(float(base_vals[k]), 6) for k in used_keys},
-        "target_metrics": {k: round(float(target_vals[k]), 6) for k in used_keys},
+        "base_metrics": {k: round(base_vals[k], 6) for k in used_keys},
+        "target_metrics": {k: round(target_vals[k], 6) for k in used_keys},
     }
 
 
@@ -158,7 +151,7 @@ def _build_metric_diffs(
             continue
         metric_diffs.append(_diff_metric(key=key, before=before, after=after))
 
-    metric_diffs.sort(key=lambda d: (-abs(float(d.get("delta") or 0.0)), str(d.get("key") or "")))
+    metric_diffs.sort(key=lambda item: (-abs(item["delta"] or 0.0), item["key"]))
     return metric_diffs
 
 
@@ -173,7 +166,8 @@ def _slice_bucket_map(obj: Any) -> tuple[dict[str, dict[str, Any]], bool]:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        key = str(item.get("key") or "").strip().lower()
+        raw_key = item.get("key")
+        key = str(raw_key).strip().lower() if raw_key is not None else None
         if key:
             out[key] = item
     return out, truncated
@@ -214,8 +208,8 @@ def _build_slice_rows(
 
     rows.sort(
         key=lambda row: (
-            -max(int(row.get("items_before") or 0), int(row.get("items_after") or 0)),
-            str(row.get("key") or ""),
+            -max(row["items_before"], row["items_after"]),
+            row["key"],
         )
     )
     if max_slice_buckets > 0 and len(rows) > max_slice_buckets:
@@ -237,8 +231,8 @@ def _build_slice_diffs(
         base_map, base_trunc = _slice_bucket_map(base_slices.get(dim))
         target_map, target_trunc = _slice_bucket_map(target_slices.get(dim))
         slice_diffs[dim] = {
-            "truncated_before": bool(base_trunc),
-            "truncated_after": bool(target_trunc),
+            "truncated_before": base_trunc,
+            "truncated_after": target_trunc,
             "buckets": _build_slice_rows(
                 base_map=base_map,
                 target_map=target_map,
@@ -274,7 +268,7 @@ def diff_regression_run_summaries(
     return {
         "base_run_id": str(base_run_id),
         "target_run_id": str(target_run_id),
-        "generated_at": _now_utc().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "metric_diffs": metric_diffs,
         "diff_score": diff_score,
         "slice_diffs": slice_diffs,

@@ -33,18 +33,17 @@ _ARTIFACT_ID_RE = re.compile(r"(?is)<artifactId\b[^>]*>(?P<body>.*?)</artifactId
 
 
 def _clean_text(s: str) -> str:
-    out = re.sub(r"\s+", " ", (s or "").strip())
-    return out
+    return re.sub(r"\s+", " ", s.strip())
 
 
 def _extract_ga(block_text: str) -> str | None:
-    head = (block_text or "")[:6000]
+    head = (block_text)[:6000]
     gm = _GROUP_ID_RE.search(head)
     am = _ARTIFACT_ID_RE.search(head)
     if not am:
         return None
-    group_id = _clean_text(gm.group("body") or "") if gm else ""
-    artifact_id = _clean_text(am.group("body") or "")
+    group_id = _clean_text(gm.group("body")) if gm else ""
+    artifact_id = _clean_text(am.group("body"))
     if not artifact_id:
         return None
     if group_id:
@@ -102,12 +101,15 @@ def looks_like_maven_pom(text: str) -> bool:
 
 def _record_window_end(records: list[_Record], *, start_idx: int, chunk_size: int) -> int:
     end_idx = start_idx
+    covered_end = records[start_idx].end
     while end_idx < len(records):
-        length = records[end_idx].end - records[start_idx].start
+        candidate_end = max(covered_end, records[end_idx].end)
+        length = candidate_end - records[start_idx].start
         if end_idx != start_idx and length > chunk_size:
             break
+        covered_end = candidate_end
         end_idx += 1
-    return max(start_idx + 1, end_idx)
+    return end_idx
 
 
 def _record_labels(
@@ -135,18 +137,19 @@ def _next_record_start(
 ) -> int:
     next_start = end_idx
     if chunk_overlap > 0 and end_idx - start_idx > 1:
+        covered_end = max(record.end for record in records[start_idx:end_idx])
         desired = end_idx - 1
         while desired > start_idx:
-            overlap_length = records[end_idx - 1].end - records[desired - 1].start
+            overlap_length = covered_end - records[desired - 1].start
             if overlap_length > chunk_overlap:
                 break
             desired -= 1
         next_start = desired if desired > start_idx else end_idx - 1
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 class MavenPOMChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -202,10 +205,10 @@ class MavenPOMChunker(BaseChunker):
             {
                 "chunk_strategy": "maven_pom",
                 "start_char": first.start,
-                "end_char": last.end,
-                "maven_record_count": int(end_idx - start_idx),
-                "maven_first_index": int(first.index),
-                "maven_last_index": int(last.index),
+                "end_char": max(record.end for record in records[start_idx:end_idx]),
+                "maven_record_count": end_idx - start_idx,
+                "maven_first_index": first.index,
+                "maven_last_index": last.index,
             }
         )
         meta.setdefault("doc_type_kwd", "maven")
@@ -250,10 +253,10 @@ class MavenPOMChunker(BaseChunker):
             )
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         records = _iter_records(text)
         if not records:
             self._append_fallback_chunks(

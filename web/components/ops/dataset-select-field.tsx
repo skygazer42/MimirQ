@@ -7,6 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useDatasets } from '@/hooks/use-datasets'
 import { cn } from '@/lib/utils'
 
+type DatasetSelectFieldProps = {
+  value: string
+  onChange: (value: string) => void
+  label?: string
+  placeholder?: string
+  allLabel?: string
+  allowAll?: boolean
+  autoSelectFirst?: boolean
+  className?: string
+  labelClassName?: string
+  triggerClassName?: string
+}
+
 const ALL_DATASETS_VALUE = '__all_datasets__'
 
 export function DatasetSelectField({
@@ -18,16 +31,9 @@ export function DatasetSelectField({
   allowAll = false,
   autoSelectFirst = false,
   className,
-}: Readonly<{
-  value: string
-  onChange: (value: string) => void
-  label?: string
-  placeholder?: string
-  allLabel?: string
-  allowAll?: boolean
-  autoSelectFirst?: boolean
-  className?: string
-}>) {
+  labelClassName,
+  triggerClassName,
+}: Readonly<DatasetSelectFieldProps>) {
   const { datasets, isLoading } = useDatasets()
 
   const selectedValue = value || (allowAll ? ALL_DATASETS_VALUE : '')
@@ -40,13 +46,13 @@ export function DatasetSelectField({
 
   return (
     <div className={cn('space-y-1', className)}>
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+      <Label className={cn('text-[11px] font-medium text-muted-foreground', labelClassName)}>{label}</Label>
       <Select
         value={selectedValue}
         onValueChange={(next) => onChange(next === ALL_DATASETS_VALUE ? '' : next)}
         disabled={isLoading || (!allowAll && !datasets.length)}
       >
-        <SelectTrigger className="h-8 text-xs">
+        <SelectTrigger className={cn('h-8 text-xs', triggerClassName)}>
           <SelectValue placeholder={isLoading ? '加载中...' : placeholder} />
         </SelectTrigger>
         <SelectContent>

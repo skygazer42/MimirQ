@@ -18,14 +18,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -54,7 +47,7 @@ def _parse_toml_key_line(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or s.startswith("#"):
         return None
     if "=" not in s:
@@ -77,19 +70,6 @@ def _parse_toml_key_line(line: str) -> str | None:
     return key
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text, plain=text))
-    return out
-
-
 def _build_sections(text: str) -> list[_Section]:
     lines = _iter_lines(text)
     headers: list[tuple[int, str]] = []
@@ -97,7 +77,7 @@ def _build_sections(text: str) -> list[_Section]:
         m = _TABLE_RE.match(ln.plain.strip())
         if not m:
             continue
-        name = (m.group("name") or "").strip()
+        name = (m.group("name")).strip()
         if not name:
             continue
         # Distinguish [[array]] from [table]
@@ -108,7 +88,6 @@ def _build_sections(text: str) -> list[_Section]:
     if not headers:
         return [_Section(start=0, end=len(text), name=None)]
 
-    headers = sorted(headers, key=lambda x: x[0])
     sections: list[_Section] = []
     if headers[0][0] > 0:
         sections.append(_Section(start=0, end=headers[0][0], name=None))
@@ -151,7 +130,7 @@ def looks_like_toml_config(text: str) -> bool:
     lowered = text.lower()
     if "[tool." in lowered or "[project]" in lowered:
         return True
-    head = (text or "")[:80000]
+    head = (text)[:80000]
     has_table = False
     has_key = False
     for ln in head.splitlines()[:2000]:
@@ -174,7 +153,7 @@ def _entry_window_end(entries: list[_Entry], *, start_idx: int, chunk_size: int)
         if end_idx != start_idx and length > chunk_size:
             break
         end_idx += 1
-    return max(start_idx + 1, end_idx)
+    return end_idx
 
 
 def _unique_entry_keys(entries: list[_Entry], *, start_idx: int, end_idx: int) -> list[str]:
@@ -201,11 +180,11 @@ def _next_entry_start(
                 break
             desired -= 1
         next_start = desired if desired > start_idx else end_idx - 1
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 class TOMLConfigChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -266,7 +245,7 @@ class TOMLConfigChunker(BaseChunker):
                 "chunk_strategy": "toml_config",
                 "start_char": first.start,
                 "end_char": last.end,
-                "toml_entry_count": int(end_idx - start_idx),
+                "toml_entry_count": end_idx - start_idx,
             }
         )
         meta.setdefault("doc_type_kwd", "toml")
@@ -314,17 +293,15 @@ class TOMLConfigChunker(BaseChunker):
             )
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
-        base_meta = dict(doc.metadata or {})
-        any_entries = False
+        base_meta = dict(doc.metadata)
         for section in _build_sections(text):
             if not text[section.start : section.end].strip():
                 continue
             entries = _iter_entries(text, start=section.start, end=section.end)
             if entries:
-                any_entries = True
                 self._append_entry_chunks(
                     out,
                     text=text,
@@ -340,14 +317,6 @@ class TOMLConfigChunker(BaseChunker):
                 end=section.end,
                 base_meta=base_meta,
                 table=section.name,
-            )
-        if not any_entries:
-            self._append_fallback_chunks(
-                out,
-                text=text,
-                start=0,
-                end=len(text),
-                base_meta=base_meta,
             )
 
     def split_documents(self, documents: list[Document]) -> list[Document]:

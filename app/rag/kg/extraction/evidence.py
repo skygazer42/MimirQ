@@ -8,7 +8,7 @@ We persist evidence (quote + best-effort char span) for:
 This module is intentionally dependency-light and deterministic.
 """
 
-
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -19,7 +19,7 @@ _EDGE_STRIP_CHARS = " \t\r\n,.;:!?，。；：！？、\"'`“”‘’()（）[
 
 
 def _clean(text: str) -> str:
-    return unicodedata.normalize("NFKC", str(text or ""))
+    return unicodedata.normalize("NFKC", text)
 
 
 def _collapse_ws(text: str) -> str:
@@ -33,11 +33,21 @@ def _ascii_case_insensitive_match(pattern: str, hay: str) -> tuple[int, int] | N
         return None
     if not match:
         return None
-    return int(match.start()), int(match.end())
+    return match.start(), match.end()
 
 
 def _can_use_ascii_fallback(needle: str) -> bool:
     return needle.isascii() and len(needle) >= 6 and any(ch.isalpha() for ch in needle)
+
+
+def clamp_confidence(value: object, *, default: float) -> float:
+    try:
+        f = float(value)  # type: ignore[arg-type]
+    except Exception:
+        return float(default)
+    if math.isnan(f):
+        return float(default)
+    return max(0.0, min(1.0, f))
 
 
 @dataclass(frozen=True)
@@ -59,8 +69,8 @@ def find_evidence_span(text: str, quote: str) -> tuple[int, int] | None:
     - exact substring match
     - whitespace-flex regex match (quote tokens joined by \\s+)
     """
-    hay = str(text or "")
-    needle = str(quote or "")
+    hay = text
+    needle = quote
     if not hay or not needle:
         return None
 
@@ -85,7 +95,7 @@ def find_evidence_span(text: str, quote: str) -> tuple[int, int] | None:
         if _can_use_ascii_fallback(needle):
             return _ascii_case_insensitive_match(pat, hay)
         return None
-    return int(m.start()), int(m.end())
+    return m.start(), m.end()
 
 
 def _expand_to_sentence_bounds(text: str, start: int, end: int, *, max_chars: int) -> tuple[int, int]:
@@ -134,8 +144,8 @@ def derive_evidence_from_mention(
 
     Returns None if the mention isn't found.
     """
-    hay = str(text or "")
-    m = str(mention or "").strip()
+    hay = text
+    m = mention.strip()
     if not hay or not m:
         return None
 
@@ -146,7 +156,7 @@ def derive_evidence_from_mention(
             pat = re.compile(re.escape(m), flags=re.IGNORECASE)
             mm = pat.search(hay)
             if mm:
-                idx = int(mm.start())
+                idx = mm.start()
         except re.error:
             idx = -1
 
@@ -187,7 +197,7 @@ def coerce_evidence(
     1) Use provided evidence_quote if it can be matched in text.
     2) Otherwise, derive evidence from fallback_mention surface.
     """
-    hay = str(text or "")
+    hay = text
     if not hay:
         return None
 
@@ -239,6 +249,7 @@ def surface_mentioned(*, quote: str, surface: str) -> bool:
 
 __all__ = [
     "EvidenceSpan",
+    "clamp_confidence",
     "coerce_evidence",
     "derive_evidence_from_mention",
     "find_evidence_span",

@@ -16,7 +16,7 @@ _HEX32_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 
 
 def _looks_like_uuid(value: str) -> bool:
-    s = str(value or "").strip()
+    s = value.strip()
     if not s:
         return False
     try:
@@ -32,7 +32,7 @@ def _looks_like_local_image_id(value: str) -> bool:
 
     documents.py allows both UUID and 32-hex ids (UUID without hyphens).
     """
-    s = str(value or "").strip()
+    s = value.strip()
     if not s:
         return False
     return _looks_like_uuid(s) or bool(_HEX32_RE.match(s))
@@ -46,7 +46,7 @@ def _looks_like_minio_img_id(value: str) -> bool:
 
     We keep this strict to avoid generating broken image_url values.
     """
-    s = str(value or "").strip()
+    s = value.strip()
     if not s:
         return False
 
@@ -144,7 +144,7 @@ def _list_item_indent_level(line: str) -> int | None:
 
 def _infer_list_structure(content: str) -> dict[str, int] | None:
     levels: list[int] = []
-    for line in str(content or "").splitlines():
+    for line in content.splitlines():
         level = _list_item_indent_level(line)
         if level is None:
             continue
@@ -195,7 +195,7 @@ def _infer_table_structure(meta: dict[str, Any]) -> dict[str, str] | None:
         title = table.get("sheet_name")
     if title:
         table["title"] = title[:200]
-    return table or None
+    return table
 
 
 def infer_chunk_structure(meta: dict[str, Any], content: str) -> dict[str, Any]:
@@ -265,11 +265,7 @@ def _fallback_section_header(meta: dict[str, Any]) -> str | None:
     if table_title:
         return table_title[:200]
 
-    parts = [
-        value
-        for index in range(1, 7)
-        if (value := _stringified_metadata_text(meta, f"header_{index}"))
-    ]
+    parts = [value for index in range(1, 7) if (value := _stringified_metadata_text(meta, f"header_{index}"))]
     return " > ".join(parts) or None
 
 
@@ -295,29 +291,29 @@ def normalize_section_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return meta
 
 
-def _hierarchy_parent_key(meta: dict[str, Any]) -> str:
-    if "hierarchy_parent_key" in meta:
-        raw_parent_key = meta.get("hierarchy_parent_key")
-    else:
-        raw_parent_key = meta.get("parent_id") or meta.get("parent_node_id")
-    return str(raw_parent_key or "").strip()
+def _hierarchy_parent_key(meta: dict[str, Any]) -> str | None:
+    return meta.get("hierarchy_parent_key", meta.get("parent_id", meta.get("parent_node_id")))
 
 
 def _hierarchy_level(meta: dict[str, Any], parent_key: str) -> str:
-    level = str(meta.get("hierarchy_level") or "").strip().lower()
+    level = _stringified_metadata_text(meta, "hierarchy_level")
     if level:
-        return level
-    role = str(meta.get("chunk_role") or "").strip().lower()
+        return level.lower()
+    role = _stringified_metadata_text(meta, "chunk_role")
+    if role is not None:
+        role = role.lower()
     if role in {"parent", "child", "paragraph", "sentence"}:
         return role
     return "child" if parent_key else "chunk"
 
 
 def _hierarchy_basis(meta: dict[str, Any]) -> str:
-    basis = str(meta.get("hierarchy_basis") or "").strip().lower()
+    basis = _stringified_metadata_text(meta, "hierarchy_basis")
     if basis:
-        return basis
-    strategy = str(meta.get("chunk_strategy") or "").strip().lower()
+        return basis.lower()
+    strategy = _stringified_metadata_text(meta, "chunk_strategy")
+    if strategy is not None:
+        strategy = strategy.lower()
     if strategy == "parent_child":
         return "parent_child"
     if strategy == "hierarchical_markdown":
@@ -332,7 +328,7 @@ def _hierarchy_family_key(
     parent_key: str,
     node_key: str,
 ) -> str:
-    family_key = str(meta.get("hierarchy_family_key") or "").strip()
+    family_key = _stringified_metadata_text(meta, "hierarchy_family_key")
     if family_key:
         return family_key
     if parent_key:
@@ -365,7 +361,7 @@ def _set_adjacent_hierarchy_metadata(
         return
 
     meta.setdefault(index_key, index)
-    key = str(meta.get(chunk_key) or "").strip()
+    key = _stringified_metadata_text(meta, chunk_key)
     if not key and document_id:
         key = f"{document_id}:{index}"
     if key:
@@ -388,20 +384,20 @@ def ensure_hierarchy_overlay_metadata(
     if not isinstance(meta, dict):
         return {}
 
-    doc_id = str(document_id or meta.get("document_id") or "").strip()
+    doc_id = document_id.strip()
     idx = max(0, int(chunk_index))
     total = int(total_chunks) if total_chunks is not None else None
     if total is not None and total < 0:
         total = 0
 
-    chunk_key = str(meta.get("chunk_key") or "").strip() or (f"{doc_id}:{idx}" if doc_id else str(idx))
+    chunk_key = _stringified_metadata_text(meta, "chunk_key") or (f"{doc_id}:{idx}" if doc_id else str(idx))
     meta.setdefault("chunk_key", chunk_key)
 
-    node_key = str(meta.get("hierarchy_node_key") or "").strip() or chunk_key
+    node_key = _stringified_metadata_text(meta, "hierarchy_node_key") or chunk_key
     meta["hierarchy_node_key"] = node_key
 
     parent_key = _hierarchy_parent_key(meta)
-    meta["hierarchy_parent_key"] = parent_key or None
+    meta["hierarchy_parent_key"] = parent_key
     meta["hierarchy_level"] = _hierarchy_level(meta, parent_key)
     meta["hierarchy_basis"] = _hierarchy_basis(meta)
     meta["hierarchy_family_key"] = _hierarchy_family_key(

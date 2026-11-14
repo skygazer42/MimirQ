@@ -3,12 +3,28 @@
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+
+class _CaseSummary(TypedDict):
+    id: str | None
+    hit_at_k: float
+    mrr: float
+
+
+class _GroupSummary(TypedDict):
+    name: str
+    cases_total: int
+    case_ids: list[str]
+    hit_at_k_mean: float
+    mrr_mean: float
+    failed_case_ids: list[str]
 
 
 def _load_json(path: Path) -> Any:
@@ -29,10 +45,10 @@ def _normalize_case_id(value: Any) -> str:
     return text
 
 
-def _mean(rows: list[dict[str, Any]], field: str) -> float:
+def _mean(rows: list[_CaseSummary], field: Literal["hit_at_k", "mrr"]) -> float:
     if not rows:
         return 0.0
-    total = sum(_coerce_float(row.get(field)) for row in rows)
+    total = sum(row[field] for row in rows)
     return round(total / float(len(rows)), 6)
 
 
@@ -72,22 +88,20 @@ def _classify_case_slice(case_id: Any) -> str:
 
 
 def _build_group_summaries(
-    case_rows: list[dict[str, Any]],
+    case_rows: list[_CaseSummary],
     *,
-    classifier,
-) -> list[dict[str, Any]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
+    classifier: Callable[[str | None], str],
+) -> list[_GroupSummary]:
+    grouped: dict[str, list[_CaseSummary]] = {}
     for row in case_rows:
         group_name = str(classifier(row.get("id")) or "other").strip() or "other"
         grouped.setdefault(group_name, []).append(row)
 
-    summaries: list[dict[str, Any]] = []
+    summaries: list[_GroupSummary] = []
     for group_name in sorted(grouped):
         rows = grouped[group_name]
         failed_case_ids = [
-            str(item.get("id") or "").strip()
-            for item in rows
-            if _coerce_float(item.get("hit_at_k")) < 1.0 or _coerce_float(item.get("mrr")) < 1.0
+            str(item.get("id") or "").strip() for item in rows if item["hit_at_k"] < 1.0 or item["mrr"] < 1.0
         ]
         summaries.append(
             {
@@ -155,15 +169,15 @@ def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
     raw_cases = payload.get("cases") if isinstance(payload.get("cases"), list) else []
     cases = [item for item in raw_cases if isinstance(item, dict)]
 
-    case_summaries: list[dict[str, Any]] = []
+    case_summaries: list[_CaseSummary] = []
     failed_cases: list[str] = []
     for case in cases:
         case_summary = case.get("summary") if isinstance(case.get("summary"), dict) else {}
         hit = _coerce_float(case_summary.get("hit_at_k"))
         mrr = _coerce_float(case_summary.get("mrr"))
         case_id = str(case.get("id") or "").strip()
-        row = {
-            "id": case_id or None,
+        row: _CaseSummary = {
+            "id": (case_id),
             "hit_at_k": hit,
             "mrr": mrr,
         }

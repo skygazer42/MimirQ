@@ -7,7 +7,6 @@ fallback RecursiveCharacterTextSplitter inside each block while preserving
 character offsets.
 """
 
-
 import html as _html
 import re
 from dataclasses import dataclass
@@ -37,16 +36,16 @@ _TAG_STRIP_RE = re.compile(r"(?is)<[^>]+>")
 
 
 def _clean_text(s: str) -> str:
-    out = _TAG_STRIP_RE.sub("", s or "")
+    out = _TAG_STRIP_RE.sub("", s)
     out = _html.unescape(out)
     return re.sub(r"\s+", " ", out).strip()
 
 
 def _extract_title(block_text: str) -> str | None:
-    m = _TITLE_RE.search(block_text or "")
+    m = _TITLE_RE.search(block_text)
     if not m:
         return None
-    title = _clean_text(m.group("body") or "")
+    title = _clean_text(m.group("body"))
     return title[:200] or None
 
 
@@ -66,7 +65,7 @@ def _iter_blocks(text: str, *, kind: str) -> list[_Block]:
             continue
         start = sm.start()
         end = em.end()
-        if end < len(text) and text[end : end + 1] == "\n":
+        if text[end : end + 1] == "\n":
             end += 1
         blk_text = text[start:end]
         blocks.append(
@@ -117,7 +116,7 @@ def _build_split_documents(
 
 
 class XMLFeedChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -133,7 +132,7 @@ class XMLFeedChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -168,13 +167,11 @@ class XMLFeedChunker(BaseChunker):
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
-                if not blk_text.strip():
-                    continue
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
                 extra_meta: dict[str, Any] = {
                     "xml_feed_kind": blk.kind,
-                    "xml_feed_index": int(blk.index),
-                    "xml_feed_count": int(len(blocks)),
+                    "xml_feed_index": blk.index,
+                    "xml_feed_count": len(blocks),
                 }
                 if blk.title:
                     extra_meta["xml_feed_title"] = blk.title

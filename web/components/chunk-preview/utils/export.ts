@@ -12,7 +12,7 @@ import type { ChunkOverrides } from '../types'
 
 export { sanitizeFilename } from '@/lib/sanitize'
 
-interface ChunkPreviewReviewReportChunk {
+type ChunkPreviewReviewReportChunk = {
   index: number
   page_number: number | null
   start_index: number
@@ -35,7 +35,7 @@ interface ChunkPreviewReviewReportChunk {
   content_preview: string
 }
 
-interface ChunkPreviewReviewReport {
+type ChunkPreviewReviewReport = {
   schema: 'mimirq.chunk_review.v1'
   generated_at: string
   file: {
@@ -113,7 +113,7 @@ export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
 export function applyChunkOverridesToPreview(
   preview: ChunkPreviewResponse,
   overrides: ChunkOverrides | undefined,
-  options?: { include_disabled?: boolean }
+  options?: { include_disabled?: boolean },
 ) {
   const keys = overrides ? Object.keys(overrides) : []
   const includeDisabled = Boolean(options?.include_disabled)
@@ -185,16 +185,12 @@ function csvEscape(value: unknown) {
   if (value == null) {
     return ''
   }
-  const raw = (
-    typeof value === 'string'
-    || typeof value === 'number'
-    || typeof value === 'boolean'
-    || typeof value === 'bigint'
-  )
-    ? toPrimitiveString(value)
-    : JSON.stringify(value)
+  const raw =
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+      ? toPrimitiveString(value)
+      : JSON.stringify(value)
   const needsQuote = /[",\n\r]/.test(raw)
-  const escaped = raw.replaceAll("\"", '""')
+  const escaped = raw.replaceAll('"', '""')
   return needsQuote ? `"${escaped}"` : escaped
 }
 
@@ -216,7 +212,16 @@ export function chunkPreviewToMarkdown(preview: ChunkPreviewResponse) {
   const unit = preview.params?.unit || 'chars'
   const safeName = sanitizeFilename(preview.filename || 'document')
 
-    lines.push(`# ${safeName}`, '', `- parser_backend: ${preview.parser_backend}`, `- chunk_strategy: ${preview.chunk_strategy}`, `- chunk_size: ${preview.params?.chunk_size} (${unit})`, `- chunk_overlap: ${preview.params?.chunk_overlap} (${unit})`, `- total_chunks: ${preview.total_chunks}`, '')
+  lines.push(
+    `# ${safeName}`,
+    '',
+    `- parser_backend: ${preview.parser_backend}`,
+    `- chunk_strategy: ${preview.chunk_strategy}`,
+    `- chunk_size: ${preview.params?.chunk_size} (${unit})`,
+    `- chunk_overlap: ${preview.params?.chunk_overlap} (${unit})`,
+    `- total_chunks: ${preview.total_chunks}`,
+    '',
+  )
 
   // Use 4 backticks to reduce accidental fence collisions with chunk contents.
   const fence = '````'
@@ -226,7 +231,17 @@ export function chunkPreviewToMarkdown(preview: ChunkPreviewResponse) {
     const tok = typeof c.tokens_est === 'number' ? c.tokens_est : undefined
     const lenLine = tok == null ? `${c.length} chars` : `${c.length} chars · ${tok} tok`
 
-        lines.push(`## Chunk ${Number(c.index) + 1}${pageLabel}`, '', `- range: ${c.start_index}-${c.end_index}`, `- length: ${lenLine}`, '', `${fence}text`, String(c.content ?? ''), fence, '')
+    lines.push(
+      `## Chunk ${Number(c.index) + 1}${pageLabel}`,
+      '',
+      `- range: ${c.start_index}-${c.end_index}`,
+      `- length: ${lenLine}`,
+      '',
+      `${fence}text`,
+      String(c.content ?? ''),
+      fence,
+      '',
+    )
   }
 
   return lines.join('\n')
@@ -243,7 +258,7 @@ export function chunkPreviewToJsonl(preview: ChunkPreviewResponse) {
       tokens_est: typeof c.tokens_est === 'number' ? c.tokens_est : null,
       metadata: c.metadata ?? {},
       content: c.content ?? '',
-    })
+    }),
   )
   return rows.join('\n')
 }
@@ -251,12 +266,14 @@ export function chunkPreviewToJsonl(preview: ChunkPreviewResponse) {
 export function chunkPreviewToReviewReport(
   preview: ChunkPreviewResponse,
   overrides: ChunkOverrides | undefined,
-  options?: { include_disabled?: boolean }
+  options?: { include_disabled?: boolean },
 ): ChunkPreviewReviewReport {
   const includeDisabled = Boolean(options?.include_disabled)
 
   const mergedAll = applyChunkOverridesToPreview(preview, overrides, { include_disabled: true })
-  const merged = includeDisabled ? mergedAll : applyChunkOverridesToPreview(preview, overrides, { include_disabled: false })
+  const merged = includeDisabled
+    ? mergedAll
+    : applyChunkOverridesToPreview(preview, overrides, { include_disabled: false })
 
   const unit: 'chars' | 'tokens' = mergedAll.params?.unit === 'tokens' ? 'tokens' : 'chars'
 
@@ -354,10 +371,6 @@ export function chunkPreviewToReviewReport(
   }
 }
 
-function oneLine(value: unknown) {
-  return toSingleLinePrimitiveString(value)
-}
-
 function fmtPctRatio(value: unknown): string | null {
   const v = Number(value)
   if (!Number.isFinite(v)) return null
@@ -366,7 +379,9 @@ function fmtPctRatio(value: unknown): string | null {
 
 function listChunkNumbers(indices: number[] | undefined, options?: { limit?: number }) {
   const limit = options?.limit ?? 80
-  const list = Array.isArray(indices) ? indices.filter((n) => typeof n === 'number' && Number.isFinite(n)).sort((a, b) => a - b) : []
+  const list = Array.isArray(indices)
+    ? indices.filter((n) => typeof n === 'number' && Number.isFinite(n)).sort((a, b) => a - b)
+    : []
   if (!list.length) return '-'
   const shown = list.slice(0, Math.max(1, limit)).map((n) => `#${Math.trunc(n) + 1}`)
   const extra = list.length > shown.length ? ` …(+${list.length - shown.length})` : ''
@@ -376,23 +391,31 @@ function listChunkNumbers(indices: number[] | undefined, options?: { limit?: num
 export function chunkPreviewToReviewMarkdown(
   preview: ChunkPreviewResponse,
   overrides: ChunkOverrides | undefined,
-  options?: { include_disabled?: boolean }
+  options?: { include_disabled?: boolean },
 ) {
   const report = chunkPreviewToReviewReport(preview, overrides, options)
 
   const lines: string[] = []
 
   const filename = String(report.file.filename || preview.filename || 'document')
-  lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${String(report.schema || 'mimirq.chunk_review.v1')}`)
-  if (report.generated_at) lines.push(`- generated_at: ${String(report.generated_at)}`)
+  lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${report.schema}`)
+  lines.push(`- generated_at: ${report.generated_at}`)
   lines.push('')
 
   const cfg = report.config
-  lines.push('## Config', `- parser_backend: ${String(cfg.parser_backend || '')}`, `- chunk_strategy: ${String(cfg.chunk_strategy || '')}`, `- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`, `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`, '')
+  lines.push(
+    '## Config',
+    `- parser_backend: ${String(cfg.parser_backend || '')}`,
+    `- chunk_strategy: ${String(cfg.chunk_strategy || '')}`,
+    `- chunk_size: ${String(cfg.chunk_size ?? '')} (${cfg.unit})`,
+    `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${cfg.unit})`,
+    '',
+  )
 
   const stats = report.stats
   lines.push('## Stats', `- count: ${String(stats?.count ?? '')}`)
-  if (stats?.coverage_ratio != null) lines.push(`- coverage_ratio: ${fmtPctRatio(stats.coverage_ratio) ?? String(stats.coverage_ratio)}`)
+  if (stats?.coverage_ratio != null)
+    lines.push(`- coverage_ratio: ${fmtPctRatio(stats.coverage_ratio) ?? String(stats.coverage_ratio)}`)
   if (stats?.overlap_waste_ratio != null) {
     lines.push(`- overlap_waste_ratio: ${fmtPctRatio(stats.overlap_waste_ratio) ?? String(stats.overlap_waste_ratio)}`)
   }
@@ -402,15 +425,30 @@ export function chunkPreviewToReviewMarkdown(
 
   const summary = report.summary
   const issueCounts = summary.issue_counts
-  lines.push('## Summary', `- total_chunks: ${String(summary.total_chunks ?? '')}`, `- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`, `- include_disabled: ${String(summary.include_disabled ?? false)}`, `- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`, `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`, '')
+  lines.push(
+    '## Summary',
+    `- total_chunks: ${String(summary.total_chunks ?? '')}`,
+    `- total_chunks_in_report: ${summary.total_chunks_in_report}`,
+    `- include_disabled: ${summary.include_disabled}`,
+    `- disabled_count: ${summary.disabled_count} · edited_count: ${summary.edited_count}`,
+    `- issue_counts: short=${issueCounts.short} duplicate=${issueCounts.duplicate} gap=${issueCounts.gap} overlap=${issueCounts.overlap}`,
+    '',
+  )
 
   const signals = report.review_signals
-  lines.push('## Issue Indices', `- short_indices: ${listChunkNumbers(signals.short_indices)}`, `- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`, `- gap_indices: ${listChunkNumbers(signals.gap_indices)}`, `- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`, '')
+  lines.push(
+    '## Issue Indices',
+    `- short_indices: ${listChunkNumbers(signals.short_indices)}`,
+    `- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`,
+    `- gap_indices: ${listChunkNumbers(signals.gap_indices)}`,
+    `- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`,
+    '',
+  )
 
   const recs = report.recommendations
   if (recs.length) {
     lines.push('## Recommendations')
-    for (const r of recs.slice(0, 20)) lines.push(`- ${oneLine(r)}`)
+    for (const r of recs.slice(0, 20)) lines.push(`- ${toSingleLinePrimitiveString(r)}`)
     if (recs.length > 20) lines.push(`- …(+${recs.length - 20})`)
     lines.push('')
   }
@@ -422,13 +460,13 @@ export function chunkPreviewToReviewMarkdown(
     lines.push('## Samples (first 30 flagged chunks)')
     for (const c of flagged.slice(0, 30)) {
       const idx = Number(c.index)
-      const range = `${String(c.start_index ?? '')}-${String(c.end_index ?? '')}`
-      const flags = Object.entries(c.flags || {})
+      const range = `${c.start_index}-${c.end_index}`
+      const flags = Object.entries(c.flags)
         .filter(([, v]) => Boolean(v))
         .map(([k]) => k)
         .join(',')
       lines.push(`- #${Number.isFinite(idx) ? idx + 1 : '?'} · range ${range} · flags: ${flags || '-'}`)
-      const previewText = oneLine(c.content_preview || '')
+      const previewText = toSingleLinePrimitiveString(c.content_preview)
       if (previewText) lines.push(`  - preview: ${previewText}`)
     }
     if (flagged.length > 30) lines.push(`- …(+${flagged.length - 30})`)

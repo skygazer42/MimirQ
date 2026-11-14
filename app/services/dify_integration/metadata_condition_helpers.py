@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -11,7 +10,7 @@ def metadata_filter_field_names(metadata_filter: Any) -> set[str]:
         return set()
     out: set[str] = set()
     for key, value in metadata_filter.items():
-        name = str(key or "").strip()
+        name = key.strip()
         if not name:
             continue
         if name in {"$and", "$or"}:
@@ -91,8 +90,12 @@ def _comparison_operator_filter(*, name: str, op: str, value: Any) -> dict[str, 
 
 
 def dify_metadata_condition_item_to_filter(condition: dict[str, Any]) -> dict[str, Any]:
-    name = str(condition.get("name") or "").strip()
-    op = str(condition.get("comparison_operator") or "").strip().lower()
+    name = condition.get("name")
+    op = condition.get("comparison_operator")
+    if not isinstance(name, str) or not isinstance(op, str):
+        raise MetadataConditionValidationError("Invalid Dify metadata_condition condition")
+    name = name.strip()
+    op = op.strip().lower()
     value = condition.get("value")
     if not name or not op:
         raise MetadataConditionValidationError("Invalid Dify metadata_condition condition")
@@ -131,8 +134,6 @@ def metadata_condition_to_filter(
             raise MetadataConditionValidationError("Invalid Dify metadata_condition condition")
         parts.append(dify_metadata_condition_item_to_filter(raw_condition))
 
-    if not parts:
-        return None
     metadata_filter = parts[0] if len(parts) == 1 else {"$or" if logical_operator == "or" else "$and": parts}
     validate_metadata_filter_fields(metadata_filter, allowed_fields=allowed_fields)
     return metadata_filter

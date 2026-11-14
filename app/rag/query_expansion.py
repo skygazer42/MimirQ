@@ -5,35 +5,10 @@ Goal: reduce false negatives (missed recall) by generating additional query vari
 in a controlled, auditable way (no surprise Cartesian products).
 """
 
-
 import re
 from typing import Any
 
-
-def _alias_values(raw: Any) -> list[Any] | None:
-    if isinstance(raw, str):
-        return [raw]
-    if isinstance(raw, list):
-        return raw
-    return None
-
-
-def _unique_alias_values(key: str, raw: Any) -> list[str]:
-    values = _alias_values(raw)
-    if values is None:
-        return []
-    seen: set[str] = set()
-    unique: list[str] = []
-    for item in values:
-        alias = str(item or "").strip()
-        if not alias or alias == key:
-            continue
-        signature = alias.casefold() if alias.isascii() else alias
-        if signature in seen:
-            continue
-        seen.add(signature)
-        unique.append(alias)
-    return unique
+from app.query.expand import _unique_rule_values
 
 
 def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
@@ -51,26 +26,22 @@ def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
 
     out: dict[str, list[str]] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        key = k.strip()
         if not key:
             continue
-        unique = _unique_alias_values(key, v)
+        unique = _unique_rule_values(key, v)
         if unique:
             out[key] = unique
     return out
 
 
 def _query_contains_alias(base: str, base_fold: str, source: str) -> bool:
-    if not source:
-        return False
     if source.isascii():
         return source.casefold() in base_fold
     return source in base
 
 
 def _replace_alias(base: str, source: str, target: str) -> str:
-    if not source:
-        return base
     if source.isascii():
         return re.sub(re.escape(source), target, base, flags=re.IGNORECASE)
     return base.replace(source, target)
@@ -80,8 +51,6 @@ def _symmetric_alias_pairs(rules: dict[str, list[str]]) -> list[tuple[str, str]]
     pairs: list[tuple[str, str]] = []
     for key, aliases in rules.items():
         for alias in aliases:
-            if not alias or alias == key:
-                continue
             pairs.append((key, alias))
             pairs.append((alias, key))
     seen: set[tuple[str, str]] = set()
@@ -121,7 +90,7 @@ def generate_alias_queries(
     - Case-insensitive matching for ASCII rules, exact for non-ASCII.
     - Returns both the variants and a small meta payload for traces/metrics.
     """
-    base = (query or "").strip()
+    base = (query).strip()
     if not base:
         return [], {"enabled": False, "used": False, "reason": "empty_query"}
 

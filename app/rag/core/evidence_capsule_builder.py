@@ -95,10 +95,8 @@ def _capsule_payload_without_hash(
     query_debug: dict[str, Any] | None,
     request_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    sanitized_citations = [_sanitize_citation(c) for c in citations if isinstance(c, dict)]
-    citation_hashes = [
-        str(c.get("citation_hash") or "") for c in sanitized_citations if str(c.get("citation_hash") or "").strip()
-    ]
+    sanitized_citations = [_sanitize_citation(c) for c in citations]
+    citation_hashes = [citation["citation_hash"] for citation in sanitized_citations]
     must_recall = {
         "status": str(metrics.get("must_recall_status") or ""),
         "passed": _coerce_bool(metrics.get("must_recall_passed")),
@@ -124,7 +122,7 @@ def _capsule_payload_without_hash(
         "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
         "retrieval_elapsed_sec": _coerce_float(metrics.get("retrieval_elapsed_sec")),
         "retrieval_config_hash": str(metrics.get("retrieval_config_hash") or ""),
-        "citations_count": int(len(sanitized_citations)),
+        "citations_count": len(sanitized_citations),
         "top_relevance_score": _coerce_float(metrics.get("top_relevance_score")),
         "abstain_triggered": _coerce_bool(metrics.get("abstain_triggered")),
         "abstain_reason": str(metrics.get("abstain_reason") or ""),
@@ -132,7 +130,7 @@ def _capsule_payload_without_hash(
     return {
         "schema": EVIDENCE_CAPSULE_SCHEMA_V1,
         "generated_at": datetime.now(UTC).isoformat(),
-        "query_for_retrieval": str(query_for_retrieval or ""),
+        "query_for_retrieval": query_for_retrieval,
         "request_context": dict(request_context or {}),
         "retrieval_summary": retrieval_summary,
         "must_recall": must_recall,
@@ -156,7 +154,7 @@ def _signing_secret_from_settings() -> str:
     try:
         from app.core.config import settings  # noqa: WPS433
 
-        return str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
+        return str(settings.EVIDENCE_CAPSULE_SIGNING_SECRET).strip()
     except Exception:
         return ""
 
@@ -167,7 +165,7 @@ def sign_evidence_capsule(
     secret: str,
     key_id: str = "default",
 ) -> dict[str, Any] | None:
-    sec = str(secret or "").strip()
+    sec = secret.strip()
     if not sec:
         return None
     kid = str(key_id or "default").strip() or "default"
@@ -192,7 +190,7 @@ def verify_evidence_capsule_signature(
     sig = capsule.get("signature")
     if not isinstance(sig, dict):
         return False, "signature_missing"
-    if str(sig.get("schema") or "") != EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1:
+    if sig.get("schema") != EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1:
         return False, "invalid_signature_schema"
     if str(sig.get("alg") or "").strip().lower() != "hmac_sha256":
         return False, "unsupported_signature_alg"
@@ -203,10 +201,12 @@ def verify_evidence_capsule_signature(
     sec = str(secret or "").strip() or _signing_secret_from_settings()
     if not sec:
         return False, "signature_secret_missing"
+    if len(value) != 48:
+        return False, "signature_mismatch"
 
     payload = dict(capsule or {})
     payload.pop("signature", None)
-    expected = stable_json_hmac(payload, secret=sec, length=len(value))
+    expected = stable_json_hmac(payload, secret=sec, length=48)
     if expected != value:
         return False, "signature_mismatch"
     return True, "ok"
@@ -235,10 +235,8 @@ def build_evidence_capsule(
         from app.core.config import settings  # noqa: WPS433
 
         if bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False)):
-            secret = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
-            key_id = (
-                str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip() or "default"
-            )
+            secret = str(settings.EVIDENCE_CAPSULE_SIGNING_SECRET).strip()
+            key_id = str(settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID).strip() or "default"
             sig = sign_evidence_capsule(payload, secret=secret, key_id=key_id)
             if isinstance(sig, dict):
                 payload["signature"] = sig
@@ -316,9 +314,14 @@ def validate_evidence_capsule(
 ) -> tuple[bool, str]:
     if not isinstance(capsule, dict):
         return False, "capsule_not_object"
-    if str(capsule.get("schema") or "") != EVIDENCE_CAPSULE_SCHEMA_V1:
+    if capsule.get("schema") != EVIDENCE_CAPSULE_SCHEMA_V1:
         return False, "invalid_schema"
-    capsule_hash = str(capsule.get("capsule_hash") or "").strip()
+    capsule_hash = capsule.get("capsule_hash")
+    if capsule_hash is None:
+        return False, "missing_capsule_hash"
+    if not isinstance(capsule_hash, str):
+        return False, "invalid_capsule_hash"
+    capsule_hash = capsule_hash.strip()
     if not capsule_hash:
         return False, "missing_capsule_hash"
     citations = capsule.get("citations")

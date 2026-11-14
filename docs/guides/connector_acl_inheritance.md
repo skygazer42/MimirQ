@@ -1,6 +1,6 @@
 # Connector ACL 继承（Source ACL → Document ACL）运维指南
 
-本指南面向运维/管理员，说明如何让连接器在导入时**继承源系统权限**（GitHub/Confluence/Jira/Drive 等），并将其映射到 MimirQ 的**文档级 ACL（Security Trimming）**。
+本指南面向运维/管理员，说明如何让连接器在导入时**继承源系统权限**（GitHub/Confluence/Jira/Drive 等），并将其映射到 Ragvia 的**文档级 ACL（Security Trimming）**。
 
 > 前置知识：文档级 ACL 本质上只会“收紧权限”，不会“放宽权限”。详情见：[docs/guides/document_acl.md](./document_acl.md)。
 
@@ -9,7 +9,7 @@
 ## 1) 目标与边界
 
 **目标**
-- 当源系统对象（仓库/页面/文件）在源侧发生权限变化时，导入到 MimirQ 的文档能体现同等“可见范围”（以 tenant groups/doc ACL 的形式）。
+- 当源系统对象（仓库/页面/文件）在源侧发生权限变化时，导入到 Ragvia 的文档能体现同等“可见范围”（以 tenant groups/doc ACL 的形式）。
 
 **边界**
 - 当前实现优先覆盖“常见企业权限模式”：**按 group/team 的可见性**。
@@ -27,7 +27,7 @@
 - 你可以通过 **SCIM**（推荐）或 **Groups API** 创建组，并设置 `external_id`
 - 连接器会用这些 `external_id` 来找对应的 `tenant_groups.id`，最后写入文档 ACL 的 `partial_group_list`
 
-> 这意味着：你不需要把“源系统 group/team 成员”同步到 MimirQ；你只要保证 **MimirQ tenant group 的成员**与源系统的授权主体在语义上对应即可（通常由 IdP/SCIM/OIDC groups 完成）。
+> 这意味着：你不需要把“源系统 group/team 成员”同步到 Ragvia；你只要保证 **Ragvia tenant group 的成员**与源系统的授权主体在语义上对应即可（通常由 IdP/SCIM/OIDC groups 完成）。
 
 ---
 
@@ -203,7 +203,7 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
 ```
 
 **常见坑**
-- Jira security level / role 本身不是用户组；你需要在 MimirQ 侧手动准备语义对应的 tenant group，并把它的 `external_id` 设成上述 key
+- Jira security level / role 本身不是用户组；你需要在 Ragvia 侧手动准备语义对应的 tenant group，并把它的 `external_id` 设成上述 key
 - 如果 token 只能读取 issue 本体、不能看到 comments visibility / security 元数据，系统会倾向于 fail-closed，而不是放宽权限
 
 ---

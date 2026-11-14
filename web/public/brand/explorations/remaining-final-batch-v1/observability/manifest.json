@@ -1,0 +1,51 @@
+{
+  "title": "可观测性",
+  "round": "剩余页面 04",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-final-batch-v1/observability/a.html",
+      "name": "A · 指标与分析宽表",
+      "concept": "当前对象、动作与结果连续可读",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A · 指标与分析宽表"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-final-batch-v1/observability/b.html",
+      "name": "B · 趋势总览",
+      "concept": "当前对象、动作与结果连续可读",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B · 趋势总览"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-final-batch-v1/observability/c.html",
+      "name": "C · 异常查询目录",
+      "concept": "当前对象、动作与结果连续可读",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C · 异常查询目录"
+      ]
+    }
+  ]
+}

@@ -19,10 +19,10 @@ _LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE = "Ignoring non-critical LlamaIndex c
 
 def _estimate_tokens_from_chars(chars: int, *, min_tokens: int = 0) -> int:
     # Rough heuristic: 1 token ~= 4 chars for mixed English/Chinese.
-    value = int(chars or 0)
+    value = chars or 0
     if value <= 0:
         return 0
-    return max(int(min_tokens or 0), value // 4)
+    return max(min_tokens or 0, value // 4)
 
 
 def _node_id(node: Any) -> str | None:
@@ -132,7 +132,7 @@ class LlamaIndexChunker(BaseChunker):
     Intelligent chunking based on sentence boundaries, maintaining semantic integrity.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         if not settings.LLAMA_INDEX_ENABLED:
             raise RuntimeError("LlamaIndexChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file.")
 
@@ -169,11 +169,11 @@ class LlamaIndexChunker(BaseChunker):
             li_doc = LlamaDocument(text=doc.page_content, metadata={})
             nodes = self.splitter.get_nodes_from_documents([li_doc])
             for node in nodes:
-                metadata = dict(doc.metadata or {})
+                metadata = dict(doc.metadata)
                 metadata.update(node.metadata or {})
-                node_id = getattr(node, "node_id", None) or getattr(node, "id_", None)
-                if node_id:
-                    metadata["node_id"] = str(node_id)
+                node_id = _node_id(node)
+                if node_id is not None:
+                    metadata["node_id"] = node_id
                 start_idx = getattr(node, "start_char_idx", None)
                 end_idx = getattr(node, "end_char_idx", None)
                 if start_idx is not None:
@@ -192,7 +192,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
     Creates multi-level chunks with parent-child relationships.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         if not settings.LLAMA_INDEX_ENABLED:
             raise RuntimeError(
                 "LlamaIndexHierarchicalChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."
@@ -242,7 +242,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                         page_content=node.get_content(),
                         metadata=_hierarchical_node_metadata(
                             node,
-                            base_metadata=dict(doc.metadata or {}),
+                            base_metadata=dict(doc.metadata),
                             child_counts=child_counts,
                             resolve_level=resolve_level,
                             parent_key=NodeRelationship.PARENT,

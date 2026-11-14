@@ -1,6 +1,6 @@
 'use client'
 
-import * as React from 'react'
+import type { ReactNode } from 'react'
 
 function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
@@ -16,7 +16,7 @@ export function HighlightLayer({ content, query }: Readonly<HighlightLayerProps>
   if (!q) return <>{content}</>
 
   const re = new RegExp(escapeRegExp(q), 'ig')
-  const out: React.ReactNode[] = []
+  const out: ReactNode[] = []
   let lastIndex = 0
   let matchCount = 0
 
@@ -29,12 +29,9 @@ export function HighlightLayer({ content, query }: Readonly<HighlightLayerProps>
 
     if (idx > lastIndex) out.push(content.slice(lastIndex, idx))
     out.push(
-      <mark
-        key={`${idx}-${matched}`}
-        className="rounded bg-warning/15 px-0.5 text-foreground"
-      >
+      <mark key={`${idx}-${matched}`} className="rounded bg-warning/15 px-0.5 text-foreground">
         {content.slice(idx, idx + matched.length)}
-      </mark>
+      </mark>,
     )
     lastIndex = idx + matched.length
     matchCount += 1

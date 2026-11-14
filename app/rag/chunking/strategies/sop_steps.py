@@ -22,7 +22,6 @@ from app.rag.chunking.base import BaseChunker
 @dataclass(frozen=True)
 class StepHeading:
     start: int
-    end: int
     text: str
     step_no: str
     title: str | None
@@ -86,31 +85,6 @@ def _parse_cn_step_heading(line: str) -> tuple[str, str | None] | None:
     return _split_step_tail(num, tail)
 
 
-def _build_sop_chunk(
-    *,
-    page_content: str,
-    base_meta: dict[str, Any],
-    split_meta: dict[str, Any],
-    abs_start: int,
-    abs_end: int,
-    heading: StepHeading | None,
-    fallback: bool = False,
-) -> Document:
-    meta: dict[str, Any] = dict(base_meta)
-    meta.update(split_meta)
-    meta["chunk_strategy"] = "sop_steps"
-    meta["start_char"] = abs_start
-    meta["end_char"] = abs_end
-    if fallback:
-        meta["sop_fallback"] = True
-    if heading is not None:
-        meta["sop_step_heading"] = heading.text
-        meta["sop_step_no"] = heading.step_no
-        if heading.title:
-            meta["sop_step_title"] = heading.title
-    return Document(page_content=page_content, metadata=meta)
-
-
 def _append_split_chunks(
     *,
     out: list[Document],
@@ -123,20 +97,22 @@ def _append_split_chunks(
 ) -> None:
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     for sd in split_docs:
-        local_start = sd.metadata.pop("start_index", None) or 0
-        abs_start = base_start + int(local_start)
+        local_start = sd.metadata.pop("start_index")
+        abs_start = base_start + local_start
         abs_end = abs_start + len(sd.page_content)
-        out.append(
-            _build_sop_chunk(
-                page_content=sd.page_content,
-                base_meta=base_meta,
-                split_meta=sd.metadata or {},
-                abs_start=abs_start,
-                abs_end=abs_end,
-                heading=heading,
-                fallback=fallback,
-            )
-        )
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata)
+        meta["chunk_strategy"] = "sop_steps"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        if fallback:
+            meta["sop_fallback"] = True
+        if heading is not None:
+            meta["sop_step_heading"] = heading.text
+            meta["sop_step_no"] = heading.step_no
+            if heading.title:
+                meta["sop_step_title"] = heading.title
+        out.append(Document(page_content=sd.page_content, metadata=meta))
 
 
 def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
@@ -149,7 +125,7 @@ def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return None
 
@@ -181,21 +157,13 @@ def _iter_steps(text: str) -> list[StepHeading]:
         steps.append(
             StepHeading(
                 start=line_start,
-                end=line_start + len(raw_line),
                 text=line,
-                step_no=num or "?",
+                step_no=num,
                 title=title,
             )
         )
 
-    deduped: list[StepHeading] = []
-    last_start = -1
-    for s in steps:
-        if s.start == last_start:
-            continue
-        deduped.append(s)
-        last_start = s.start
-    return deduped
+    return steps
 
 
 def _build_sections(text: str, steps: list[StepHeading]) -> list[_Section]:
@@ -221,7 +189,7 @@ def looks_like_sop(text: str) -> bool:
 
 
 class SOPStepsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -237,13 +205,12 @@ class SOPStepsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
             steps = _iter_steps(text)
-            sections = _build_sections(text, steps)
             if not steps:
                 _append_split_chunks(
                     out=out,
@@ -256,7 +223,7 @@ class SOPStepsChunker(BaseChunker):
                 )
                 continue
 
-            for section in sections:
+            for section in _build_sections(text, steps):
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():
                     continue
@@ -271,7 +238,7 @@ class SOPStepsChunker(BaseChunker):
                 )
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

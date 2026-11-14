@@ -10,13 +10,13 @@ This is used to automatically pick retrieval presets/profiles and toggles
 based on the query "shape" (faq/howto/api/log) when enabled.
 """
 
-
 import re
 from typing import Any
 
+from app.rag.core.retrieval_modes import normalize_retrieval_mode
 from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
-from app.rag.core.text import normalize_retrieval_mode
 from app.rag.policy.intent_router_model import (
+    IntentRouterModel,
     load_intent_router_model,
     normalize_intent_router_model,
     predict_learned_router_hint,
@@ -92,7 +92,7 @@ def _bounded_reason_codes(reasons: list[str], *, max_items: int = 6) -> list[str
     out: list[str] = []
     seen: set[str] = set()
     for r in reasons:
-        s = str(r or "").strip().lower()
+        s = r.strip().lower()
         if not s:
             continue
         if s in seen:
@@ -110,7 +110,9 @@ def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        term = " ".join(str(item or "").strip().split())
+        if item is None:
+            continue
+        term = " ".join(str(item).split())
         if not term:
             continue
         key = term.casefold()
@@ -124,7 +126,7 @@ def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> list[str]:
 
 
 def _normalize_social_query(query: str) -> str:
-    text = " ".join(str(query or "").strip().split()).casefold()
+    text = " ".join(query.strip().split()).casefold()
     while text:
         stripped = text.strip(_SOCIAL_BOUNDARY_CHARS).strip()
         if stripped == text:
@@ -143,7 +145,7 @@ def _coerce_policy_bool(value: Any) -> bool | None:
         return None
     if isinstance(value, bool):
         return value
-    text = str(value or "").strip().lower()
+    text = str(value).strip().lower()
     if text in {"true", "1", "yes", "on"}:
         return True
     if text in {"false", "0", "no", "off"}:
@@ -173,10 +175,10 @@ def _coerce_policy_float(value: Any, *, minimum: float, maximum: float) -> float
 
 def _normalize_policy_override(name: str, value: Any) -> Any:
     if name == "retrieval_mode":
-        mode = normalize_retrieval_mode(value if value is not None else None)
+        mode = normalize_retrieval_mode(value)
         return mode or _INVALID_POLICY_OVERRIDE
     if name == "retrieval_profile":
-        profile = str(value or "").strip().lower()
+        profile = str(value).strip().lower() if value is not None else None
         allowed = {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}
         return profile if profile in allowed else _INVALID_POLICY_OVERRIDE
     if name in {"top_k", "reranker_top_n"}:
@@ -194,7 +196,7 @@ def _normalize_policy_override(name: str, value: Any) -> Any:
         normalized = _coerce_policy_bool(value)
         return normalized if normalized is not None else _INVALID_POLICY_OVERRIDE
     if name == "reranker_provider":
-        provider = str(value or "").strip().lower()
+        provider = str(value).strip().lower() if value is not None else None
         return provider[:40] if provider else _INVALID_POLICY_OVERRIDE
     return _INVALID_POLICY_OVERRIDE
 
@@ -203,7 +205,9 @@ def _sanitize_policy_overrides(raw: Any) -> dict[str, Any]:
     payload = raw if isinstance(raw, dict) else {}
     out: dict[str, Any] = {}
     for key, value in payload.items():
-        name = str(key or "").strip()
+        if not isinstance(key, str):
+            continue
+        name = key.strip()
         if not name or name not in _POLICY_ALLOWED_OVERRIDES:
             continue
         normalized = _normalize_policy_override(name, value)
@@ -215,8 +219,8 @@ def _sanitize_policy_overrides(raw: Any) -> dict[str, Any]:
 
 def normalize_intent_router_policy(policy: Any) -> dict[str, Any] | None:
     payload = policy if isinstance(policy, dict) else {}
-    schema = str(payload.get("schema") or "").strip()
-    if schema != _INTENT_ROUTER_POLICY_SCHEMA_V1:
+    schema = payload.get("schema")
+    if not isinstance(schema, str) or schema.strip() != _INTENT_ROUTER_POLICY_SCHEMA_V1:
         return None
 
     rules_raw = payload.get("rules")
@@ -227,7 +231,8 @@ def normalize_intent_router_policy(policy: Any) -> dict[str, Any] | None:
     for item in rules_raw[:20]:
         if not isinstance(item, dict):
             continue
-        rule_id = str(item.get("rule_id") or "").strip()[:40]
+        raw_rule_id = item.get("rule_id")
+        rule_id = str(raw_rule_id).strip()[:40] if raw_rule_id is not None else None
         if not rule_id:
             continue
         match_any = _normalize_match_terms(item.get("match_any"))
@@ -253,12 +258,12 @@ def normalize_intent_router_policy(policy: Any) -> dict[str, Any] | None:
 
 
 def _query_matches_policy_rule(query: str, rule: dict[str, Any]) -> bool:
-    q = str(query or "").casefold()
+    q = query.casefold()
     if not q:
         return False
 
-    match_any = [str(x).casefold() for x in (rule.get("match_any") or []) if str(x or "").strip()]
-    match_all = [str(x).casefold() for x in (rule.get("match_all") or []) if str(x or "").strip()]
+    match_any = [x.casefold() for x in rule["match_any"]]
+    match_all = [x.casefold() for x in rule["match_all"]]
 
     any_ok = True if not match_any else any(term in q for term in match_any)
     all_ok = all(term in q for term in match_all)
@@ -267,7 +272,7 @@ def _query_matches_policy_rule(query: str, rule: dict[str, Any]) -> bool:
 
 def route_intent(query: str) -> dict[str, Any]:
     """Route lightweight no-retrieval intents before retrieval preset logic."""
-    q = (query or "").strip()
+    q = (query).strip()
     if q:
         if _matches_social_query(q, _GREETING_TERMS):
             return {"intent": "greeting", "reasons": ["social:greeting"], "skip_retrieval": True}
@@ -287,7 +292,7 @@ def classify_query_intent(query: str) -> tuple[str, list[str]]:
 
     Returns: (intent, reason_codes)
     """
-    q = (query or "").strip()
+    q = (query).strip()
     if not q:
         return "general", ["empty"]
 
@@ -326,7 +331,7 @@ def _apply_profile_contract(*, profile: str, top_k: int, score_threshold: float)
     """
     Enforce the preset's top_k/threshold contract without relying on ChatRAGConfig validation.
     """
-    p = (profile or "").strip().lower()
+    p = (profile).strip().lower()
     if p == "recall20":
         return max(int(top_k or 0), 20), 0.0
     if p == "recall50":
@@ -394,21 +399,20 @@ def _apply_matching_policy_rules(
     policy: dict[str, Any] | None,
 ) -> list[str]:
     rule_ids: list[str] = []
-    for rule in (policy or {}).get("rules", []):
-        if not isinstance(rule, dict) or not _query_matches_policy_rule(query, rule):
+    for rule in policy["rules"] if policy is not None else []:
+        if not _query_matches_policy_rule(query, rule):
             continue
-        rule_ids.append(str(rule.get("rule_id") or "")[:40])
-        for key, value in dict(rule.get("overrides") or {}).items():
-            overrides[str(key)] = value
+        rule_ids.append(rule["rule_id"])
+        overrides.update(rule["overrides"])
     return rule_ids
 
 
 def _resolve_learned_router_model(
     model: dict[str, Any] | None,
     model_path: str | None,
-) -> dict[str, Any] | None:
+) -> IntentRouterModel | None:
     normalized = normalize_intent_router_model(model)
-    if normalized is None and str(model_path or "").strip():
+    if normalized is None and model_path is not None and model_path.strip():
         return load_intent_router_model(model_path)
     return normalized
 
@@ -436,11 +440,11 @@ def _apply_learned_router_hint(
 
     meta["enabled"] = True
     hint = predict_learned_router_hint(query=query, model=learned_model)
-    confidence = min(1.0, max(0.0, float(hint.get("confidence") or 0.0)))
+    confidence = min(1.0, max(0.0, hint["confidence"]))
     meta["confidence"] = round(confidence, 6)
-    meta["rule_id"] = str(hint.get("rule_id") or "")[:40] or None
-    hint_overrides = _sanitize_policy_overrides(hint.get("overrides"))
-    gate = float(meta.get("confidence_gate") or 0.0)
+    meta["rule_id"] = hint["rule_id"]
+    hint_overrides = _sanitize_policy_overrides(hint["overrides"])
+    gate = meta["confidence_gate"]
     if confidence < gate:
         meta["skipped_reason"] = "confidence_below_gate"
         return meta
@@ -452,8 +456,8 @@ def _apply_learned_router_hint(
     for key, value in hint_overrides.items():
         if key in overrides:
             continue
-        overrides[str(key)] = value
-        applied.append(str(key))
+        overrides[key] = value
+        applied.append(key)
     meta["applied_overrides"] = sorted(applied)
     meta["used"] = bool(applied)
     if not applied:
@@ -468,19 +472,25 @@ def _enforce_profile_contract(
     top_k: int,
     score_threshold: float,
 ) -> None:
-    effective = str(overrides.get("retrieval_profile") or profile or "").strip().lower()
+    effective = overrides.get("retrieval_profile")
+    if effective is None:
+        effective = profile
+    if effective is not None:
+        effective = effective.strip().lower()
     supported = {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}
     if effective not in supported:
         return
+    effective_top_k = int(overrides.get("top_k") or top_k)
+    effective_threshold = float(overrides.get("score_threshold") or score_threshold)
     contracted_top_k, contracted_threshold = _apply_profile_contract(
         profile=effective,
-        top_k=int(overrides.get("top_k") or top_k),
-        score_threshold=float(overrides.get("score_threshold") or score_threshold),
+        top_k=effective_top_k,
+        score_threshold=effective_threshold,
     )
-    if int(contracted_top_k) != int(top_k):
-        overrides["top_k"] = int(contracted_top_k)
-    if float(contracted_threshold) != float(score_threshold):
-        overrides["score_threshold"] = float(contracted_threshold)
+    if contracted_top_k != effective_top_k:
+        overrides["top_k"] = contracted_top_k
+    if contracted_threshold != effective_threshold:
+        overrides["score_threshold"] = contracted_threshold
 
 
 def route_retrieval_preset(
@@ -508,7 +518,7 @@ def route_retrieval_preset(
     intent, reasons = classify_query_intent(query)
 
     mode_norm = normalize_retrieval_mode(retrieval_mode or "hybrid")
-    profile_norm = str(retrieval_profile or "").strip().lower() or None
+    profile_norm = retrieval_profile.strip().lower() if retrieval_profile is not None else None
     overrides = _deterministic_intent_overrides(
         intent=intent,
         mode=mode_norm,
@@ -542,7 +552,7 @@ def route_retrieval_preset(
         "policy_used": bool(policy_rule_ids),
         "policy_rule_ids": policy_rule_ids,
         "learned_router": learned_meta,
-        "overrides": sorted(overrides.keys()),
+        "overrides": sorted(overrides),
     }
     return overrides, meta
 
@@ -553,7 +563,9 @@ def _normalize_bucket_terms(raw: Any, *, allowed: set[str], max_items: int = 8) 
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        s = str(item or "").strip().lower()
+        if item is None:
+            continue
+        s = str(item).strip().lower()
         if not s or s not in allowed or s in seen:
             continue
         seen.add(s)
@@ -602,7 +614,8 @@ def _normalize_adaptive_conditions(raw: Any) -> dict[str, Any]:
 def _normalize_adaptive_rule(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
-    rule_id = str(raw.get("rule_id") or "").strip()[:40]
+    raw_rule_id = raw.get("rule_id")
+    rule_id = str(raw_rule_id).strip()[:40] if raw_rule_id is not None else None
     if not rule_id:
         return None
     conditions = _normalize_adaptive_conditions(raw.get("when"))
@@ -616,8 +629,8 @@ def _normalize_adaptive_rule(raw: Any) -> dict[str, Any] | None:
 
 def normalize_adaptive_router_policy(policy: Any) -> dict[str, Any] | None:
     payload = policy if isinstance(policy, dict) else {}
-    schema = str(payload.get("schema") or "").strip()
-    if schema != _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1:
+    schema = payload.get("schema")
+    if not isinstance(schema, str) or schema.strip() != _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1:
         return None
 
     rules_raw = payload.get("rules")
@@ -637,8 +650,7 @@ def normalize_adaptive_router_policy(policy: Any) -> dict[str, Any] | None:
 
 
 def _query_len_bucket(query: str) -> str:
-    q = str(query or "")
-    n = len(q)
+    n = len(query)
     if n <= 40:
         return "short"
     if n <= 120:
@@ -654,37 +666,36 @@ def _adaptive_rule_matches(
     len_bucket: str,
     rule: dict[str, Any],
 ) -> bool:
-    when = rule.get("when")
-    when = when if isinstance(when, dict) else {}
+    when = rule["when"]
 
-    intent_in = [str(v) for v in (when.get("intent_in") or []) if str(v).strip()]
-    if intent_in and str(intent or "").strip().lower() not in {v.lower() for v in intent_in}:
+    intent_in = when.get("intent_in")
+    if intent_in and intent.strip().lower() not in intent_in:
         return False
 
-    mode_in = [str(v) for v in (when.get("retrieval_mode_in") or []) if str(v).strip()]
-    if mode_in and str(retrieval_mode or "").strip().lower() not in {v.lower() for v in mode_in}:
+    mode_in = when.get("retrieval_mode_in")
+    if mode_in and retrieval_mode.strip().lower() not in mode_in:
         return False
 
-    bucket_in = [str(v) for v in (when.get("query_len_bucket_in") or []) if str(v).strip()]
-    if bucket_in and str(len_bucket or "").strip().lower() not in {v.lower() for v in bucket_in}:
+    bucket_in = when.get("query_len_bucket_in")
+    if bucket_in and len_bucket.strip().lower() not in bucket_in:
         return False
 
-    contains_any = [str(v) for v in (when.get("contains_any") or []) if str(v).strip()]
+    contains_any = when.get("contains_any")
     if contains_any:
-        q_fold = str(query or "").casefold()
-        if not any(str(token).casefold() in q_fold for token in contains_any):
+        q_fold = query.casefold()
+        if not any(token.casefold() in q_fold for token in contains_any):
             return False
 
     has_quotes = when.get("has_quotes")
     if has_quotes is not None:
-        q = str(query or "")
+        q = query
         query_has_quotes = any(ch in q for ch in ("'", '"', "“", "”", "‘", "’", "`"))
         if bool(query_has_quotes) != bool(has_quotes):
             return False
 
     has_digits = when.get("has_digits")
     if has_digits is not None:
-        query_has_digits = any(ch.isdigit() for ch in str(query or ""))
+        query_has_digits = any(ch.isdigit() for ch in query)
         if bool(query_has_digits) != bool(has_digits):
             return False
 
@@ -707,7 +718,8 @@ def route_adaptive_retrieval_overrides(
     if policy is None:
         return {}, {"enabled": False, "used": False}
 
-    intent = str(((intent_meta or {}).get("intent")) or "").strip().lower()
+    raw_intent = (intent_meta or {}).get("intent")
+    intent = raw_intent.strip().lower() if raw_intent is not None else None
     if not intent:
         intent, _ = classify_query_intent(query)
     mode_norm = normalize_retrieval_mode(retrieval_mode or "hybrid")
@@ -715,9 +727,7 @@ def route_adaptive_retrieval_overrides(
 
     matched_rule_ids: list[str] = []
     overrides: dict[str, Any] = {}
-    for rule in (policy.get("rules") or []):
-        if not isinstance(rule, dict):
-            continue
+    for rule in policy["rules"]:
         if not _adaptive_rule_matches(
             query=query,
             intent=intent,
@@ -726,25 +736,22 @@ def route_adaptive_retrieval_overrides(
             rule=rule,
         ):
             continue
-        rid = str(rule.get("rule_id") or "").strip()[:40]
-        if rid:
-            matched_rule_ids.append(rid)
-        for key, value in dict(rule.get("overrides") or {}).items():
-            overrides[str(key)] = value
+        matched_rule_ids.append(rule["rule_id"])
+        overrides.update(rule["overrides"])
 
     meta = {
         "enabled": True,
         "used": bool(overrides),
-        "rule_count": int(len(list(policy.get("rules") or []))),
+        "rule_count": len(policy["rules"]),
         "matched_rule_ids": matched_rule_ids[:8],
         "signals": {
             "intent": str(intent or "general"),
             "retrieval_mode": str(mode_norm or "hybrid"),
             "query_len_bucket": str(len_bucket),
-            "has_quotes": bool(any(ch in str(query or "") for ch in ("'", '"', "“", "”", "‘", "’", "`"))),
-            "has_digits": bool(any(ch.isdigit() for ch in str(query or ""))),
+            "has_quotes": bool(any(ch in query for ch in ("'", '"', "“", "”", "‘", "’", "`"))),
+            "has_digits": bool(any(ch.isdigit() for ch in query)),
         },
-        "overrides": sorted(overrides.keys()),
+        "overrides": sorted(overrides),
     }
     return overrides, meta
 

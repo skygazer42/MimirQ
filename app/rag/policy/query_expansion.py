@@ -10,7 +10,6 @@ Constraints:
 - Deterministic and safe for logs/storage
 """
 
-
 import re
 
 from app.rag.policy.clause_refs import extract_clause_refs
@@ -26,7 +25,7 @@ _TRAILING_FILLERS_RE = re.compile(r"(?:该怎么处理|怎么处理|怎么办|�
 
 
 def _normalize_lightweight_query_part(value: str) -> str:
-    text = " ".join(str(value or "").strip().split())
+    text = " ".join(value.strip().split())
     text = text.strip(" ，,。；;！？!?：:")
     text = _LEADING_FILLERS_RE.sub("", text).strip(" ，,。；;！？!?：:")
     text = _TRAILING_FILLERS_RE.sub("", text).strip(" ，,。；;！？!?：:")
@@ -43,7 +42,7 @@ def _useful_lightweight_query_part(value: str, *, min_chars: int, max_chars: int
 
 
 def build_clause_fastlane_queries(query: str, *, max_refs: int = 4) -> list[str]:
-    raw = (query or "").strip()
+    raw = (query).strip()
     if not raw:
         return []
 
@@ -53,10 +52,7 @@ def build_clause_fastlane_queries(query: str, *, max_refs: int = 4) -> list[str]
 
     out: list[str] = []
     for ref in refs:
-        v = (ref or "").strip()
-        if not v:
-            continue
-        out.append(v)
+        out.append(ref)
         if len(out) >= max_refs:
             break
     return out
@@ -112,7 +108,7 @@ def build_lightweight_subquery_queries(
     then let the normal fusion/rerank path decide what survives.
     """
 
-    raw = " ".join(str(query or "").strip().split())
+    raw = " ".join(query.strip().split())
     if len(raw) < int(min_query_chars or 0):
         return []
 

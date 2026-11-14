@@ -3,7 +3,7 @@ sidebar_label: "Full Operation Guide"
 sidebar_position: 1
 ---
 
-# MimirQ Full Operation Guide
+# Ragvia Full Operation Guide
 
 This guide follows the actual user journey from deployment and first login through dataset creation, ingestion, parsing, indexing, retrieval, cited answers, evaluation, and production operations.
 
@@ -21,7 +21,7 @@ flowchart LR
 ## 1. Start and sign in
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 # Edit .env and set at least LLM_API_KEY for real model calls
@@ -119,18 +119,18 @@ Changing the embedding model, provider, or vector dimension requires rebuilding 
 
 ## 4. Retrieval, generation, and Dify
 
-MimirQ evaluates evidence retrieval separately from answer generation:
+Ragvia evaluates evidence retrieval separately from answer generation:
 
 - Retrieval testing validates recall and reranking.
 - Chat validates whether the LLM follows the evidence.
 - If evidence is correct but the answer is wrong, inspect prompts, context trimming, and the LLM instead of adding question-specific retrieval rules.
 
-Dify can consume MimirQ through two paths:
+Dify can consume Ragvia through two paths:
 
 - **External Knowledge API**: `POST /api/v1/integrations/dify/retrieval`.
-- **Workflow HTTP node**: Dify sends the query, dataset scope, and filters; MimirQ returns evidence and trace data.
+- **Workflow HTTP node**: Dify sends the query, dataset scope, and filters; Ragvia returns evidence and trace data.
 
-Dify owns orchestration and generation, while MimirQ keeps governance, retrieval, reranking, permission filtering, and evidence. Use [OpenAPI](https://skygazer42.github.io/MimirQ/) for the current request schema.
+Dify owns orchestration and generation, while Ragvia keeps governance, retrieval, reranking, permission filtering, and evidence. Use [OpenAPI](https://skygazer42.github.io/MimirQ/) for the current request schema.
 
 ## 5. Evaluation and feedback
 
@@ -162,7 +162,7 @@ Dataset access modes are `all_team_members`, `only_me`, and `partial_members`; d
 | Empty-data rebuild | `make docker-reset` | Delete | Keep |
 | Full local rebuild | `make docker-purge` | Delete | Delete |
 
-The last two commands are irreversible. Complete a backup and restore drill first. MimirQ uses the isolated Compose project name `mimirq`; see [Deployment](../ops/deployment) for PowerShell, Dify coexistence, and legacy recovery. Do not substitute a global `docker system prune` for project-scoped cleanup.
+The last two commands are irreversible. Complete a backup and restore drill first. Ragvia uses the isolated Compose project name `mimirq`; see [Deployment](../ops/deployment) for PowerShell, Dify coexistence, and legacy recovery. Do not substitute a global `docker system prune` for project-scoped cleanup.
 
 ## 8. Troubleshooting order
 
@@ -189,4 +189,4 @@ Keep the returned `request_id` and use it to correlate API, worker, model-servic
 - [ ] A backup was restored and retrieval was validated afterward.
 - [ ] Upgrade, migration, rollback, and concurrency were tested in staging.
 
-The complete offline repository manual is [MimirQ Full Operation Guide](https://github.com/skygazer42/MimirQ/blob/main/docs/user_guide.md).
+The complete offline repository manual is [Ragvia Full Operation Guide](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/user_guide.md).

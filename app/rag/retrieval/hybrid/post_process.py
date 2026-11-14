@@ -18,15 +18,15 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
 from app.rag.retrieval.hybrid.common import (
     _RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
-    _apply_metadata_exact_anchor_to_result,
-    _float_or_default,
     _log_retriever_fallback,
     logger,
 )
+from app.rag.retrieval.hybrid.metadata_ordering import order_metadata_anchors
 from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.source_labels import derive_document_title, should_replace_source_label
 from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
@@ -154,10 +154,18 @@ class PostProcessMixin:
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
     ) -> tuple[UUID | None, str | None, set[str], str]:
         tenant_filter = self.tenant_id
-        account_id = (self.account_id or "").strip() or None
+        account_id = self.account_id
+        if account_id is not None:
+            account_id = account_id.strip()
+        if not account_id:
+            account_id = None
         dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
-        runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
-        return tenant_filter, account_id, dataset_filters, str(runtime.embedding_space_hash or "").strip()
+        runtime = (
+            embedding_runtime
+            if embedding_runtime is not None
+            else self._resolve_embedding_runtime(tenant_id=tenant_filter)
+        )
+        return tenant_filter, account_id, dataset_filters, runtime.embedding_space_hash.strip()
 
     def _load_enrichment_chunks_by_id(
         self,
@@ -384,7 +392,7 @@ class PostProcessMixin:
         ready = (
             bool(doc_meta.get("active_pipeline_ready"))
             if "active_pipeline_ready" in doc_meta
-            else (str(status or "").lower() == "completed")
+            else (status.lower() == "completed")
         )
         if archived_at is not None or disabled_at is not None:
             ready = False
@@ -393,10 +401,12 @@ class PostProcessMixin:
         return bool(ready)
 
     def _document_active_pipeline_key(self, *, doc_meta: dict[str, Any], document_id: str) -> str | None:
-        active_key = str(doc_meta.get("active_doc_pipeline_key") or "").strip()
+        active_key = _stringified_metadata_text(doc_meta, "active_doc_pipeline_key")
         if active_key:
             return active_key
-        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+        active_hash = _stringified_metadata_text(doc_meta, "active_pipeline_hash") or _stringified_metadata_text(
+            doc_meta, "pipeline_hash"
+        )
         if active_hash:
             return f"{document_id}:{active_hash}"
         return None
@@ -417,7 +427,7 @@ class PostProcessMixin:
             if tenant_filter:
                 q = q.filter(DocumentChunk.tenant_id == tenant_filter)
             for doc_id, content in q.all():
-                first_chunk_by_doc_id[str(doc_id)] = str(content or "")
+                first_chunk_by_doc_id[str(doc_id)] = content
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
         return first_chunk_by_doc_id
@@ -612,7 +622,7 @@ class PostProcessMixin:
         if dataset_filters and doc_ctx.doc_dataset_by_id.get(doc_id_str) not in dataset_filters:
             self._increment_enrichment_stat(stats0, "filtered_dataset")
             return False
-        if getattr(chunk, "disabled_at", None) is not None:
+        if chunk.disabled_at is not None:
             self._increment_enrichment_stat(stats0, "filtered_not_ready")
             return False
         if doc_ctx.doc_ready_by_id and not doc_ctx.doc_ready_by_id.get(doc_id_str, False):
@@ -642,13 +652,15 @@ class PostProcessMixin:
         embedding_space: str,
         chunk: DocumentChunk,
     ) -> bool:
-        expected_embedding_space = str(
-            meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
-        ).strip()
+        expected_embedding_space = _stringified_metadata_text(meta, _RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY)
+        if expected_embedding_space is None:
+            expected_embedding_space = embedding_space.strip()
         if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is None and meta.get("score") is None:
             return True
         stored_meta = chunk.doc_metadata if isinstance(chunk.doc_metadata, dict) else {}
-        ck_space = str(meta.get("embedding_space_hash") or stored_meta.get("embedding_space_hash") or "").strip()
+        ck_space = _stringified_metadata_text(meta, "embedding_space_hash") or _stringified_metadata_text(
+            stored_meta, "embedding_space_hash"
+        )
         return not expected_embedding_space or ck_space == expected_embedding_space
 
     def _active_pipeline_allowed(
@@ -675,7 +687,7 @@ class PostProcessMixin:
         cid_str = str(chunk.id)
         result["chunk_id"] = cid_str
         meta["chunk_id"] = cid_str
-        db_content = chunk.content or ""
+        db_content = chunk.content
         if isinstance(db_content, str) and db_content and result.get("content") != db_content:
             result["content"] = db_content
         stored_meta = dict(chunk.doc_metadata or {})
@@ -739,7 +751,7 @@ class PostProcessMixin:
             meta["end_char"] = int(chunk.end_char)
         if meta.get("chunk_index") is None:
             try:
-                meta["chunk_index"] = int(getattr(chunk, "chunk_index", None))
+                meta["chunk_index"] = int(chunk.chunk_index)
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
@@ -839,7 +851,7 @@ class PostProcessMixin:
 
         needed_pairs = self._neighbor_needed_pairs(anchors, window=window, short_doc_ids=short_doc_ids)
 
-        if not needed_pairs:
+        if not needed_pairs and not (sibling_enabled and short_doc_max_chunks > 0 and doc_ids_for_sibling):
             return results
 
         neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
@@ -888,20 +900,20 @@ class PostProcessMixin:
         window_raw = (
             self.context_neighbor_window
             if self.context_neighbor_window is not None
-            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0)
+            else settings.RAG_CONTEXT_NEIGHBOR_WINDOW
         )
         max_added_raw = (
             self.context_neighbor_max_added
             if self.context_neighbor_max_added is not None
-            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0)
+            else settings.RAG_CONTEXT_NEIGHBOR_MAX_ADDED
         )
         return {
             "window": max(0, int(window_raw or 0)),
             "max_added": max(0, int(max_added_raw or 0)),
-            "sibling_enabled": bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False)),
+            "sibling_enabled": bool(settings.RAG_CONTEXT_SIBLING_EXPAND_ENABLED),
             "short_doc_max_chunks": max(
                 0,
-                int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0),
+                int(settings.RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS),
             ),
         }
 
@@ -934,10 +946,10 @@ class PostProcessMixin:
 
     @staticmethod
     def _doc_pipeline_key(meta: dict[str, Any], *, document_id: str | None) -> str | None:
-        pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+        pipeline_key = _stringified_metadata_text(meta, "doc_pipeline_key")
         if pipeline_key:
             return pipeline_key
-        pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+        pipeline_hash = _stringified_metadata_text(meta, "pipeline_hash")
         if pipeline_hash and document_id:
             return f"{document_id}:{pipeline_hash}"
         return None
@@ -1050,7 +1062,7 @@ class PostProcessMixin:
         desired = desired_pipeline_by_doc.get(str(chunk.document_id))
         if not desired:
             return True
-        stored_meta = dict(getattr(chunk, "doc_metadata", None) or {})
+        stored_meta = dict(chunk.doc_metadata or {})
         ck_key = self._doc_pipeline_key(stored_meta, document_id=str(chunk.document_id))
         return bool(ck_key and ck_key == desired)
 
@@ -1155,7 +1167,7 @@ class PostProcessMixin:
         """
         if not results:
             return results
-        if not bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)):
+        if not bool(settings.RAG_CONTEXT_STITCHING_ENABLED):
             return results
 
         stitchable_by_doc, singleton_groups = self._split_stitchable_results(results)
@@ -1184,12 +1196,12 @@ class PostProcessMixin:
         """
         if not results:
             return results
-        if not bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)):
+        if not bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED):
             return results
 
         mode = self._parent_child_merge_mode()
-        min_children = max(1, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN", 2) or 2))
-        max_parents = max(0, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS", 20) or 20))
+        min_children = max(1, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN))
+        max_parents = max(0, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS))
         child_groups, parent_results, child_chunk_ids_by_group = self._group_parent_child_results(results)
 
         if not child_groups:
@@ -1233,7 +1245,7 @@ class PostProcessMixin:
 
     @staticmethod
     def _parent_child_merge_mode() -> str:
-        mode = str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "replace") or "replace").strip().lower()
+        mode = str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE).strip().lower()
         return mode if mode in {"replace", "append"} else "replace"
 
     def _group_parent_child_results(
@@ -1249,8 +1261,10 @@ class PostProcessMixin:
         child_chunk_ids_by_group: dict[tuple[str, str], set[str]] = {}
         for result in results:
             meta = result.get("metadata") or {}
-            role = str(meta.get("chunk_role") or "").strip().lower()
-            doc_id = str(meta.get("document_id") or "").strip()
+            role = _stringified_metadata_text(meta, "chunk_role")
+            if role is not None:
+                role = role.lower()
+            doc_id = _stringified_metadata_text(meta, "document_id")
             family_key = self._resolve_family_collapse_key(meta, result=result)
             if not family_key or not doc_id:
                 continue
@@ -1270,8 +1284,8 @@ class PostProcessMixin:
         desired_pipeline_by_doc: dict[str, str] = {}
         for result in results:
             meta = result.get("metadata") or {}
-            doc_id = str(meta.get("document_id") or "").strip()
-            pipeline_key = self._doc_pipeline_key(meta, document_id=doc_id or None)
+            doc_id = _stringified_metadata_text(meta, "document_id")
+            pipeline_key = self._doc_pipeline_key(meta, document_id=(doc_id))
             if doc_id and pipeline_key:
                 desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
         return desired_pipeline_by_doc
@@ -1444,10 +1458,11 @@ class PostProcessMixin:
         for result in results:
             out.append(result)
             meta = result.get("metadata") or {}
-            if str(meta.get("chunk_role") or "").strip().lower() != "child":
+            role = _stringified_metadata_text(meta, "chunk_role")
+            if role is None or role.lower() != "child":
                 continue
             key = (
-                str(meta.get("document_id") or "").strip(),
+                _stringified_metadata_text(meta, "document_id"),
                 self._resolve_family_collapse_key(meta, result=result),
             )
             if key not in selected or key in inserted:
@@ -1481,12 +1496,17 @@ class PostProcessMixin:
         out: list[dict[str, Any]] = []
         for result in results:
             meta = result.get("metadata") or {}
-            cid = str(result.get("chunk_id") or meta.get("chunk_id") or "")
-            if meta.get("retrieval_role") == "neighbor" and str(meta.get("neighbor_of") or "") in removed_child_ids:
+            cid = _stringified_metadata_text(result, "chunk_id") or _stringified_metadata_text(meta, "chunk_id")
+            if (
+                meta.get("retrieval_role") == "neighbor"
+                and _stringified_metadata_text(meta, "neighbor_of") in removed_child_ids
+            ):
                 continue
-            role = str(meta.get("chunk_role") or "").strip().lower()
+            role = _stringified_metadata_text(meta, "chunk_role")
+            if role is not None:
+                role = role.lower()
             key = (
-                str(meta.get("document_id") or "").strip(),
+                _stringified_metadata_text(meta, "document_id"),
                 self._resolve_family_collapse_key(meta, result=result),
             )
             if key in selected and role in {"child", "parent"}:
@@ -1514,102 +1534,4 @@ class PostProcessMixin:
         *,
         stats: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        if not query or not results:
-            if stats is not None:
-                stats["applied"] = False
-                stats["reason"] = "empty"
-            return results
-
-        phrase_boost_weight = max(
-            0.0,
-            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
-        )
-        annotated, annotated_count, promoted_count = self._annotated_metadata_anchor_results(
-            query=query,
-            results=results,
-            phrase_boost_weight=phrase_boost_weight,
-        )
-
-        if annotated_count <= 0:
-            if stats is not None:
-                stats["applied"] = False
-                stats["annotated"] = 0
-            return results
-
-        before_top = self._result_key(annotated[0][0]) if annotated else ""
-        annotated.sort(key=self._metadata_anchor_sort_key_factory(annotated, result_count=len(results)))
-        ordered = [item for item, _pos in annotated]
-        after_top = self._result_key(ordered[0]) if ordered else ""
-        if stats is not None:
-            stats["applied"] = True
-            stats["annotated"] = int(annotated_count)
-            stats["score_promoted"] = int(promoted_count)
-            stats["top_changed"] = bool(before_top and after_top and before_top != after_top)
-        return ordered
-
-    def _annotated_metadata_anchor_results(
-        self,
-        *,
-        query: str,
-        results: list[dict[str, Any]],
-        phrase_boost_weight: float,
-    ) -> tuple[list[tuple[dict[str, Any], int]], int, int]:
-        annotated: list[tuple[dict[str, Any], int]] = []
-        annotated_count = 0
-        promoted_count = 0
-        for pos, result in enumerate(results):
-            item = dict(result)
-            changed = _apply_metadata_exact_anchor_to_result(
-                query=query,
-                result=item,
-                phrase_boost_weight=phrase_boost_weight,
-                promote_score=True,
-            )
-            if changed:
-                annotated_count += 1
-                if item.get("metadata_exact_match_promoted_score") is not None:
-                    promoted_count += 1
-            else:
-                item = result
-            annotated.append((item, pos))
-        return annotated, annotated_count, promoted_count
-
-    def _metadata_anchor_sort_key_factory(
-        self,
-        annotated: list[tuple[dict[str, Any], int]],
-        *,
-        result_count: int,
-    ):
-        has_budgeted_prefix = any(
-            isinstance(result, dict) and result.get("fusion_budgeted_prefix_rank") is not None
-            for result, _pos in annotated
-        )
-        best_anchor_score = max(
-            _float_or_default(item.get("metadata_exact_match_score"), 0.0) for item, _pos in annotated
-        )
-
-        def sort_key(pair: tuple[dict[str, Any], int]) -> tuple[float, float, int]:
-            item, pos = pair
-            if has_budgeted_prefix:
-                try:
-                    prefix_rank = int(item.get("fusion_budgeted_prefix_rank"))
-                except (TypeError, ValueError):
-                    prefix_rank = result_count + int(pos) + 1
-                return (
-                    float(prefix_rank),
-                    -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
-                    int(pos),
-                )
-            if best_anchor_score >= 0.65:
-                return (
-                    -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
-                    -_float_or_default(item.get("score"), 0.0),
-                    int(pos),
-                )
-            return (
-                -_float_or_default(item.get("score"), 0.0),
-                -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
-                int(pos),
-            )
-
-        return sort_key
+        return order_metadata_anchors(query, results, stats=stats)

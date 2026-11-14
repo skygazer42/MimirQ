@@ -12,11 +12,15 @@ be used by:
 """
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models.evaluation import RagasRegressionItem, RagasRegressionRun
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
 
 
 def _base_query(
@@ -25,7 +29,7 @@ def _base_query(
     tenant_id: UUID,
     cutoff: datetime,
     dataset_id: UUID | None = None,
-):
+) -> "Query[tuple[UUID]]":
     q = (
         db.query(RagasRegressionRun.id)
         .filter(
@@ -41,6 +45,20 @@ def _base_query(
     return q
 
 
+def _candidate_run_ids(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    cutoff: datetime,
+    max_delete: int,
+    dataset_id: UUID | None,
+) -> list[UUID]:
+    # Keep the existing maintenance ceiling for direct API and job callers.
+    limit = min(max(1, int(max_delete)), 5000)
+    rows = _base_query(db, tenant_id=tenant_id, cutoff=cutoff, dataset_id=dataset_id).limit(limit).all()
+    return [run_id for (run_id,) in rows]
+
+
 def plan_regression_run_purge(
     db: Session,
     *,
@@ -52,15 +70,7 @@ def plan_regression_run_purge(
     """
     Return how many runs *would* be deleted for this purge run (bounded by max_delete).
     """
-    try:
-        max_delete_i = max(1, int(max_delete or 0))
-    except Exception:
-        max_delete_i = 200
-    # Safety: avoid accidental mass-deletes from misconfigured cron args.
-    max_delete_i = min(max_delete_i, 5000)
-
-    total = int(_base_query(db, tenant_id=tenant_id, cutoff=cutoff, dataset_id=dataset_id).count() or 0)
-    return min(total, max_delete_i)
+    return len(_candidate_run_ids(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete, dataset_id=dataset_id))
 
 
 def purge_regression_run_rows(
@@ -78,33 +88,21 @@ def purge_regression_run_rows(
     Returns:
         (deleted_runs, deleted_items)
     """
-    try:
-        max_delete_i = max(1, int(max_delete or 0))
-    except Exception:
-        max_delete_i = 200
-    max_delete_i = min(max_delete_i, 5000)
-
-    run_ids: list[UUID] = [
-        row[0]
-        for row in _base_query(db, tenant_id=tenant_id, cutoff=cutoff, dataset_id=dataset_id).limit(max_delete_i).all()
-        if row and row[0] is not None
-    ]
+    run_ids = _candidate_run_ids(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete, dataset_id=dataset_id)
     if not run_ids:
         return (0, 0)
 
-    deleted_items = int(
+    deleted_items = (
         db.query(RagasRegressionItem)
         .filter(RagasRegressionItem.tenant_id == tenant_id, RagasRegressionItem.run_id.in_(run_ids))
         .delete(synchronize_session=False)
-        or 0
     )
-    deleted_runs = int(
+    deleted_runs = (
         db.query(RagasRegressionRun)
         .filter(RagasRegressionRun.tenant_id == tenant_id, RagasRegressionRun.id.in_(run_ids))
         .delete(synchronize_session=False)
-        or 0
     )
-    if bool(commit):
+    if commit:
         db.commit()
 
     return (deleted_runs, deleted_items)

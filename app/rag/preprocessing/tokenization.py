@@ -1,9 +1,10 @@
 """
-Shared tokenization helpers.
+Shared lexical tokenization helpers.
 
 These are used across:
-- BM25 retrieval
-- Long-term memory retrieval (BM25 over chat history)
+- Lexical retrieval and reranking
+- Chunk quality and context analysis
+- Keyword matching over chat history in the database
 """
 
 import re
@@ -15,12 +16,12 @@ import jieba
 from app.core.config import settings
 from app.rag.preprocessing.stopwords import STOPWORDS
 
-_BM25_TOKENIZE_CACHE_MAX_CHARS = 200
+_LEXICAL_TOKENIZE_CACHE_MAX_CHARS = 200
 
 
 @lru_cache(maxsize=4096)
-def _tokenize_for_bm25_cached(text: str) -> tuple[str, ...]:
-    return tuple(_tokenize_for_bm25_impl(text))
+def _tokenize_lexical_text_cached(text: str) -> tuple[str, ...]:
+    return tuple(_tokenize_lexical_text_impl(text))
 
 
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][\\A-Za-z0-9_+./:-]*[A-Za-z0-9+]")
@@ -31,7 +32,7 @@ _NUM_SEQ_RE = re.compile(r"\d{2,}")
 _NUM_COMMA_UNDER_RE = re.compile(r"\d[\d,_]{2,}\d")
 
 
-def _normalize_for_bm25(text: str) -> str:
+def _normalize_lexical_text(text: str) -> str:
     """
     Normalize query/doc text before tokenization.
 
@@ -39,13 +40,10 @@ def _normalize_for_bm25(text: str) -> str:
     (e.g. "ＡＰＩ" -> "API", "２０２６" -> "2026") for multilingual recall stability.
     """
 
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return ""
-    try:
-        return unicodedata.normalize("NFKC", raw)
-    except Exception:
-        return raw
+    return unicodedata.normalize("NFKC", raw)
 
 
 def _keep_token(norm: str) -> bool:
@@ -53,7 +51,7 @@ def _keep_token(norm: str) -> bool:
         return False
     if norm in STOPWORDS:
         return False
-    # Skip single-character tokens (too noisy for BM25).
+    # Skip single-character tokens (too noisy for lexical matching).
     if len(norm) < 2:
         return False
     return True
@@ -103,7 +101,7 @@ def _camel_subtokens(raw_token: str) -> list[str]:
         if not (any(c.islower() for c in segment) and any(c.isupper() for c in segment)):
             continue
         for part in _split_camel_alnum_segment(segment):
-            norm = str(part).strip().casefold()
+            norm = part.strip().casefold()
             if _keep_token(norm):
                 out.append(norm)
     return out
@@ -123,7 +121,7 @@ def _version_subtokens(norm_token: str) -> list[str]:
     m = re.match(r"^v?(\d+(?:\.\d+){1,6})$", norm_token, flags=re.IGNORECASE)
     if not m:
         return []
-    ver = str(m.group(1))
+    ver = m.group(1)
     parts = ver.split(".")
     out: list[str] = []
     if _keep_token(ver):
@@ -137,18 +135,18 @@ def _version_subtokens(norm_token: str) -> list[str]:
 
 
 def _numeric_normalization_tokens(text: str) -> list[str]:
-    if not bool(getattr(settings, "BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED", True)):
+    if not settings.BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED:
         return []
-    raw = text or ""
+    raw = text
     out: list[str] = []
     # 1) Plain digit sequences (>= 2 chars), e.g. 2024, 42.
     for m in _NUM_SEQ_RE.findall(raw):
-        norm = str(m)
+        norm = m
         if _keep_token(norm):
             out.append(norm)
     # 2) Comma/underscore separated numbers, e.g. 1,234 or 12_345 -> 1234/12345.
     for m in _NUM_COMMA_UNDER_RE.findall(raw):
-        norm = str(m).replace(",", "").replace("_", "")
+        norm = m.replace(",", "").replace("_", "")
         if _keep_token(norm):
             out.append(norm)
     return out
@@ -163,11 +161,11 @@ def _append_unique_token(tokens: list[str], seen: set[str], token: str) -> None:
 
 def _expand_ascii_parts(norm: str, *, tokens: list[str], seen: set[str]) -> None:
     for seg in _ASCII_PATH_SPLIT_RE.split(norm):
-        segment = str(seg).strip()
+        segment = seg.strip()
         if segment and segment != norm:
             _append_unique_token(tokens, seen, segment)
         for part in _ASCII_PART_SPLIT_RE.split(segment):
-            _append_unique_token(tokens, seen, str(part).strip())
+            _append_unique_token(tokens, seen, part.strip())
 
 
 def _expand_ascii_subtokens(raw_tok: str, norm: str, *, tokens: list[str], seen: set[str]) -> None:
@@ -178,11 +176,11 @@ def _expand_ascii_subtokens(raw_tok: str, norm: str, *, tokens: list[str], seen:
         _append_unique_token(tokens, seen, sub)
 
 
-def _tokenize_for_bm25_ascii(text: str) -> list[str]:
+def _tokenize_ascii_text(text: str) -> list[str]:
     tokens: list[str] = []
     extra: set[str] = set()
-    for token in _ASCII_TOKEN_RE.findall(text or ""):
-        raw_tok = str(token).strip()
+    for token in _ASCII_TOKEN_RE.findall(text):
+        raw_tok = token.strip()
         if not raw_tok:
             continue
         norm = raw_tok.casefold()
@@ -192,7 +190,7 @@ def _tokenize_for_bm25_ascii(text: str) -> list[str]:
         # Treat the base token as already emitted so expansion logic doesn't duplicate it.
         extra.add(norm)
 
-        if not bool(getattr(settings, "BM25_TOKENIZE_ASCII_EXPAND_ENABLED", True)):
+        if not settings.BM25_TOKENIZE_ASCII_EXPAND_ENABLED:
             continue
         _expand_ascii_subtokens(raw_tok, norm, tokens=tokens, seen=extra)
 
@@ -205,7 +203,7 @@ def _tokenize_for_bm25_ascii(text: str) -> list[str]:
 
 def _append_ascii_tokens(tokens: list[str], cjk_oov_buf: list[str], extra_budget: list[int], text: str) -> None:
     _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
-    for token in _tokenize_for_bm25_ascii(text):
+    for token in _tokenize_ascii_text(text):
         if _keep_token(token):
             tokens.append(token)
 
@@ -235,10 +233,10 @@ def _flush_cjk_oov_buffer(buf: list[str], out_tokens: list[str], *, extra_budget
     s = "".join(buf)
     buf.clear()
 
-    if not bool(getattr(settings, "BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED", True)):
+    if not settings.BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED:
         return
 
-    max_term_chars = int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 8) or 8)
+    max_term_chars = settings.BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS
     if 2 <= len(s) <= max_term_chars and _keep_token(s):
         out_tokens.append(s)
         extra_budget[0] = max(0, extra_budget[0] - 1)
@@ -255,17 +253,17 @@ def _flush_cjk_oov_buffer(buf: list[str], out_tokens: list[str], *, extra_budget
             extra_budget[0] = max(0, extra_budget[0] - 1)
 
 
-def _tokenize_for_bm25_impl(text: str) -> list[str]:
-    raw = _normalize_for_bm25(text)
+def _tokenize_lexical_text_impl(text: str) -> list[str]:
+    raw = _normalize_lexical_text(text)
     if not raw:
         return []
 
     if raw.isascii():
-        return _tokenize_for_bm25_ascii(raw)
+        return _tokenize_ascii_text(raw)
 
     tokens: list[str] = []
     # Keep a small expansion budget to avoid pathological token explosion on weird inputs.
-    extra_budget = [int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 128) or 128)]
+    extra_budget = [settings.BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS]
     cjk_oov_buf: list[str] = []
 
     for token in jieba.cut_for_search(raw):
@@ -292,28 +290,28 @@ def _tokenize_for_bm25_impl(text: str) -> list[str]:
 
     # Also extract ASCII/numeric tokens from the full mixed text.
     # This catches things like "/api/v1" that may be adjacent to CJK and not surfaced by jieba reliably.
-    tokens.extend(_tokenize_for_bm25_ascii(raw))
+    tokens.extend(_tokenize_ascii_text(raw))
     return tokens
 
 
-def tokenize_for_bm25(text: str) -> list[str]:
+def tokenize_lexical_text(text: str) -> list[str]:
     """
-    Tokenize text for BM25.
+    Tokenize text for lexical matching and analysis.
 
     Notes:
     - Uses jieba search mode.
     - Applies conservative filters: stopwords, empty tokens, single-character tokens.
     """
-    raw = _normalize_for_bm25(text)
+    raw = _normalize_lexical_text(text)
     if not raw:
         return []
     # Cache only short strings (queries, titles) to avoid unbounded memory use.
-    if len(raw) <= _BM25_TOKENIZE_CACHE_MAX_CHARS:
-        return list(_tokenize_for_bm25_cached(raw))
-    return _tokenize_for_bm25_impl(raw)
+    if len(raw) <= _LEXICAL_TOKENIZE_CACHE_MAX_CHARS:
+        return list(_tokenize_lexical_text_cached(raw))
+    return _tokenize_lexical_text_impl(raw)
 
 
-def warmup_bm25_tokenizer() -> None:
+def warmup_lexical_tokenizer() -> None:
     """Pay the per-process Jieba initialization cost before serving traffic."""
     jieba.initialize()
-    tokenize_for_bm25("MimirQ knowledge retrieval 知识库检索预热")
+    tokenize_lexical_text("MimirQ knowledge retrieval 知识库检索预热")

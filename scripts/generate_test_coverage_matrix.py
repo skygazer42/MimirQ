@@ -1,11 +1,10 @@
-
 import argparse
 import json
 import os
 from pathlib import Path
 from typing import Iterable
 
-FRONTEND_TEST_GLOBS = ('*.test.ts', '*.test.tsx', '*.spec.ts', '*.spec.tsx')
+FRONTEND_TEST_GLOBS = ("*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx")
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 SOURCE_CONTRACT_TEST_MARKERS = (".source.test.", ".entry.test.")
 
@@ -103,11 +102,7 @@ def _collect_tests(
     ]
 
     frontend_root = repo_root / "web"
-    frontend_test_paths = [
-        path
-        for path in _iter_files(frontend_root, FRONTEND_TEST_GLOBS)
-        if "e2e" not in path.parts
-    ]
+    frontend_test_paths = [path for path in _iter_files(frontend_root, FRONTEND_TEST_GLOBS) if "e2e" not in path.parts]
     frontend_tests = [
         {"file": str(path.relative_to(repo_root))}
         for path in frontend_test_paths

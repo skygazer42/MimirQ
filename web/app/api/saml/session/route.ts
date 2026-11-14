@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
 import { SAML_BRIDGE_COOKIE_NAME, SAML_BRIDGE_COOKIE_PATH } from '@/lib/saml-session'
@@ -41,5 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = await backendRes.json().catch(() => null)
-  return clearBridgeCookie(jsonNoStore(payload ?? { error: 'Invalid SAML bridge response' }, { status: backendRes.status }))
+  return clearBridgeCookie(
+    jsonNoStore(payload ?? { error: 'Invalid SAML bridge response' }, { status: backendRes.status }),
+  )
 }

@@ -6,6 +6,9 @@ import pytest
 from fastapi import HTTPException
 from PIL import Image
 
+from app.services import document_preview_legacy as legacy_preview_service
+from app.services import document_preview_utils as preview_utils
+
 
 def _write_preview_image(root: Path, *, tenant_id: str, image_id: str, binding: dict[str, str]) -> Path:
     images_dir = root / tenant_id / "images"
@@ -17,8 +20,6 @@ def _write_preview_image(root: Path, *, tenant_id: str, image_id: str, binding: 
 
 
 def test_manual_preview_reuse_blocks_other_accounts(monkeypatch, tmp_path) -> None:
-    import app.api.v1.documents as documents_module
-
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
     document_id = str(uuid4())
@@ -30,16 +31,16 @@ def test_manual_preview_reuse_blocks_other_accounts(monkeypatch, tmp_path) -> No
         binding={"tenant_id": tenant_id, "account_id": "other-account"},
     )
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(preview_utils.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        documents_module.minio_service,
+        preview_utils.minio_service,
         "upload_image",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("upload_image should not be called")),
         raising=True,
     )
 
     with pytest.raises(HTTPException) as excinfo:
-        documents_module._rewrite_preview_images_to_minio(
+        preview_utils._rewrite_preview_images_to_minio(
             f"![img](/api/v1/documents/image/{image_id})",
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -56,8 +57,6 @@ def test_manual_preview_reuse_blocks_other_accounts(monkeypatch, tmp_path) -> No
 
 
 def test_manual_preview_reuse_allows_same_target_binding_upload(monkeypatch, tmp_path) -> None:
-    import app.api.v1.documents as documents_module
-
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
     document_id = str(uuid4())
@@ -73,15 +72,15 @@ def test_manual_preview_reuse_allows_same_target_binding_upload(monkeypatch, tmp
         },
     )
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(preview_utils.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        documents_module.minio_service,
+        preview_utils.minio_service,
         "upload_image",
         lambda **_kwargs: f"{tenant_id}:{dataset_id}:{document_id}:asset0",
         raising=True,
     )
 
-    text, img_ids, next_index = documents_module._rewrite_preview_images_to_minio(
+    text, img_ids, next_index = preview_utils._rewrite_preview_images_to_minio(
         f"![img](/api/v1/documents/image/{image_id})",
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -99,8 +98,6 @@ def test_manual_preview_reuse_allows_same_target_binding_upload(monkeypatch, tmp
 
 
 def test_manual_preview_reuse_promotes_current_owner_binding_when_minio_disabled(monkeypatch, tmp_path) -> None:
-    import app.api.v1.documents as documents_module
-
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
     document_id = str(uuid4())
@@ -112,9 +109,9 @@ def test_manual_preview_reuse_promotes_current_owner_binding_when_minio_disabled
         binding={"tenant_id": tenant_id, "account_id": "preview-owner"},
     )
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(preview_utils.settings, "MINIO_ENABLED", False, raising=False)
 
-    text, img_ids, next_index = documents_module._rewrite_preview_images_to_minio(
+    text, img_ids, next_index = preview_utils._rewrite_preview_images_to_minio(
         f"![img](/api/v1/documents/image/{image_id})",
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -137,8 +134,6 @@ def test_manual_preview_reuse_promotes_current_owner_binding_when_minio_disabled
 
 
 def test_manual_preview_reuse_validates_local_refs_alongside_minio_refs(monkeypatch, tmp_path) -> None:
-    import app.api.v1.documents as documents_module
-
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
     document_id = str(uuid4())
@@ -150,15 +145,12 @@ def test_manual_preview_reuse_validates_local_refs_alongside_minio_refs(monkeypa
         binding={"tenant_id": tenant_id, "account_id": "other-account"},
     )
     existing_id = f"{tenant_id}:{dataset_id}:{document_id}:asset0"
-    content = (
-        f"![stored](/api/v1/documents/image-url/{existing_id})\n"
-        f"![preview](/api/v1/documents/image/{image_id})"
-    )
+    content = f"![stored](/api/v1/documents/image-url/{existing_id})\n![preview](/api/v1/documents/image/{image_id})"
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(preview_utils.settings, "MINIO_ENABLED", True, raising=False)
 
     with pytest.raises(HTTPException) as excinfo:
-        documents_module._rewrite_preview_images_to_minio(
+        preview_utils._rewrite_preview_images_to_minio(
             content,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -174,8 +166,6 @@ def test_manual_preview_reuse_validates_local_refs_alongside_minio_refs(monkeypa
 
 
 def test_manual_preview_reuse_fails_closed_when_binding_promotion_cannot_persist(monkeypatch, tmp_path) -> None:
-    import app.api.v1.documents as documents_module
-
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
     document_id = str(uuid4())
@@ -187,11 +177,11 @@ def test_manual_preview_reuse_fails_closed_when_binding_promotion_cannot_persist
         binding={"tenant_id": tenant_id, "account_id": "preview-owner"},
     )
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "_promote_preview_owner_binding", lambda **_kwargs: False)
+    monkeypatch.setattr(preview_utils.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(preview_utils, "_promote_preview_owner_binding", lambda **_kwargs: False)
 
     with pytest.raises(HTTPException) as excinfo:
-        documents_module._rewrite_preview_images_to_minio(
+        preview_utils._rewrite_preview_images_to_minio(
             f"![img](/api/v1/documents/image/{image_id})",
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -228,7 +218,7 @@ def test_preview_owner_binding_rejects_mixed_account_and_document_scope(tmp_path
 
 
 def test_manual_preview_reuse_claims_legacy_reference_for_same_document(monkeypatch, tmp_path) -> None:
-    import app.api.v1.documents as documents_module
+    from app.services import document_preview_utils as preview_utils
 
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
@@ -238,15 +228,15 @@ def test_manual_preview_reuse_claims_legacy_reference_for_same_document(monkeypa
     images_dir.mkdir(parents=True)
     Image.new("RGB", (1, 1), color=(255, 255, 255)).save(images_dir / f"{image_id}.png", format="PNG")
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(preview_utils.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(
-        documents_module,
+        legacy_preview_service,
         "legacy_preview_ref_belongs_to_document",
         lambda *_args, **_kwargs: True,
         raising=True,
     )
 
-    text, img_ids, next_index = documents_module._rewrite_preview_images_to_minio(
+    text, img_ids, next_index = preview_utils._rewrite_preview_images_to_minio(
         f"![img](/api/v1/documents/image/{image_id})",
         tenant_id=tenant_id,
         dataset_id=dataset_id,

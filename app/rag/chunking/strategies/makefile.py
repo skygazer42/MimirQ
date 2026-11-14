@@ -9,7 +9,6 @@ The chunker splits by target blocks (target line + recipe) and groups multiple
 targets per chunk to respect chunk_size/overlap while preserving offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,13 +16,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -45,7 +38,7 @@ def _parse_target_line(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "")
+    s = line
     if not s:
         return None
     colon = s.find(":")
@@ -60,19 +53,6 @@ def _parse_target_line(line: str) -> str | None:
     if any(ch not in _TARGET_NAME_ALLOWED for ch in name):
         return None
     return name
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _iter_targets(text: str) -> list[_Target]:
@@ -102,21 +82,21 @@ def _iter_targets(text: str) -> list[_Target]:
 def looks_like_makefile(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if ".phony" in lowered:
         return True
     targets = _iter_targets(text)
     if len(targets) < 2:
         return False
     # Require at least one recipe line.
-    for ln in (text or "").splitlines()[:400]:
+    for ln in (text).splitlines()[:400]:
         if ln.startswith("\t"):
             return True
     return False
 
 
 class MakefileChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -141,13 +121,14 @@ class MakefileChunker(BaseChunker):
             meta["end_char"] = abs_end
             meta.setdefault("doc_type_kwd", "makefile")
             meta["make_fallback"] = True
+            meta["chunk_index"] = len(out)
             out.append(Document(page_content=sd.page_content, metadata=meta))
 
     @staticmethod
     def _target_names(targets: list[_Target], *, start_idx: int, end_idx: int) -> list[str]:
         uniq: list[str] = []
         for target in targets[start_idx:end_idx]:
-            if target.name and target.name not in uniq:
+            if target.name not in uniq:
                 uniq.append(target.name)
         return uniq[:25]
 
@@ -168,11 +149,12 @@ class MakefileChunker(BaseChunker):
         meta["start_char"] = chunk_start
         meta["end_char"] = chunk_end
         meta.setdefault("doc_type_kwd", "makefile")
-        meta["make_target_count"] = int(end_idx - start_idx)
+        meta["make_target_count"] = end_idx - start_idx
         uniq = MakefileChunker._target_names(targets, start_idx=start_idx, end_idx=end_idx)
         if uniq:
             meta["make_targets"] = uniq
             meta["make_target"] = uniq[0]
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
 
     def _next_target_start(self, *, targets: list[_Target], start_idx: int, end_idx: int) -> int:
@@ -186,15 +168,7 @@ class MakefileChunker(BaseChunker):
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-        return next_start if next_start > start_idx else end_idx
-
-    @staticmethod
-    def _finalize_chunk_indexes(out: list[Document]) -> list[Document]:
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
-        return out
+        return next_start
 
     def _append_target_chunks(
         self,
@@ -215,9 +189,6 @@ class MakefileChunker(BaseChunker):
                     end_idx += 1
                     continue
                 break
-            if end_idx == start_idx:
-                end_idx = start_idx + 1
-
             self._append_target_chunk(
                 out=out,
                 text=text,
@@ -231,8 +202,8 @@ class MakefileChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -243,4 +214,4 @@ class MakefileChunker(BaseChunker):
 
             self._append_target_chunks(out=out, text=text, base_meta=base_meta, targets=targets)
 
-        return self._finalize_chunk_indexes(out)
+        return out

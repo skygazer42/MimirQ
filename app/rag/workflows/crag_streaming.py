@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.core.config import settings
@@ -17,19 +16,24 @@ def classify_retrieval_verdict(
         min_citations=min_citations,
         min_top_score=min_top_score,
     )
-    return str(result.get("verdict") or "incorrect")
+    return result["verdict"]
 
 
 def format_web_search_context_block(search_result: dict[str, Any]) -> str:
-    provider = str(search_result.get("provider") or "").strip() or "unknown"
+    raw_provider = search_result.get("provider")
+    provider = "unknown" if raw_provider is None else raw_provider.strip() or "unknown"
     results = search_result.get("results") or []
     lines = [f"[Web Search Fallback | provider={provider}]"]
     for idx, item in enumerate(results, 1):
         if not isinstance(item, dict):
             continue
-        title = str(item.get("title") or "").strip()
-        url = str(item.get("url") or "").strip()
-        snippet = str(item.get("snippet") or "").strip()
+        title, url, snippet = item.get("title"), item.get("url"), item.get("snippet")
+        if title is not None:
+            title = title.strip()
+        if url is not None:
+            url = url.strip()
+        if snippet is not None:
+            snippet = snippet.strip()
         if title:
             lines.append(f"{idx}. {title}")
         if url:
@@ -50,16 +54,16 @@ async def run_crag_streaming(
     lang: str | None = None,
     region: str | None = None,
 ) -> dict[str, Any]:
-    min_citations = max(1, int(getattr(settings, "RAG_CRAG_STREAMING_MIN_CITATIONS", 1) or 1))
-    min_top_score = float(getattr(settings, "RAG_CRAG_STREAMING_MIN_TOP_SCORE", 0.35) or 0.35)
+    min_citations = max(1, settings.RAG_CRAG_STREAMING_MIN_CITATIONS)
+    min_top_score = settings.RAG_CRAG_STREAMING_MIN_TOP_SCORE
     evaluator = evaluate_retrieval_verdict(
         retrieval_result=retrieval_result,
         min_citations=min_citations,
         min_top_score=min_top_score,
     )
-    verdict = str(evaluator.get("verdict") or "incorrect")
+    verdict = evaluator["verdict"]
 
-    if not bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)) or verdict != "incorrect":
+    if not settings.RAG_CRAG_STREAMING_ENABLED or verdict != "incorrect":
         return {
             "used": False,
             "verdict": verdict,
@@ -70,10 +74,10 @@ async def run_crag_streaming(
             "evaluator": evaluator,
         }
 
-    search_query = str(query_for_retrieval or question or "").strip()
+    search_query = (question if query_for_retrieval is None else query_for_retrieval).strip()
     search_result = await web_search(
         search_query,
-        max_results=max_results or int(getattr(settings, "RAG_CRAG_STREAMING_MAX_RESULTS", 5) or 5),
+        max_results=max_results or settings.RAG_CRAG_STREAMING_MAX_RESULTS,
         site_filter=site_filter,
         freshness=freshness,
         lang=lang,

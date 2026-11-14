@@ -2,7 +2,6 @@
 Small helpers for resolving optional CLI tools.
 """
 
-
 import os
 import shutil
 import subprocess
@@ -68,7 +67,7 @@ def resolve_cli_command(command: str) -> str | None:
     (e.g. `C:\\...\\envs\\kb\\python.exe main.py`) without activating the env,
     so PATH does not include the env Scripts/bin folder.
     """
-    cmd = (command or "").strip()
+    cmd = (command).strip()
     if not cmd:
         return None
 

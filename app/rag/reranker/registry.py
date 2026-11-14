@@ -4,7 +4,6 @@ The registry is data-only: it describes provider families, aliases, and lazy
 import targets without importing provider implementations.
 """
 
-
 from dataclasses import dataclass
 
 
@@ -26,13 +25,6 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
         lazy_modules=(),
     ),
     RerankerProviderFamily(
-        canonical_name="cross_encoder",
-        aliases=("cross_encoder", "cross-encoder", "sentence_transformers", "sentence-transformers"),
-        tier="prod",
-        category="local",
-        lazy_modules=("app.rag.reranker.cross_encoder",),
-    ),
-    RerankerProviderFamily(
         canonical_name="long_context",
         aliases=("long_context",),
         tier="prod",
@@ -45,20 +37,6 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
         tier="prod",
         category="local",
         lazy_modules=("app.rag.reranker.mmr",),
-    ),
-    RerankerProviderFamily(
-        canonical_name="local_bge_v2_m3",
-        aliases=("local_bge_v2_m3", "bge_v2_m3"),
-        tier="prod",
-        category="local",
-        lazy_modules=("app.rag.reranker.local_bge_v2_m3",),
-    ),
-    RerankerProviderFamily(
-        canonical_name="ltr",
-        aliases=("ltr", "xgboost_ltr"),
-        tier="prod",
-        category="local",
-        lazy_modules=("app.rag.reranker.ltr",),
     ),
     RerankerProviderFamily(
         canonical_name="weighted",
@@ -112,21 +90,17 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
     RerankerProviderFamily(
         canonical_name="colbert",
         aliases=("colbert", "late_interaction"),
-        tier="experimental",
+        tier="offline_only",
         category="late_interaction",
         lazy_modules=("app.rag.reranker.colbert",),
     ),
 )
 
-_FAMILY_BY_ALIAS = {
-    alias: family
-    for family in _FAMILIES
-    for alias in family.aliases
-}
+_FAMILY_BY_ALIAS = {alias: family for family in _FAMILIES for alias in family.aliases}
 
 
 def get_reranker_provider_family(provider: str | None) -> RerankerProviderFamily | None:
-    normalized = str(provider or "").strip().lower()
+    normalized = str((provider if provider is not None else "")).strip().lower()
     if not normalized:
         return None
     return _FAMILY_BY_ALIAS.get(normalized)

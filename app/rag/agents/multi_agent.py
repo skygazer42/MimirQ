@@ -1,7 +1,8 @@
-
 import asyncio
 import threading
 import time
+from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -11,11 +12,11 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
-from app.rag.agents.rag_agent import AgenticStreamRequest, resolve_agentic_stream_request
+from app.rag.agents.rag_agent import AgenticStreamRequest, build_agentic_rag_state, resolve_agentic_stream_request
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.logging import get_logger
 from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
-from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
+from app.rag.pipelines.langgraph import _build_context, _build_history_text
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
@@ -25,68 +26,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
-_RAG_STATE_BUILD_KEYS = {
-    "question",
-    "history",
-    "document_ids",
-    "dataset_ids",
-    "tenant_id",
-    "account_id",
-    "dataset_id",
-    "top_k",
-    "score_threshold",
-    "retrieval_mode",
-    "retrieval_profile",
-    "retrieval_contract_mode",
-    "must_recall",
-    "must_recall_expected_source_keys",
-    "must_recall_required_anchor_fields",
-    "intent_router",
-    "intent_router_policy",
-    "enable_query_alias_expansion",
-    "query_aliases",
-    "query_alias_max_queries",
-    "enable_multi_query",
-    "multi_query_count",
-    "multi_query_temperature",
-    "multi_query_max_chars",
-    "enable_hyde",
-    "enable_hierarchy_recall",
-    "hierarchy_family_collapse",
-    "hierarchy_family_aggregation",
-    "hierarchy_tree_dedup",
-    "hierarchy_parent_depth",
-    "hierarchy_sibling_window",
-    "hierarchy_overfetch_factor",
-    "enable_query_rewrite",
-    "query_rewrite_strategy",
-    "query_rewrite_temperature",
-    "query_rewrite_max_chars",
-    "sparse_retrieval_enabled",
-    "sparse_retrieval_provider",
-    "alpha",
-    "fusion_strategy",
-    "fusion_budgets",
-    "fusion_min_scores",
-    "fusion_weights",
-    "enable_weight_rerank",
-    "vector_weight",
-    "keyword_weight",
-    "mmr_lambda",
-    "enable_reranker",
-    "reranker_provider",
-    "reranker_top_n",
-    "metadata_filter",
-    "structured_output",
-    "structured_preset",
-    "visible_evidence_only",
-    "prompt_template_id",
-    "prompt_template_key",
-    "prompt_ab_experiment_key",
-    "ab_user_key",
-    "db",
-    "request_id",
-}
 
 
 @dataclass(frozen=True)
@@ -117,9 +56,11 @@ class MultiAgentRAGRunner:
         max_sub_questions = max(1, int(max_sub_questions or 1))
         planner_llm = self._engine.models.get("fast") or llm
         try:
-            plan_chain = self._engine.decompose_prompt | planner_llm.bind(
-                temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2)
-            ) | StrOutputParser()
+            plan_chain = (
+                self._engine.decompose_prompt
+                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
+                | StrOutputParser()
+            )
             raw = await plan_chain.ainvoke({"query": question, "n": max_sub_questions})
             data, _meta = parse_json_from_text(raw, expected="array")
             if isinstance(data, list):
@@ -128,7 +69,7 @@ class MultiAgentRAGRunner:
                 for item in data:
                     if not isinstance(item, str):
                         continue
-                    query = " ".join(str(item or "").split()).strip()
+                    query = " ".join(item.split()).strip()
                     if not query:
                         continue
                     key = query.casefold()
@@ -149,13 +90,15 @@ class MultiAgentRAGRunner:
         return [MultiAgentPlanStep(query=question, rationale="fallback_single_query")]
 
     @staticmethod
-    def _citation_key(citation: dict[str, Any]) -> str:
-        document_id = str(citation.get("document_id") or "")
-        chunk_id = str(citation.get("chunk_id") or "")
-        page_number = str(citation.get("page_number") or citation.get("page") or "")
-        source = str(citation.get("source") or "")
-        snippet = " ".join(str(citation.get("snippet") or "").split())
-        return "|".join([document_id, chunk_id, page_number, source, snippet])
+    def _citation_key(citation: dict[str, Any]) -> tuple[str | None, ...]:
+        page_number = citation.get("page_number")
+        if page_number is None:
+            page_number = citation.get("page")
+        snippet = citation.get("snippet")
+        if snippet is not None:
+            snippet = " ".join(str(snippet).split())
+        values = (citation.get("document_id"), citation.get("chunk_id"), page_number, citation.get("source"), snippet)
+        return tuple((str(value) or None) if value is not None else None for value in values)
 
     @staticmethod
     def _citation_score(citation: dict[str, Any]) -> float:
@@ -173,7 +116,7 @@ class MultiAgentRAGRunner:
             request_db=None,
         )
         elapsed = time.time() - started
-        return _SubAgentResult(index=index, query=query, result=result, elapsed_sec=float(elapsed or 0.0))
+        return _SubAgentResult(index=index, query=query, result=result, elapsed_sec=elapsed)
 
     @staticmethod
     def _stream_route_event(
@@ -200,49 +143,8 @@ class MultiAgentRAGRunner:
         }
 
     @staticmethod
-    def _base_state_overrides(stream_request: AgenticStreamRequest) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in (stream_request.state_overrides or {}).items()
-            if key in _RAG_STATE_BUILD_KEYS
-        }
-
-    def _build_base_state(
-        self,
-        *,
-        stream_request: AgenticStreamRequest,
-        question: str,
-        history: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        base_state_kwargs = self._base_state_overrides(stream_request)
-        base_state_kwargs.update(
-            {
-                "question": question,
-                "history": history,
-                "document_ids": stream_request.document_ids,
-                "dataset_ids": stream_request.dataset_ids,
-                "tenant_id": stream_request.tenant_id,
-                "account_id": stream_request.account_id,
-                "dataset_id": stream_request.dataset_id,
-                "top_k": stream_request.top_k,
-                "score_threshold": stream_request.score_threshold,
-                "retrieval_mode": stream_request.retrieval_mode,
-                "retrieval_profile": stream_request.retrieval_profile,
-                "structured_output": stream_request.structured_output,
-                "structured_preset": stream_request.structured_preset,
-                "prompt_template_id": stream_request.prompt_template_id,
-                "prompt_template_key": stream_request.prompt_template_key,
-                "prompt_ab_experiment_key": stream_request.prompt_ab_experiment_key,
-                "ab_user_key": stream_request.ab_user_key,
-                "db": stream_request.db,
-                "request_id": stream_request.request_id,
-            }
-        )
-        return build_rag_state(**base_state_kwargs)
-
-    @staticmethod
     def _normalized_plan_query(step: MultiAgentPlanStep, *, fallback_question: str) -> str:
-        return " ".join(str(step.query or "").split()).strip() or fallback_question
+        return " ".join(step.query.split()).strip() or fallback_question
 
     @staticmethod
     def _retrieval_started_event(*, index: int, query: str, rationale: str | None) -> dict[str, Any]:
@@ -251,7 +153,7 @@ class MultiAgentRAGRunner:
             "data": {
                 "step": "retrieving",
                 "status": "started",
-                "round": int(index),
+                "round": index,
                 "query": query,
                 "rationale": rationale,
             },
@@ -265,17 +167,17 @@ class MultiAgentRAGRunner:
             "data": {
                 "step": "retrieving",
                 "status": "completed",
-                "round": int(sub_result.index),
+                "round": sub_result.index,
                 "query": sub_result.query,
-                "docs_count": int(len(sub_result.result.get("docs") or [])),
-                "citations_count": int(len(sub_result.result.get("citations") or [])),
+                "docs_count": len(sub_result.result.get("docs") or []),
+                "citations_count": len(sub_result.result.get("citations") or []),
                 "top_relevance_score": float(sub_metrics.get("top_relevance_score") or 0.0),
             },
         }
 
     async def _cleanup_retrieval_tasks(self, tasks: list[asyncio.Task[_SubAgentResult]]) -> None:
         for task in tasks:
-            if not task.done():
+            if not task.done() and not task.cancelling():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -287,13 +189,18 @@ class MultiAgentRAGRunner:
         question: str,
         base_state: dict[str, Any],
         results: list[_SubAgentResult],
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         tasks: list[asyncio.Task[_SubAgentResult]] = []
         try:
             for idx, step in enumerate(plan_steps[:max_sub_questions], 1):
                 query = self._normalized_plan_query(step, fallback_question=question)
                 yield self._retrieval_started_event(index=idx, query=query, rationale=step.rationale)
-                tasks.append(asyncio.create_task(self._run_sub_agent(index=idx, query=query, base_state=base_state)))
+                sub_agent = self._run_sub_agent(index=idx, query=query, base_state=base_state)
+                try:
+                    tasks.append(asyncio.create_task(sub_agent))
+                except BaseException:
+                    sub_agent.close()
+                    raise
 
             for task in asyncio.as_completed(tasks):
                 sub_result = await task
@@ -312,7 +219,7 @@ class MultiAgentRAGRunner:
         results.sort(key=lambda item: item.index)
         retrieval_elapsed_total = float(sum(item.elapsed_sec for item in results))
         docs_by_key: dict[str, Document] = {}
-        citations_by_key: dict[str, dict[str, Any]] = {}
+        citations_by_key: dict[tuple[str | None, ...], dict[str, Any]] = {}
         final_retrieval_mode = retrieval_mode
 
         for item in results:
@@ -352,7 +259,7 @@ class MultiAgentRAGRunner:
         llm: Any,
         structured_output: bool,
         answer_state: dict[str, Any],
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         if not collected_docs:
             full_response = _UNABLE_TO_ANSWER_MESSAGE
             answer_state.update(
@@ -378,17 +285,18 @@ class MultiAgentRAGRunner:
             "context": _build_context(collected_docs, query=question),
             "history": _build_history_text(history),
             "question": question,
-            "format_instructions": str(base_state.get("format_instructions") or ""),
+            "format_instructions": base_state["format_instructions"],
         }
         full_response = ""
         gen_start = time.time()
         chain = prompt_template | llm | StrOutputParser()
-        async for token in chain.astream(generation_inputs):
-            if not token:
-                continue
-            token_text = token if isinstance(token, str) else str(token)
-            full_response += token_text
-            yield {"type": "token", "data": {"content": token_text}}
+        async with aclosing(chain.astream(generation_inputs)) as stream_events:
+            async for token in stream_events:
+                if not token:
+                    continue
+                token_text = token if isinstance(token, str) else str(token)
+                full_response += token_text
+                yield {"type": "token", "data": {"content": token_text}}
 
         structured_data = None
         if structured_output:
@@ -425,15 +333,15 @@ class MultiAgentRAGRunner:
             "retrieval_mode": final_retrieval_mode,
             "complexity_score": round(float(complexity_score), 3),
             "agentic_used": True,
-            "agentic_rounds": int(tasks_count),
-            "agentic_planned_steps": int(len(plan_steps)),
+            "agentic_rounds": tasks_count,
+            "agentic_planned_steps": len(plan_steps),
             "agentic_queries": [step.query for step in plan_steps[:max_sub_questions]],
             "agentic_route_reason": f"complexity {complexity_score:.1f} >= threshold {threshold}",
             "model_route": model_route,
             "abstain_triggered": bool(not collected_docs),
             "abstain_reason": "no_docs" if not collected_docs else None,
-            "docs_returned": int(len(collected_docs)),
-            "multi_agent_parallel_tasks": int(tasks_count),
+            "docs_returned": len(collected_docs),
+            "multi_agent_parallel_tasks": tasks_count,
         }
 
     async def stream(
@@ -441,7 +349,7 @@ class MultiAgentRAGRunner:
         *,
         request: AgenticStreamRequest | None = None,
         **_kwargs: Any,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         stream_request = resolve_agentic_stream_request(
             request=request,
             legacy_overrides=_kwargs,
@@ -453,10 +361,10 @@ class MultiAgentRAGRunner:
         retrieval_mode = stream_request.retrieval_mode
         structured_output = stream_request.structured_output
         complexity_score = self._engine._score_question_complexity(question, history)
-        threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
+        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_sub_questions = max(1, int(getattr(settings, "RAG_MULTI_AGENT_MAX_SUB_AGENTS", 4) or 4))
-        base_state = self._build_base_state(stream_request=stream_request, question=question, history=history)
+        max_sub_questions = max(1, settings.RAG_MULTI_AGENT_MAX_SUB_AGENTS)
+        base_state = build_agentic_rag_state(stream_request, history=history)
 
         yield self._stream_route_event(
             llm=llm,
@@ -473,14 +381,17 @@ class MultiAgentRAGRunner:
             stream_request.db.rollback()
 
         results: list[_SubAgentResult] = []
-        async for event in self._stream_retrieval_rounds(
-            plan_steps=plan_steps,
-            max_sub_questions=max_sub_questions,
-            question=question,
-            base_state=base_state,
-            results=results,
-        ):
-            yield event
+        async with aclosing(
+            self._stream_retrieval_rounds(
+                plan_steps=plan_steps,
+                max_sub_questions=max_sub_questions,
+                question=question,
+                base_state=base_state,
+                results=results,
+            )
+        ) as events:
+            async for event in events:
+                yield event
 
         collected_docs, citations, final_retrieval_mode, retrieval_elapsed_total = self._collect_retrieval_outputs(
             results=results,
@@ -490,21 +401,24 @@ class MultiAgentRAGRunner:
         yield {"type": "citations", "data": citations}
 
         answer_state: dict[str, Any] = {}
-        async for event in self._stream_answer(
-            collected_docs=collected_docs,
-            question=question,
-            history=history,
-            base_state=base_state,
-            llm=llm,
-            structured_output=structured_output,
-            answer_state=answer_state,
-        ):
-            yield event
+        async with aclosing(
+            self._stream_answer(
+                collected_docs=collected_docs,
+                question=question,
+                history=history,
+                base_state=base_state,
+                llm=llm,
+                structured_output=structured_output,
+                answer_state=answer_state,
+            )
+        ) as events:
+            async for event in events:
+                yield event
 
         metrics = self._build_done_metrics(
             t_start=t_start,
             retrieval_elapsed_total=retrieval_elapsed_total,
-            generation_elapsed=float(answer_state.get("generation_elapsed") or 0.0),
+            generation_elapsed=answer_state["generation_elapsed"],
             final_retrieval_mode=final_retrieval_mode,
             complexity_score=complexity_score,
             plan_steps=plan_steps,
@@ -519,16 +433,16 @@ class MultiAgentRAGRunner:
             "type": "done",
             "data": {
                 "conversation_id": str(conversation_id) if conversation_id else None,
-                "total_tokens": int(answer_state.get("answer_tokens") or 0),
-                "total_chars": int(answer_state.get("answer_chars") or 0),
+                "total_tokens": answer_state["answer_tokens"],
+                "total_chars": answer_state["answer_chars"],
                 "citations_count": len(citations),
                 "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                 "route": "multi_agent",
                 "retrieval_mode": metrics["retrieval_mode"],
                 "vector_backend": settings.VECTOR_BACKEND,
                 "metrics": metrics,
-                "structured": bool(answer_state.get("structured_data")),
-                "structured_data": answer_state.get("structured_data"),
+                "structured": bool(answer_state["structured_data"]),
+                "structured_data": answer_state["structured_data"],
             },
         }
 

@@ -82,7 +82,7 @@ async def test_langchain_stream_aclose_cancels_producer(
         engine=object(),
         options=_langchain_options(),
     )
-    assert "\"content\": \"x\"" in await anext(stream)
+    assert '"content": "x"' in await anext(stream)
 
     try:
         await stream.aclose()

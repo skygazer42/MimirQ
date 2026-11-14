@@ -40,7 +40,7 @@ describe('SAML session bridge route', () => {
         return_to: '/datasets/123',
         user: { id: 'user-1' },
         token: { access_token: 'jwt-token', token_type: 'bearer', expires_in: 3600 },
-      })
+      }),
     )
 
     const response = await POST(makeRequest())
@@ -55,7 +55,7 @@ describe('SAML session bridge route', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ code: 'bridge-code' }),
-      })
+      }),
     )
     const cookie = response.headers.get('set-cookie')
     expect(cookie).toContain('mimirq_saml_bridge=')

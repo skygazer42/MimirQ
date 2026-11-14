@@ -1,30 +1,29 @@
 """Auto-annotation and common-lines learning helpers for the pipeline API.
 
-Extracted verbatim from ``app/api/v1/pipeline.py``. Submodules must not import
-``app.api.v1.pipeline`` (circular import).
+Owns provider collection, candidate normalization, and common-lines sampling.
 """
 
 import asyncio
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.api.schemas.pipeline import (
+from app.api.schemas.pipelines import (
     AutoAnnotationItem,
     AutoAnnotationRequest,
     AutoDocumentTag,
 )
+from app.core.async_bridge import run_blocking_in_thread
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
-from app.rag.preprocessing.cpu_tagger import extract_cpu_tags
-from app.rag.preprocessing.llm_tagger import extract_llm_tags
-from app.rag.preprocessing.pii_anonymizer import find_pii_matches
-from app.rag.preprocessing.secrets import find_secret_matches
+from app.rag.preprocessing.cpu_tagger import CPUDocumentTag, CPUSpanAnnotation, extract_cpu_tags
+from app.rag.preprocessing.llm_tagger import LLMDocumentTag, LLMSpanAnnotation, extract_llm_tags
+from app.rag.preprocessing.pii_anonymizer import PiiMatch, find_pii_matches
+from app.rag.preprocessing.secrets import SecretMatch, find_secret_matches
 from app.services.document_access import get_allowed_document_id_sets
 
 _AUTO_TAGGER_LLM_TIMEOUT_S = 3.0
@@ -128,7 +127,7 @@ def _trim_entity_span(raw: str) -> tuple[str, int]:
     post-trim keeps matches like "项目由星海智能有限公司" usable without pretending
     to be a full NER model.
     """
-    text = str(raw or "").strip(_TRIM_PUNCTUATION_CHARS)
+    text = raw.strip(_TRIM_PUNCTUATION_CHARS)
     offset = raw.find(text) if text else 0
     if not text:
         return "", max(0, offset)
@@ -162,21 +161,21 @@ def _make_auto_annotation(
     return AutoAnnotationItem(
         text=text,
         type=annotation_type,  # type: ignore[arg-type]
-        label=str(label or annotation_type),
-        start=int(start),
-        end=int(end),
-        confidence=float(confidence),
-        source=str(source or "keyword"),
+        label=label,
+        start=start,
+        end=end,
+        confidence=confidence,
+        source=source,
     )
 
 
 def _annotation_overlaps(item: AutoAnnotationItem, other: AutoAnnotationItem) -> bool:
-    return int(item.start) < int(other.end) and int(item.end) > int(other.start)
+    return item.start < other.end and item.end > other.start
 
 
 def _trim_match_span(source_text: str, start: int, end: int) -> tuple[int, int]:
-    left = int(start)
-    right = int(end)
+    left = start
+    right = end
     while left < right and source_text[left] in _TRIM_PUNCTUATION_CHARS:
         left += 1
     while right > left and source_text[right - 1] in _TRIM_PUNCTUATION_CHARS:
@@ -185,24 +184,22 @@ def _trim_match_span(source_text: str, start: int, end: int) -> tuple[int, int]:
 
 
 def _find_keyword_offsets(text: str, keyword: str, *, limit: int = 2) -> list[tuple[int, int]]:
-    kw = str(keyword or "").strip()
+    kw = keyword.strip()
     if len(kw) < 2:
         return []
 
     flags = re.IGNORECASE if kw.isascii() else 0
     out: list[tuple[int, int]] = []
     for match in re.finditer(re.escape(kw), text, flags=flags):
-        start, end = int(match.start()), int(match.end())
-        if end <= start:
-            continue
+        start, end = match.start(), match.end()
         out.append((start, end))
-        if len(out) >= max(1, int(limit or 1)):
+        if len(out) >= limit:
             break
     return out
 
 
 def _is_focus_keyword(text: str) -> bool:
-    token = str(text or "").strip()
+    token = text.strip()
     if len(token) < 2:
         return False
     if token.casefold() in _FOCUS_KEYWORD_STOPWORDS:
@@ -225,22 +222,22 @@ def _dedupe_auto_annotations(items: list[AutoAnnotationItem], *, max_items: int)
     sorted_items = sorted(
         items,
         key=lambda item: (
-            int(item.start),
-            priority.get(str(item.type), 9),
-            -float(item.confidence),
-            int(item.end),
-            str(item.text),
+            item.start,
+            priority[item.type],
+            -item.confidence,
+            item.end,
+            item.text,
         ),
     )
 
     seen: set[tuple[str, int, int, str]] = set()
     out: list[AutoAnnotationItem] = []
     for item in sorted_items:
-        key = (str(item.type), int(item.start), int(item.end), str(item.text))
+        key = (item.type, item.start, item.end, item.text)
         if key in seen:
             continue
-        if str(item.type) == "keyword" and any(
-            _annotation_overlaps(item, kept) and str(kept.type) in {"sensitive", "entity"} for kept in out
+        if item.type == "keyword" and any(
+            _annotation_overlaps(item, kept) and kept.type in {"sensitive", "entity"} for kept in out
         ):
             continue
         seen.add(key)
@@ -250,16 +247,14 @@ def _dedupe_auto_annotations(items: list[AutoAnnotationItem], *, max_items: int)
     return out
 
 
-def _add_auto_annotation_provider(providers: set[str], raw_provider: object) -> None:
-    provider = str(raw_provider or "").strip().lower()
-    if not provider:
-        return
-    providers.update(_AUTO_PROVIDER_ALIASES.get(provider, (provider,)))
+def _normalize_auto_annotation_providers(body: AutoAnnotationRequest) -> set[str]:
+    providers: set[str] = set()
+    if body.providers is not None:
+        for provider in body.providers:
+            providers.update(_AUTO_PROVIDER_ALIASES.get(provider, (provider,)))
+        return providers
 
-
-def _default_auto_annotation_providers(body: AutoAnnotationRequest) -> set[str]:
-    providers = set()
-    if str(body.mode or "document_focus").strip().lower() == "document_focus":
+    if body.mode == "document_focus":
         providers.add("cpu")
     if body.enable_llm or body.enable_llm_topics:
         providers.add("llm")
@@ -269,16 +264,6 @@ def _default_auto_annotation_providers(body: AutoAnnotationRequest) -> set[str]:
         providers.add("regex")
     if body.enable_sensitive:
         providers.update(_SENSITIVE_PROVIDER_SOURCES)
-    return providers
-
-
-def _normalize_auto_annotation_providers(body: AutoAnnotationRequest) -> set[str]:
-    if body.providers is None:
-        return _default_auto_annotation_providers(body)
-
-    providers: set[str] = set()
-    for raw_provider in body.providers:
-        _add_auto_annotation_provider(providers, raw_provider)
     return providers
 
 
@@ -295,18 +280,15 @@ def _make_auto_document_tag(
     confidence: float,
     source: str,
 ) -> AutoDocumentTag | None:
-    value_s = str(value or "").strip()
+    value_s = value.strip()
     if not value_s:
-        return None
-    allowed = {"topic", "category", "domain", "industry", "doc_type", "sensitivity", "quality", "keyword"}
-    if tag_type not in allowed:
         return None
     return AutoDocumentTag(
         type=tag_type,  # type: ignore[arg-type]
         value=value_s,
-        label=str(label or tag_type),
-        confidence=min(1.0, max(0.0, float(confidence))),
-        source=str(source or "llm"),
+        label=label or tag_type,
+        confidence=min(1.0, max(0.0, confidence)),
+        source=source,
     )
 
 
@@ -314,7 +296,7 @@ def _dedupe_auto_document_tags(items: list[AutoDocumentTag], *, max_items: int) 
     seen: set[tuple[str, str]] = set()
     out: list[AutoDocumentTag] = []
     for item in items:
-        key = (str(item.type), str(item.value).casefold())
+        key = (item.type, item.value.casefold())
         if key in seen:
             continue
         seen.add(key)
@@ -324,14 +306,14 @@ def _dedupe_auto_document_tags(items: list[AutoDocumentTag], *, max_items: int) 
     return out
 
 
-def _normalize_auto_document_tags(raw_tags: list[Any]) -> list[AutoDocumentTag]:
+def _normalize_auto_document_tags(raw_tags: Iterable[CPUDocumentTag | LLMDocumentTag]) -> list[AutoDocumentTag]:
     document_tags: list[AutoDocumentTag] = []
     for tag in raw_tags:
         item = _make_auto_document_tag(
-            tag_type=str(tag.type),
+            tag_type=tag.type,
             value=tag.value,
             label=tag.label,
-            confidence=float(tag.confidence),
+            confidence=tag.confidence,
             source=tag.source,
         )
         if item is not None:
@@ -341,13 +323,13 @@ def _normalize_auto_document_tags(raw_tags: list[Any]) -> list[AutoDocumentTag]:
 
 def _normalize_span_annotations(
     text: str,
-    raw_annotations: list[Any],
+    raw_annotations: Iterable[CPUSpanAnnotation | LLMSpanAnnotation],
     *,
     max_items: int,
 ) -> list[AutoAnnotationItem]:
     annotations: list[AutoAnnotationItem] = []
     for raw in raw_annotations:
-        quote = str(raw.text or "").strip()
+        quote = raw.text.strip()
         if not quote:
             continue
         for start, end in _find_keyword_offsets(text, quote, limit=1):
@@ -355,9 +337,9 @@ def _normalize_span_annotations(
                 source_text=text,
                 start=start,
                 end=end,
-                annotation_type=str(raw.type),
+                annotation_type=raw.type,
                 label=raw.label,
-                confidence=min(0.99, max(0.0, float(raw.confidence))),
+                confidence=min(0.99, raw.confidence),
                 source=raw.source,
             )
             if item is not None:
@@ -371,21 +353,19 @@ def _normalize_span_annotations(
 def _derive_document_tags_from_annotations(items: list[AutoAnnotationItem], *, max_items: int) -> list[AutoDocumentTag]:
     out: list[AutoDocumentTag] = []
     for item in items:
-        tag_type = None
-        label = ""
-        if str(item.type) == "keyword" and str(item.label) == _TOPIC_KEYWORD_LABEL:
+        if item.type == "keyword" and item.label == _TOPIC_KEYWORD_LABEL:
             tag_type = "topic"
             label = "主题"
-        elif str(item.type) == "custom" and str(item.label) in {"动作项", "风险线索"}:
+        elif item.type == "custom" and item.label in {"动作项", "风险线索"}:
             tag_type = "quality"
             label = "质量线索"
-        if tag_type is None:
+        else:
             continue
         tag = _make_auto_document_tag(
             tag_type=tag_type,
             value=item.text,
             label=label,
-            confidence=min(0.9, max(0.0, float(item.confidence))),
+            confidence=min(0.9, item.confidence),
             source=item.source,
         )
         if tag is not None:
@@ -410,14 +390,14 @@ def _collect_keyword_annotations(
     if provider_key == "auto":
         provider_key = "simple"
     try:
-        keywords = extract_keywords_fn(text, provider=provider_key, top_k=int(top_k))
+        keywords = extract_keywords_fn(text, provider=provider_key, top_k=top_k)
     except Exception:
         provider_key = "simple"
-        keywords = extract_keywords_fn(text, provider=provider_key, top_k=int(top_k))
+        keywords = extract_keywords_fn(text, provider=provider_key, top_k=top_k)
 
     out: list[AutoAnnotationItem] = []
-    for keyword in keywords or []:
-        for start, end in _find_keyword_offsets(text, str(keyword), limit=2):
+    for keyword in keywords:
+        for start, end in _find_keyword_offsets(text, keyword, limit=2):
             item = _make_auto_annotation(
                 source_text=text,
                 start=start,
@@ -461,7 +441,7 @@ def _collect_focus_keyword_annotations(
                 label=_TOPIC_KEYWORD_LABEL,
                 start=item.start,
                 end=item.end,
-                confidence=max(float(item.confidence), 0.72),
+                confidence=max(item.confidence, 0.72),
                 source="keyword",
             )
         )
@@ -500,7 +480,7 @@ def _trim_focus_rule_span(text: str, label: str, start: int, end: int) -> tuple[
     snippet = text[start:end]
     marker_start = None
     for match in _ACTION_MARKER_RE.finditer(snippet):
-        marker_start = int(match.start())
+        marker_start = match.start()
     if marker_start is not None:
         start += marker_start
     return _trim_match_span(text, start, end)
@@ -510,11 +490,11 @@ def _collect_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnota
     out: list[AutoAnnotationItem] = []
     for pattern in (_ZH_ENTITY_RE, _EN_ENTITY_RE):
         for match in pattern.finditer(text):
-            raw = match.group(0) or ""
+            raw = match.group(0)
             trimmed, offset = _trim_entity_span(raw)
             if len(trimmed) < 2:
                 continue
-            start = int(match.start()) + int(offset)
+            start = match.start() + offset
             end = start + len(trimmed)
             item = _make_auto_annotation(
                 source_text=text,
@@ -532,64 +512,10 @@ def _collect_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnota
     return out
 
 
-def _gliner_entity_confidence(entity: dict[str, Any]) -> float:
-    try:
-        confidence = float(entity.get("score") or 0.78)
-    except Exception:
-        confidence = 0.78
-    return min(0.99, max(0.0, confidence))
-
-
-def _make_gliner_entity_annotation(text: str, entity: dict[str, Any]) -> AutoAnnotationItem | None:
-    quote = str(entity.get("evidence_quote") or entity.get("name") or "").strip()
-    if not quote:
-        return None
-
-    label = str(entity.get("type") or "entity").strip() or "entity"
-    for start, end in _find_keyword_offsets(text, quote, limit=1):
-        return _make_auto_annotation(
-            source_text=text,
-            start=start,
-            end=end,
-            annotation_type="entity",
-            label=label,
-            confidence=_gliner_entity_confidence(entity),
-            source="gliner",
-        )
-    return None
-
-
-async def _collect_gliner_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnotationItem]:
-    try:
-        from app.rag.kg.extraction.gliner_extractor import GLiNERExtractor
-    except Exception:
-        return []
-
-    try:
-        if not GLiNERExtractor.is_available():
-            return []
-        extractor = GLiNERExtractor()
-        entities = await extractor.extract_entities(
-            text=text,
-            entity_types=["person", "organization", "location", "product", "policy", "time", "money"],
-        )
-    except Exception:
-        return []
-
-    out: list[AutoAnnotationItem] = []
-    for entity in entities:
-        item = _make_gliner_entity_annotation(text, entity)
-        if item is not None:
-            out.append(item)
-        if len(out) >= max_items:
-            break
-    return out
-
-
 def _append_sensitive_match_annotations(
     text: str,
     out: list[AutoAnnotationItem],
-    matches: Iterable[Any],
+    matches: Iterable[PiiMatch | SecretMatch],
     *,
     max_items: int,
     source: str,
@@ -598,10 +524,10 @@ def _append_sensitive_match_annotations(
     for match in matches:
         item = _make_auto_annotation(
             source_text=text,
-            start=int(match.start),
-            end=int(match.end),
+            start=match.start,
+            end=match.end,
             annotation_type="sensitive",
-            label=str(match.kind),
+            label=match.kind,
             confidence=confidence,
             source=source,
         )
@@ -621,7 +547,7 @@ def _append_focus_rule_candidates(
 ) -> None:
     for label, annotation_type, pattern, confidence in _FOCUS_RULES:
         for match in pattern.finditer(text):
-            start, end = _trim_focus_rule_span(text, label, int(match.start()), int(match.end()))
+            start, end = _trim_focus_rule_span(text, label, match.start(), match.end())
             item = _make_auto_annotation(
                 source_text=text,
                 start=start,
@@ -638,20 +564,16 @@ def _append_focus_rule_candidates(
                 return
 
 
-def _focus_sentence_has_signal(sentence: str) -> bool:
-    return any(key in sentence for key in _FOCUS_SENTENCE_TERMS)
-
-
 def _append_focus_sentence_candidate(
     text: str,
     candidates: list[AutoAnnotationItem],
     blocked: list[AutoAnnotationItem],
 ) -> None:
     for match in _FOCUS_SENTENCE_RE.finditer(text):
-        sentence = (match.group(0) or "").strip()
-        if not sentence or not _focus_sentence_has_signal(sentence):
+        sentence = match.group(0).strip()
+        if not any(key in sentence for key in _FOCUS_SENTENCE_TERMS):
             continue
-        start, end = _trim_match_span(text, int(match.start()), int(match.end()))
+        start, end = _trim_match_span(text, match.start(), match.end())
         item = _make_auto_annotation(
             source_text=text,
             start=start,
@@ -771,44 +693,6 @@ def _collect_rule_focus_annotations(
     return keyword_provider_used, candidates
 
 
-async def _collect_llm_focus_annotations(
-    text: str,
-    *,
-    max_items: int,
-    max_chars: int,
-    model: str | None,
-) -> tuple[str | None, list[AutoDocumentTag], list[AutoAnnotationItem]]:
-    result = await extract_llm_tags(
-        text=text,
-        model=model,
-        max_chars=max_chars,
-        max_items=max_items,
-    )
-
-    document_tags = _normalize_auto_document_tags(result.document_tags)
-    annotations = _normalize_span_annotations(text, result.span_annotations, max_items=max_items)
-    return result.summary, document_tags, annotations
-
-
-def _collect_cpu_focus_annotations(
-    text: str,
-    *,
-    keyword_provider: str,
-    keyword_top_k: int,
-    max_items: int,
-) -> tuple[str | None, list[AutoDocumentTag], list[AutoAnnotationItem]]:
-    result = extract_cpu_tags(
-        text=text,
-        keyword_provider=keyword_provider,
-        keyword_top_k=keyword_top_k,
-        max_items=max_items,
-    )
-
-    document_tags = _normalize_auto_document_tags(result.document_tags)
-    annotations = _normalize_span_annotations(text, result.span_annotations, max_items=max_items)
-    return result.summary, document_tags, annotations
-
-
 def _remaining_auto_slots(draft: _AutoAnnotationDraft, max_items: int) -> int:
     return max(0, max_items - len(draft.candidates))
 
@@ -816,14 +700,16 @@ def _remaining_auto_slots(draft: _AutoAnnotationDraft, max_items: int) -> int:
 def _collect_cpu_auto_provider(
     draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int
 ) -> None:
-    cpu_summary, cpu_tags, cpu_items = _collect_cpu_focus_annotations(
-        scan_text,
-        keyword_provider=str(body.keyword_provider or "simple"),
-        keyword_top_k=int(body.keyword_top_k or 12),
+    result = extract_cpu_tags(
+        text=scan_text,
+        keyword_provider=body.keyword_provider,
+        keyword_top_k=body.keyword_top_k,
         max_items=max_items,
     )
-    if cpu_summary and draft.summary is None:
-        draft.summary = cpu_summary
+    cpu_tags = _normalize_auto_document_tags(result.document_tags)
+    cpu_items = _normalize_span_annotations(scan_text, result.span_annotations, max_items=max_items)
+    if result.summary and draft.summary is None:
+        draft.summary = result.summary
     draft.document_tags.extend(cpu_tags)
     draft.candidates.extend(cpu_items)
     if cpu_items:
@@ -834,24 +720,26 @@ async def _collect_llm_auto_provider(
     draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int
 ) -> None:
     try:
-        llm_summary, llm_tags, llm_items = await asyncio.wait_for(
-            _collect_llm_focus_annotations(
-                scan_text,
+        result = await asyncio.wait_for(
+            extract_llm_tags(
+                text=scan_text,
                 max_items=max_items,
-                max_chars=max(1, min(int(body.max_chars or 20_000), 200_000)),
+                max_chars=body.max_chars,
                 model=body.llm_model,
             ),
             timeout=_AUTO_TAGGER_LLM_TIMEOUT_S,
         )
+        llm_tags = _normalize_auto_document_tags(result.document_tags)
+        llm_items = _normalize_span_annotations(scan_text, result.span_annotations, max_items=max_items)
     except Exception:
         draft.warnings.append("LLM focus extraction unavailable; used rules fallback.")
         return
 
-    if llm_summary:
-        draft.summary = llm_summary
+    if result.summary:
+        draft.summary = result.summary
     draft.document_tags.extend(llm_tags)
     draft.candidates.extend(llm_items)
-    if llm_summary or llm_tags or llm_items:
+    if result.summary or llm_tags or llm_items:
         _append_provider_used(draft.providers_used, "llm")
         draft.strategy = "hybrid" if "cpu" in draft.providers_used else "llm"
 
@@ -872,34 +760,20 @@ def _collect_document_focus_rule_fallback(
         scan_text,
         enable_keywords="keyword" in providers,
         enable_entities="regex" in providers,
-        keyword_provider=str(body.keyword_provider or "simple"),
-        keyword_top_k=int(body.keyword_top_k or 12),
+        keyword_provider=body.keyword_provider,
+        keyword_top_k=body.keyword_top_k,
         max_items=_remaining_auto_slots(draft, max_items),
     )
     draft.candidates.extend(rule_items)
     if not rule_items:
         return
-    if any(str(item.source) == "keyword" for item in rule_items):
+    if any(item.source == "keyword" for item in rule_items):
         _append_provider_used(draft.providers_used, "keyword")
-    if any(str(item.source) == "regex_entity" for item in rule_items):
+    if any(item.source == "regex_entity" for item in rule_items):
         _append_provider_used(draft.providers_used, "regex")
-    if any(str(item.source) == "rule_focus" for item in rule_items):
+    if any(item.source == "rule_focus" for item in rule_items):
         _append_provider_used(draft.providers_used, "rule_focus")
     draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
-
-
-async def _collect_gliner_auto_provider(
-    draft: _AutoAnnotationDraft, scan_text: str, max_items: int
-) -> list[AutoAnnotationItem]:
-    if _remaining_auto_slots(draft, max_items) <= 0:
-        return []
-    gliner_items = await _collect_gliner_entity_annotations(
-        scan_text, max_items=_remaining_auto_slots(draft, max_items)
-    )
-    draft.candidates.extend(gliner_items)
-    if gliner_items:
-        _append_provider_used(draft.providers_used, "gliner")
-    return gliner_items
 
 
 def _collect_sensitive_auto_provider(
@@ -907,19 +781,18 @@ def _collect_sensitive_auto_provider(
     scan_text: str,
     providers: set[str],
     max_items: int,
-) -> list[AutoAnnotationItem]:
+) -> None:
     sensitive_providers = providers & _SENSITIVE_PROVIDER_SOURCES
     if not sensitive_providers or _remaining_auto_slots(draft, max_items) <= 0:
-        return []
+        return
     sensitive_items = _collect_sensitive_annotations(
         scan_text,
         max_items=_remaining_auto_slots(draft, max_items),
         providers=sensitive_providers,
     )
     draft.candidates.extend(sensitive_items)
-    for source in {str(item.source) for item in sensitive_items}:
+    for source in {item.source for item in sensitive_items}:
         _append_provider_used(draft.providers_used, source)
-    return sensitive_items
 
 
 def _collect_regex_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, max_items: int) -> None:
@@ -938,8 +811,8 @@ def _collect_keyword_auto_provider(
         return
     draft.keyword_provider, keyword_items = _collect_keyword_annotations(
         scan_text,
-        provider=str(body.keyword_provider or "simple"),
-        top_k=int(body.keyword_top_k or 12),
+        provider=body.keyword_provider,
+        top_k=body.keyword_top_k,
         max_items=_remaining_auto_slots(draft, max_items),
     )
     draft.candidates.extend(keyword_items)
@@ -955,19 +828,14 @@ async def _collect_document_focus_annotations(
     max_items: int,
 ) -> None:
     if "cpu" in providers:
-        _collect_cpu_auto_provider(draft, scan_text, body, max_items)
+        await run_blocking_in_thread(_collect_cpu_auto_provider, draft, scan_text, body, max_items)
     if "llm" in providers:
         await _collect_llm_auto_provider(draft, scan_text, body, max_items)
 
-    _collect_document_focus_rule_fallback(draft, scan_text, body, providers, max_items)
-
-    if "gliner" in providers:
-        gliner_items = await _collect_gliner_auto_provider(draft, scan_text, max_items)
-        if gliner_items:
-            draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
+    await run_blocking_in_thread(_collect_document_focus_rule_fallback, draft, scan_text, body, providers, max_items)
 
     if providers & _SENSITIVE_PROVIDER_SOURCES and _remaining_auto_slots(draft, max_items) > 0:
-        _collect_sensitive_auto_provider(draft, scan_text, providers, max_items)
+        await run_blocking_in_thread(_collect_sensitive_auto_provider, draft, scan_text, providers, max_items)
         draft.strategy = "hybrid" if draft.candidates else draft.strategy
 
 
@@ -978,13 +846,11 @@ async def _collect_compliance_annotations(
     providers: set[str],
     max_items: int,
 ) -> None:
-    _collect_sensitive_auto_provider(draft, scan_text, providers, max_items)
-    if "gliner" in providers:
-        await _collect_gliner_auto_provider(draft, scan_text, max_items)
+    await run_blocking_in_thread(_collect_sensitive_auto_provider, draft, scan_text, providers, max_items)
     if "regex" in providers:
-        _collect_regex_auto_provider(draft, scan_text, max_items)
+        await run_blocking_in_thread(_collect_regex_auto_provider, draft, scan_text, max_items)
     if "keyword" in providers:
-        _collect_keyword_auto_provider(draft, scan_text, body, max_items)
+        await run_blocking_in_thread(_collect_keyword_auto_provider, draft, scan_text, body, max_items)
     draft.strategy = "rules"
 
 
@@ -995,7 +861,7 @@ def _finalize_auto_annotation_keyword_provider(
 ) -> str | None:
     if keyword_provider is not None or "keyword" not in providers:
         return keyword_provider
-    provider = str(body.keyword_provider or "simple").strip().lower() or "simple"
+    provider = body.keyword_provider.strip().lower() or "simple"
     return "simple" if provider == "auto" else provider
 
 
@@ -1016,7 +882,7 @@ def _count_dataset_parsed_content(db: Session, tenant_id: UUID, dataset_id: UUID
         )
         .scalar()
     )
-    return int(total or 0)
+    return total
 
 
 def _candidate_common_line_doc_ids(db: Session, tenant_id: UUID, dataset_id: UUID) -> list[UUID]:
@@ -1037,7 +903,7 @@ def _candidate_common_line_doc_ids(db: Session, tenant_id: UUID, dataset_id: UUI
         .limit(200)
         .all()
     )
-    return [row[0] for row in rows if row and row[0]]
+    return [row[0] for row in rows]
 
 
 def _allowed_common_line_doc_ids(
@@ -1055,7 +921,7 @@ def _allowed_common_line_doc_ids(
         doc_ids=raw_doc_ids,
         check_member=False,
     )
-    return [doc_id for doc_id in raw_doc_ids if doc_id in allowed_ids][: int(limit_docs or 20)]
+    return [doc_id for doc_id in raw_doc_ids if doc_id in allowed_ids][:limit_docs]
 
 
 def _parsed_content_by_doc_id(
@@ -1075,7 +941,7 @@ def _parsed_content_by_doc_id(
         )
         .all()
     )
-    return {doc_id: (str(original or ""), str(cleaned or "")) for doc_id, original, cleaned in rows}
+    return {doc_id: (original, cleaned) for doc_id, original, cleaned in rows}
 
 
 def _select_common_line_text(original: str, cleaned: str, *, use_original: bool) -> str:

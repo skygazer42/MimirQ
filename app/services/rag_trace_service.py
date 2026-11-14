@@ -8,7 +8,7 @@ and should stay PII-safe by construction.
 
 import json
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +106,7 @@ def _safe_sorted_int_map(raw: Any, *, key_prefix: str | None = None, max_items: 
         safe_value = _to_int(value)
         if safe_value is None:
             continue
-        out[key_str] = int(safe_value)
+        out[key_str] = safe_value
         if len(out) >= max_items:
             break
     return dict(sorted(out.items(), key=lambda item: item[0]))
@@ -120,7 +120,7 @@ def _safe_metadata_filter(raw: Any) -> dict[str, Any] | None:
         "keys_sample": _bounded_safe_strings(raw.get("keys_sample"), max_items=10, max_len=120),
         "ops": _safe_sorted_int_map(raw.get("ops"), key_prefix="$", max_items=30),
     }
-    return _compact_dict(metadata_filter) or None
+    return _compact_dict(metadata_filter)
 
 
 def _safe_enrich_stats(raw: Any) -> dict[str, Any] | None:
@@ -141,7 +141,7 @@ def _safe_enrich_stats(raw: Any) -> dict[str, Any] | None:
             continue
         out[k] = _to_int(raw.get(k))
     out = {k: v for k, v in out.items() if v is not None}
-    return out or None
+    return out
 
 
 def _safe_str(v: Any, *, max_len: int = 120) -> str | None:
@@ -157,7 +157,7 @@ def _safe_int(v: Any, *, lo: int = 0, hi: int = 1_000_000_000) -> int | None:
         n = lo
     if n > hi:
         n = hi
-    return int(n)
+    return n
 
 
 def _safe_float(v: Any, *, lo: float = 0.0, hi: float = 1_000_000.0, digits: int = 3) -> float | None:
@@ -169,7 +169,7 @@ def _safe_float(v: Any, *, lo: float = 0.0, hi: float = 1_000_000.0, digits: int
     if n > hi:
         n = hi
     try:
-        return round(float(n), int(digits))
+        return round(n, digits)
     except Exception:
         return None
 
@@ -281,7 +281,7 @@ def _safe_channel_box(box_raw: Any, *, kind: str) -> dict[str, Any] | None:
     if kind == "colbert_ann":
         box.update(_safe_colbert_ann_box_fields(box_raw))
 
-    return box or None
+    return box
 
 
 def _safe_float_bucket(raw: Any, keys: Iterable[str], *, lo: float, hi: float, digits: int) -> dict[str, float]:
@@ -352,7 +352,7 @@ def _safe_bucket_value(key: str, value: Any) -> bool | int | None:
     if bool_value is not None and key.endswith("_enabled"):
         return bool_value
     int_value = _safe_int(value)
-    return int_value if int_value is not None else None
+    return int_value
 
 
 def _safe_router_layer_row(item: Any, *, level: str) -> dict[str, Any]:
@@ -378,14 +378,20 @@ def _safe_router_layer_row(item: Any, *, level: str) -> dict[str, Any]:
 def _safe_scope(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
-    tenant_present = bool(str(raw.get("tenant_id") or "").strip())
-    dataset_present = bool(str(raw.get("dataset_id") or "").strip())
+    tenant_present = _to_bool(raw.get("tenant_id_present"))
+    if tenant_present is None and "tenant_id" in raw:
+        tenant_id = raw["tenant_id"]
+        tenant_present = tenant_id is not None and bool(str(tenant_id).strip())
+    dataset_present = _to_bool(raw.get("dataset_id_present"))
+    if dataset_present is None and "dataset_id" in raw:
+        dataset_id = raw["dataset_id"]
+        dataset_present = dataset_id is not None and bool(str(dataset_id).strip())
     scope: dict[str, Any] = {
         "account_id_present": _to_bool(raw.get("account_id_present")),
         "document_ids_count": _to_int(raw.get("document_ids_count")),
         "kind": (str(raw.get("kind")) if raw.get("kind") is not None else None),
-        "tenant_id_present": tenant_present if tenant_present else None,
-        "dataset_id_present": dataset_present if dataset_present else None,
+        "tenant_id_present": tenant_present,
+        "dataset_id_present": dataset_present,
     }
     return {k: v for k, v in scope.items() if v is not None}
 
@@ -475,7 +481,7 @@ def _safe_retriever_channels(ch_raw: Any) -> dict[str, Any] | None:
         if cleaned:
             out_ch[bucket_key] = cleaned
 
-    return out_ch or None
+    return out_ch
 
 
 def _safe_router_layers(raw: Any) -> dict[str, Any] | None:
@@ -579,7 +585,7 @@ def _decode_jsonl_tail(raw: bytes) -> str | None:
 def _parse_jsonl_dicts(text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
-        line = (line or "").strip()
+        line = line.strip()
         if not line:
             continue
         try:
@@ -666,14 +672,9 @@ def _safe_kg_path(raw: Any) -> list[dict[str, Any]] | None:
     return out or None
 
 
-def _safe_prefixed_str(raw: Any, *, max_len: int) -> str | None:
-    value = str(raw).strip() if raw is not None else ""
-    return value[:max_len] if value else None
-
-
 def _copy_safe_str_fields(out: dict[str, Any], raw: dict[str, Any], keys: Iterable[str], *, max_len: int) -> None:
     for key in keys:
-        value = _safe_prefixed_str(raw.get(key), max_len=max_len)
+        value = _safe_str(raw.get(key), max_len=max_len)
         if value:
             out[key] = value
 
@@ -682,7 +683,7 @@ def _safe_kg_provenance_node(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     node: dict[str, Any] = {}
-    kind = _safe_prefixed_str(raw.get("kind"), max_len=30)
+    kind = _safe_str(raw.get("kind"), max_len=30)
     if kind:
         node["kind"] = kind
     _copy_safe_str_fields(node, raw, ("entity_id", "type", "event_id", "document_id", "chunk_id"), max_len=200)
@@ -693,7 +694,7 @@ def _safe_kg_provenance_edge(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     edge: dict[str, Any] = {}
-    kind = _safe_prefixed_str(raw.get("kind"), max_len=30)
+    kind = _safe_str(raw.get("kind"), max_len=30)
     if kind:
         edge["kind"] = kind
     _copy_safe_str_fields(
@@ -714,7 +715,9 @@ def _safe_kg_provenance_edge(raw: Any) -> dict[str, Any]:
     return edge
 
 
-def _safe_kg_provenance_entries(raw: Any, *, item_builder: Any, max_items: int = 10) -> list[dict[str, Any]]:
+def _safe_kg_provenance_entries(
+    raw: Any, *, item_builder: Callable[[Any], dict[str, Any]], max_items: int = 10
+) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not raw:
         return []
     out: list[dict[str, Any]] = []
@@ -817,13 +820,8 @@ def _max_float(values: Iterable[float | None]) -> float | None:
     for v in values:
         if v is None:
             continue
-        try:
-            fv = float(v)
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
-        if best is None or fv > best:
-            best = fv
+        if best is None or v > best:
+            best = v
     return best
 
 
@@ -881,7 +879,7 @@ def _safe_dify_result(raw: Any) -> dict[str, Any] | None:
         value = _to_int(raw.get(key))
         if value is not None:
             out[key] = value
-    return out or None
+    return out
 
 
 def _retrieval_config_hash(raw: Any) -> str | None:
@@ -904,7 +902,7 @@ def _build_trace_steps(
             meta={
                 "mode": retrieval.mode,
                 "query_count": retrieval.query_count,
-                "errors": len(retrieval.errors or []),
+                "errors": len(retrieval.errors),
             },
         ),
     ]
@@ -949,11 +947,11 @@ def _disabled_trace_response(*, path: str, window_minutes: int) -> RagTraceListR
 
 
 def _matches_trace_record(record: dict[str, Any], *, tenant_key: str, conversation_key: str, cutoff_ms: int) -> bool:
-    if str(record.get("event") or "") != "rag_trace":
+    if record.get("event") != "rag_trace":
         return False
-    if str(record.get("tenant_id") or "") != tenant_key:
+    if record.get("tenant_id") != tenant_key:
         return False
-    if str(record.get("conversation_id") or "") != conversation_key:
+    if record.get("conversation_id") != conversation_key:
         return False
     ts_ms = _to_int(record.get("ts_ms")) or 0
     return not (ts_ms and ts_ms < cutoff_ms)
@@ -1066,8 +1064,8 @@ def list_rag_traces(
     window_minutes: int = 60,
     max_bytes: int = 5_000_000,
 ) -> RagTraceListResponse:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -1092,7 +1090,7 @@ def list_rag_traces(
         enabled=True,
         path=path_str,
         window_minutes=window_minutes,
-        truncated=bool(truncated_by_tail),
+        truncated=truncated_by_tail,
         returned=len(items),
         items=items,
     )

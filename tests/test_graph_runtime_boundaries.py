@@ -97,9 +97,7 @@ async def test_retrieval_admission_is_process_wide_across_event_loops(
     first_thread.start()
     assert await asyncio.to_thread(first_started.wait, 1)
 
-    second_task = asyncio.create_task(
-        limiter.run_blocking_retrieval_call(second_started.set)
-    )
+    second_task = asyncio.create_task(limiter.run_blocking_retrieval_call(second_started.set))
     await asyncio.sleep(0.05)
     second_was_blocked = not second_started.is_set()
     release_first.set()
@@ -205,9 +203,7 @@ async def test_generic_managed_worker_does_not_hold_retrieval_admission(
         )
     )
     assert await asyncio.to_thread(graph_started.wait, 1)
-    retrieval_task = asyncio.create_task(
-        limiter.run_blocking_retrieval_call(retrieval_started.set)
-    )
+    retrieval_task = asyncio.create_task(limiter.run_blocking_retrieval_call(retrieval_started.set))
     assert await asyncio.to_thread(retrieval_started.wait, 1)
 
     release_graph.set()

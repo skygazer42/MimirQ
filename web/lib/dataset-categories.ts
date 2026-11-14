@@ -16,4 +16,3 @@ export function flattenDatasetCategoryTree(items: DatasetCategoryNode[]) {
 
   return out
 }
-

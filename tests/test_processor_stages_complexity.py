@@ -13,9 +13,9 @@ from app.parsing.processors.support import stages as stages_mod
 from app.parsing.processors.support.results import ChunkAssetOptions
 from app.parsing.processors.support.stages import (
     ChunkAssetStage,
-    ChunkingStage,
     InlineAssetStage,
     ParsingStage,
+    chunk_documents,
 )
 
 
@@ -56,11 +56,12 @@ async def test_parsing_stage_uses_parse_cache_without_subprocess(monkeypatch: py
     monkeypatch.setattr(stages_mod.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(stages_mod, "build_remote_parse_cache_key", lambda **_kwargs: "cache-key", raising=True)
     monkeypatch.setattr(
-        stages_mod.parse_cache_service,
-        "get",
+        stages_mod,
+        "get_parse_cache",
         lambda **_kwargs: (
             SimpleNamespace(
-                documents=[{"page_content": "cached body", "metadata": {"source": "parser.pdf"}, "id": "doc-1"}]
+                resolved_backend="basic",
+                documents=[{"page_content": "cached body", "metadata": {"source": "parser.pdf"}, "id": "doc-1"}],
             ),
             123,
         ),
@@ -164,7 +165,7 @@ def test_chunking_stage_prefers_plugin_over_built_in_chunker(monkeypatch: pytest
         raising=True,
     )
 
-    result = ChunkingStage().run(
+    result = chunk_documents(
         documents=[Document(page_content="alpha", metadata={})],
         chunk_strategy="separator",
         chunk_size=200,
@@ -207,7 +208,7 @@ def test_chunking_stage_normalizes_separator_parameters(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(stages_mod, "SeparatorChunker", _FakeSeparatorChunker, raising=True)
 
-    result = ChunkingStage().run(
+    result = chunk_documents(
         documents=[Document(page_content="alpha\nbeta", metadata={})],
         chunk_strategy="separator",
         chunk_size=100,

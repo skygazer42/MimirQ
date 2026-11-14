@@ -9,7 +9,6 @@ Design constraints:
 - Bounded IO: tail-read of the metrics file (max_bytes)
 """
 
-
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,20 +22,12 @@ logger = get_logger("document_retrieval_hit_frequency")
 
 
 def _to_int(v: Any) -> int | None:
-    try:
-        if v is None:
-            return None
-        return int(v)
-    except Exception:
+    if v is None:
         return None
-
-
-def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
-    """
-    Return: (records, truncated)
-    `truncated=true` means we did not read the entire file, so results might be incomplete.
-    """
-    return read_jsonl_tail(path, max_bytes=max_bytes)
+    try:
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _unavailable_summary(
@@ -71,10 +62,13 @@ def _count_matching_citations(
     for citation in citations:
         if not isinstance(citation, dict):
             continue
-        if str(citation.get("document_id") or "") != document_id:
+        cited_document_id = citation.get("document_id")
+        if cited_document_id is None or str(cited_document_id) != document_id:
             continue
         matched += 1
-        chunk_id = str(citation.get("chunk_id") or "").strip()
+        chunk_id = citation.get("chunk_id")
+        if chunk_id is not None:
+            chunk_id = str(chunk_id).strip()
         if chunk_id:
             unique_chunk_ids.add(chunk_id)
     return matched
@@ -93,11 +87,11 @@ def _scan_trace_hits(
     unique_chunk_ids: set[str] = set()
     for record in records:
         try:
-            if str(record.get("event") or "") != "rag_trace":
+            if record.get("event") != "rag_trace":
                 continue
-            if str(record.get("tenant_id") or "") != tenant_id:
+            if record.get("tenant_id") != tenant_id:
                 continue
-            ts_ms = _to_int(record.get("ts_ms")) or 0
+            ts_ms = _to_int(record.get("ts_ms"))
             if ts_ms and ts_ms < cutoff_ms:
                 continue
             traces_scanned += 1
@@ -125,13 +119,13 @@ def compute_document_retrieval_hit_frequency(
     max_bytes: int = 5_000_000,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = settings.ENABLE_METRICS_LOG
+    path_str = settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"
     path = Path(path_str)
 
-    window_minutes_i = max(1, min(int(window_minutes or 0), 60 * 24 * 30))
-    max_bytes_i = max(1, min(int(max_bytes or 0), 50_000_000))
-    now0 = now or datetime.now(UTC)
+    window_minutes_i = max(1, min(window_minutes, 60 * 24 * 30))
+    max_bytes_i = max(1, min(max_bytes, 50_000_000))
+    now0 = now if now is not None else datetime.now(UTC)
     cutoff_ms = int(now0.timestamp() * 1000) - (window_minutes_i * 60 * 1000)
 
     if not enabled or not path.exists():
@@ -142,7 +136,7 @@ def compute_document_retrieval_hit_frequency(
             max_bytes=max_bytes_i,
         )
 
-    raw_records, truncated = _read_jsonl_tail(path, max_bytes=max_bytes_i)
+    raw_records, truncated = read_jsonl_tail(path, max_bytes=max_bytes_i)
     traces_scanned, traces_with_hits, citations_matched, unique_chunk_ids = _scan_trace_hits(
         raw_records,
         tenant_id=str(tenant_id),
@@ -150,7 +144,7 @@ def compute_document_retrieval_hit_frequency(
         cutoff_ms=cutoff_ms,
     )
 
-    hit_rate = (float(traces_with_hits) / float(traces_scanned)) if traces_scanned else None
+    hit_rate = traces_with_hits / traces_scanned if traces_scanned else None
 
     return {
         "enabled": True,
@@ -158,12 +152,12 @@ def compute_document_retrieval_hit_frequency(
         "path": path_str,
         "window_minutes": window_minutes_i,
         "max_bytes": max_bytes_i,
-        "truncated": bool(truncated),
-        "traces_scanned": int(traces_scanned),
-        "traces_with_hits": int(traces_with_hits),
-        "citations_matched": int(citations_matched),
-        "unique_chunks_matched": int(len(unique_chunk_ids)),
-        "hit_rate": (round(float(hit_rate), 4) if hit_rate is not None else None),
+        "truncated": truncated,
+        "traces_scanned": traces_scanned,
+        "traces_with_hits": traces_with_hits,
+        "citations_matched": citations_matched,
+        "unique_chunks_matched": len(unique_chunk_ids),
+        "hit_rate": round(hit_rate, 4) if hit_rate is not None else None,
     }
 
 

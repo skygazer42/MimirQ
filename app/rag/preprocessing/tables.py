@@ -9,7 +9,6 @@ This module intentionally avoids semantic rewriting. It only:
 It is code-fence aware (caller can safely apply to Markdown-like text).
 """
 
-
 import re
 from dataclasses import dataclass
 
@@ -33,8 +32,8 @@ def _try_parse_table_row(line: str) -> tuple[str, list[str]] | None:
     We avoid regex here to keep runtime linear-time and to prevent ReDoS-style
     security hotspots (python:S5852).
     """
-    raw = str(line or "")
-    if not raw or "|" not in raw:
+    raw = line
+    if "|" not in raw:
         return None
 
     # Preserve leading indentation.
@@ -44,9 +43,6 @@ def _try_parse_table_row(line: str) -> tuple[str, list[str]] | None:
     prefix = raw[:i]
 
     stripped = raw.strip()
-    if not stripped:
-        return None
-
     inner = stripped
     if inner.startswith("|"):
         inner = inner[1:]
@@ -56,27 +52,20 @@ def _try_parse_table_row(line: str) -> tuple[str, list[str]] | None:
     # Require at least 2 cells.
     if "|" not in inner:
         return None
-    cells = [c.strip() for c in inner.split("|")]
-    if len(cells) < 2:
-        return None
-    return prefix, cells
+    return prefix, [cell.strip() for cell in inner.split("|")]
 
 
 def _is_separator_row(cells: list[str]) -> bool:
-    if not cells:
-        return False
     ok = 0
     for cell in cells:
-        if _SEP_CELL_RE.match(cell or ""):
+        if _SEP_CELL_RE.match(cell):
             ok += 1
     # Require that most cells look like separator definitions.
     return ok >= max(1, int(len(cells) * 0.8))
 
 
 def _normalize_separator_cell(cell: str) -> str:
-    raw = (cell or "").strip()
-    if not raw:
-        return "---"
+    raw = (cell).strip()
     # Preserve left/right alignment colons if present.
     left = ":" if raw.startswith(":") else ""
     right = ":" if raw.endswith(":") else ""
@@ -100,16 +89,6 @@ def _collect_table_block(lines: list[str], start_idx: int) -> tuple[list[str], l
     return block_lines, block_parsed, end_idx
 
 
-def _build_parsed_rows(block_parsed: list[tuple[str, list[str]]]) -> tuple[list[tuple[str, list[str], bool]], int]:
-    parsed_rows: list[tuple[str, list[str], bool]] = []
-    max_cols = 0
-    for prefix, cells in block_parsed:
-        is_separator = _is_separator_row(cells)
-        parsed_rows.append((prefix, cells, is_separator))
-        max_cols = max(max_cols, len(cells))
-    return parsed_rows, max_cols
-
-
 def _normalize_table_rows(
     parsed_rows: list[tuple[str, list[str], bool]],
     block_lines: list[str],
@@ -119,8 +98,7 @@ def _normalize_table_rows(
     normalized_rows: list[str] = []
     rows_changed = 0
     for (prefix, cells, is_separator), raw in zip(parsed_rows, block_lines, strict=False):
-        padded = list(cells) + [""] * max(0, max_cols - len(cells))
-        padded = padded[:max_cols] if max_cols > 0 else padded
+        padded = cells + [""] * (max_cols - len(cells))
         if is_separator:
             norm_cells = [_normalize_separator_cell(cell) for cell in padded]
         else:
@@ -132,7 +110,7 @@ def _normalize_table_rows(
 
 
 def normalize_markdown_tables(text: str) -> TableNormalizeResult:
-    original = text or ""
+    original = text
     if not original:
         return TableNormalizeResult(text="", tables=0, rows_changed=0, changed=False)
 
@@ -162,7 +140,7 @@ def normalize_markdown_tables(text: str) -> TableNormalizeResult:
             continue
 
         block_lines, block_parsed, j = _collect_table_block(lines, i)
-        parsed_rows, max_cols = _build_parsed_rows(block_parsed)
+        parsed_rows = [(prefix, cells, _is_separator_row(cells)) for prefix, cells in block_parsed]
 
         # Only normalize when the block resembles a real Markdown table
         # (header + separator row). Otherwise we risk rewriting text that happens
@@ -172,6 +150,7 @@ def normalize_markdown_tables(text: str) -> TableNormalizeResult:
             i = j
             continue
 
+        max_cols = max(len(cells) for _prefix, cells in block_parsed)
         normalized_rows, changed_count = _normalize_table_rows(parsed_rows, block_lines, max_cols=max_cols)
         out.extend(normalized_rows)
         rows_changed += changed_count

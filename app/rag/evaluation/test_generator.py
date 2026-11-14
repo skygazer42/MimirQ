@@ -15,7 +15,7 @@ import httpx
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -65,7 +65,7 @@ def _build_testgen_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     so LangChain/OpenAI does not re-read the unsupported proxy from env.
     """
     trust_env = httpx_trust_env(logger=logger)
-    timeout = float(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    timeout = float(settings.LLM_TIMEOUT)
     return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(
         trust_env=trust_env,
         timeout=timeout,
@@ -154,7 +154,7 @@ def _build_testgen_prompt_inputs(
     prompt_variables: list[str] | None,
 ) -> dict[str, Any]:
     supported = {str(item).strip() for item in (prompt_variables or []) if str(item).strip()}
-    text = str(chunk_text or "")[:2000]
+    text = chunk_text[:2000]
     payload: dict[str, Any] = {}
     if "document_chunk" in supported:
         payload["document_chunk"] = text
@@ -178,10 +178,16 @@ def _testgen_rows(result: dict[str, Any]) -> list[Any]:
     return rows if isinstance(rows, list) else []
 
 
-def _normalize_testgen_row(item: dict[str, Any]) -> dict[str, Any]:
+def _normalize_testgen_row(item: dict[str, Any]) -> dict[str, Any] | None:
+    question = item.get("question")
+    expected_answer = item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth")
+    if not isinstance(question, str) or not question.strip():
+        return None
+    if expected_answer is not None and not isinstance(expected_answer, str):
+        return None
     return {
-        "question": item.get("question", ""),
-        "expected_answer": (item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth")),
+        "question": question,
+        "expected_answer": expected_answer,
         "question_type": (item.get("question_type") if "question_type" in item else item.get("difficulty")),
         "expected_refusal": bool(item.get("expected_refusal")),
         "evidence_quotes": (
@@ -204,7 +210,9 @@ def _normalize_testgen_result_rows(result: Any) -> list[dict[str, Any]]:
     for item in rows:
         if not isinstance(item, dict):
             continue
-        normalized.append(_normalize_testgen_row(item))
+        row = _normalize_testgen_row(item)
+        if row is not None:
+            normalized.append(row)
     return normalized
 
 
@@ -212,7 +220,7 @@ def _normalize_question_types(question_types: list[str] | None) -> list[str]:
     raw_types = question_types if question_types is not None else _DEFAULT_DOCUMENT_QUESTION_TYPES
     normalized_types: list[str] = []
     for raw_type in raw_types or []:
-        key = str(raw_type or "").strip().lower()
+        key = raw_type.strip().lower()
         if not key:
             continue
         if key == "reasoning":
@@ -234,15 +242,15 @@ def _resolve_document_scope_ids(
     if document_ids:
         return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
     if dataset_id:
-        from app.services.dataset_service import DatasetService
+        from app.services import dataset_service
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
         query = db.query(DBDocument).filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.dataset_id == dataset_id,
             DBDocument.status == "completed",
         )
-        return [doc.id for doc in query.all()]
+        return filter_allowed_document_ids(db, tenant_id, account_id, [doc.id for doc in query.all()])
     from app.services.document_access import list_accessible_document_ids
 
     return list_accessible_document_ids(db, tenant_id, account_id)
@@ -258,7 +266,7 @@ def _resolve_testgen_prompt_selection(
     prompt_ab_experiment_key: str | None,
 ) -> TestGeneratorPromptSelection:
     selected_template = None
-    if prompt_template_id or (prompt_template_key or "").strip() or (prompt_ab_experiment_key or "").strip():
+    if prompt_template_id or prompt_template_key or prompt_ab_experiment_key:
         try:
             selected_template = resolve_prompt_template(
                 db=db,
@@ -272,32 +280,18 @@ def _resolve_testgen_prompt_selection(
             logger.warning("Failed to resolve test generator prompt template: %s", exc)
             selected_template = None
     prompt_template_text = (
-        str(getattr(selected_template, "content", "") or "").strip()
-        if selected_template is not None
-        else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
+        selected_template.content.strip() if selected_template is not None else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
     )
-    prompt_variables = list(getattr(selected_template, "variables", None) or [])
+    prompt_variables = list((selected_template.variables if selected_template is not None else None) or [])
     if not prompt_variables:
         prompt_variables = ["text", "num_questions", "question_types"]
     return TestGeneratorPromptSelection(
         prompt_template_text=prompt_template_text,
         prompt_variables=prompt_variables,
-        prompt_template_id=(
-            (str(getattr(selected_template, "id", "") or "") or None) if selected_template is not None else None
-        ),
-        prompt_template_key=(
-            (str(getattr(selected_template, "template_key", "") or "").strip() or None)
-            if selected_template is not None
-            else None
-        ),
-        prompt_ab_experiment_key=(str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None)
-        if selected_template is not None
-        else None,
-        prompt_ab_variant=(
-            (str(getattr(selected_template, "ab_variant", "") or "").strip() or None)
-            if selected_template is not None
-            else None
-        ),
+        prompt_template_id=str(selected_template.id) if selected_template is not None else None,
+        prompt_template_key=selected_template.template_key if selected_template is not None else None,
+        prompt_ab_experiment_key=selected_template.ab_experiment_key if selected_template is not None else None,
+        prompt_ab_variant=selected_template.ab_variant if selected_template is not None else None,
     )
 
 
@@ -315,7 +309,7 @@ def _generated_question_from_row(
         question_type = normalized_types[0]
     expected_refusal = bool(row.get("expected_refusal")) or question_type == "unanswerable"
     return GeneratedQuestion(
-        question=row.get("question", ""),
+        question=row["question"],
         expected_answer=(None if expected_refusal else row.get("expected_answer")),
         context=chunk.content[:500],
         metadata={
@@ -349,20 +343,18 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
         return [w.lower() for w in re.findall(r"\w+", text) if len(w) > 1]
 
     # Count token frequency.
-    all_tokens = []
-    text_tokens = []
+    text_tokens: list[list[str]] = []
     for text in texts:
         tokens = tokenize(text)
         text_tokens.append(tokens)
-        all_tokens.extend(tokens)
 
     # Compute document frequency.
-    doc_freq = Counter()
+    doc_freq: Counter[str] = Counter()
     for tokens in text_tokens:
         doc_freq.update(set(tokens))
 
     # Compute diversity score for each text.
-    scores = []
+    scores: list[float] = []
     for tokens in text_tokens:
         if not tokens:
             scores.append(0.0)
@@ -472,6 +464,8 @@ def generate_questions_from_documents(
 
     num_chunks_needed = max(3, (num_questions + 2) // 3)
     sampled_chunks = _sample_diverse_chunks(chunks, num_chunks_needed)
+    if not sampled_chunks:
+        return []
 
     http_client, http_async_client = _build_testgen_http_clients()
     try:
@@ -509,7 +503,7 @@ def generate_questions_from_documents(
                     chunk_text=chunk.content,
                     num_questions=questions_per_chunk,
                     normalized_types=normalized_types,
-                    existing_questions=[item.question for item in all_questions if str(item.question or "").strip()],
+                    existing_questions=[item.question for item in all_questions if item.question.strip()],
                     prompt_variables=prompt_selection.prompt_variables,
                 )
                 result = chain.invoke(prompt_inputs)
@@ -673,18 +667,22 @@ def _conversation_turns_text(high_quality_turns: list[tuple[str, str, UUID]]) ->
 
 
 def _conversation_generated_questions(result: Any) -> list[GeneratedQuestion]:
-    if not isinstance(result, dict) or "questions" not in result:
+    if not isinstance(result, dict) or not isinstance(result.get("questions"), list):
         return []
     questions: list[GeneratedQuestion] = []
     for q in result["questions"]:
-        questions.append(
-            GeneratedQuestion(
-                question=q.get("question", ""),
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"].strip():
+            continue
+        try:
+            question = GeneratedQuestion(
+                question=q["question"],
                 expected_answer=q.get("expected_answer"),
                 context=q.get("original_question"),
-                metadata={"source_type": "conversation", "original_question": q.get("original_question", "")},
+                metadata={"source_type": "conversation", "original_question": q.get("original_question")},
             )
-        )
+        except ValidationError:
+            continue
+        questions.append(question)
     return questions
 
 

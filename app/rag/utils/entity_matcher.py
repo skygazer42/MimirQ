@@ -1,9 +1,6 @@
-
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
-
-_ASCII_TOKEN_CHAR_RE = re.compile(r"\w", flags=re.ASCII)
 
 
 @dataclass(frozen=True)
@@ -18,7 +15,9 @@ def _normalize_candidates(candidates: Iterable[object] | None) -> list[str]:
     rows: list[str] = []
     seen: set[str] = set()
     for raw in candidates or []:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text:
             continue
         key = text.casefold()
@@ -31,10 +30,7 @@ def _normalize_candidates(candidates: Iterable[object] | None) -> list[str]:
 
 
 def _is_ascii_token_surface(surface: str) -> bool:
-    s = str(surface or "").strip()
-    if not s or not s.isascii():
-        return False
-    return any(ch.isalnum() for ch in s)
+    return surface.isascii() and any(char.isalnum() for char in surface)
 
 
 def _compile_surface_pattern(surface: str) -> re.Pattern[str]:
@@ -45,9 +41,7 @@ def _compile_surface_pattern(surface: str) -> re.Pattern[str]:
 
 
 def _replace_span_with_spaces(text: str, start_char: int, end_char: int) -> str:
-    start = max(0, int(start_char))
-    end = max(start, int(end_char))
-    return text[:start] + (" " * max(0, end - start)) + text[end:]
+    return text[:start_char] + (" " * (end_char - start_char)) + text[end_char:]
 
 
 def find_entity_matches(
@@ -66,7 +60,7 @@ def find_entity_matches(
     - after each match, replace the matched span in the working copy so shorter
       surfaces cannot "steal" substrings inside a longer matched entity
     """
-    source = str(text or "")
+    source = text
     if not source:
         return []
 
@@ -82,7 +76,7 @@ def find_entity_matches(
             found = pattern.search(working)
             if found is None:
                 break
-            start, end = int(found.start()), int(found.end())
+            start, end = found.start(), found.end()
             matches.append(
                 EntityMatch(
                     entity_key=entity_key,
@@ -108,9 +102,7 @@ def extract_partition_keys(
     keys: list[str] = []
     seen: set[str] = set()
     for match in find_entity_matches(text, candidates, max_matches=max_keys * 4):
-        key = str(match.entity_key or "").strip()
-        if not key:
-            continue
+        key = match.entity_key
         norm = key.casefold()
         if norm in seen:
             continue

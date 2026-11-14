@@ -5,7 +5,6 @@ This module is intentionally dependency-light so it can be used by both
 indexing and API layers without pulling in DB/LLM components.
 """
 
-
 from typing import Any
 from uuid import UUID
 
@@ -19,12 +18,10 @@ def _safe_uuid_str(value: Any) -> str | None:
     return str(UUID(str(value)))
 
 
-
 def _safe_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
-
 
 
 def _safe_str(value: Any, *, max_len: int) -> str | None:
@@ -101,25 +98,16 @@ def build_event_entity_provenance(
     return out
 
 
-def _normalized_key_entity_ids(key_entity_ids: set[str] | None) -> set[str] | None:
-    if not isinstance(key_entity_ids, set) or not key_entity_ids:
-        return None
-    cleaned = {str(value).strip() for value in key_entity_ids if str(value).strip()}
-    return cleaned or None
-
-
 def _path_entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
     if obj is None:
         return None, None
     if isinstance(obj, dict):
-        entity_id = obj.get("entity_id") or obj.get("id")
+        entity_id = obj.get("entity_id", obj.get("id"))
         entity_type = obj.get("type")
     else:
         entity_id = getattr(obj, "id", None)
         entity_type = getattr(obj, "type", None)
-    entity_id_text = str(entity_id or "").strip()
-    entity_type_text = str(entity_type or "").strip()
-    return entity_id_text or None, entity_type_text or None
+    return str(entity_id) if entity_id is not None else None, entity_type
 
 
 def _dedup_path_entities(
@@ -164,16 +152,13 @@ def build_kg_path_provenance(
 
     dedup = _dedup_path_entities(
         entities,
-        key_entity_ids=_normalized_key_entity_ids(key_entity_ids),
+        key_entity_ids=key_entity_ids,
     )
     pairs = sorted(((eid, typ) for eid, typ in dedup.items()), key=lambda x: (x[1], x[0]))
-    return [
-        {"entity_id": str(entity_id), "type": str(entity_type or "unknown")}
-        for entity_id, entity_type in pairs[:lim]
-    ]
+    return [{"entity_id": entity_id, "type": entity_type} for entity_id, entity_type in pairs[:lim]]
 
 
-def _confidence_bucket(confidence: Any, *, low_max: float, mid_max: float) -> str:
+def confidence_bucket(confidence: Any, *, low_max: float = 0.4, mid_max: float = 0.7) -> str:
     try:
         value = float(confidence or 0.0)
     except Exception:
@@ -225,7 +210,7 @@ def _shortest_path_entities(
     selected: list[tuple[str, str]] = []
     for entity in _iter_items(entities):
         entity_id, entity_type = _shortest_path_entity_id_and_type(entity)
-        if not entity_id or not entity_type:
+        if not entity_id:
             continue
         if key_entity_ids is not None and entity_id not in key_entity_ids:
             continue
@@ -275,19 +260,17 @@ def _relation_path_entry(
     object_id_text = _safe_uuid_str(object_id)
     if not subject_id_text or not object_id_text or subject_id_text == object_id_text:
         return None
-    evidence_source = ""
-    if isinstance(references, dict):
-        evidence_source = str(references.get("evidence_source") or "").strip().casefold()
+    evidence_source = references.get("evidence_source") if references is not None else None
     return frozenset({subject_id_text, object_id_text}), {
         "relation_id": _safe_uuid_str(relation_id),
         "predicate": _safe_str(predicate, max_len=200),
         "confidence": confidence,
-        "confidence_bucket": _confidence_bucket(
+        "confidence_bucket": confidence_bucket(
             confidence,
             low_max=bucket_low_max,
             mid_max=bucket_mid_max,
         ),
-        "evidence_source": evidence_source or None,
+        "evidence_source": evidence_source,
         "document_id": _safe_uuid_str(document_id),
         "chunk_id": _safe_uuid_str(chunk_id),
         "event_id": _safe_uuid_str(event_id),
@@ -325,8 +308,8 @@ def _direct_relation_provenance(
         "kind": "entity_relation",
         "hops": 1,
         "nodes": [
-            {"kind": "entity", "entity_id": str(first_id), "type": str(first_type)},
-            {"kind": "entity", "entity_id": str(second_id), "type": str(second_type)},
+            {"kind": "entity", "entity_id": first_id, "type": first_type},
+            {"kind": "entity", "entity_id": second_id, "type": second_type},
         ],
         "edges": [
             {
@@ -357,22 +340,22 @@ def _event_bridge_provenance(
         "kind": "entity_event_entity",
         "hops": 2,
         "nodes": [
-            {"kind": "entity", "entity_id": str(first_id), "type": str(first_type)},
-            {"kind": "event", "event_id": str(event_id), "document_id": document_id, "chunk_id": chunk_id},
-            {"kind": "entity", "entity_id": str(second_id), "type": str(second_type)},
+            {"kind": "entity", "entity_id": first_id, "type": first_type},
+            {"kind": "event", "event_id": event_id, "document_id": document_id, "chunk_id": chunk_id},
+            {"kind": "entity", "entity_id": second_id, "type": second_type},
         ],
         "edges": [
             {
                 "kind": "event_entity",
-                "entity_id": str(first_id),
-                "event_id": str(event_id),
+                "entity_id": first_id,
+                "event_id": event_id,
                 "document_id": document_id,
                 "chunk_id": chunk_id,
             },
             {
                 "kind": "event_entity",
-                "entity_id": str(second_id),
-                "event_id": str(event_id),
+                "entity_id": second_id,
+                "event_id": event_id,
                 "document_id": document_id,
                 "chunk_id": chunk_id,
             },
@@ -412,7 +395,7 @@ def build_kg_shortest_path_provenance(
 
     ents = _shortest_path_entities(
         entities,
-        key_entity_ids=_normalized_key_entity_ids(key_entity_ids),
+        key_entity_ids=key_entity_ids,
     )
     if len(ents) < 2:
         return None
@@ -432,4 +415,9 @@ def build_kg_shortest_path_provenance(
     )
 
 
-__all__ = ["build_event_entity_provenance", "build_kg_path_provenance", "build_kg_shortest_path_provenance"]
+__all__ = [
+    "build_event_entity_provenance",
+    "build_kg_path_provenance",
+    "build_kg_shortest_path_provenance",
+    "confidence_bucket",
+]

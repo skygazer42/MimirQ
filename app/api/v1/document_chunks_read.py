@@ -1,115 +1,66 @@
-import uuid
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Query as OrmQuery
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentChunkList, DocumentChunkMatchList, DocumentChunkSchema
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.documents import (
+    DocumentChunkList,
+    DocumentChunkListQuery,
+    DocumentChunkMatch,
+    DocumentChunkMatchList,
+    DocumentChunkMatchQuery,
+    DocumentChunkSchema,
+)
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
-from app.models.dataset import Dataset
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.services.dataset_service import DatasetService
-from app.services.document_access_service import assert_document_acl_readable
+from app.core.pipeline_versions import resolve_doc_pipeline_key
+from app.models.document import Document, DocumentChunk
+from app.services import dataset_service
+from app.services.document_access_service import assert_document_readable_for_lifecycle
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
-DOC_NOT_FOUND_DETAIL = "Document not found"
-CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.get("/{document_id}/chunks", response_model=DocumentChunkList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{document_id}/chunks", response_model=DocumentChunkList)
 def list_document_chunks(
-    document_id: uuid.UUID,
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
-    q: Annotated[str | None, Query(max_length=200)] = None,
-    pipeline_hash: Annotated[
-        str | None, Query(max_length=64, description="Optional: filter by a specific pipeline_hash version")
-    ] = None,
-    all_versions: Annotated[
-        bool, Query(description="If true, return chunks across all pipeline versions (debug)")
-    ] = False,
+    document_id: UUID,
+    params: Annotated[DocumentChunkListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentChunkList:
     """
     List document chunks (paged).
 
     This is preferred over `include_chunks=true` for large documents to avoid huge payloads.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
-
-    query = db.query(DocumentChunk).filter(
-        DocumentChunk.tenant_id == tenant_id,
-        DocumentChunk.document_id == document_id,
+    document = _get_readable_document(db, document_id=document_id, tenant_id=tenant_id, account_id=account_id)
+    query = _document_chunks_query(
+        db, document=document, pipeline_hash=params.pipeline_hash, all_versions=params.all_versions
     )
-
-    if not all_versions:
-        from app.core.pipeline_versions import resolve_doc_pipeline_key
-
-        target_key = resolve_doc_pipeline_key(
-            document_id,
-            getattr(document, "doc_metadata", None),
-            pipeline_hash,
-            all_versions=all_versions,
-        )
-        if target_key:
-            query = query.filter(
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
-            )
-
-    if q:
-        term = q.strip()
+    if params.q is not None:
+        term = params.q.strip()
         if term:
             query = query.filter(DocumentChunk.content.ilike(f"%{term}%"))
 
     total = query.count()
-    items = query.order_by(DocumentChunk.chunk_index.asc()).offset(skip).limit(limit).all()
-    return {"total": total, "items": items}
+    items = query.order_by(DocumentChunk.chunk_index.asc()).offset(params.skip).limit(params.limit).all()
+    return DocumentChunkList(total=total, items=items)
 
 
-@router.get(
-    "/{document_id}/chunks/matches", response_model=DocumentChunkMatchList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.get("/{document_id}/chunks/matches", response_model=DocumentChunkMatchList)
 def list_document_chunk_matches(
-    document_id: uuid.UUID,
-    q: Annotated[str, Query(..., max_length=200, description="Case-insensitive substring match against chunk content")],
-    limit: Annotated[int, Query(ge=1, le=5000, description="Max returned matches (may be truncated)")] = 2000,
-    pipeline_hash: Annotated[
-        str | None, Query(max_length=64, description="Optional: filter by a specific pipeline_hash version")
-    ] = None,
-    all_versions: Annotated[
-        bool, Query(description="If true, return matches across all pipeline versions (debug)")
-    ] = False,
+    document_id: UUID,
+    params: Annotated[DocumentChunkMatchQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentChunkMatchList:
     """
     List chunk matches for a document (lightweight payload).
 
@@ -117,90 +68,42 @@ def list_document_chunk_matches(
     - chunk id (for navigation / deep link)
     - chunk_index/page_number (for display)
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
-
-    term = (q or "").strip()
+    document = _get_readable_document(db, document_id=document_id, tenant_id=tenant_id, account_id=account_id)
+    term = params.q.strip()
     if not term:
-        return {"total": 0, "truncated": False, "items": []}
+        return DocumentChunkMatchList(total=0)
 
     query = (
-        db.query(DocumentChunk)
-        .filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.document_id == document_id,
-            DocumentChunk.content.ilike(f"%{term}%"),
+        _document_chunks_query(
+            db, document=document, pipeline_hash=params.pipeline_hash, all_versions=params.all_versions
         )
+        .filter(DocumentChunk.content.ilike(f"%{term}%"))
         .order_by(DocumentChunk.chunk_index.asc())
     )
-    if not all_versions:
-        from app.core.pipeline_versions import resolve_doc_pipeline_key
-
-        target_key = resolve_doc_pipeline_key(
-            document_id,
-            getattr(document, "doc_metadata", None),
-            pipeline_hash,
-            all_versions=all_versions,
-        )
-        if target_key:
-            query = query.filter(
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
-            )
-
-    total = int(query.count())
+    total = query.count()
     rows = (
-        query.with_entities(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.page_number).limit(limit).all()
+        query.with_entities(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.page_number)
+        .limit(params.limit)
+        .all()
     )
-    items = [
-        {
-            "id": str(row[0]),
-            "chunk_index": int(row[1]),
-            "page_number": row[2] if row[2] is None else int(row[2]),
-        }
-        for row in rows
-    ]
+    items = [DocumentChunkMatch(id=row.id, chunk_index=row.chunk_index, page_number=row.page_number) for row in rows]
 
-    return {
-        "total": total,
-        "truncated": total > len(items),
-        "items": items,
-    }
+    return DocumentChunkMatchList(total=total, truncated=total > len(items), items=items)
 
 
-@router.get(
-    "/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema)
 def get_document_chunk(
-    document_id: uuid.UUID,
-    chunk_id: uuid.UUID,
+    document_id: UUID,
+    chunk_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentChunk:
     """
     Get a single chunk for a document.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+    _get_readable_document(db, document_id=document_id, tenant_id=tenant_id, account_id=account_id)
 
     chunk = (
         db.query(DocumentChunk)
@@ -211,7 +114,29 @@ def get_document_chunk(
         )
         .first()
     )
-    if not chunk:
-        raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
+    if chunk is None:
+        raise HTTPException(status_code=404, detail="Chunk not found")
 
     return chunk
+
+
+def _get_readable_document(db: Session, *, document_id: UUID, tenant_id: UUID, account_id: str) -> Document:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    document = db.query(Document).filter(Document.id == document_id, Document.tenant_id == tenant_id).first()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    assert_document_readable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=document)
+    return document
+
+
+def _document_chunks_query(
+    db: Session, *, document: Document, pipeline_hash: str | None, all_versions: bool
+) -> OrmQuery[DocumentChunk]:
+    query = db.query(DocumentChunk).filter(
+        DocumentChunk.tenant_id == document.tenant_id,
+        DocumentChunk.document_id == document.id,
+    )
+    target_key = resolve_doc_pipeline_key(document.id, document.doc_metadata, pipeline_hash, all_versions=all_versions)
+    if target_key is not None:
+        query = query.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key)
+    return query

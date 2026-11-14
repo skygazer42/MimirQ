@@ -58,7 +58,7 @@ def test_dataset_report_export_bundle_zip(monkeypatch):  # noqa: ANN001
         dataset_metadata={},
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -138,7 +138,7 @@ def test_dataset_report_export_bundle_redacts_filename_and_manifest(monkeypatch)
         ),
     )
     monkeypatch.setattr(
-        reports_module.ReportService, "build_dataset_report", lambda *_a, **_k: dummy_report, raising=True
+        reports_module.report_service, "build_dataset_report", lambda *_a, **_k: dummy_report, raising=True
     )
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db

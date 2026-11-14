@@ -1,4 +1,4 @@
-# MimirQ Backend 目录结构
+# Ragvia Backend 目录结构
 
 ## 概览
 
@@ -6,9 +6,12 @@
 app/
 ├── api/              # API 路由层
 ├── core/             # 核心配置
+├── connectors/       # 数据库连通性、目录与行快照、持久化及画像隐私
 ├── models/           # 数据库模型
 ├── api/schemas/      # API 请求/响应 Schema
-├── api/dependencies/ # FastAPI 依赖注入
+├── api/dependencies.py # FastAPI 请求依赖
+├── api/middleware/    # 请求上下文、响应头、限流与请求体限制
+├── api/utils/         # HTTP 输入、响应头、文件与 URL 边界
 ├── parsing/          # 文档解析模块
 ├── governance/       # 数据治理（Markdown 清洗/规则）
 ├── storage/          # 存储模块
@@ -19,6 +22,36 @@ app/
 └── main.py           # 应用入口
 ```
 
+## API 工具
+
+`app/api/` 与 `app/api/utils/` 使用普通包。utils 保留五个实际职责模块，包入口显式发布公共文件与响应工具，URL 与管线输入通过具名子模块使用；普通文件工具导入不会加载应用配置或管线服务。
+
+```python
+from app.api.utils import file_response_headers, save_upload_file
+from app.api.utils.document_pipeline_input import to_pipeline_options
+from app.api.utils.url_ingest import download_url_to_path
+```
+
+| 模块 | 职责 |
+| --- | --- |
+| document_pipeline_input.py | 管线 JSON、覆盖参数与 HTTP 输入错误转换 |
+| file_io.py | 上传保存、文件名／来源路径、哈希与未完成文件清理 |
+| url_ingest.py | URL／DNS 校验、Host／SNI 固定、重定向及有界下载 |
+| response_headers.py | 安全文件响应头与 Content-Disposition |
+| http_exception_responses.py | 被多个路由共用的错误响应说明 |
+
+## 数据库连接器
+
+`app/connectors/` 保留四个职责模块，直接从定义模块导入；沿用项目已有的命名空间包方式，不设置注册副作用或聚合入口。
+
+```text
+connectors/
+├── connectivity.py    # 异步连接探针与权限警告，驱动按需加载
+├── catalog.py         # 目录 SQL、表列读取、同步与有界行快照
+├── store.py           # 持有 Session 的 SQLAlchemy 存储，不提交事务
+└── profile_privacy.py # 存储和读取共用的画像隐私过滤
+```
+
 ## 模块说明
 
 ### 1. api/ - API 路由层
@@ -26,7 +59,9 @@ app/
 FastAPI 路由定义，处理 HTTP 请求。
 
 ```python
-from app.api.v1 import router
+from app.api.v1 import get_router
+
+app.include_router(get_router(), prefix="/api/v1")
 ```
 
 **文件：**
@@ -69,18 +104,46 @@ from app.models.document import Document, DocumentChunk
 
 API 请求/响应的数据验证模型。
 
-```python
-from app.api.schemas.document import DocumentUploadResponse
+Schema 按业务领域组织为普通包，每个领域通过 __init__.py 显式导出已承诺的模型、类型和常量，并用 __all__ 标记公开范围。域外消费者依赖领域入口，域内继续依赖定义模块；共享 ORM 基类由 base.py 持有，schemas 根入口不聚合全部领域。
+
+```text
+schemas/
+├── __init__.py          # 领域包容器，不全量导出业务模型
+├── base.py              # 共享 ORM 响应基类
+├── identity/            # 账号、成员权限、组和字段访问策略
+├── conversations/       # 聊天、检索、反馈及提示词/RAG 模板
+├── documents/           # 文档、入库、目录、健康状态、问答和时间线
+├── datasets/            # 数据集、分类、统计、预检、数据库目录和表格
+├── sources/             # 连接器、来源 ACL、入库策略和运行清单
+├── pipelines/           # 解析预览、治理规则、行业规则和切块预设
+├── evaluation/          # 会话评估、回归、证据、引用治理、诊断和报告
+├── integrations/        # Dify 与外部会话协议
+└── system/              # 审计、设置、健康检查和元信息
 ```
 
-### 5. api/dependencies/ - FastAPI 依赖
+九个领域的包入口只发布当前有域外使用方的 418 个名称，实际类和校验器仍定义在原模块中，没有转发函数或动态查找。数据集健康模型与统计摘要同归 datasets/profile.py，证据漂移和修复同归 evaluation/references.py。
+
+```python
+from app.api.schemas.documents import DocumentDetail, UrlUploadRequest
+from app.api.schemas.identity import LoginRequest
+```
+
+普通领域入口会加载该领域公开契约所需的模型依赖；conversations 与 evaluation 可经 datasets 初始化已有 ORM 注册和 SQLAlchemy engine，构造时不建立连接。文件与响应公共工具保持配置隔离，包导入不启动路由、任务或网络请求。
+
+### 5. api/dependencies.py - FastAPI 依赖
 
 依赖注入函数（鉴权、租户等）。
 
 ```python
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies import get_current_account_id, get_tenant_id
 ```
+
+请求依赖集中在 `app.api.dependencies`；原依赖目录及其 `auth.py`、`tenant.py` 和 `logging.py` 已删除。HTTP 中间件按实际协议组织：
+
+- `middleware/request_context.py` - 请求 ID、日志上下文和耗时
+- `middleware/response_headers.py` - 安全响应头和服务指纹清理
+- `middleware/body_size_limit.py` - 请求体大小限制
+- `middleware/rate_limit.py` - API 与聊天限流
 
 ### 6. parsing/ - 文档解析模块 📦
 
@@ -122,8 +185,8 @@ from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
 result = hierarchical_chunk_markdown(markdown_text)
 
 # 完整流程
-from app.parsing.processors.processor import document_processor
-await document_processor.process_document(file_path, doc_id, tenant_id)
+from app.parsing.processors.support.process_document_flow import process_document
+await process_document(file_path, doc_id, tenant_id)
 ```
 
 **可选 pipeline 参数（每文档覆盖默认配置）：**
@@ -161,7 +224,7 @@ docs = hybrid_retriever.retrieve(query, doc_ids, tenant_id, top_k=5)
 ```
 
 **子模块：**
-- `vector/` - 向量数据库（Milvus、FAISS、Chroma）
+- `vector/` - 向量数据库（Milvus、Qdrant、pgvector）与进程内 memory 测试索引
 - `object/` - 对象存储（MinIO）
 - `search/` - 混合检索（BM25 + 向量）
 
@@ -175,25 +238,26 @@ docs = hybrid_retriever.retrieve(query, doc_ids, tenant_id, top_k=5)
 # RAG 引擎
 from app.rag.engine import get_rag_engine
 rag_engine = get_rag_engine()
-async for event in rag_engine.stream_chat(query, document_ids, tenant_id):
+async for event in rag_engine.stream_chat(query, document_ids=document_ids, tenant_id=tenant_id):
     print(event)
 
 # LangGraph 编排
-from app.rag.graph import run_rag_graph
-result = run_rag_graph(question, history, document_ids, tenant_id)
+from app.rag.pipelines.langgraph import run_rag_graph
+result = run_rag_graph(question, history, document_ids, tenant_id=tenant_id)
 
-# Agent 工具
-from app.rag.agent import RagAgent
-agent = RagAgent()
-response = await agent.run(query, context)
+# Agentic RAG
+from app.rag.agents.rag_agent import get_agentic_runner
+runner = get_agentic_runner(engine=rag_engine)
+async for event in runner.stream(question=query, document_ids=document_ids, tenant_id=tenant_id):
+    print(event)
 ```
 
 **子模块：**
 - `engine.py` - 核心 RAG 引擎
-- `graph.py` - LangGraph 编排
-- `agent.py` - Agent 工具
-- `tools.py` - RAG 工具函数
-- `reranking/` - 重排序策略
+- `pipelines/langgraph.py` - LangGraph 编排
+- `agents/rag_agent.py` - Agentic RAG 执行
+- `tools/` - RAG 工具函数
+- `reranker/` - 重排序策略
 
 ### 9. evaluation/ - 评估模块 📦
 
@@ -273,7 +337,7 @@ from app.services.prompt_resolver import resolve_prompt_template
 | `app.services.parsers` | `app.parsing.factory` |
 | `app.services.chunkers` | `app.parsing.chunking.factory` |
 | `app.services.hierarchical_chunking` | `app.parsing.chunking.hierarchical` |
-| `app.services.document_processor` | `app.parsing.processors.processor` |
+| `app.services.document_processor` | `app.parsing.processors.support.process_document_flow`（入口）；`app.parsing.processors.processor`（持久化与图像助手） |
 | `app.services.document_parser_service` | `app.parsing.processors.parser_service` |
 | `app.services.zip_image_processor` | `app.parsing.utils.zip_processor` |
 | `app.services.vector_router` | `app.storage.vector.factory` |
@@ -281,8 +345,8 @@ from app.services.prompt_resolver import resolve_prompt_template
 | `app.services.minio_service` | `app.storage.object.minio` |
 | `app.services.hybrid_retriever` | `app.storage.search.hybrid_retriever` |
 | `app.services.rag_engine` | `app.rag.engine` |
-| `app.services.rag_graph` | `app.rag.graph` |
-| `app.services.rag_agent` | `app.rag.agent` |
+| `app.services.rag_graph` | `app.rag.pipelines.langgraph` |
+| `app.services.rag_agent` | `app.rag.agents.rag_agent` |
 | `app.services.rag_tools` | `app.rag.tools` |
 | `app.services.llm_reranker` | `app.rag.reranking.llm_reranker` |
 | `app.services.ragas_evaluator` | `app.rag.evaluation.ragas` |

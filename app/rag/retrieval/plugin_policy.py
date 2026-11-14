@@ -1,9 +1,14 @@
-
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, TypedDict
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.planner import (
+    _as_dict,
+    _metadata_terms,
+    _metadata_value,
+    _normalize_policy_match_text,
+    _policy_string_list,
     _policy_value_fuzzy_overlaps_query,
     retrieval_policy_anchor_mismatch_penalty,
     retrieval_policy_boost_score,
@@ -12,12 +17,29 @@ from app.rag.retrieval.planner import (
     retrieval_policy_value_intent_mismatch_penalty,
 )
 
-PluginRefForRecord = Callable[[dict[str, Any]], str]
+PluginRefForRecord = Callable[[dict[str, Any]], str | None]
 MetadataLayersForRecord = Callable[[dict[str, Any]], list[dict[str, Any]] | tuple[dict[str, Any], ...]]
 PolicyResolver = Callable[[str], dict[str, Any]]
 
 POLICY_QUERY_EXPANSION_MATCH_BONUS = 0.08
 POLICY_QUERY_EXPANSION_MATCH_BONUS_MAX = 0.16
+
+
+class _DisabledAnchorBindingConfig(TypedDict):
+    enabled: Literal[False]
+
+
+class _AnchorBindingConfig(TypedDict):
+    enabled: Literal[True]
+    anchor_fields: tuple[str, ...]
+    slot_fields: tuple[str, ...]
+    anchor_match_bonus: float
+    anchor_mismatch_penalty: float
+    slot_only_penalty: float
+    anchor_slot_match_bonus: float
+
+
+_AnchorBindingRecordInfo = tuple[dict[str, Any], str, _AnchorBindingConfig, set[str], set[str], bool]
 
 
 @dataclass(frozen=True)
@@ -37,64 +59,15 @@ class RetrievalPolicySignalScores:
         return self.boost_field + self.query_expansion + self.rerank_feature
 
 
-def _normalize_policy_match_text(value: Any) -> str:
-    text = str(value or "").strip().casefold()
-    return "".join(char for char in text if char.isalnum())
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _policy_string_list(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, list | tuple | set):
-        return ()
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in value:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
-
-
-def _metadata_value(meta: dict[str, Any], key: str) -> Any:
-    if key in meta:
-        return meta.get(key)
-    if "." not in key:
-        return meta.get(key)
-    cur: Any = meta
-    for part in key.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
-
-
-def _metadata_terms(value: Any) -> tuple[str, ...]:
-    raw_items = value if isinstance(value, list | tuple | set) else [value]
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in raw_items:
-        text = str(raw or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
-
-
 def _policy_float(value: Any, *, default: float, minimum: float = 0.0, maximum: float = 2.0) -> float:
     try:
         out = float(value if value is not None else default)
     except (TypeError, ValueError):
         out = float(default)
-    return max(float(minimum), min(float(maximum), float(out)))
+    return max(float(minimum), min(float(maximum), out))
 
 
-def _anchor_binding_config(policy: dict[str, Any]) -> dict[str, Any]:
+def _anchor_binding_config(policy: dict[str, Any]) -> _AnchorBindingConfig | _DisabledAnchorBindingConfig:
     raw = _as_dict(policy.get("anchor_binding"))
     if raw.get("enabled") is not True:
         return {"enabled": False}
@@ -173,8 +146,7 @@ def _slot_binding_query_matches(
             values = {
                 normalized
                 for normalized in (
-                    _normalize_policy_match_text(value)
-                    for value in _metadata_terms(_metadata_value(meta, field))
+                    _normalize_policy_match_text(value) for value in _metadata_terms(_metadata_value(meta, field))
                 )
                 if normalized
             }
@@ -184,7 +156,7 @@ def _slot_binding_query_matches(
 
     for raw_mapping in policy.get("query_expansion_values") or ():
         mapping = _as_dict(raw_mapping)
-        field = str(mapping.get("metadata") or "").strip()
+        field = _stringified_metadata_text(mapping, "metadata")
         if field not in slot_fields:
             continue
         actual_values = actual_values_by_field.get(field) or set()
@@ -195,10 +167,7 @@ def _slot_binding_query_matches(
             continue
         slot_values.update(
             normalized
-            for normalized in (
-                _normalize_policy_match_text(term)
-                for term in _metadata_terms(mapping.get("terms"))
-            )
+            for normalized in (_normalize_policy_match_text(term) for term in _metadata_terms(mapping.get("terms")))
             if normalized
         )
 
@@ -212,26 +181,28 @@ def _anchor_binding_record_info(
     plugin_ref_for_record: PluginRefForRecord,
     metadata_layers_for_record: MetadataLayersForRecord,
     policy_resolver: PolicyResolver,
-) -> tuple[dict[str, Any], str, dict[str, Any], set[str], set[str], bool] | None:
-    plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+) -> _AnchorBindingRecordInfo | None:
+    plugin_ref = plugin_ref_for_record(record)
+    if plugin_ref is not None:
+        plugin_ref = plugin_ref.strip()
     if not plugin_ref:
         return None
     policy = policy_resolver(plugin_ref)
     if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
         return None
     config = _anchor_binding_config(policy)
-    if not bool(config.get("enabled")):
+    if not config["enabled"]:
         return None
     metadata_layers = metadata_layers_for_record(record)
     anchor_values = _anchor_binding_values(
         metadata_layers,
-        anchor_fields=tuple(config.get("anchor_fields") or ()),
+        anchor_fields=config["anchor_fields"],
     )
     slot_matches = _slot_binding_query_matches(
         policy,
         metadata_layers,
         query=query,
-        slot_fields=tuple(config.get("slot_fields") or ()),
+        slot_fields=config["slot_fields"],
     )
     query_matches = _anchor_binding_query_matches(query, anchor_values)
     return record, plugin_ref, config, anchor_values, query_matches, slot_matches
@@ -239,7 +210,7 @@ def _anchor_binding_record_info(
 
 def _anchor_binding_score(
     *,
-    config: dict[str, Any],
+    config: _AnchorBindingConfig,
     anchor_values: set[str],
     bound_anchors: set[str],
     query_matches: set[str],
@@ -248,13 +219,13 @@ def _anchor_binding_score(
     if not bound_anchors:
         return 0.0
     if query_matches or anchor_values.intersection(bound_anchors):
-        score = float(config.get("anchor_match_bonus") or 0.0)
+        score = config["anchor_match_bonus"] or 0.0
         if slot_matches:
-            score += float(config.get("anchor_slot_match_bonus") or 0.0)
+            score += config["anchor_slot_match_bonus"] or 0.0
         return score
     if slot_matches:
-        return -float(config.get("slot_only_penalty") or 0.0)
-    return -float(config.get("anchor_mismatch_penalty") or 0.0)
+        return -(config["slot_only_penalty"] or 0.0)
+    return -(config["anchor_mismatch_penalty"] or 0.0)
 
 
 def record_retrieval_policy_anchor_binding_scores(
@@ -273,7 +244,7 @@ def record_retrieval_policy_anchor_binding_scores(
     anchor exists.
     """
 
-    record_infos: list[tuple[dict[str, Any], str, dict[str, Any], set[str], set[str], bool]] = []
+    record_infos: list[_AnchorBindingRecordInfo] = []
     bound_anchors_by_ref: dict[str, set[str]] = {}
     for record in records or ():
         record_info = _anchor_binding_record_info(
@@ -372,7 +343,9 @@ def record_retrieval_policy_bonus(
     metadata_layers_for_record: MetadataLayersForRecord,
     policy_resolver: PolicyResolver,
 ) -> float:
-    plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+    plugin_ref = plugin_ref_for_record(record)
+    if plugin_ref is not None:
+        plugin_ref = plugin_ref.strip()
     if not plugin_ref:
         return 0.0
     policy = policy_resolver(plugin_ref)
@@ -403,7 +376,9 @@ def evaluate_records_retrieval_policy(
     rerank_feature_record_count = 0
     anchor_mismatch_record_count = 0
     for record in records or ():
-        plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+        plugin_ref = plugin_ref_for_record(record)
+        if plugin_ref is not None:
+            plugin_ref = plugin_ref.strip()
         if not plugin_ref:
             continue
         policy = policy_resolver(plugin_ref)
@@ -470,7 +445,9 @@ def filter_records_by_retrieval_policy_alignment(
     aligned: list[dict[str, Any]] = []
     evaluated = False
     for record in records or ():
-        plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+        plugin_ref = plugin_ref_for_record(record)
+        if plugin_ref is not None:
+            plugin_ref = plugin_ref.strip()
         if not plugin_ref:
             continue
         policy = policy_resolver(plugin_ref)

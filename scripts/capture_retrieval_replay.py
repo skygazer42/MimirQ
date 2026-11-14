@@ -148,8 +148,6 @@ def main(argv: list[str] | None = None) -> int:
     missed = 0
     with httpx.Client(timeout=timeout) as client, out_path.open("w", encoding="utf-8") as f:
         for it in items:
-            if not isinstance(it, dict):
-                continue
             question = str(it.get("question") or it.get("query") or "").strip()
             if not question:
                 continue
@@ -157,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
             body = {
                 "query": question,
                 "history": [],
-                "dataset_id": str(dataset_id),
+                "dataset_id": dataset_id,
                 "document_ids": [],
                 "rag_config": rag_config,
                 # Optional field; the API ignores it unless supported.
@@ -178,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
 
             rec = build_retrieval_replay_capture_record(
                 query=question,
-                dataset_id=str(dataset_id),
+                dataset_id=dataset_id,
                 document_ids=[],
                 rag_config=rag_config,
                 evidence_payload=payload,
@@ -192,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         "[replay-capture] OK"
         f" captured={captured}"
         f" missed={missed}"
-        f" elapsed_sec={round(float(time.monotonic() - t0), 3)}"
+        f" elapsed_sec={round(time.monotonic() - t0, 3)}"
         f" out={out_path}",
         file=sys.stderr,
     )

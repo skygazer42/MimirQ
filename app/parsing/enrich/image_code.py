@@ -7,64 +7,32 @@ Design constraints:
 - only reads files under the provided origin path
 """
 
-
 import re
 import time
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 from PIL import Image as PILImage
 
+from app.parsing.enrich.image_references import extract_html_images as _extract_html_imgs
+from app.parsing.enrich.image_references import next_non_empty_line as _next_non_empty_line
+from app.parsing.enrich.image_references import normalize_local_image_ref as _normalize_local_image_ref
+from app.parsing.enrich.image_references import read_local_image_bytes as _read_local_image_bytes
 from app.parsing.enrich.image_understanding import decode_image_codes, infer_visual_kind_from_pixels
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-_HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
-_HTML_IMG_ATTR_RE = re.compile(r"(src|alt)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 _MINIO_URL_HINT = "/api/v1/documents/image-url/"
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    return [(alt or "", src or "") for alt, src in _MD_IMAGE_RE.findall(line or "")]
-
-
-def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line or ""):
-        alt = ""
-        src = ""
-        for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
-            if k == "alt":
-                alt = val
-            elif k == "src":
-                src = val
-        out.append((alt or "", src or ""))
-    return out
-
-
-def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
-    resolved_ref = raw
-    if raw.lower().startswith("file://"):
-        parsed = urlparse(raw)
-        if str(parsed.scheme or "").lower() != "file":
-            return None, "unsupported_scheme"
-        netloc = str(parsed.netloc or "").strip().lower()
-        if netloc and netloc not in {"localhost", "127.0.0.1"}:
-            return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path or ""))
-        if not resolved_ref:
-            return None, "empty_file_path"
-        if re.match(r"^/[a-zA-Z]:/", resolved_ref):
-            resolved_ref = resolved_ref[1:]
-        return resolved_ref, None
-    return unquote(resolved_ref), None
+    return _MD_IMAGE_RE.findall(line)
 
 
 def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | None, str | None]:
@@ -77,7 +45,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
         base_dir = base_dir.parent
     base_dir_resolved = base_dir.resolve(strict=False)
 
-    path_obj = Path(resolved_ref or "")
+    path_obj = Path(resolved_ref)
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -92,23 +60,8 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
     return path_obj, None
 
 
-def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | None, str]:
-    try:
-        if int(path_obj.stat().st_size) > int(max_bytes):
-            return None, "too_large"
-    except Exception:
-        return None, "stat_failed"
-    try:
-        data = path_obj.read_bytes()
-    except Exception:
-        return None, "read_failed"
-    if len(data) > int(max_bytes):
-        return None, "too_large"
-    return data, "ok"
-
-
 def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
-    raw = str(src or "").strip()
+    raw = src.strip()
     if not raw:
         return None, "empty_src"
     if raw.startswith("data:"):
@@ -136,27 +89,15 @@ class ImageCodeAudit:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "applied": bool(self.applied),
-            "codes_added": int(self.codes_added),
-            "images_attempted": int(self.images_attempted),
-            "images_succeeded": int(self.images_succeeded),
-            "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
+            "applied": self.applied,
+            "codes_added": self.codes_added,
+            "images_attempted": self.images_attempted,
+            "images_succeeded": self.images_succeeded,
+            "elapsed_ms": self.elapsed_ms,
+            "backend": self.backend,
             "code_elements": list(self.code_elements or []),
-            "error": (str(self.error)[:200] if self.error else None),
+            "error": (self.error[:200] if self.error else None),
         }
-
-
-def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
-    for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = (lines[index] or "").strip()
-        if candidate:
-            return candidate
-    return ""
-
-
-def _iter_line_images(line: str) -> list[tuple[str, str]]:
-    return _extract_md_images(line) + _extract_html_imgs(line)
 
 
 def _analyze_image_code(
@@ -170,7 +111,7 @@ def _analyze_image_code(
     image_bytes, _ = _safe_read_local_image_bytes(
         src=src,
         origin_path=origin_path,
-        max_bytes=int(max_image_bytes or 0),
+        max_bytes=max_image_bytes,
     )
     if image_bytes is None:
         return None, 0, 0
@@ -183,39 +124,41 @@ def _analyze_image_code(
 
     try:
         code_info = decode_image_codes(image)
-        visual_kind = str(code_info.get("visual_kind") or "").strip().lower() if isinstance(code_info, dict) else ""
+        visual_kind = code_info.get("visual_kind", "")
         if not visual_kind:
-            visual_kind = str(infer_visual_kind_from_pixels(image) or "").strip().lower()
+            visual_kind = infer_visual_kind_from_pixels(image)
     finally:
         try:
             image.close()
         except Exception as exc:
             logger.debug("Ignoring local image code close failure: %s", exc)
 
-    if not isinstance(code_info, dict):
-        code_info = {}
-    code_text = str(code_info.get("text") or "").strip()
+    code_text = code_info.get("text", "")
     if not code_text and not visual_kind:
         return None, 1, 0
     if max_code_chars > 0 and len(code_text) > max_code_chars:
         code_text = code_text[: max_code_chars - 3].rstrip() + "..."
-    return {
-        "code_text": code_text,
-        "element": {
-            "kind": "image",
-            "visual_kind": visual_kind or None,
-            "text": code_text or str(alt or "").strip() or f"{visual_kind or 'image'} image",
-            "attributes": {
-                "source_content_type": "image_code" if code_text else "image_understanding",
-                "source_doc_type": "image_code" if code_text else "image",
-                "image_code_text": code_text or None,
-                "image_code_values": list(code_info.get("values") or []),
-                "image_code_src": str(src or ""),
-                "image_code_alt": str(alt or ""),
-                "image_visual_kind_source": "pixel",
+    return (
+        {
+            "code_text": code_text,
+            "element": {
+                "kind": "image",
+                "visual_kind": visual_kind,
+                "text": code_text or alt.strip() or f"{visual_kind or 'image'} image",
+                "attributes": {
+                    "source_content_type": "image_code" if code_text else "image_understanding",
+                    "source_doc_type": "image_code" if code_text else "image",
+                    "image_code_text": code_text or None,
+                    "image_code_values": list(code_info.get("values", [])),
+                    "image_code_src": src,
+                    "image_code_alt": alt,
+                    "image_visual_kind_source": "pixel",
+                },
             },
         },
-    }, 1, 1
+        1,
+        1,
+    )
 
 
 def _extract_code_payloads_for_line(
@@ -234,7 +177,7 @@ def _extract_code_payloads_for_line(
     payloads: list[dict[str, Any]] = []
     attempted = 0
     succeeded = 0
-    for alt, src in _iter_line_images(line):
+    for alt, src in _extract_md_images(line) + _extract_html_imgs(line):
         if len(payloads) >= remaining:
             break
         payload, attempted_inc, succeeded_inc = _analyze_image_code(
@@ -259,30 +202,38 @@ def add_image_code_blocks(
     max_image_bytes: int = 5_000_000,
     max_code_chars: int = 500,
 ) -> tuple[str, int, ImageCodeAudit]:
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
-        return "", 0, ImageCodeAudit(
-            applied=False,
-            codes_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="local_decode",
-            code_elements=[],
-            error=None,
+        return (
+            "",
+            0,
+            ImageCodeAudit(
+                applied=False,
+                codes_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="local_decode",
+                code_elements=[],
+                error=None,
+            ),
         )
 
     max_images_i = max(0, int(max_images or 0))
     if max_images_i <= 0:
-        return raw, 0, ImageCodeAudit(
-            applied=False,
-            codes_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="local_decode",
-            code_elements=[],
-            error="max_images<=0",
+        return (
+            raw,
+            0,
+            ImageCodeAudit(
+                applied=False,
+                codes_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="local_decode",
+                code_elements=[],
+                error="max_images<=0",
+            ),
         )
 
     t0 = time.perf_counter()
@@ -295,15 +246,12 @@ def add_image_code_blocks(
 
     lines = raw.splitlines()
     for index, line in enumerate(lines):
-        if _FENCE_RE.match(line or ""):
+        out_lines.append(line)
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
-            out_lines.append(line)
             continue
         if in_fence:
-            out_lines.append(line)
             continue
-
-        out_lines.append(line)
 
         if codes_added >= max_images_i:
             continue
@@ -320,7 +268,7 @@ def add_image_code_blocks(
         images_attempted += attempted
         images_succeeded += succeeded
         for payload in payloads:
-            code_text = str(payload["code_text"])
+            code_text = payload["code_text"]
             if code_text:
                 codes_added += 1
                 out_lines.append(f"Image code: {code_text}")
@@ -329,13 +277,13 @@ def add_image_code_blocks(
     elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
     return (
         "\n".join(out_lines).rstrip() + "\n",
-        int(codes_added),
+        codes_added,
         ImageCodeAudit(
             applied=True,
-            codes_added=int(codes_added),
-            images_attempted=int(images_attempted),
-            images_succeeded=int(images_succeeded),
-            elapsed_ms=int(elapsed_ms),
+            codes_added=codes_added,
+            images_attempted=images_attempted,
+            images_succeeded=images_succeeded,
+            elapsed_ms=elapsed_ms,
             backend="local_decode",
             code_elements=code_elements,
             error=None,

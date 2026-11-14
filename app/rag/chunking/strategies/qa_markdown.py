@@ -23,13 +23,13 @@ _Q_PREFIX = r"(?:Q(?:uestion)?|问(?:题)?|问题)"
 _A_PREFIX = r"(?:A(?:nswer)?|答(?:案)?|答案)"
 
 _QA_TAG_LINE_RE = re.compile(
-    rf"(?m)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1, 6}\s*)?(?:\*\*|__)?"
+    rf"(?m)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{{1,6}}\s*)?(?:\*\*|__)?"
     rf"(?P<prefix>{_Q_PREFIX}|{_A_PREFIX})(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*(?P<rest>.*)$",
     flags=re.IGNORECASE,
 )
 
 _Q_STRIP_RE = re.compile(
-    rf"(?i)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1, 6}\s*)?(?:\*\*|__)?{_Q_PREFIX}(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*"
+    rf"(?i)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{{1,6}}\s*)?(?:\*\*|__)?{_Q_PREFIX}(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*"
 )
 
 
@@ -49,7 +49,7 @@ class _QAPair:
 
 
 def _iter_tag_segments(text: str) -> list[_TagSeg]:
-    matches = list(_QA_TAG_LINE_RE.finditer(text or ""))
+    matches = list(_QA_TAG_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -57,9 +57,7 @@ def _iter_tag_segments(text: str) -> list[_TagSeg]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        prefix = (m.group("prefix") or "").strip()
-        if not prefix:
-            continue
+        prefix = (m.group("prefix")).strip()
         lower = prefix.lower()
         kind = "Q" if lower.startswith("q") or prefix.startswith("问") else "A"
         segs.append(_TagSeg(start=start, end=end, kind=kind))
@@ -85,7 +83,7 @@ def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
                 has_answer = True
                 break
 
-        question_text = (text[pair_start:next_q_start] or "").strip()
+        question_text = (text[pair_start:next_q_start]).strip()
         first_line = question_text.splitlines()[0] if question_text else ""
         preview = _Q_STRIP_RE.sub("", first_line).strip() if first_line else None
         if preview and len(preview) > 120:
@@ -95,7 +93,7 @@ def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
             _QAPair(
                 start=pair_start,
                 end=next_q_start,
-                has_answer=bool(has_answer),
+                has_answer=has_answer,
                 question_preview=preview,
             )
         )
@@ -144,7 +142,7 @@ def _window_end_index(*, pairs: list[_QAPair], start_idx: int, chunk_size: int) 
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -158,7 +156,7 @@ def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, ch
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 def _qa_chunk_document(
@@ -178,15 +176,15 @@ def _qa_chunk_document(
     meta["chunk_strategy"] = "qa_markdown"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["qa_pair_count"] = int(end_idx - start_idx)
-    meta["qa_answered_count"] = int(answered)
+    meta["qa_pair_count"] = end_idx - start_idx
+    meta["qa_answered_count"] = answered
     if previews:
         meta["qa_question_previews"] = previews
     return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
 
 
 class QAMarkdownChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -202,7 +200,7 @@ class QAMarkdownChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -21,7 +21,7 @@ export type DocumentAccessUpdateRequest = import('./backend').DocumentAccessUpda
 export type DocumentFolderNode = import('./backend').DocumentFolderNode
 export type DocumentFolderTreeResponse = import('./backend').DocumentFolderTreeResponse
 
-export interface DocumentHealthParsing {
+export type DocumentHealthParsing = {
   parser_backend?: string | null
   parser_backend_requested?: string | null
   parse_quality?: JsonObject | null
@@ -33,7 +33,7 @@ export interface DocumentHealthParsing {
   processed_at?: string | null
 }
 
-export interface DocumentHealthChunkCoverage {
+export type DocumentHealthChunkCoverage = {
   sum_chunk_chars: number
   covered_chars: number
   coverage_ratio: number
@@ -42,7 +42,7 @@ export interface DocumentHealthChunkCoverage {
   largest_gap: number
 }
 
-export interface DocumentHealthSemanticQualitySummary {
+export type DocumentHealthSemanticQualitySummary = {
   sampled_chunks: number
   needs_review: number
   needs_review_ratio: number
@@ -56,7 +56,7 @@ export interface DocumentHealthSemanticQualitySummary {
   note?: string | null
 }
 
-export interface DocumentHealthChunking {
+export type DocumentHealthChunking = {
   chunk_strategy?: string | null
   chunk_strategy_requested?: string | null
 
@@ -67,7 +67,7 @@ export interface DocumentHealthChunking {
   semantic_quality?: DocumentHealthSemanticQualitySummary | null
 }
 
-export interface DocumentHealthRetrievalHits {
+export type DocumentHealthRetrievalHits = {
   enabled: boolean
   available: boolean
   path?: string | null
@@ -82,7 +82,7 @@ export interface DocumentHealthRetrievalHits {
   hit_rate?: number | null
 }
 
-export interface DocumentHealthCard {
+export type DocumentHealthCard = {
   document_id: string
   dataset_id?: string | null
   filename?: string | null

@@ -5,7 +5,7 @@ import pytest
 from app.rag.kg.search import searcher as searcher_module
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key
 from app.rag.kg.search.config import SearchConfig
-from app.rag.kg.search.searcher import KGSearcher
+from app.rag.kg.search.searcher import _apply_lazy_community_summaries
 
 
 def test_kg_community_summary_cache_key_changes_with_scope() -> None:
@@ -93,7 +93,7 @@ async def test_lazy_community_summary_cache_key_uses_search_scope(monkeypatch) -
     monkeypatch.setattr(searcher_module.kg_community_summary_cache, "get", _cache_get)
     reports = [{"community_id": "community-1", "summary": "body"}]
 
-    result = await KGSearcher.__new__(KGSearcher)._apply_lazy_community_summaries(
+    result = await _apply_lazy_community_summaries(
         config=config,
         reports=reports,
         query=config.query,

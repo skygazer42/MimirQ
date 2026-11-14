@@ -11,7 +11,6 @@ Design goals:
 - Cheap: at most one indexed query per job (latest audit log row).
 """
 
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -119,8 +118,7 @@ def _latest_audit_event(
     if not row:
         return None
 
-    created_at = row[0] if isinstance(row, tuple) and len(row) > 0 else None
-    resource_id = row[1] if isinstance(row, tuple) and len(row) > 1 else None
+    created_at, resource_id = row
     if not isinstance(created_at, datetime):
         return None
 
@@ -148,11 +146,9 @@ def build_periodic_job_freshness_snapshot(
         )
         created_at: datetime | None = None
         resource_id: str | None = None
-        if isinstance(latest, dict):
-            if isinstance(latest.get("created_at"), datetime):
-                created_at = _as_utc(latest["created_at"])
-            rid = latest.get("resource_id")
-            resource_id = (str(rid) if rid is not None else None)
+        if latest is not None:
+            created_at = latest["created_at"]
+            resource_id = latest["resource_id"]
 
         age_seconds: int | None = None
         stale = True
@@ -163,7 +159,7 @@ def build_periodic_job_freshness_snapshot(
             except Exception:
                 age_seconds = None
 
-        stale_after_sec = max(1, int(spec.stale_after_hours) * 3600)
+        stale_after_sec = max(1, spec.stale_after_hours * 3600)
         if age_seconds is not None and age_seconds <= stale_after_sec:
             stale = False
 
@@ -172,12 +168,12 @@ def build_periodic_job_freshness_snapshot(
                 "key": spec.key,
                 "action": spec.action,
                 "resource_type": spec.resource_type,
-                "expected_interval_hours": int(spec.expected_interval_hours),
-                "stale_after_hours": int(spec.stale_after_hours),
+                "expected_interval_hours": spec.expected_interval_hours,
+                "stale_after_hours": spec.stale_after_hours,
                 "last_created_at": created_at,
                 "last_resource_id": resource_id,
                 "age_seconds": age_seconds,
-                "stale": bool(stale),
+                "stale": stale,
             }
         )
 

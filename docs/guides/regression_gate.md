@@ -238,9 +238,9 @@ python scripts/seed_ci_retrieval_regression.py \
   --fixture ci/retrieval_regression_fixture.v1.json \
   --out-cases artifacts/regression_cases.json
 
-# 3) 启动后端（禁用外部依赖；使用 faiss 让 /health/ready 通过）
+# 3) 启动后端（禁用外部依赖；使用 memory 让 /health/ready 通过）
 ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
-VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
+VECTOR_BACKEND=memory TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
 EMBEDDING_PROVIDER=deterministic_test EMBEDDING_MODEL=mimirq-deterministic-test-v1 \
 LEXICAL_DB_TRGM_ENABLED=false LLM_MOCK_ENABLED=true ENABLE_RERANKER=true RERANKER_PROVIDER=pc BM25_INDEX_ENABLED=true \
 uvicorn app.main:app --host 127.0.0.1 --port 8000
@@ -329,7 +329,7 @@ python scripts/seed_ci_kg_search_regression.py \
 
 # 3) 启动后端（禁用外部依赖；KG 走 alias-driven recall，不需要 Milvus/embeddings）
 ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
-VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
+VECTOR_BACKEND=memory TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
 LEXICAL_DB_TRGM_ENABLED=false ENABLE_RERANKER=false BM25_INDEX_ENABLED=false \
 KG_ENABLED=true KG_SEARCH_VECTOR_RECALL_ENABLED=false \
 uvicorn app.main:app --host 127.0.0.1 --port 8000

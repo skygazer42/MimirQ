@@ -78,11 +78,18 @@ _HEADER_ROLE_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-def _header_text(meta: Mapping[str, Any]) -> str:
-    raw = meta.get("header_path") or meta.get("header_context") or ""
-    if not isinstance(raw, str):
-        raw = str(raw)
-    return raw.strip()
+def _header_text(meta: Mapping[str, Any]) -> str | None:
+    raw = meta.get("header_path") or meta.get("header_context")
+    if raw is None:
+        return None
+    return str(raw).strip()
+
+
+def _metadata_keyword(meta: Mapping[str, Any], key: str) -> str | None:
+    value = meta.get(key)
+    if value is None:
+        return None
+    return str(value).strip().lower()
 
 
 _MD_TABLE_SEP_ALLOWED = frozenset("-:")
@@ -91,12 +98,12 @@ _MD_TABLE_SEP_ALLOWED = frozenset("-:")
 def _looks_like_qa_pair(text: str) -> bool:
     if not text:
         return False
-    lines = (text or "").splitlines()
+    lines = (text).splitlines()
     if len(lines) < 2:
         return False
 
     def is_marker(line: str, *, marker: str) -> bool:
-        s = (line or "").lstrip()
+        s = (line).lstrip()
         if len(s) < 3:
             return False
         if s[0].lower() != marker.lower():
@@ -112,7 +119,7 @@ def _looks_like_qa_pair(text: str) -> bool:
 
 
 def _split_md_table_cells(line: str) -> list[str]:
-    s = (line or "").strip()
+    s = (line).strip()
     if s.startswith("|"):
         s = s[1:]
     if s.endswith("|"):
@@ -121,7 +128,7 @@ def _split_md_table_cells(line: str) -> list[str]:
 
 
 def _is_md_table_separator_row(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if "|" not in s:
         return False
     cells = _split_md_table_cells(s)
@@ -138,7 +145,7 @@ def _is_md_table_separator_row(line: str) -> bool:
 
 
 def _is_md_table_header_row(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if "|" not in s:
         return False
     if _is_md_table_separator_row(s):
@@ -153,7 +160,7 @@ def _is_md_table_header_row(line: str) -> bool:
 def _looks_like_markdown_table(text: str) -> bool:
     if not text:
         return False
-    lines = (text or "").splitlines()
+    lines = (text).splitlines()
     for idx, ln in enumerate(lines):
         if not _is_md_table_separator_row(ln):
             continue
@@ -175,11 +182,11 @@ def _existing_semantic_role(meta: Mapping[str, Any]) -> str | None:
 
 
 def _meta_semantic_role(meta: Mapping[str, Any]) -> str | None:
-    chunk_role = str(meta.get("chunk_role") or "").strip().lower()
+    chunk_role = _metadata_keyword(meta, "chunk_role")
     if chunk_role == "qa":
         return ChunkSemanticRole.FAQ.value
 
-    strategy = str(meta.get("chunk_strategy") or "").strip().lower()
+    strategy = _metadata_keyword(meta, "chunk_strategy")
     strategy_roles = {
         "glossary": ChunkSemanticRole.DEFINITION.value,
         "sop_steps": ChunkSemanticRole.PROCEDURE.value,
@@ -190,14 +197,17 @@ def _meta_semantic_role(meta: Mapping[str, Any]) -> str | None:
     if strategy in strategy_roles:
         return strategy_roles[strategy]
 
-    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+    doc_type = _metadata_keyword(meta, "doc_type_kwd")
     if doc_type == "table":
         return ChunkSemanticRole.TABLE.value
     return None
 
 
 def _header_semantic_role(meta: Mapping[str, Any]) -> str | None:
-    header = _header_text(meta).lower()
+    header = _header_text(meta)
+    if header is None:
+        return None
+    header = header.lower()
     if not header:
         return None
     for role, keywords in _HEADER_ROLE_KEYWORDS:
@@ -233,7 +243,7 @@ def classify_chunk_semantic_role(*, content: str, meta: Mapping[str, Any] | None
     if meta_role is not None:
         return meta_role
 
-    text = str(content or "")
+    text = content
     content_role = _content_semantic_role(text)
     if content_role in {ChunkSemanticRole.CODE.value, ChunkSemanticRole.TABLE.value}:
         return content_role
@@ -256,11 +266,11 @@ def classify_chunk_type(*, content: str, meta: Mapping[str, Any] | None = None) 
         if existing_norm in {r.value for r in ChunkType}:
             return existing_norm
 
-    content_type = str(meta.get("content_type") or "").strip().lower()
-    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
-    visual_kind = str(meta.get("visual_kind") or "").strip().lower()
-    text = str(content or "")
-    semantic_role = str(meta.get("chunk_semantic_role") or "").strip().lower()
+    content_type = _metadata_keyword(meta, "content_type")
+    doc_type = _metadata_keyword(meta, "doc_type_kwd")
+    visual_kind = _metadata_keyword(meta, "visual_kind")
+    text = content
+    semantic_role = _metadata_keyword(meta, "chunk_semantic_role")
 
     if "Chart data:" in text or content_type == "chart_data":
         return ChunkType.CHART_DATA.value
@@ -274,8 +284,6 @@ def classify_chunk_type(*, content: str, meta: Mapping[str, Any] | None = None) 
         return ChunkType.TABLE.value
     if visual_kind in {"chart", "diagram", "figure"} or doc_type == "image":
         return ChunkType.FIGURE.value
-    if semantic_role == ChunkSemanticRole.TABLE.value:
-        return ChunkType.TABLE.value
     return ChunkType.TEXT.value
 
 
@@ -285,7 +293,7 @@ def build_chunk_type_subindex_payload(
     content: str,
     meta: Mapping[str, Any] | None = None,
 ) -> dict[str, str]:
-    resolved_chunk_id = str(chunk_id or "").strip()
+    resolved_chunk_id = chunk_id.strip()
     chunk_type = classify_chunk_type(content=content, meta=meta)
     return {
         "schema": "mimirq.chunk_type_subindex.v1",

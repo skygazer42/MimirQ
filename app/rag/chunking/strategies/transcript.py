@@ -10,7 +10,6 @@ The chunker tries to keep complete speaker turns together and uses turn-level
 overlap (instead of raw character overlap) when possible.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -41,14 +40,14 @@ _SPEAKER_LINE_RE = re.compile(
 
 
 def _iter_turns(text: str) -> list[_Turn]:
-    matches = list(_SPEAKER_LINE_RE.finditer(text or ""))
+    matches = list(_SPEAKER_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
     turns: list[_Turn] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        speaker = (m.group("speaker") or "").strip()
+        speaker = (m.group("speaker")).strip()
         turns.append(_Turn(start=start, end=end, speaker=speaker))
     return turns
 
@@ -61,7 +60,7 @@ def looks_like_transcript(text: str) -> bool:
 
 
 class TranscriptChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -76,11 +75,10 @@ class TranscriptChunker(BaseChunker):
     def _append_fallback_chunks(self, *, out: list[Document], text: str, base_meta: dict[str, Any]) -> None:
         split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
         for sd in split_docs:
-            local_start = sd.metadata.pop("start_index", None) or 0
-            abs_start = int(local_start)
+            abs_start = sd.metadata.pop("start_index")
             abs_end = abs_start + len(sd.page_content)
             meta: dict[str, Any] = dict(base_meta)
-            meta.update(sd.metadata or {})
+            meta.update(sd.metadata)
             meta["chunk_strategy"] = "transcript"
             meta["start_char"] = abs_start
             meta["end_char"] = abs_end
@@ -91,7 +89,7 @@ class TranscriptChunker(BaseChunker):
     def _unique_speakers(turns: list[_Turn], *, start_idx: int, end_idx: int) -> list[str]:
         unique_speakers: list[str] = []
         for turn in turns[start_idx:end_idx]:
-            if turn.speaker and turn.speaker not in unique_speakers:
+            if turn.speaker not in unique_speakers:
                 unique_speakers.append(turn.speaker)
         return unique_speakers
 
@@ -111,7 +109,7 @@ class TranscriptChunker(BaseChunker):
         meta["chunk_strategy"] = "transcript"
         meta["start_char"] = chunk_start
         meta["end_char"] = chunk_end
-        meta["turn_count"] = int(end_idx - start_idx)
+        meta["turn_count"] = end_idx - start_idx
         speakers = TranscriptChunker._unique_speakers(turns, start_idx=start_idx, end_idx=end_idx)
         if speakers:
             meta["speakers"] = speakers
@@ -128,15 +126,7 @@ class TranscriptChunker(BaseChunker):
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-        return next_start if next_start > start_idx else end_idx
-
-    @staticmethod
-    def _finalize_chunk_indexes(out: list[Document]) -> list[Document]:
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
-        return out
+        return next_start
 
     def _append_turn_chunks(
         self,
@@ -157,9 +147,6 @@ class TranscriptChunker(BaseChunker):
                     continue
                 break
 
-            if end_idx == start_idx:
-                end_idx = start_idx + 1
-
             self._append_turn_chunk(
                 out=out,
                 text=text,
@@ -168,13 +155,15 @@ class TranscriptChunker(BaseChunker):
                 start_idx=start_idx,
                 end_idx=end_idx,
             )
+            if end_idx == len(turns):
+                break
             start_idx = self._next_turn_start(turns=turns, start_idx=start_idx, end_idx=end_idx)
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -185,4 +174,8 @@ class TranscriptChunker(BaseChunker):
 
             self._append_turn_chunks(out=out, text=text, base_meta=base_meta, turns=turns)
 
-        return self._finalize_chunk_indexes(out)
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata)
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+        return out

@@ -6,11 +6,10 @@ This module:
 - Optionally configures JSON logging when LOG_FORMAT=json
 """
 
-
 import json
 import logging
 import sys
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from typing import Any
 
@@ -39,24 +38,23 @@ def _get_otel_trace_context() -> tuple[str, str]:
         return "", ""
 
     try:
-        span = trace.get_current_span()
-        if span is None:
+        span_context = trace.get_current_span().get_span_context()
+        if not span_context.is_valid:
             return "", ""
-        ctx = span.get_span_context()
-        if not getattr(ctx, "is_valid", False):
-            return "", ""
-        return format(int(ctx.trace_id), "032x"), format(int(ctx.span_id), "016x")
+        return format(span_context.trace_id, "032x"), format(span_context.span_id, "016x")
     except Exception:  # noqa: BLE001
         return "", ""
 
 
-def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "", route: str = "") -> dict[str, Any]:
-    tokens: dict[str, Any] = {}
-    tokens["request_id"] = _request_id.set((request_id or "").strip())
-    tokens["tenant_id"] = _tenant_id.set((tenant_id or "").strip())
-    tokens["user_id"] = _user_id.set((user_id or "").strip())
-    tokens["route"] = _route.set((route or "").strip())
-    return tokens
+def bind_request_context(
+    *, request_id: str, tenant_id: str = "", user_id: str = "", route: str = ""
+) -> dict[str, Token[str]]:
+    return {
+        "request_id": _request_id.set(request_id.strip()),
+        "tenant_id": _tenant_id.set(tenant_id.strip()),
+        "user_id": _user_id.set(user_id.strip()),
+        "route": _route.set(route.strip()),
+    }
 
 
 def set_request_user_id(user_id: str) -> None:
@@ -65,7 +63,7 @@ def set_request_user_id(user_id: str) -> None:
 
     Useful when auth is resolved after middleware binds initial context.
     """
-    _user_id.set((user_id or "").strip())
+    _user_id.set(user_id.strip())
 
 
 def set_request_tenant_id(tenant_id: str) -> None:
@@ -75,7 +73,8 @@ def set_request_tenant_id(tenant_id: str) -> None:
     Useful when tenant identity is derived from a verified source (e.g. JWT claim)
     rather than an untrusted header.
     """
-    _tenant_id.set((tenant_id or "").strip())
+    _tenant_id.set(tenant_id.strip())
+
 
 def set_request_route(route: str) -> None:
     """
@@ -84,10 +83,10 @@ def set_request_route(route: str) -> None:
     Prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to keep
     cardinality low in log search tools.
     """
-    _route.set((route or "").strip())
+    _route.set(route.strip())
 
 
-def reset_request_context(tokens: dict[str, Any]) -> None:
+def reset_request_context(tokens: dict[str, Token[str]]) -> None:
     if not tokens:
         return
     try:
@@ -102,10 +101,10 @@ def reset_request_context(tokens: dict[str, Any]) -> None:
 
 def get_request_context() -> dict[str, str]:
     return {
-        "request_id": _request_id.get() or "",
-        "tenant_id": _tenant_id.get() or "",
-        "user_id": _user_id.get() or "",
-        "route": _route.get() or "",
+        "request_id": _request_id.get(),
+        "tenant_id": _tenant_id.get(),
+        "user_id": _user_id.get(),
+        "route": _route.get(),
     }
 
 
@@ -118,9 +117,9 @@ class JSONFormatter(logging.Formatter):
             "msg": record.getMessage(),
         }
 
-        request_id = getattr(record, "request_id", None) or _request_id.get() or ""
-        tenant_id = getattr(record, "tenant_id", None) or _tenant_id.get() or ""
-        user_id = getattr(record, "user_id", None) or _user_id.get() or ""
+        request_id = getattr(record, "request_id", _request_id.get())
+        tenant_id = getattr(record, "tenant_id", _tenant_id.get())
+        user_id = getattr(record, "user_id", _user_id.get())
         if request_id:
             payload["request_id"] = request_id
         if tenant_id:
@@ -128,12 +127,12 @@ class JSONFormatter(logging.Formatter):
         if user_id:
             payload["user_id"] = user_id
 
-        route = getattr(record, "route", None) or _route.get() or ""
+        route = getattr(record, "route", _route.get())
         if route:
             payload["route"] = route
 
-        trace_id = getattr(record, "trace_id", None) or ""
-        span_id = getattr(record, "span_id", None) or ""
+        trace_id = getattr(record, "trace_id", None)
+        span_id = getattr(record, "span_id", None)
         if trace_id:
             payload["trace_id"] = trace_id
         if span_id:
@@ -153,12 +152,12 @@ def _install_record_factory() -> None:
 
     old_factory = logging.getLogRecordFactory()
 
-    def record_factory(*args, **kwargs):  # type: ignore[no-untyped-def]
+    def record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         record = old_factory(*args, **kwargs)
-        record.request_id = _request_id.get() or ""
-        record.tenant_id = _tenant_id.get() or ""
-        record.user_id = _user_id.get() or ""
-        record.route = _route.get() or ""
+        record.request_id = _request_id.get()
+        record.tenant_id = _tenant_id.get()
+        record.user_id = _user_id.get()
+        record.route = _route.get()
         trace_id, span_id = _get_otel_trace_context()
         record.trace_id = trace_id
         record.span_id = span_id
@@ -183,17 +182,17 @@ def configure_logging(
       even when uvicorn pre-configures logging.
     """
     global _include_trace_context
-    _include_trace_context = bool(include_trace_context)
+    _include_trace_context = include_trace_context
 
     _install_record_factory()
 
-    level = int(logging._nameToLevel.get(str(log_level).upper(), logging.INFO))
+    level = logging.getLevelNamesMapping().get(log_level.upper(), logging.INFO)
 
-    if str(log_format).lower() != "json":
+    if log_format.lower() != "json":
         # Best-effort: ensure the process respects LOG_LEVEL even when we keep plain logging.
         # Do not forcibly override existing handlers (e.g., uvicorn / pytest log capture).
         root = logging.getLogger()
-        if not getattr(root, "handlers", None):
+        if not root.handlers:
             logging.basicConfig(level=level)
         else:
             root.setLevel(level)

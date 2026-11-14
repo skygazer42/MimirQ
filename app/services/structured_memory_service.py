@@ -61,12 +61,12 @@ _STOPWORDS_ZH = {
 
 
 def _stable_sig(s: str) -> str:
-    s = str(s or "").strip()
+    s = s.strip()
     return s.casefold() if s.isascii() else s
 
 
 def _is_pii_like(text: str) -> bool:
-    t = str(text or "")
+    t = text
     if not t:
         return True
     if _EMAIL_RE.search(t):
@@ -79,7 +79,7 @@ def _is_pii_like(text: str) -> bool:
 
 
 def _clean_token(tok: str) -> str:
-    t = str(tok or "").strip()
+    t = tok.strip()
     # Strip common punctuation around tokens.
     return t.strip(" \t\r\n\"'“”‘’`()[]{}<>.,;:!?，。；：！？")
 
@@ -114,7 +114,7 @@ def _collect_entity_token_counts(raw: str) -> tuple[dict[str, int], dict[str, st
         if normalized is None:
             continue
         sig, tok = normalized
-        counts[sig] = int(counts.get(sig, 0) or 0) + 1
+        counts[sig] = counts.get(sig, 0) + 1
         display.setdefault(sig, tok)
     return counts, display
 
@@ -132,15 +132,15 @@ def extract_entity_tokens(*, text: str, max_entities: int) -> list[str]:
     if max_out <= 0:
         return []
 
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return []
 
     counts, display = _collect_entity_token_counts(raw)
-    ranked = sorted(counts.items(), key=lambda t: (-int(t[1]), _stable_sig(t[0]), t[0]))
+    ranked = sorted(counts.items(), key=lambda t: (-t[1], _stable_sig(t[0]), t[0]))
     out: list[str] = []
     for sig, _cnt in ranked:
-        out.append(display.get(sig) or sig)
+        out.append(display[sig])
         if len(out) >= max_out:
             break
     return out
@@ -156,16 +156,16 @@ def extract_fact_sentences(*, text: str, max_facts: int) -> list[str]:
     if max_out <= 0:
         return []
 
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return []
 
     # Split into sentences (simple heuristic).
-    parts = re.split(r"[。！？!?\\n]+", raw)
+    parts = re.split(r"[。！？!?\n]+", raw)
     out: list[str] = []
     seen: set[str] = set()
     for p in parts:
-        s = str(p or "").strip()
+        s = p.strip()
         if not s:
             continue
         if len(s) < 10 or len(s) > 220:
@@ -216,8 +216,8 @@ def extract_structured_memory_for_turn(
         "entities": entities,
         "facts": facts,
         "stats": {
-            "entities": int(len(entities)),
-            "facts": int(len(facts)),
+            "entities": len(entities),
+            "facts": len(facts),
         },
     }
 
@@ -228,11 +228,13 @@ def _record_memory_entity(
     ent_counts: dict[str, int],
     ent_surface: dict[str, str],
 ) -> None:
-    tok = _clean_token(str(entity or ""))
+    if entity is None:
+        return
+    tok = _clean_token(str(entity))
     if not tok or _is_pii_like(tok):
         return
     sig = _stable_sig(tok)
-    ent_counts[sig] = int(ent_counts.get(sig, 0) or 0) + 1
+    ent_counts[sig] = ent_counts.get(sig, 0) + 1
     ent_surface.setdefault(sig, tok)
 
 
@@ -242,7 +244,9 @@ def _record_memory_fact(
     facts: list[str],
     seen_fact: set[str],
 ) -> None:
-    text = str(fact or "").strip()
+    if fact is None:
+        return
+    text = str(fact).strip()
     if not text or _is_pii_like(text):
         return
     sig = _stable_sig(text)
@@ -260,10 +264,10 @@ def _collect_structured_memory_records(
     facts: list[str] = []
     seen_fact: set[str] = set()
 
-    for rec in records or []:
+    for rec in records:
         if not isinstance(rec, dict):
             continue
-        if str(rec.get("schema") or "") != "mimirq.structured_memory.v1":
+        if rec.get("schema") != "mimirq.structured_memory.v1":
             continue
         ents = rec.get("entities")
         if isinstance(ents, list):
@@ -315,8 +319,8 @@ def build_structured_memory_context(
 
     ent_counts, ent_surface, facts = _collect_structured_memory_records(records)
 
-    ranked_entities = sorted(ent_counts.items(), key=lambda t: (-int(t[1]), _stable_sig(t[0]), t[0]))
-    entities_out = [(ent_surface.get(sig) or sig) for sig, _cnt in ranked_entities][:max_e]
+    ranked_entities = sorted(ent_counts.items(), key=lambda t: (-t[1], _stable_sig(t[0]), t[0]))
+    entities_out = [ent_surface[sig] for sig, _cnt in ranked_entities][:max_e]
     facts_out = facts[:max_f]
 
     text = _render_structured_memory_context(entities=entities_out, facts=facts_out)

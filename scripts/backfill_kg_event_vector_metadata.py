@@ -29,6 +29,7 @@ Examples:
 import argparse
 import sys
 import time
+from collections.abc import Iterator
 from uuid import UUID
 
 from sqlalchemy import and_
@@ -44,7 +45,7 @@ from app.services.indexer import Indexer
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
+        return UUID(value)
     except Exception as exc:  # noqa: BLE001
         raise argparse.ArgumentTypeError("must be a valid UUID") from exc
 
@@ -73,7 +74,7 @@ def _iter_event_batches(
     document_ids: list[UUID] | None,
     batch_size: int,
     max_events: int,
-):
+) -> Iterator[list[KgSourceEvent]]:
     q = db.query(KgSourceEvent).filter(KgSourceEvent.tenant_id == tenant_id)
 
     # We only need to upsert rows that already have vectors.
@@ -136,11 +137,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
-    execute = bool(args.execute)
+    execute = args.execute
     dry_run = not execute  # default
 
-    batch_size = max(1, int(args.batch_size or 0))
-    max_events = max(0, int(args.max_events or 0))
+    batch_size = max(1, args.batch_size)
+    max_events = max(0, args.max_events)
     dataset_id = args.dataset_id
     document_ids = args.document_id
 

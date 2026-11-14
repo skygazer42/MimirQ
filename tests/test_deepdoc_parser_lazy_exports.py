@@ -1,4 +1,3 @@
-
 import sys
 from types import ModuleType
 
@@ -21,7 +20,6 @@ from app.deepdoc import parser
         ("TxtParser", "txt_parser", "IntegratedPipelineTxtParser"),
         ("MinerUParser", "mineru_parser", "MinerUParser"),
         ("DoclingParser", "docling_parser", "DoclingParser"),
-        ("TCADPParser", "tcadp_parser", "TCADPParser"),
     ],
 )
 def test_lazy_parser_export_resolves_the_existing_module_contract(

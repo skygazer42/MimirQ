@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/industry-rules/a.html",
+      "name": "A 分类管理表",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 分类管理表"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/industry-rules/b.html",
+      "name": "B 目录与编辑",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 目录与编辑"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/industry-rules/c.html",
+      "name": "C 分类分栏",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 分类分栏"
+      ]
+    }
+  ]
+}

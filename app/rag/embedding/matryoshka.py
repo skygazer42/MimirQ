@@ -1,8 +1,17 @@
-
 import math
-from typing import Any
+from typing import Any, TypedDict
 
 _ALLOWED_DIMS = (128, 256, 512, 1024)
+
+
+class _ShortlistedEmbedding(TypedDict):
+    document_id: str
+    shortlist_score: float
+
+
+class RescoredEmbedding(_ShortlistedEmbedding):
+    shortlist_rank: int
+    rescore_score: float
 
 
 def truncate_embedding_dimension(embedding: list[float], *, target_dim: int) -> list[float]:
@@ -23,7 +32,9 @@ def resolve_matryoshka_dimension(
     complex_dim: int = 1024,
 ) -> int:
     src = max(1, int(source_dim or 1))
-    label = str(query_complexity_label or "").strip().lower() or "simple"
+    label = query_complexity_label
+    if label is not None:
+        label = label.strip().lower()
     desired = {
         "simple": int(simple_dim),
         "structured": int(structured_dim),
@@ -33,7 +44,7 @@ def resolve_matryoshka_dimension(
     allowed = [dim for dim in _ALLOWED_DIMS if dim <= src]
     if not allowed:
         return src
-    for dim in sorted(allowed):
+    for dim in allowed:
         if dim >= desired:
             return dim
     return max(allowed)
@@ -47,15 +58,15 @@ def _cosine(left: list[float], right: list[float]) -> float:
     left_sq = 0.0
     right_sq = 0.0
     for index in range(size):
-        lval = float(left[index])
-        rval = float(right[index])
+        lval = left[index]
+        rval = right[index]
         dot += lval * rval
         left_sq += lval * lval
         right_sq += rval * rval
     denom = math.sqrt(left_sq) * math.sqrt(right_sq)
     if denom <= 0.0:
         return 0.0
-    return round(float(dot / denom), 6)
+    return round(dot / denom, 6)
 
 
 def _coerce_vector(value: Any) -> list[float]:
@@ -76,7 +87,7 @@ def shortlist_then_rescore(
     corpus_full_embeddings: dict[str, list[float]],
     shortlist_k: int,
     top_k: int,
-) -> list[dict[str, float | int | str]]:
+) -> list[RescoredEmbedding]:
     """
     Experimental Matryoshka flow:
     use low-dimensional vectors for cheap recall, then full-dimensional vectors
@@ -88,9 +99,9 @@ def shortlist_then_rescore(
     query_short = _coerce_vector(query_short_embedding)
     query_full = _coerce_vector(query_full_embedding)
 
-    shortlist: list[dict[str, float | int | str]] = []
+    shortlist: list[_ShortlistedEmbedding] = []
     for doc_id, embedding in (corpus_short_embeddings or {}).items():
-        did = str(doc_id or "").strip()
+        did = doc_id.strip()
         if not did:
             continue
         shortlist.append(
@@ -99,25 +110,25 @@ def shortlist_then_rescore(
                 "shortlist_score": _cosine(query_short, _coerce_vector(embedding)),
             }
         )
-    shortlist.sort(key=lambda item: (-float(item["shortlist_score"]), str(item["document_id"])))
+    shortlist.sort(key=lambda item: (-item["shortlist_score"], item["document_id"]))
 
-    rescored: list[dict[str, float | int | str]] = []
+    rescored: list[RescoredEmbedding] = []
     for rank, row in enumerate(shortlist[:shortlist_size], start=1):
-        did = str(row["document_id"])
+        did = row["document_id"]
         full_embedding = _coerce_vector((corpus_full_embeddings or {}).get(did))
         rescored.append(
             {
                 "document_id": did,
-                "shortlist_rank": int(rank),
-                "shortlist_score": float(row["shortlist_score"]),
+                "shortlist_rank": rank,
+                "shortlist_score": row["shortlist_score"],
                 "rescore_score": _cosine(query_full, full_embedding),
             }
         )
     rescored.sort(
         key=lambda item: (
-            -float(item["rescore_score"]),
-            int(item["shortlist_rank"]),
-            str(item["document_id"]),
+            -item["rescore_score"],
+            item["shortlist_rank"],
+            item["document_id"],
         )
     )
     return rescored[:top_size]

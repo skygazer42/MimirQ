@@ -19,7 +19,6 @@ env:
   SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}
   PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}
   PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}
-  TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}
   SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}
   SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}
   SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}
@@ -32,7 +31,6 @@ jobs:
     env:
       PIP_INDEX_URL: https://pypi.org/simple
       PIP_CACHE_DIR: /home/runner/.cache/pip
-      TORCH_WHEEL_DIR: /home/runner/.cache/torch-wheels
     services:
       postgres:
         image: postgres:15
@@ -81,12 +79,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
-      - name: Cache torch CPU wheels
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: /home/runner/.cache/torch-wheels
-          key: torch-wheels-${{ runner.os }}-py311-${{ hashFiles('ci/download_verified_wheels.py') }}
-
       - name: Cache Playwright browsers
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -95,12 +87,8 @@ jobs:
 
       - name: Install Python deps
         run: |
-          mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
+          mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
-          python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt
 
       - name: Install web deps
@@ -236,7 +224,7 @@ jobs:
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' }}
         run: |
-          bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
+          bash scripts/prepare_self_hosted_ci.sh
           command -v rg
           rg --version | head -n 1
 
@@ -249,12 +237,8 @@ jobs:
 
       - name: Install Python deps
         run: |
-          mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
+          mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
-          python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt
 
       - name: Install web deps
@@ -620,16 +604,12 @@ jobs:
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
-        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
+        run: bash scripts/prepare_self_hosted_ci.sh
 
       - name: Install Python deps
         run: |
-          mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
+          mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
-          python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Validate query-set health policy config
@@ -1365,16 +1345,12 @@ jobs:
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
-        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
+        run: bash scripts/prepare_self_hosted_ci.sh
 
       - name: Install Python deps
         run: |
           mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
-          python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Prepare self-hosted Node
@@ -1427,7 +1403,7 @@ jobs:
           SECRET_KEY: ci-retrieval-regression-secret-key-0123456789
           DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
           # Keep /health/ready green without Milvus/Redis/MinIO.
-          VECTOR_BACKEND: faiss
+          VECTOR_BACKEND: memory
           TASK_QUEUE_ENABLED: "false"
           EMBEDDING_CACHE_ENABLED: "false"
           MINIO_ENABLED: "false"
@@ -1652,15 +1628,11 @@ jobs:
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
-        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
+        run: bash scripts/prepare_self_hosted_ci.sh
 
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
-          python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Allocate isolated host ports
@@ -1693,7 +1665,7 @@ jobs:
           AUTH_MODE: header
           SECRET_KEY: ci-kg-search-secret-key-0123456789
           DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
-          VECTOR_BACKEND: faiss
+          VECTOR_BACKEND: memory
           TASK_QUEUE_ENABLED: "false"
           EMBEDDING_CACHE_ENABLED: "false"
           MINIO_ENABLED: "false"

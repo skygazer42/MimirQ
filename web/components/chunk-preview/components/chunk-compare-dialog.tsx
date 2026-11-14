@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Download, GitCompareArrows, Info } from 'lucide-react'
+import { Download, GitCompareArrows, Info } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -13,22 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getChunkMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
 import { cn } from '@/lib/utils'
 import type { ChunkPreviewResponse } from '@/types'
-import { buildSemanticEvidenceHighlights, chunkPreviewDiffToExport, computeChunkPreviewDiff } from '@/components/chunk-preview/utils/ab-diff'
+import {
+  buildSemanticEvidenceHighlights,
+  chunkPreviewDiffToExport,
+  computeChunkPreviewDiff,
+} from '@/components/chunk-preview/utils/ab-diff'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
-
-type RunHistoryItem = {
-  id: string
-  fileName: string
-  parserBackend: string
-  strategy: string
-  chunkSize: number
-  chunkOverlap: number
-  totalChunks: number
-  durationMs: number
-  createdAt: number
-  cacheHit: boolean
-  cacheKey?: string
-}
+import type { ChunkPreviewState } from '../types'
 
 function formatDelta(n: number) {
   if (!Number.isFinite(n) || n === 0) return '0'
@@ -72,12 +63,14 @@ function extractHierarchyBasis(preview: ChunkPreviewResponse): string[] {
   return Array.from(bases).sort((a, b) => a.localeCompare(b))
 }
 
-function EvidenceHighlightsPanel(props: Readonly<{
-  title: string
-  emptyLabel: string
-  tone: 'added' | 'removed'
-  items: ReturnType<typeof buildSemanticEvidenceHighlights>['added']
-}>) {
+function EvidenceHighlightsPanel(
+  props: Readonly<{
+    title: string
+    emptyLabel: string
+    tone: 'added' | 'removed'
+    items: ReturnType<typeof buildSemanticEvidenceHighlights>['added']
+  }>,
+) {
   const t = useTranslations('ChunkPreview')
   const { title, emptyLabel, tone, items } = props
   const toneClass = getEvidenceToneClass(tone)
@@ -92,7 +85,10 @@ function EvidenceHighlightsPanel(props: Readonly<{
     content = (
       <div className="mt-3 space-y-3">
         {items.map((item) => (
-          <div key={`${tone}:${item.index}:${item.example.slice(0, 24)}`} className="rounded-xl border border-border/60 bg-background/80 p-3">
+          <div
+            key={`${tone}:${item.index}:${item.example.slice(0, 24)}`}
+            className="rounded-xl border border-border/60 bg-background/80 p-3"
+          >
             <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
               <span>{t('compareDialog.evidence.itemLabel', { index: item.index })}</span>
               <span className="font-mono">{t('compareDialog.evidence.countLabel', { count: item.count })}</span>
@@ -142,20 +138,24 @@ function EvidenceHighlightsPanel(props: Readonly<{
   )
 }
 
-export function ChunkCompareDialog(props: Readonly<{
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  current: ChunkPreviewResponse
-  currentFileName: string
-  runHistory: RunHistoryItem[]
-  getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
-}>) {
+export function ChunkCompareDialog(
+  props: Readonly<{
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    current: ChunkPreviewResponse
+    currentFileName: string
+    runHistory: ChunkPreviewState['runHistory']
+    getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
+  }>,
+) {
   const { open, onOpenChange, current, currentFileName, runHistory, getCachedPreview } = props
   const t = useTranslations('ChunkPreview')
 
   const candidates = useMemo(() => {
     const list = (runHistory || [])
-      .filter((item) => item.fileName === currentFileName && typeof item.cacheKey === 'string' && Boolean(item.cacheKey))
+      .filter(
+        (item) => item.fileName === currentFileName && typeof item.cacheKey === 'string' && Boolean(item.cacheKey),
+      )
       .sort((a, b) => b.createdAt - a.createdAt)
     return list
   }, [runHistory, currentFileName])
@@ -164,9 +164,7 @@ export function ChunkCompareDialog(props: Readonly<{
 
   useEffect(() => {
     if (!open) return
-    const next =
-      (candidates.length > 1 ? candidates[1]?.cacheKey : candidates[0]?.cacheKey) ||
-      ''
+    const next = (candidates.length > 1 ? candidates[1]?.cacheKey : candidates[0]?.cacheKey) || ''
     setBaselineKey(next)
   }, [open, candidates])
 
@@ -221,12 +219,7 @@ export function ChunkCompareDialog(props: Readonly<{
             </div>
             <div className="mt-2 flex items-end justify-between">
               <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
-              <div
-                className={cn(
-                  'text-xs font-mono',
-                  getChunkCompareDeltaClass(diff.deltaCount)
-                )}
-              >
+              <div className={cn('text-xs font-mono', getChunkCompareDeltaClass(diff.deltaCount))}>
                 {formatDelta(diff.deltaCount)}
               </div>
             </div>
@@ -297,7 +290,9 @@ export function ChunkCompareDialog(props: Readonly<{
                 {t('compareDialog.cards.metrics.gaps')}
                 <br />
                 <span className="font-mono text-foreground/90">{diff.bGapCount ?? '-'}</span>
-                <span className="ml-1 text-muted-foreground">({formatDelta((diff.bGapCount ?? 0) - (diff.aGapCount ?? 0))})</span>
+                <span className="ml-1 text-muted-foreground">
+                  ({formatDelta((diff.bGapCount ?? 0) - (diff.aGapCount ?? 0))})
+                </span>
               </div>
             </div>
             <div className="mt-2 text-[11px] text-muted-foreground">
@@ -419,15 +414,11 @@ export function ChunkCompareDialog(props: Readonly<{
               <GitCompareArrows className="w-5 h-5 text-primary" />
               {t('compareDialog.title')}
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              {t('compareDialog.description')}
-            </DialogDescription>
+            <DialogDescription className="text-xs">{t('compareDialog.description')}</DialogDescription>
           </DialogHeader>
         </div>
 
-        <div className="p-6 space-y-4">
-          {dialogBody}
-        </div>
+        <div className="p-6 space-y-4">{dialogBody}</div>
       </DialogContent>
     </Dialog>
   )

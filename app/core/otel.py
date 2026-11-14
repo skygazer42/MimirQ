@@ -4,8 +4,11 @@ Optional OpenTelemetry tracing initialization.
 Enabled when OTEL_ENABLED=true.
 """
 
-
 import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 from app.core.config import settings
 
@@ -20,14 +23,14 @@ def init_otel() -> bool:
     Initialize OpenTelemetry tracer provider and OTLP exporter.
 
     Notes:
-    - Best-effort and safe to call multiple times.
-    - When dependencies are missing, it logs a warning and returns False.
+    - Reuses an initialized tracer provider and returns False when disabled.
+    - Initialization failures propagate to application startup.
     """
     global _initialized
     if _initialized:
         return True
 
-    if not bool(getattr(settings, "OTEL_ENABLED", False)):
+    if not settings.OTEL_ENABLED:
         return False
 
     from opentelemetry import trace
@@ -36,12 +39,12 @@ def init_otel() -> bool:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-    service_name = str(getattr(settings, "OTEL_SERVICE_NAME", "mimirq") or "mimirq").strip() or "mimirq"
-    endpoint = str(getattr(settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "") or "").strip()
-    headers = str(getattr(settings, "OTEL_EXPORTER_OTLP_HEADERS", "") or "").strip()
-    timeout_sec = float(getattr(settings, "OTEL_EXPORTER_OTLP_TIMEOUT_SEC", 10) or 10)
+    service_name = settings.OTEL_SERVICE_NAME.strip() or "mimirq"
+    endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT.strip()
+    headers = settings.OTEL_EXPORTER_OTLP_HEADERS.strip()
+    timeout_sec = float(settings.OTEL_EXPORTER_OTLP_TIMEOUT_SEC or 10)
 
-    exporter_kwargs: dict = {}
+    exporter_kwargs: dict[str, Any] = {}
     if endpoint:
         exporter_kwargs["endpoint"] = endpoint
     if headers:
@@ -71,7 +74,7 @@ def instrument_httpx() -> None:
         logger.warning("Failed to instrument httpx for OpenTelemetry: %s", str(exc)[:200])
 
 
-def instrument_fastapi(app) -> None:  # type: ignore[no-untyped-def]
+def instrument_fastapi(app: "FastAPI") -> None:
     global _fastapi_instrumented
     if not _initialized or _fastapi_instrumented:
         return

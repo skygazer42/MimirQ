@@ -1,8 +1,8 @@
 """
 Dify external knowledge adapter.
 
-This router exposes MimirQ datasets as a Dify External Knowledge API source.
-Dify calls this endpoint with a `knowledge_id`; MimirQ maps it to one or more
+This router exposes Ragvia datasets as a Dify External Knowledge API source.
+Dify calls this endpoint with a `knowledge_id`; Ragvia maps it to one or more
 dataset IDs, runs the existing retrieval-only pipeline, and returns Dify records.
 """
 
@@ -11,16 +11,11 @@ import contextlib
 import hashlib
 import json
 import re
-import threading
 import time
 import uuid
-from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from datetime import UTC, datetime
-from difflib import SequenceMatcher as SequenceMatcher
-from functools import lru_cache
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -30,498 +25,131 @@ from fastapi.routing import APIRoute
 from sqlalchemy import Text as SQLText
 from sqlalchemy import and_, or_
 from sqlalchemy import cast as sql_cast
-from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.api.v1.dify_support.anchor_strength import (
-    _composite_section_text as _composite_section_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _composite_stitched_section_text as _composite_stitched_section_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_bool as _dify_kg_bool,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_float as _dify_kg_float,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_int as _dify_kg_int,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _ordered_section_sibling_records as _ordered_section_sibling_records,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _query_intent_terms as _query_intent_terms,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _question_anchor_intent_groups as _question_anchor_intent_groups,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _question_anchor_subject_text as _question_anchor_subject_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_is_composite_exact_anchor_answer as _record_is_composite_exact_anchor_answer,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_is_full_answer_chunk as _record_is_full_answer_chunk,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_matches_requested_slot as _record_matches_requested_slot,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_question_anchor_has_intent_conflict as _record_question_anchor_has_intent_conflict,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_section_type_values as _record_section_type_values,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_slot_field_values as _record_slot_field_values,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _safe_int as _safe_int,
-)
-from app.api.v1.dify_support.common import (
-    _CJK_RE as _CJK_RE,
-)
-from app.api.v1.dify_support.common import (
-    _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
-)
-from app.api.v1.dify_support.common import (
-    _EXACT_PRIMARY_ALIAS_MATCH_BONUS as _EXACT_PRIMARY_ALIAS_MATCH_BONUS,
-)
-from app.api.v1.dify_support.common import (
-    _EXPLICIT_QUESTION_FORM_MARKERS as _EXPLICIT_QUESTION_FORM_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _FAST_ANSWER_QUERY_STOP_TERMS as _FAST_ANSWER_QUERY_STOP_TERMS,
-)
-from app.api.v1.dify_support.common import (
-    _FUZZY_METADATA_ANCHOR_KEYS as _FUZZY_METADATA_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _METADATA_ANCHOR_KEYS as _METADATA_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _METADATA_SCORE_KEYS as _METADATA_SCORE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_REGION_ANCHOR_OVERLAP_CHARS as _MIN_REGION_ANCHOR_OVERLAP_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_REGIONAL_QUESTION_OVERLAP_CHARS as _MIN_REGIONAL_QUESTION_OVERLAP_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_LIST_SPLIT_RE as _MIXED_INTENT_LIST_SPLIT_RE,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_QUERY_MARKERS as _MIXED_INTENT_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE as _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE,
-)
-from app.api.v1.dify_support.common import (
-    _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_INTENT_GROUPS as _QUESTION_ANCHOR_INTENT_GROUPS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS as _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO as _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS as _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
-)
-from app.api.v1.dify_support.common import (
-    _QUOTED_ANCHOR_RE as _QUOTED_ANCHOR_RE,
-)
-from app.api.v1.dify_support.common import (
-    _REGION_ANCHOR_KEYS as _REGION_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _RETRIEVAL_METADATA_VIEW_KEYS as _RETRIEVAL_METADATA_VIEW_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SCORE_KEYS as _SCORE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SERVICE_ANCHOR_ADMIN_MARKERS as _SERVICE_ANCHOR_ADMIN_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _SERVICE_ANCHOR_QUERY_TRAILING_CHARS as _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _SOURCE_RECORD_ID_KEYS as _SOURCE_RECORD_ID_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SOURCE_RECORD_SCOPE_KEYS as _SOURCE_RECORD_SCOPE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_BONUS as _URL_EVIDENCE_BONUS,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_BONUS_MAX as _URL_EVIDENCE_BONUS_MAX,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_QUERY_MARKERS as _URL_EVIDENCE_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _citation_chunk_id as _citation_chunk_id,
-)
-from app.api.v1.dify_support.common import (
-    _citation_dataset_id as _citation_dataset_id,
-)
-from app.api.v1.dify_support.common import (
-    _citation_score as _citation_score,
-)
-from app.api.v1.dify_support.common import (
-    _clamp_score as _clamp_score,
-)
-from app.api.v1.dify_support.common import (
-    _first_non_empty as _first_non_empty,
-)
-from app.api.v1.dify_support.common import (
-    _iter_record_metadata_layers as _iter_record_metadata_layers,
-)
-from app.api.v1.dify_support.common import (
-    _metadata_terms as _metadata_terms,
-)
-from app.api.v1.dify_support.common import (
-    _normalize_match_term as _normalize_match_term,
-)
-from app.api.v1.dify_support.common import (
-    _response_hint_metadata_conditions_match as _response_hint_metadata_conditions_match,
-)
-from app.api.v1.dify_support.compaction import (
-    _compact_fast_answer_value as _compact_fast_answer_value,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_candidate_top_k as _dify_fast_candidate_top_k,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_content_max_chars as _dify_fast_content_max_chars,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_response_top_k as _dify_fast_response_top_k,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_total_content_max_chars as _dify_fast_total_content_max_chars,
-)
-from app.api.v1.dify_support.compaction import (
-    _fast_answer_query_terms as _fast_answer_query_terms,
-)
-from app.api.v1.dify_support.compaction import (
-    _fast_answer_snippet_segments as _fast_answer_snippet_segments,
-)
-from app.api.v1.dify_support.compaction import (
-    _query_requests_url_evidence as _query_requests_url_evidence,
-)
-from app.api.v1.dify_support.compaction import (
-    _record_url_evidence_bonus as _record_url_evidence_bonus,
-)
-from app.api.v1.dify_support.compaction import (
-    _structured_label_values_from_content as _structured_label_values_from_content,
-)
-from app.api.v1.dify_support.external_api import (
+from app.api.schemas.conversations import ChatRAGConfig
+from app.api.schemas.integrations import (
     DifyConversationTurnRequest,
     DifyConversationTurnResponse,
     DifyExternalKnowledgeRecord,
     DifyExternalKnowledgeRequest,
     DifyExternalKnowledgeResponse,
     DifyRetrievalSetting,
-    _bounded_trace_query_preview,
-    _coerce_uuid,
-    _conversation_owner_matches_account,
-    _dify_external_conversation_metadata,
-    _dify_result_trace_citation,
-    _dify_trace_citation,
+)
+from app.api.v1.dify_support.external_api import (
     _dify_trace_conversation_id,
-    _dify_trace_request_id,
-    _dify_trace_retrieval_queries,
-    _dify_trace_source_conversation_id,
-    _dify_trace_source_message_id,
-    _dify_trace_source_run_id,
-    _dify_trace_title,
-    _dify_turn_citations_for_storage,
-    _dify_turn_source_conversation_id,
-    _dify_turn_source_message_id,
-    _dify_turn_source_run_id,
-    _DifyActor,
-    _DifyKGFlags,
-    _disabled_dify_kg_flags,
-    _ensure_dify_trace_conversation,
-    _ensure_dify_trace_conversation_accessible,
-    _external_conversation_metadata_text,
-    _extract_bearer_token,
-    _find_dify_trace_conversation,
-    _find_persisted_dify_conversation_turn,
-    _find_reusable_dify_seed_message,
-    _first_nonempty_str,
-    _first_reranker_provider,
-    _has_dify_rerank,
-    _load_dify_trace_conversation,
-    _lock_dify_conversation_turn_scope,
-    _log_dify_external_rag_trace,
-    _log_dify_result_rag_trace,
     _persist_dify_conversation_turn,
+    _request_client_ip,
     _require_dify_actor,
-    _resolve_dify_kg_flags,
-    _resolve_dify_latency_profile,
-    _split_items,
-    _token_matches,
-    _uuid_or_none,
-)
-from app.api.v1.dify_support.records import (
-    _coerce_uuid_text as _coerce_uuid_text,
-)
-from app.api.v1.dify_support.records import (
-    _record_dedupe_key as _record_dedupe_key,
-)
-from app.api.v1.dify_support.records import (
-    _row_value as _row_value,
-)
-from app.api.v1.dify_support.records import (
-    _tag_mixed_intent_records as _tag_mixed_intent_records,
-)
-from app.api.v1.dify_support.scoring import (
-    _answer_hints_from_fields as _answer_hints_from_fields,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigram_overlap_count as _cjk_bigram_overlap_count,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigram_overlap_ratio as _cjk_bigram_overlap_ratio,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigrams as _cjk_bigrams,
-)
-from app.api.v1.dify_support.scoring import (
-    _clamp_hint_value as _clamp_hint_value,
-)
-from app.api.v1.dify_support.scoring import (
-    _contains_cjk as _contains_cjk,
-)
-from app.api.v1.dify_support.scoring import (
-    _content_starts_with_response_hint as _content_starts_with_response_hint,
-)
-from app.api.v1.dify_support.scoring import (
-    _diagnostic_query_hash as _diagnostic_query_hash,
-)
-from app.api.v1.dify_support.scoring import (
-    _diagnostic_value_hash as _diagnostic_value_hash,
-)
-from app.api.v1.dify_support.scoring import (
-    _dify_external_reranker_enabled as _dify_external_reranker_enabled,
-)
-from app.api.v1.dify_support.scoring import (
-    _enumerated_answer_hints as _enumerated_answer_hints,
-)
-from app.api.v1.dify_support.scoring import (
-    _extract_numbered_option_terms as _extract_numbered_option_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _field_line_parts as _field_line_parts,
-)
-from app.api.v1.dify_support.scoring import (
-    _find_numbered_marker as _find_numbered_marker,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_anchor_word_char as _is_anchor_word_char,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_cjk_char as _is_cjk_char,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_specific_intent_term as _is_specific_intent_term,
-)
-from app.api.v1.dify_support.scoring import (
-    _iter_anchor_word_segments as _iter_anchor_word_segments,
-)
-from app.api.v1.dify_support.scoring import (
-    _longest_common_substring_length as _longest_common_substring_length,
-)
-from app.api.v1.dify_support.scoring import (
-    _matching_response_hint_group as _matching_response_hint_group,
-)
-from app.api.v1.dify_support.scoring import (
-    _mixed_intent_segment_parts as _mixed_intent_segment_parts,
-)
-from app.api.v1.dify_support.scoring import (
-    _near_question_anchor_match as _near_question_anchor_match,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_explicit_question_form as _query_has_explicit_question_form,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_mixed_intent as _query_has_mixed_intent,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_is_short_question_anchor_candidate as _query_is_short_question_anchor_candidate,
-)
-from app.api.v1.dify_support.scoring import (
-    _question_marker_overlap_bonus as _question_marker_overlap_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_anchor_match_text as _quoted_anchor_match_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_query_anchor_display_terms as _quoted_query_anchor_display_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_query_anchor_terms as _quoted_query_anchor_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_exact_primary_alias_bonus as _record_exact_primary_alias_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_final_rerank_candidate_id as _record_final_rerank_candidate_id,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_has_query_region_anchor as _record_has_query_region_anchor,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_metadata_anchor_bonus as _record_metadata_anchor_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_needs_final_rerank as _record_needs_final_rerank,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_plugin_ref as _record_plugin_ref,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_policy_slot_coverage_text as _record_policy_slot_coverage_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_region_terms as _record_region_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_source_identity_key as _record_source_identity_key,
-)
-from app.api.v1.dify_support.scoring import (
-    _request_client_ip as _request_client_ip,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_candidate_terms as _response_hint_candidate_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_dict as _response_hint_dict,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_dict_list as _response_hint_dict_list,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_group_has_required_fields as _response_hint_group_has_required_fields,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_group_matches_query as _response_hint_group_matches_query,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_groups as _response_hint_groups,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_string_list as _response_hint_string_list,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_text as _response_hint_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _rstrip_service_anchor_query_noise as _rstrip_service_anchor_query_noise,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_mixed_intent_noise as _strip_mixed_intent_noise,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_mixed_intent_subject_instruction_tail as _strip_mixed_intent_subject_instruction_tail,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_trailing_service_anchor_admin as _strip_trailing_service_anchor_admin,
-)
-from app.api.v1.dify_support.scoring import (
-    _structured_fields_from_content as _structured_fields_from_content,
 )
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
-from app.core.env import is_production_env
 from app.models.dataset import Dataset
-from app.models.document import Document, DocumentChunk
+from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
-from app.rag.pipeline_plugins.contracts import (
-    DISPLAY_METADATA_KEY as DISPLAY_METADATA_KEY,
-)
-from app.rag.pipeline_plugins.contracts import (
-    EVALUABLE_METADATA_KEY as EVALUABLE_METADATA_KEY,
-)
-from app.rag.pipeline_plugins.contracts import (
-    INDEXED_METADATA_KEY as INDEXED_METADATA_KEY,
-)
 from app.rag.reranker.factory import get_reranker
-from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.planner import (
-    DatasetRouteHint,
     DatasetScopePlan,
-    compact_high_confidence_items,
-    normalize_route_mode,
-    plan_dataset_scope,
-    resolve_internal_candidate_top_k,
-    retrieval_policy_fallback_multiplier,
-    retrieval_policy_mixed_intent_leading_noise_terms,
-    retrieval_policy_mixed_intent_subject_terms,
-    retrieval_policy_query_terms,
-    retrieval_policy_response_compaction,
-    retrieval_policy_service_anchor_noise_terms,
-    retrieval_policy_service_anchor_priority_terms,
-    retrieval_policy_service_anchor_query_rewrite_terms,
 )
 from app.rag.retrieval.plugin_policy import (
     filter_records_by_retrieval_policy_alignment,
     record_retrieval_policy_anchor_binding_scores,
     record_retrieval_policy_bonus,
-    records_retrieval_policy_diagnostics,
 )
 from app.services.chat_response_cache import (
     InflightResponseLeaderCancelledError,
-    extend_best_effort_redis_lease,
     get_best_effort_json_cache_value,
-    release_best_effort_redis_lease,
-    set_best_effort_json_cache_value,
     try_acquire_best_effort_redis_lease,
 )
-from app.services.chat_response_cache import (
-    acquire_inflight_chat_response as acquire_inflight_response,
+from app.services.chat_response_cache import acquire_inflight_chat_response as acquire_inflight_response
+from app.services.chat_response_cache import reject_inflight_chat_response as reject_inflight_response
+from app.services.chat_response_cache import resolve_inflight_chat_response as resolve_inflight_response
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_float,
+    _dify_kg_int,
+    _query_intent_terms,
+    _record_has_any_requested_slot_field,
+    _record_is_composite_exact_anchor_answer,
 )
-from app.services.chat_response_cache import (
-    reject_inflight_chat_response as reject_inflight_response,
+from app.services.dify_integration.answer_hints import (
+    _content_with_answer_hints,
 )
-from app.services.chat_response_cache import (
-    resolve_inflight_chat_response as resolve_inflight_response,
+from app.services.dify_integration.chunk_hydration import (
+    _load_chunk_content_map_with_managed_session,
+)
+from app.services.dify_integration.citation_records import (
+    _citation_to_dify_record,
+    _records_from_citations_with_managed_hydration,
+)
+from app.services.dify_integration.common import (
+    _ANCHOR_ONLY_QA_RECORD_PENALTY,
+    _ANSWERFUL_RECORD_BONUS,
+    _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
+    _MIXED_INTENT_SPLIT_RE,
+    _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH,
+    _clamp_score,
+    _dedupe_dataset_ids,
+    _first_nonempty_str,
+    _iter_record_metadata_layers,
+    _normalize_match_term,
+    _uuid_or_none,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_candidate_top_k,
+    _dify_fast_response_top_k,
+    _record_url_evidence_bonus,
+)
+from app.services.dify_integration.conversation_turns import (
+    _dify_turn_source_conversation_id,
+    _dify_turn_source_message_id,
+    _dify_turn_source_run_id,
+)
+from app.services.dify_integration.kg_on_demand import (
+    _dify_kg_chunk_events,
+    _dify_kg_on_demand_dataset_ids,
+    _dify_kg_on_demand_max_records,
+    _dify_kg_record_citation,
+    _load_dify_kg_chunk_rows_with_managed_session,
+)
+from app.services.dify_integration.knowledge_scope import (
+    extend_sibling_policy_scope as _metadata_anchor_dataset_ids_for_query,
+)
+from app.services.dify_integration.knowledge_scope import load_knowledge_map as _load_knowledge_map
+from app.services.dify_integration.knowledge_scope import (
+    resolve_policy_fallback_multiplier as _resolve_knowledge_policy_fallback_multiplier,
+)
+from app.services.dify_integration.knowledge_scope import (
+    resolve_policy_filter_fields as _resolve_knowledge_policy_filter_fields,
+)
+from app.services.dify_integration.knowledge_scope import (
+    resolve_policy_plugin_refs as _resolve_knowledge_policy_plugin_refs,
+)
+from app.services.dify_integration.knowledge_scope import resolve_scope as _resolve_knowledge_dataset_scope
+from app.services.dify_integration.knowledge_scope import (
+    resolve_warmup_knowledge_ids as _resolve_dify_warmup_knowledge_ids,
+)
+from app.services.dify_integration.metadata_anchor import (
+    _metadata_anchor_alias_scan_conditions,
+    _metadata_anchor_append_unique_rows,
+    _metadata_anchor_exact_question_conditions,
+    _metadata_anchor_exact_service_name_conditions,
+    _metadata_anchor_exact_slot_anchor_conditions,
+    _metadata_anchor_fallback_query_terms,
+    _metadata_anchor_is_statement_timeout_error,
+    _metadata_anchor_prepare_statement_timeout,
+    _metadata_anchor_query_matching_rows,
+    _metadata_anchor_question_conditions,
+    _metadata_anchor_quoted_anchor_conditions,
+    _metadata_anchor_rewind,
+    _metadata_anchor_row_metadata,
+    _metadata_anchor_service_name_conditions,
+    _metadata_anchor_service_name_near_conditions,
+    _metadata_anchor_slot_conditions,
+    _metadata_anchor_title_conditions,
+    _MetadataAnchorBudgetExceededError,
+    _MetadataAnchorDBFallbackContext,
+    _MetadataAnchorDBFallbackPlan,
+    _query_has_specific_fast_metadata_anchor_candidate,
 )
 from app.services.dify_integration.metadata_condition_helpers import (
     MetadataConditionValidationError as _MetadataConditionValidationError,
@@ -532,62 +160,31 @@ from app.services.dify_integration.metadata_condition_helpers import (
 from app.services.dify_integration.metadata_condition_helpers import (
     metadata_condition_to_filter as _service_metadata_condition_to_filter,
 )
-from app.services.dify_integration.metadata_condition_helpers import (
-    validate_metadata_filter_fields as _service_validate_metadata_filter_fields,
-)
 from app.services.dify_integration.policy_helpers import (
     apply_policy_fallback_candidate_multiplier as _service_apply_policy_fallback_candidate_multiplier,
 )
 from app.services.dify_integration.policy_helpers import (
-    fast_response_field_rules_for_policy_refs as _service_fast_response_field_rules_for_policy_refs,
-)
-from app.services.dify_integration.policy_helpers import (
     knowledge_mapping_plugin_refs as _service_knowledge_mapping_plugin_refs,
 )
+from app.services.dify_integration.policy_helpers import response_hints_for_record as _response_hints_for_record
 from app.services.dify_integration.policy_helpers import (
-    mixed_intent_leading_noise_terms_for_policy_refs as _service_mixed_intent_leading_noise_terms_for_policy_refs,
+    retrieval_policy_for_plugin_ref as _retrieval_policy_for_plugin_ref,
 )
-from app.services.dify_integration.policy_helpers import (
-    policy_string_terms_for_policy_refs as _service_policy_string_terms_for_policy_refs,
+from app.services.dify_integration.query_policy import (
+    _anchor_binding_fields_for_policy_refs,
+    _append_mixed_intent_queries_for_segment_parts,
+    _append_unique_mixed_intent_query,
+    _metadata_anchor_should_query_question_first,
+    _mixed_intent_policy_slot_queries_from_inferred_subject,
+    _query_blocks_metadata_anchor_preflight,
+    _query_has_mixed_intent_for_policy,
+    _query_prefers_question_anchor,
+    _query_prefers_service_anchor,
+    _question_anchor_intent_terms_for_policy_refs,
+    _requested_policy_slot_specs_for_query,
 )
-from app.services.dify_integration.policy_helpers import (
-    requested_label_prefixes_for_policy_refs as _service_requested_label_prefixes_for_policy_refs,
-)
-from app.services.dify_integration.policy_helpers import (
-    resolve_knowledge_policy_fallback_multiplier as _service_resolve_knowledge_policy_fallback_multiplier,
-)
-from app.services.dify_integration.policy_helpers import (
-    resolve_knowledge_policy_filter_fields as _service_resolve_knowledge_policy_filter_fields,
-)
-from app.services.dify_integration.policy_helpers import (
-    resolve_knowledge_policy_plugin_refs as _service_resolve_knowledge_policy_plugin_refs,
-)
-from app.services.dify_integration.policy_helpers import (
-    resolved_policy_terms_for_plugin_refs as _service_resolved_policy_terms_for_plugin_refs,
-)
-from app.services.dify_integration.policy_helpers import (
-    response_hints_for_metadata as _service_response_hints_for_metadata,
-)
-from app.services.dify_integration.policy_helpers import (
-    response_hints_for_record as _service_response_hints_for_record,
-)
-from app.services.dify_integration.policy_helpers import (
-    retrieval_policy_fallback_multiplier_for_plugin_refs as _service_policy_fallback_multiplier,
-)
-from app.services.dify_integration.policy_helpers import (
-    retrieval_policy_filter_fields_for_plugin_refs as _service_retrieval_policy_filter_fields_for_plugin_refs,
-)
-from app.services.dify_integration.policy_helpers import (
-    service_anchor_admin_aliases_for_policy_refs as _service_service_anchor_admin_aliases_for_policy_refs,
-)
-from app.services.dify_integration.record_helpers import (
-    compact_exact_anchor_answer_record as _service_compact_exact_anchor_answer_record,
-)
-from app.services.dify_integration.record_helpers import (
-    compact_fast_record_content as _service_compact_fast_record_content,
-)
-from app.services.dify_integration.record_helpers import (
-    compact_fast_records_for_response as _service_compact_fast_records_for_response,
+from app.services.dify_integration.query_terms import (
+    _metadata_anchor_service_name_query_terms,
 )
 from app.services.dify_integration.record_helpers import (
     compact_mixed_intent_exact_anchor_records as _service_compact_mixed_intent_exact_anchor_records,
@@ -595,79 +192,93 @@ from app.services.dify_integration.record_helpers import (
 from app.services.dify_integration.record_helpers import (
     compact_records_for_response as _service_compact_records_for_response,
 )
-from app.services.dify_integration.record_helpers import (
-    dedupe_records as _service_dedupe_records,
+from app.services.dify_integration.record_helpers import dedupe_records as _service_dedupe_records
+from app.services.dify_integration.record_processing import (
+    _compact_by_strong_question_anchor,
+    _compact_fast_records_for_response,
+    _compact_high_confidence_for_response,
+    _response_compaction_for_records,
 )
-from app.services.dify_integration.record_helpers import (
-    record_answerfulness_score as _service_record_answerfulness_score,
+from app.services.dify_integration.record_ranking import (
+    _best_exact_anchor_slot_group_records,
+    _composite_exact_anchor_slot_content,
+    _exact_anchor_slot_record_groups,
+    _filter_records_by_mixed_intent_subject_anchor,
+    _final_rerank_candidates,
+    _ordered_final_rerank_records,
+    _record_content_is_answerful,
+    _record_covers_requested_policy_slots,
+    _record_exact_anchor_protection_scores,
+    _record_exact_query_anchor_terms,
+    _record_has_answer_evidence,
+    _record_has_strong_question_anchor,
+    _record_intent_bonus,
+    _record_matches_quoted_query_anchor_for_policy,
+    _record_question_anchor_strength,
+    _record_question_intent_bonus,
+    _records_can_skip_metadata_anchor_fallback,
+    _records_have_confident_metadata_anchor,
+    _records_have_exact_anchor_full_answer,
+    _records_have_strong_question_anchor,
+    _records_retrieval_policy_diagnostics,
+    _strong_question_anchor_records,
 )
-from app.services.dify_integration.record_helpers import (
-    record_rank_score as _service_record_rank_score,
+from app.services.dify_integration.records import (
+    _coerce_uuid_text,
+    _record_dedupe_key,
+    _row_value,
+    _tag_mixed_intent_records,
 )
-from app.services.dify_integration.record_helpers import (
-    response_compaction_for_records as _service_response_compaction_for_records,
+from app.services.dify_integration.request_preferences import (
+    _disabled_dify_kg_flags,
+    _resolve_dify_kg_flags,
+    _resolve_dify_latency_profile,
+    _resolve_internal_candidate_top_k,
+    _resolve_mixed_intent_subquery_top_k,
 )
-from app.services.dify_integration.record_helpers import (
-    strong_question_anchor_records as _service_strong_question_anchor_records,
+from app.services.dify_integration.response_cache import (
+    _acquire_dify_warmup_lease,
+    _cleanup_distributed_dify_response_lease,
+    _dify_singleflight_lease_ttl_sec,
+    _dify_singleflight_result_key,
+    _DifyDistributedLease,
+    _DifyResponseCache,
+    _maintain_best_effort_dify_lease,
+    _release_distributed_dify_response_lease,
+    _set_dify_response_cache_redis_payload,
 )
-from app.services.metrics_logger import log_metrics
+from app.services.dify_integration.scoring import (
+    _diagnostic_query_hash,
+    _diagnostic_value_hash,
+    _dify_external_reranker_enabled,
+    _query_has_quoted_anchor_candidate,
+    _quoted_query_anchor_display_terms,
+    _record_exact_primary_alias_bonus,
+    _record_metadata_anchor_bonus,
+    _record_needs_final_rerank,
+    _record_plugin_ref,
+    _response_hint_string_list,
+)
+from app.services.dify_integration.tracing import _dify_trace_request_id, _log_dify_external_rag_trace
+from app.services.dify_integration.warmup_state import (
+    set_dify_external_warmup_status as _set_dify_external_warmup_status,
+)
+from app.services.document_access import get_allowed_document_id_sets, get_readable_datasets_map
 from app.services.rag_runtime_limiter import (
     RetrievalAdmissionTimeoutError,
     run_blocking_call_with_managed_session,
     run_blocking_retrieval_call,
 )
+from app.types.dify_integration import DifyActor as _DifyActor
+from app.types.dify_integration import DifyKGFlags as _DifyKGFlags
 
 logger = get_logger(__name__)
 
 __all__ = [
-    "DifyConversationTurnRequest",
-    "DifyConversationTurnResponse",
-    "DifyExternalKnowledgeRecord",
-    "DifyExternalKnowledgeRequest",
-    "DifyExternalKnowledgeResponse",
-    "DifyRetrievalSetting",
-    "_DifyActor",
-    "_DifyKGFlags",
-    "_bounded_trace_query_preview",
-    "_coerce_uuid",
-    "_conversation_owner_matches_account",
-    "_dify_external_conversation_metadata",
-    "_dify_result_trace_citation",
-    "_dify_trace_citation",
-    "_dify_trace_conversation_id",
-    "_dify_trace_request_id",
-    "_dify_trace_retrieval_queries",
-    "_dify_trace_source_conversation_id",
-    "_dify_trace_source_message_id",
-    "_dify_trace_source_run_id",
-    "_dify_trace_title",
-    "_dify_turn_citations_for_storage",
-    "_dify_turn_source_conversation_id",
-    "_dify_turn_source_message_id",
-    "_dify_turn_source_run_id",
-    "_disabled_dify_kg_flags",
-    "_ensure_dify_trace_conversation",
-    "_ensure_dify_trace_conversation_accessible",
-    "_external_conversation_metadata_text",
-    "_extract_bearer_token",
-    "_find_dify_trace_conversation",
-    "_find_persisted_dify_conversation_turn",
-    "_find_reusable_dify_seed_message",
-    "_first_nonempty_str",
-    "_first_reranker_provider",
-    "_has_dify_rerank",
-    "_load_dify_trace_conversation",
-    "_lock_dify_conversation_turn_scope",
-    "_log_dify_external_rag_trace",
-    "_log_dify_result_rag_trace",
-    "_persist_dify_conversation_turn",
-    "_require_dify_actor",
-    "_resolve_dify_kg_flags",
-    "_resolve_dify_latency_profile",
-    "_split_items",
-    "_token_matches",
-    "_uuid_or_none",
-    "log_metrics",
+    "persist_dify_conversation_turn",
+    "retrieve_external_knowledge",
+    "router",
+    "start_dify_external_knowledge_warmup",
 ]
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -679,72 +290,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
-_CONTENT_KEYS = ("content", "chunk_content", "text", "quote", "snippet", "page_content")
-_TITLE_KEYS = ("title", "document_name", "filename", "source", "document_id", "chunk_id")
-_METADATA_KEYS = (
-    "document_id",
-    "chunk_id",
-    "chunk_index",
-    "page_number",
-    "header_path",
-    "source_path",
-    "retrieval_role",
-    "hit_type",
-    "rerank_score",
-    "rerank_score_final",
-    "reranker_provider",
-    "rerank_elapsed_sec",
-    "rerank_model_used",
-    "kg_pagerank",
-    "kg_path_length",
-    "kg_shared_events",
-    "kg_evidence_anchored",
-    "kg_path",
-    "kg_path_provenance",
-    "kg_duplicate_candidate",
-    "kg_edge_conf_low",
-    "kg_edge_conf_mid",
-    "kg_edge_conf_high",
-)
-_RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
-_EXACT_QUERY_ANCHOR_FIELDS = (
-    "question",
-    "primary_alias",
-    "aliases",
-    "source_topic",
-    "title",
-)
-_MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS = 3
-_INTENT_MATCH_BONUS = 0.06
-_INTENT_MATCH_BONUS_MAX = 0.18
-_QUESTION_INTENT_MATCH_BONUS = 0.2
-_DEFAULT_RESPONSE_HINT_SOURCE_PREFIX = "Source evidence"
-_ANSWERFUL_RECORD_BONUS = 0.08
-_ANCHOR_ONLY_QA_RECORD_PENALTY = 0.28
-_QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH = 0.8
-_QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
-_QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
-_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS = (
-    "关于",
-    "回答",
-    "告诉我",
-    "先帮我看下",
-    "帮我看下",
-    "看下",
-    "请同时说明",
-    "请说明",
-    "说明",
-    "请",
-)
-_MIXED_INTENT_SPLIT_RE = re.compile(
-    r"(?:[，,。；;、：:]\s*)?"
-    r"(?:另外|同时|以及|并且|还想|还要|一次知道|分别|顺便|请合并回答|请分别回答|合并回答|一并回答|一起回答|分别回答|分开回答|请合并|请分别)\s*"
-    r"|[；;]"
-)
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
-_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
 _METADATA_ANCHOR_DB_FALLBACK_ARRAY_FIELDS = (
     "retrieval_intents",
     "query_intents",
@@ -768,25 +316,6 @@ _DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
 _DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
 
 
-def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
-    return resolve_internal_candidate_top_k(
-        requested_top_k,
-        minimum=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20),
-        multiplier=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4),
-        maximum=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50),
-    )
-
-
-def _resolve_mixed_intent_subquery_top_k(*, response_top_k: int, candidate_top_k: int) -> int:
-    try:
-        configured = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", response_top_k) or response_top_k
-        )
-    except (TypeError, ValueError):
-        configured = int(response_top_k or 1)
-    return max(1, min(max(1, int(candidate_top_k or 1)), max(1, configured)))
-
-
 class _DifyErrorRoute(APIRoute):
     def get_route_handler(self):  # noqa: ANN201
         original_route_handler = super().get_route_handler()
@@ -805,7 +334,7 @@ def _dify_error_response(exc: HTTPException) -> JSONResponse:
     if isinstance(detail, dict) and "error_code" in detail and "error_msg" in detail:
         payload = {"error_code": int(detail["error_code"]), "error_msg": str(detail["error_msg"])}
     else:
-        msg = str(detail or "")
+        msg = str(detail)
         if exc.status_code == 401 and "authorization header" in msg.lower():
             code = 1001
         elif exc.status_code == 401:
@@ -821,59 +350,6 @@ def _dify_error_response(exc: HTTPException) -> JSONResponse:
 router = APIRouter(route_class=_DifyErrorRoute, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@dataclass(frozen=True)
-class _DifyResponseCacheEntry:
-    created_at_monotonic: float
-    records: tuple[dict[str, Any], ...]
-
-
-class _DifyResponseCache:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._entries: "OrderedDict[str, _DifyResponseCacheEntry]" = OrderedDict()
-
-    def _purge_expired_locked(self, *, now: float, ttl_sec: int) -> None:
-        if ttl_sec <= 0 or not self._entries:
-            return
-        expired = [
-            key for key, entry in self._entries.items() if now - float(entry.created_at_monotonic) > float(ttl_sec)
-        ]
-        for key in expired:
-            self._entries.pop(key, None)
-
-    def get(self, key: str, *, ttl_sec: int) -> list[dict[str, Any]] | None:
-        if not key or ttl_sec <= 0:
-            return None
-        now = time.monotonic()
-        with self._lock:
-            self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
-            entry = self._entries.get(key)
-            if entry is None:
-                return None
-            self._entries.move_to_end(key, last=True)
-            return [dict(record) for record in entry.records]
-
-    def set(self, key: str, records: list[dict[str, Any]], *, ttl_sec: int, max_entries: int) -> None:
-        if not key or ttl_sec <= 0 or max_entries <= 0:
-            return
-        snapshot = tuple(dict(record) for record in records or [])
-        now = time.monotonic()
-        with self._lock:
-            self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
-            self._entries[key] = _DifyResponseCacheEntry(created_at_monotonic=now, records=snapshot)
-            self._entries.move_to_end(key, last=True)
-            while len(self._entries) > max_entries:
-                self._entries.popitem(last=False)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._entries.clear()
-
-    def size(self) -> int:
-        with self._lock:
-            return len(self._entries)
-
-
 _dify_response_cache = _DifyResponseCache()
 _DIFY_RESPONSE_CACHE_REDIS_SCHEMA = "mimirq.dify_external_response_cache.redis.v1"
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
@@ -882,23 +358,13 @@ _DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC = 10
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
 _DIFY_WARMUP_LEASE_KEY = "dify:warmup:lease"
-_dify_external_warmup_state_lock = threading.Lock()
 _dify_external_warmup_tasks: set[asyncio.Task[Any]] = set()
-_dify_external_warmup_state: dict[str, Any] = {
-    "enabled": False,
-    "status": "idle",
-    "attempted": 0,
-    "completed": 0,
-    "failed": 0,
-    "elapsed_ms": None,
-    "updated_at": None,
-}
 
 
 def _dify_singleflight_wait_timeout_sec() -> float:
     return max(
         1e-3,
-        float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+        float(settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC),
     )
 
 
@@ -908,14 +374,14 @@ def _clear_dify_response_cache() -> None:
 
 async def _acquire_or_wait_for_inflight_response(
     key: str,
-) -> tuple[bool, dict[str, Any] | None]:
+) -> tuple[bool, dict[str, Any] | None, asyncio.Future[dict[str, Any]]]:
     loop = asyncio.get_running_loop()
     wait_timeout_sec = _dify_singleflight_wait_timeout_sec()
     deadline = loop.time() + wait_timeout_sec
     while True:
         leader, future = await acquire_inflight_response(key)
         if leader:
-            return True, None
+            return True, None, future
         try:
             remaining = deadline - loop.time()
             if remaining <= 0:
@@ -927,15 +393,9 @@ async def _acquire_or_wait_for_inflight_response(
             )
             if not done:
                 raise RetrievalAdmissionTimeoutError(wait_timeout_sec)
-            return False, future.result()
+            return False, future.result(), future
         except InflightResponseLeaderCancelledError:
             continue
-
-
-@dataclass(frozen=True)
-class _DifyDistributedLease:
-    lease_key: str
-    owner: str
 
 
 async def _dify_response_cache_redis_payload(key: str) -> list[dict[str, Any]] | None:
@@ -944,28 +404,6 @@ async def _dify_response_cache_redis_payload(key: str) -> list[dict[str, Any]] |
     if not isinstance(records, list):
         return None
     return [dict(record) for record in records if isinstance(record, dict)]
-
-
-async def _set_dify_response_cache_redis_payload(
-    key: str,
-    records: list[dict[str, Any]],
-    *,
-    ttl_sec: int,
-) -> bool:
-    max_value_bytes = max(0, int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0))
-    return await set_best_effort_json_cache_value(
-        key,
-        {
-            "schema": _DIFY_RESPONSE_CACHE_REDIS_SCHEMA,
-            "records": [dict(record) for record in records if isinstance(record, dict)],
-        },
-        ttl_sec=ttl_sec,
-        max_value_bytes=max_value_bytes,
-    )
-
-
-def _dify_singleflight_result_key(key: str) -> str:
-    return f"{key}{_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_SUFFIX}"
 
 
 async def _dify_distributed_singleflight_payload(
@@ -978,17 +416,6 @@ async def _dify_distributed_singleflight_payload(
         if cached is not None:
             return cached
     return await _dify_response_cache_redis_payload(_dify_singleflight_result_key(key))
-
-
-def _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
-    warmup_timeout_sec = 60
-    with contextlib.suppress(Exception):
-        warmup_timeout_sec = max(
-            60,
-            min(300, int(_resolve_dify_warmup_timeout_sec())),
-        )
-    response_ttl_sec = max(60, int(response_cache_ttl_sec or 0))
-    return max(60, min(300, max(response_ttl_sec, warmup_timeout_sec)))
 
 
 async def _acquire_or_wait_for_distributed_dify_response(
@@ -1037,118 +464,12 @@ async def _acquire_or_wait_for_distributed_dify_response(
         poll_delay = min(_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC, poll_delay * 1.5)
 
 
-async def _release_distributed_dify_response_lease(lease: _DifyDistributedLease | None) -> None:
-    if lease is None:
-        return
-    await release_best_effort_redis_lease(lease.lease_key, value=lease.owner)
-
-
-async def _cleanup_distributed_dify_response_lease(
-    lease_task: asyncio.Task[Any] | None,
-    lease: _DifyDistributedLease | None,
-) -> None:
-    if lease_task is not None:
-        lease_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await lease_task
-    await _release_distributed_dify_response_lease(lease)
-
-
-async def _maintain_best_effort_dify_lease(
-    lease: _DifyDistributedLease | None,
-    *,
-    ttl_sec: int,
-) -> None:
-    if lease is None or ttl_sec <= 0:
-        return
-    renew_interval_sec = max(5.0, min(float(ttl_sec) / 3.0, 30.0))
-    while True:
-        await asyncio.sleep(renew_interval_sec)
-        renewed = await extend_best_effort_redis_lease(
-            lease.lease_key,
-            value=lease.owner,
-            ttl_sec=ttl_sec,
-        )
-        if renewed is False:
-            return
-
-
-def _dify_warmup_lease_ttl_sec(*, knowledge_count: int, timeout_sec: float) -> int:
-    per_item_timeout_sec = max(1, int(timeout_sec or 0))
-    estimated_total_sec = max(60, per_item_timeout_sec * max(1, int(knowledge_count)) + 30)
-    return min(1800, estimated_total_sec)
-
-
 def _dify_warmup_can_use_retrieval_slot() -> bool:
     try:
-        limit = int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0)
+        limit = int(settings.RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY)
     except (TypeError, ValueError):
         limit = 1
     return limit <= 0 or limit > 1
-
-
-async def _acquire_dify_warmup_lease(
-    *,
-    knowledge_count: int,
-    timeout_sec: float,
-) -> tuple[_DifyDistributedLease | None, int] | tuple[None, None]:
-    lease_ttl_sec = _dify_warmup_lease_ttl_sec(
-        knowledge_count=knowledge_count,
-        timeout_sec=timeout_sec,
-    )
-    owner = uuid.uuid4().hex
-    acquired = await try_acquire_best_effort_redis_lease(
-        _DIFY_WARMUP_LEASE_KEY,
-        value=owner,
-        ttl_sec=lease_ttl_sec,
-    )
-    if acquired is None:
-        return None, None
-    if not acquired:
-        return None, lease_ttl_sec
-    return _DifyDistributedLease(lease_key=_DIFY_WARMUP_LEASE_KEY, owner=owner), lease_ttl_sec
-
-
-def _set_dify_external_warmup_status(**updates: Any) -> None:
-    with _dify_external_warmup_state_lock:
-        _dify_external_warmup_state.update(updates)
-        _dify_external_warmup_state["updated_at"] = datetime.now(UTC).isoformat()
-
-
-def get_dify_external_knowledge_warmup_status() -> dict[str, Any]:
-    with _dify_external_warmup_state_lock:
-        return dict(_dify_external_warmup_state)
-
-
-def dify_external_knowledge_warmup_ready() -> bool:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
-        return True
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
-        return True
-    return str(get_dify_external_knowledge_warmup_status().get("status") or "idle") == "completed"
-
-
-def _dedupe_dataset_ids(dataset_ids: list[UUID]) -> list[UUID]:
-    seen: set[UUID] = set()
-    out: list[UUID] = []
-    for dataset_id in dataset_ids:
-        if dataset_id in seen:
-            continue
-        seen.add(dataset_id)
-        out.append(dataset_id)
-    return out
-
-
-def _cache_timestamp(value: Any) -> str | None:
-    if value is None:
-        return None
-    if hasattr(value, "isoformat"):
-        try:
-            return value.isoformat()
-        except Exception:
-            return str(value)
-    text = str(value or "").strip()
-    return text or None
 
 
 def _resolve_dify_response_cache_corpus_token(
@@ -1157,7 +478,7 @@ def _resolve_dify_response_cache_corpus_token(
     tenant_id: UUID,
     dataset_ids: list[UUID],
 ) -> str | None:
-    scoped_dataset_ids = _dedupe_dataset_ids(list(dataset_ids or []))
+    scoped_dataset_ids = _dedupe_dataset_ids(dataset_ids)
     if not scoped_dataset_ids:
         return None
     try:
@@ -1168,12 +489,12 @@ def _resolve_dify_response_cache_corpus_token(
         )
     except Exception:
         return None
-    if not rows or len(rows) != len(scoped_dataset_ids):
+    if len(rows) != len(scoped_dataset_ids):
         return None
     items = [
         {
             "dataset_id": str(dataset_id),
-            "updated_at": _cache_timestamp(updated_at),
+            "updated_at": updated_at.isoformat() if updated_at is not None else None,
         }
         for dataset_id, updated_at in rows
     ]
@@ -1193,80 +514,48 @@ def _resolve_dify_response_cache_corpus_token(
 
 def _dify_response_cache_settings_signature() -> dict[str, Any]:
     return {
-        "internal_top_k_min": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20) or 20),
-        "internal_top_k_multiplier": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4) or 4
-        ),
-        "internal_top_k_max": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 50),
-        "primary_scope_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True)),
-        "primary_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 1),
-        "primary_min_top_score": float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0),
-        "compact_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True)),
-        "compact_min_top_score": float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.0),
-        "compact_relative_score_floor": float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
-        ),
-        "compact_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
-        "fast_candidate_top_k_max": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 3),
-        "fast_response_top_k_max": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 2),
-        "fast_content_max_chars": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 1400
-        ),
-        "fast_total_content_max_chars": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 2200
-        ),
-        "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
-        "dify_reranker_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)),
-        "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "") or ""),
-        "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
-        "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
-        "metadata_anchor_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
-        ),
-        "metadata_anchor_preflight_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False)
-        ),
-        "metadata_anchor_max_scan": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80
-        ),
-        "metadata_anchor_total_budget_ms": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0
-        ),
+        "internal_top_k_min": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN),
+        "internal_top_k_multiplier": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER),
+        "internal_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX),
+        "primary_scope_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED),
+        "primary_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS),
+        "primary_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE),
+        "compact_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED),
+        "compact_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE),
+        "compact_relative_score_floor": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR),
+        "compact_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS),
+        "fast_candidate_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX),
+        "fast_response_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX),
+        "fast_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS),
+        "fast_total_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS),
+        "enable_reranker": bool(settings.ENABLE_RERANKER),
+        "dify_reranker_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED),
+        "reranker_provider": str(settings.RERANKER_PROVIDER),
+        "reranker_model": settings.RERANKER_MODEL,
+        "reranker_top_n": int(settings.RERANKER_TOP_N),
+        "metadata_anchor_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED),
+        "metadata_anchor_preflight_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED),
+        "metadata_anchor_max_scan": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN),
+        "metadata_anchor_total_budget_ms": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS),
         "metadata_anchor_text_scan_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED
         ),
         "metadata_anchor_extend_sibling_policy_scope_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED
         ),
         "metadata_anchor_extended_scope_max_datasets": int(
             settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS
         ),
-        "mixed_intent_supplement_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True)
-        ),
-        "mixed_intent_max_subqueries": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES", 4) or 4
-        ),
-        "mixed_intent_subquery_top_k": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", 0) or 0
-        ),
-        "kg_on_demand_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True)),
-        "kg_query_expansion_default": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", False)
-        ),
-        "kg_chunk_injection_default": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED", False)
-        ),
-        "kg_chunk_injection_max_chunks_default": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 3
-        ),
-        "kg_chunk_boost_default": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED", False)),
-        "kg_chunk_boost_weight_default": float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.0
-        ),
-        "kg_chunk_boost_max_promoted_default": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2) or 2
-        ),
+        "mixed_intent_supplement_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED),
+        "mixed_intent_max_subqueries": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES),
+        "mixed_intent_subquery_top_k": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K),
+        "kg_on_demand_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED),
+        "kg_query_expansion_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED),
+        "kg_chunk_injection_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED),
+        "kg_chunk_injection_max_chunks_default": int(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS),
+        "kg_chunk_boost_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED),
+        "kg_chunk_boost_weight_default": float(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT),
+        "kg_chunk_boost_max_promoted_default": int(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED),
     }
 
 
@@ -1287,9 +576,9 @@ def _build_dify_response_cache_key(
     signature = {
         "schema": "mimirq.dify_external_response_cache.v1",
         "tenant_id": str(actor.tenant_id),
-        "account_id": str(actor.account_id or ""),
-        "knowledge_id": str(knowledge_id or "").strip(),
-        "query": str(query or "").strip(),
+        "account_id": actor.account_id,
+        "knowledge_id": knowledge_id.strip(),
+        "query": query.strip(),
         "retrieval_setting": retrieval_setting.model_dump(mode="json"),
         "metadata_condition": metadata_condition or None,
         "dataset_ids": [str(item) for item in scope_plan.dataset_ids],
@@ -1301,7 +590,7 @@ def _build_dify_response_cache_key(
         "candidate_top_k": int(candidate_top_k),
         "score_threshold": float(score_threshold),
         "policy_plugin_refs": list(policy_plugin_refs),
-        "corpus_token": str(corpus_token or ""),
+        "corpus_token": corpus_token,
         "settings": _dify_response_cache_settings_signature(),
     }
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
@@ -1309,186 +598,12 @@ def _build_dify_response_cache_key(
     return f"difyext:{actor.tenant_id}:{digest[:32]}"
 
 
-def _coerce_dataset_id_list(value: Any) -> list[UUID]:
-    if isinstance(value, dict):
-        for key in ("dataset_ids", "datasets", "dataset_id"):
-            if key in value:
-                return _coerce_dataset_id_list(value[key])
-        raise HTTPException(status_code=400, detail="Dify knowledge mapping must include dataset_id or dataset_ids")
-    if isinstance(value, str):
-        return [_coerce_uuid(value, label="dataset id")]
-    if isinstance(value, list | tuple | set):
-        dataset_ids: list[UUID] = []
-        for item in value:
-            if isinstance(item, dict):
-                dataset_ids.extend(_coerce_dataset_id_list(item))
-            else:
-                dataset_ids.append(_coerce_uuid(item, label="dataset id"))
-        return _dedupe_dataset_ids(dataset_ids)
-    raise HTTPException(status_code=400, detail="Dify knowledge mapping must be a dataset id or list")
-
-
-def _route_hint_terms(raw_route: dict[str, Any]) -> tuple[str, ...]:
-    raw_terms = raw_route.get("terms") or raw_route.get("query_terms") or raw_route.get("contains")
-    terms = raw_terms if isinstance(raw_terms, list | tuple | set) else [raw_terms]
-    return tuple(str(term or "").strip() for term in terms if str(term or "").strip())
-
-
-def _mapping_query_routes(mapping: dict[str, Any]) -> list[Any] | None:
-    routes = mapping.get("query_routes") or mapping.get("query_dataset_routes") or mapping.get("routes")
-    return routes if isinstance(routes, list) else None
-
-
-def _route_hints_from_routes(routes: list[Any]) -> list[DatasetRouteHint]:
-    route_hints: list[DatasetRouteHint] = []
-    for raw_route in routes:
-        if not isinstance(raw_route, dict):
-            continue
-        routed_dataset_ids = _coerce_dataset_id_list(raw_route)
-        if not routed_dataset_ids:
-            continue
-        route_hints.append(
-            DatasetRouteHint(
-                terms=_route_hint_terms(raw_route),
-                dataset_ids=tuple(routed_dataset_ids),
-                mode=normalize_route_mode(raw_route.get("mode") or raw_route.get("merge") or "prepend"),
-            )
-        )
-    return route_hints
-
-
-def _merge_route_hints(*groups: list[DatasetRouteHint]) -> list[DatasetRouteHint]:
-    merged: list[DatasetRouteHint] = []
-    seen: set[tuple[tuple[str, ...], tuple[UUID, ...], str]] = set()
-    for group in groups:
-        for route_hint in group:
-            identity = (route_hint.terms, route_hint.dataset_ids, route_hint.mode)
-            if identity in seen:
-                continue
-            seen.add(identity)
-            merged.append(route_hint)
-    return merged
-
-
-def _normalized_inherited_route_sources(raw_sources: Any) -> list[str]:
-    normalized_sources = (
-        sorted(raw_sources, key=str)
-        if isinstance(raw_sources, set)
-        else raw_sources
-        if isinstance(raw_sources, list | tuple)
-        else [raw_sources]
-    )
-    inherited_sources: list[str] = []
-    seen_sources: set[str] = set()
-    for source in normalized_sources:
-        source_key = str(source or "").strip()
-        if not source_key or source_key in seen_sources:
-            continue
-        seen_sources.add(source_key)
-        inherited_sources.append(source_key)
-    return inherited_sources
-
-
-def _append_unique_route_hints(
-    inherited: list[DatasetRouteHint],
-    *,
-    raw_mapping: Any,
-    seen: set[tuple[tuple[str, ...], tuple[UUID, ...], str]],
-) -> None:
-    if not isinstance(raw_mapping, dict):
-        return
-    routes = _mapping_query_routes(raw_mapping)
-    if not routes:
-        return
-    for route_hint in _route_hints_from_routes(routes):
-        if not route_hint.dataset_ids:
-            continue
-        identity = (route_hint.terms, route_hint.dataset_ids, route_hint.mode)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        inherited.append(route_hint)
-
-
-def _inherited_query_route_hints(
-    *,
-    knowledge_map: dict[str, Any],
-    current_key: str,
-    base_dataset_ids: list[UUID],
-) -> list[DatasetRouteHint]:
-    base_set = set(base_dataset_ids)
-    if not base_set:
-        return []
-
-    current_mapping = knowledge_map.get(current_key)
-    raw_inherited_sources = (
-        current_mapping.get("inherit_query_routes_from") if isinstance(current_mapping, dict) else None
-    )
-    inherited_sources = _normalized_inherited_route_sources(raw_inherited_sources)
-    if not inherited_sources:
-        return []
-    inherited: list[DatasetRouteHint] = []
-    seen: set[tuple[tuple[str, ...], tuple[UUID, ...], str]] = set()
-    for mapping_key in inherited_sources:
-        _append_unique_route_hints(
-            inherited,
-            raw_mapping=knowledge_map.get(mapping_key),
-            seen=seen,
-        )
-    return inherited
-
-
-def _apply_query_dataset_routes(base_dataset_ids: list[UUID], mapping: dict[str, Any], *, query: str) -> list[UUID]:
-    return list(_plan_query_dataset_scope(base_dataset_ids, mapping, query=query).dataset_ids)
-
-
 _knowledge_mapping_plugin_refs = _service_knowledge_mapping_plugin_refs
-
-
-def _retrieval_policy_filter_fields_for_plugin_refs(plugin_refs: tuple[str, ...]) -> set[str] | None:
-    return _service_retrieval_policy_filter_fields_for_plugin_refs(
-        plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-    )
-
-
-def _retrieval_policy_fallback_multiplier_for_plugin_refs(plugin_refs: tuple[str, ...]) -> int:
-    return _service_policy_fallback_multiplier(
-        plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        fallback_multiplier_resolver=retrieval_policy_fallback_multiplier,
-    )
-
-
-def _resolve_knowledge_policy_filter_fields(knowledge_id: str) -> set[str] | None:
-    return _service_resolve_knowledge_policy_filter_fields(
-        knowledge_id,
-        knowledge_map=_load_knowledge_map(),
-        knowledge_mapping_plugin_refs=_knowledge_mapping_plugin_refs,
-        retrieval_policy_filter_fields_for_plugin_refs=_retrieval_policy_filter_fields_for_plugin_refs,
-    )
-
-
-def _resolve_knowledge_policy_fallback_multiplier(knowledge_id: str) -> int:
-    return _service_resolve_knowledge_policy_fallback_multiplier(
-        knowledge_id,
-        knowledge_map=_load_knowledge_map(),
-        knowledge_mapping_plugin_refs=_knowledge_mapping_plugin_refs,
-        retrieval_policy_fallback_multiplier_for_plugin_refs=_retrieval_policy_fallback_multiplier_for_plugin_refs,
-    )
-
-
-def _resolve_knowledge_policy_plugin_refs(knowledge_id: str) -> tuple[str, ...]:
-    return _service_resolve_knowledge_policy_plugin_refs(
-        knowledge_id,
-        knowledge_map=_load_knowledge_map(),
-        knowledge_mapping_plugin_refs=_knowledge_mapping_plugin_refs,
-    )
 
 
 def _apply_policy_fallback_candidate_multiplier(candidate_top_k: int, *, multiplier: int) -> int:
     try:
-        configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 50)
+        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX)
     except (TypeError, ValueError):
         configured_max = 50
     return _service_apply_policy_fallback_candidate_multiplier(
@@ -1496,205 +611,6 @@ def _apply_policy_fallback_candidate_multiplier(candidate_top_k: int, *, multipl
         multiplier=multiplier,
         configured_max=configured_max,
     )
-
-
-def _metadata_anchor_dataset_ids_for_query(
-    *,
-    knowledge_id: str,
-    base_dataset_ids: list[UUID] | tuple[UUID, ...],
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[UUID]:
-    dataset_ids = _dedupe_dataset_ids(list(base_dataset_ids or []))
-    if not dataset_ids:
-        return []
-    if not _metadata_anchor_scope_extension_enabled(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
-        return dataset_ids
-
-    requested_refs = {str(ref or "").strip() for ref in policy_plugin_refs or () if str(ref or "").strip()}
-    if not requested_refs:
-        return dataset_ids
-
-    knowledge_map = _load_knowledge_map()
-    current_mapping = knowledge_map.get(str(knowledge_id or "").strip())
-    if not isinstance(current_mapping, dict):
-        return dataset_ids
-    try:
-        current_base_ids = _dedupe_dataset_ids(_coerce_dataset_id_list(current_mapping))
-    except HTTPException:
-        return dataset_ids
-    if set(dataset_ids) != set(current_base_ids):
-        return dataset_ids
-    if not _mapping_has_external_route_hint(current_mapping, base_dataset_ids=current_base_ids):
-        return dataset_ids
-
-    expanded = _expanded_metadata_anchor_dataset_ids(
-        knowledge_map,
-        requested_refs=requested_refs,
-        dataset_ids=dataset_ids,
-    )
-    max_datasets = max(
-        len(dataset_ids),
-        min(
-            200,
-            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS),
-        ),
-    )
-    return list(_dedupe_dataset_ids(expanded)[:max_datasets])
-
-
-def _metadata_anchor_scope_extension_enabled(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    return bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
-    ) and _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs)
-
-
-def _mapping_has_external_route_hint(
-    mapping: dict[str, Any],
-    *,
-    base_dataset_ids: list[UUID],
-) -> bool:
-    base_set = set(base_dataset_ids)
-    return any(
-        any(route_dataset_id not in base_set for route_dataset_id in route_hint.dataset_ids)
-        for route_hint in _route_hints_from_routes(_mapping_query_routes(mapping) or [])
-    )
-
-
-def _expanded_metadata_anchor_dataset_ids(
-    knowledge_map: dict[str, Any],
-    *,
-    requested_refs: set[str],
-    dataset_ids: list[UUID],
-) -> list[UUID]:
-    expanded: list[UUID] = list(dataset_ids)
-    for raw_mapping in knowledge_map.values():
-        if not isinstance(raw_mapping, dict):
-            continue
-        mapping_refs = set(_knowledge_mapping_plugin_refs(raw_mapping))
-        if not mapping_refs or requested_refs.isdisjoint(mapping_refs):
-            continue
-        try:
-            expanded.extend(_coerce_dataset_id_list(raw_mapping))
-        except HTTPException:
-            continue
-        for route_hint in _route_hints_from_routes(_mapping_query_routes(raw_mapping) or []):
-            expanded.extend(route_hint.dataset_ids)
-    return expanded
-
-
-def _plan_query_dataset_scope(
-    base_dataset_ids: list[UUID],
-    mapping: dict[str, Any],
-    *,
-    query: str,
-    inherited_route_hints: list[DatasetRouteHint] | None = None,
-) -> DatasetScopePlan:
-    routes = _mapping_query_routes(mapping)
-    if not routes and not inherited_route_hints:
-        return plan_dataset_scope(base_dataset_ids=base_dataset_ids, query=query)
-
-    route_hints = _merge_route_hints(
-        list(inherited_route_hints or []),
-        _route_hints_from_routes(routes or []),
-    )
-    strict_routes = bool(route_hints and (mapping.get("strict_query_routes") or mapping.get("query_routes_strict")))
-    return plan_dataset_scope(
-        base_dataset_ids=base_dataset_ids,
-        route_hints=route_hints,
-        query=query,
-        strict_routes=strict_routes,
-        include_unmatched_hint_datasets=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INCLUDE_UNMATCHED_ROUTE_HINTS", False)
-        ),
-        matched_replace_routes_as_primary_scope=strict_routes,
-    )
-
-
-def _load_knowledge_map() -> dict[str, Any]:
-    raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or "").strip()
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=503, detail="Dify knowledge map JSON is invalid") from exc
-    if not isinstance(data, dict):
-        raise HTTPException(status_code=503, detail="Dify knowledge map JSON must be an object")
-    return data
-
-
-def _resolve_dify_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = None) -> tuple[str, ...]:
-    raw_ids = _split_items(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", ""))
-    candidates = raw_ids if raw_ids else [str(key).strip() for key in (knowledge_map or _load_knowledge_map()).keys()]
-    try:
-        max_ids = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 8) or 0)
-    except (TypeError, ValueError):
-        max_ids = 8
-    if max_ids <= 0:
-        return ()
-
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in candidates:
-        knowledge_id = str(item or "").strip()
-        if not knowledge_id or knowledge_id in seen:
-            continue
-        seen.add(knowledge_id)
-        out.append(knowledge_id)
-        if len(out) >= max_ids:
-            break
-    return tuple(out)
-
-
-def _resolve_knowledge_dataset_ids(knowledge_id: str, *, query: str = "") -> list[UUID]:
-    return list(_resolve_knowledge_dataset_scope(knowledge_id, query=query).dataset_ids)
-
-
-def _dify_knowledge_resolution_mode() -> str:
-    mode = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE", "mapped_only") or "mapped_only")
-    return mode.strip().lower() or "mapped_only"
-
-
-def _resolve_knowledge_dataset_scope(knowledge_id: str, *, query: str = "") -> DatasetScopePlan:
-    key = str(knowledge_id or "").strip()
-    knowledge_map = _load_knowledge_map()
-    if key in knowledge_map:
-        raw_mapping = knowledge_map[key]
-        dataset_ids = _coerce_dataset_id_list(raw_mapping)
-        if isinstance(raw_mapping, dict):
-            inherited_route_hints = _inherited_query_route_hints(
-                knowledge_map=knowledge_map,
-                current_key=key,
-                base_dataset_ids=dataset_ids,
-            )
-            plan = _plan_query_dataset_scope(
-                dataset_ids,
-                raw_mapping,
-                query=query,
-                inherited_route_hints=inherited_route_hints,
-            )
-        else:
-            plan = plan_dataset_scope(base_dataset_ids=dataset_ids, query=query)
-        if not plan.dataset_ids:
-            raise HTTPException(status_code=404, detail="Dify knowledge mapping is empty")
-        return plan
-
-    allow_direct_dataset_uuid = _dify_knowledge_resolution_mode() == "allow_dataset_uuid"
-    if not allow_direct_dataset_uuid or is_production_env():
-        raise HTTPException(status_code=404, detail="Dify knowledge mapping not found")
-
-    try:
-        return plan_dataset_scope(base_dataset_ids=[UUID(key)], query=query)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="Dify knowledge mapping not found") from exc
 
 
 def _metadata_condition_to_filter(
@@ -1711,81 +627,11 @@ def _metadata_condition_to_filter(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _validate_metadata_filter_fields(metadata_filter: dict[str, Any], *, allowed_fields: set[str] | None) -> None:
-    try:
-        _service_validate_metadata_filter_fields(
-            metadata_filter,
-            allowed_fields=allowed_fields,
-        )
-    except _MetadataConditionValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
 def _dify_metadata_condition_item_to_filter(condition: dict[str, Any]) -> dict[str, Any]:
     try:
         return _service_dify_metadata_condition_item_to_filter(condition)
     except _MetadataConditionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-def _load_chunk_content_map(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    citations: list[dict[str, Any]],
-) -> dict[str, str]:
-    chunk_ids: list[UUID] = []
-    seen: set[UUID] = set()
-    for citation in citations or []:
-        chunk_id = _citation_chunk_id(citation)
-        if not chunk_id:
-            continue
-        try:
-            parsed = UUID(chunk_id)
-        except ValueError:
-            continue
-        if parsed in seen:
-            continue
-        seen.add(parsed)
-        chunk_ids.append(parsed)
-    if not chunk_ids:
-        return {}
-
-    try:
-        rows = (
-            db.query(DocumentChunk.id, DocumentChunk.content)
-            .filter(
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.id.in_(chunk_ids),
-                DocumentChunk.disabled_at.is_(None),
-            )
-            .all()
-        )
-    except Exception:  # noqa: BLE001
-        logger.warning("Failed to hydrate Dify chunk content; falling back to citation snippets", exc_info=True)
-        return {}
-    out: dict[str, str] = {}
-    for chunk_id, content in rows:
-        text = str(content or "").strip()
-        if text:
-            out[str(chunk_id)] = text
-    return out
-
-
-def _load_chunk_content_map_with_managed_session(
-    *,
-    tenant_id: UUID,
-    citations: list[dict[str, Any]],
-) -> dict[str, str]:
-    worker_db = SessionLocal()
-    try:
-        return _load_chunk_content_map(
-            db=worker_db,
-            tenant_id=tenant_id,
-            citations=citations,
-        )
-    finally:
-        worker_db.close()
 
 
 async def _offload_chunk_content_hydration(
@@ -1794,9 +640,7 @@ async def _offload_chunk_content_hydration(
     tenant_id: UUID,
     citations: list[dict[str, Any]],
 ) -> dict[str, str]:
-    rollback = getattr(request_db, "rollback", None)
-    if callable(rollback):
-        rollback()
+    request_db.rollback()
     return await run_blocking_retrieval_call(
         _load_chunk_content_map_with_managed_session,
         tenant_id=tenant_id,
@@ -1804,414 +648,23 @@ async def _offload_chunk_content_hydration(
     )
 
 
-def _response_hints_for_record(
-    record: dict[str, Any],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    return _service_response_hints_for_record(
-        record,
-        policy_plugin_refs=policy_plugin_refs,
-        record_plugin_ref=lambda item, refs: _record_plugin_ref(item, fallback_plugin_refs=refs),
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-    )
-
-
-def _response_hints_for_metadata(
-    metadata: dict[str, Any],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    return _service_response_hints_for_metadata(
-        metadata,
-        policy_plugin_refs=policy_plugin_refs,
-        response_hints_for_record=lambda record, refs: _response_hints_for_record(
-            record,
-            policy_plugin_refs=refs,
-        ),
-    )
-
-
-def _metadata_answer_highlights(
-    metadata: dict[str, Any],
-    *,
-    response_hints: dict[str, Any],
-    query: str = "",
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[str]:
-    highlights: list[str] = []
-    seen: set[str] = set()
-
-    def add(text: str) -> None:
-        value = str(text or "").strip()
-        if not value or value in seen:
-            return
-        seen.add(value)
-        highlights.append(value)
-
-    highlight_keys = _response_hint_string_list(response_hints, "answer_highlight_metadata")
-    field_specs = _response_hint_dict_list(response_hints, "answer_highlight_metadata_fields")
-    answer_field_configured = _metadata_answer_field_configured(highlight_keys, field_specs)
-    for layer in _metadata_answer_highlight_layers(metadata):
-        if not isinstance(layer, dict):
-            continue
-        _add_metadata_answer_default_highlight(
-            layer,
-            add=add,
-            answer_field_configured=answer_field_configured,
-        )
-        _add_metadata_answer_hint_values(layer, highlight_keys=highlight_keys, add=add)
-        for field_spec in field_specs:
-            _add_metadata_answer_field_spec_highlights(
-                layer,
-                field_spec=field_spec,
-                query=query,
-                policy_plugin_refs=policy_plugin_refs,
-                add=add,
-            )
-    return highlights
-
-
-def _metadata_answer_field_configured(
-    highlight_keys: tuple[str, ...],
-    field_specs: tuple[dict[str, Any], ...],
-) -> bool:
-    return "answer" in highlight_keys or any(
-        str(spec.get("metadata") or spec.get("key") or spec.get("field") or "").strip() == "answer"
-        for spec in field_specs
-    )
-
-
-def _metadata_answer_highlight_layers(metadata: dict[str, Any]) -> list[Any]:
-    return [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]
-
-
-def _add_metadata_answer_default_highlight(
-    layer: dict[str, Any],
-    *,
-    add: Callable[[str], None],
-    answer_field_configured: bool,
-) -> None:
-    if answer_field_configured:
-        return
-    for value in _metadata_terms(layer.get("answer")):
-        add(f"答案：{_clamp_hint_value(value, limit=1600)}")
-
-
-def _add_metadata_answer_hint_values(
-    layer: dict[str, Any],
-    *,
-    highlight_keys: tuple[str, ...],
-    add: Callable[[str], None],
-) -> None:
-    for key in highlight_keys:
-        for value in _metadata_terms(layer.get(key)):
-            add(_clamp_hint_value(value))
-
-
-def _response_hint_metadata_fields(field_spec: dict[str, Any]) -> tuple[str, ...]:
-    fields = _response_hint_string_list(field_spec, "fields")
-    single_field = str(field_spec.get("field") or "").strip()
-    if single_field and single_field not in fields:
-        fields = (*fields, single_field)
-    return fields
-
-
-def _add_metadata_answer_field_spec_highlights(
-    layer: dict[str, Any],
-    *,
-    field_spec: dict[str, Any],
-    query: str,
-    policy_plugin_refs: tuple[str, ...],
-    add: Callable[[str], None],
-) -> None:
-    if not _response_hint_metadata_conditions_match(layer, field_spec):
-        return
-    metadata_key = str(field_spec.get("metadata") or field_spec.get("key") or "").strip()
-    source = layer.get(metadata_key) if metadata_key else layer
-    if source is None:
-        return
-    max_chars = max(1, min(3000, int(field_spec.get("max_chars") or _MAX_HINT_VALUE_CHARS)))
-    if isinstance(source, dict):
-        _add_metadata_answer_dict_field_spec_highlights(
-            source,
-            field_spec=field_spec,
-            metadata_key=metadata_key,
-            max_chars=max_chars,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-            add=add,
-        )
-        return
-    label = str(field_spec.get("label") or metadata_key).strip()
-    if not label:
-        return
-    for value in _metadata_terms(source):
-        add(f"{label}：{_clamp_hint_value(value, limit=max_chars)}")
-
-
-def _add_metadata_answer_dict_field_spec_highlights(
-    source: dict[str, Any],
-    *,
-    field_spec: dict[str, Any],
-    metadata_key: str,
-    max_chars: int,
-    query: str,
-    policy_plugin_refs: tuple[str, ...],
-    add: Callable[[str], None],
-) -> None:
-    del metadata_key
-    labels = field_spec.get("labels") if isinstance(field_spec.get("labels"), dict) else {}
-    ordered_fields = _prioritized_response_hint_metadata_fields(
-        _response_hint_metadata_fields(field_spec),
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        enabled=field_spec.get("prioritize_query_fields") is True,
-    )
-    requested_labels = _requested_response_hint_metadata_labels(
-        ordered_fields,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        enabled=field_spec.get("prioritize_query_fields") is True,
-    )
-    requested_prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
-    if requested_prefix and requested_labels:
-        separator = str(field_spec.get("requested_labels_separator") or "、")
-        add(f"{requested_prefix}：{separator.join(requested_labels)}")
-    for field in ordered_fields:
-        label = str(labels.get(field) or field).strip()
-        if not label:
-            continue
-        for value in _metadata_terms(source.get(field)):
-            add(f"{label}：{_clamp_hint_value(value, limit=max_chars)}")
-
-
-def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    terms: list[str] = []
-    seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        for raw_term in _response_hint_string_list(policy, "question_intent_terms"):
-            term = str(raw_term or "").strip()
-            normalized = _normalize_match_term(term)
-            if not term or not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            terms.append(term)
-    return tuple(terms)
-
-
-def _query_prefers_question_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    text = str(query or "").strip()
-    if not text:
-        return False
-    if any(marker in text for marker in _QUESTION_ANCHOR_QUERY_MARKERS):
-        return True
-    return bool(
-        _query_intent_terms(
-            text,
-            intent_terms=_question_anchor_intent_terms_for_policy_refs(policy_plugin_refs),
-        )
-        or _query_is_short_question_anchor_candidate(text, policy_plugin_refs=policy_plugin_refs)
-    )
-
-
-def _query_prefers_service_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    query_term = _normalize_match_term(query)
-    if len(query_term) < 3:
-        return False
-    if _query_has_quoted_anchor_candidate(query):
-        return True
-    for term in _service_anchor_priority_terms_for_policy_refs(policy_plugin_refs):
-        normalized = _normalize_match_term(term)
-        if len(normalized) < 3:
-            continue
-        if normalized in query_term:
-            return True
-    entity_terms = tuple(
-        _normalize_match_term(term)
-        for term in _service_anchor_entity_terms_for_policy_refs(policy_plugin_refs)
-        if _normalize_match_term(term)
-    )
-    if entity_terms and any(marker in query_term for marker in entity_terms):
-        for term in _metadata_anchor_service_name_query_terms(query, policy_plugin_refs=policy_plugin_refs)[:6]:
-            if len(_normalize_match_term(term)) >= _MIN_SPECIFIC_INTENT_CHARS:
-                return True
-    return False
-
-
-def _query_has_mixed_intent_for_policy(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    if _query_has_mixed_intent(query):
-        return True
-    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
-    return len({(field, value) for field, value in requested_slots}) >= 2
-
-
-def _record_matches_quoted_query_anchor(record: dict[str, Any], *, query: str) -> bool:
-    return _record_matches_quoted_query_anchor_for_policy(record, query=query)
-
-
-def _record_matches_quoted_query_anchor_for_policy(
-    record: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    anchors = _quoted_query_anchor_terms(query)
-    if not anchors:
-        return True
-    values: list[str] = [str(record.get("content") or ""), str(record.get("title") or "")]
-    anchor_fields = _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
-    for metadata in _iter_record_metadata_layers(record):
-        for field in anchor_fields:
-            values.extend(_metadata_terms(metadata.get(field)))
-    normalized_values = [_normalize_match_term(value) for value in values if value]
-    return any(anchor in value or value in anchor for anchor in anchors for value in normalized_values if value)
-
-
-def _anchor_binding_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    fields: list[str] = []
-    seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        raw_binding = policy.get("anchor_binding")
-        if isinstance(raw_binding, dict) and raw_binding.get("enabled") is True:
-            for field in _metadata_terms(raw_binding.get("anchor_fields")):
-                normalized = _normalize_match_term(field)
-                if normalized and field not in seen:
-                    seen.add(field)
-                    fields.append(field)
-        raw_anchor_fields = policy.get("anchor_fields")
-        if isinstance(raw_anchor_fields, list | tuple):
-            for raw in raw_anchor_fields:
-                raw_dict = dict(raw) if isinstance(raw, dict) else {}
-                field = str(raw_dict.get("metadata") or "").strip()
-                normalized = _normalize_match_term(field)
-                if normalized and field not in seen:
-                    seen.add(field)
-                    fields.append(field)
-    return tuple(fields)
-
-
-def _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    fields: list[str] = []
-    seen: set[str] = set()
-    anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or (
-        "service_name",
-        "case_title",
-        "service_aliases",
-    )
-    for field in (*_EXACT_QUERY_ANCHOR_FIELDS, *anchor_fields):
-        text = str(field or "").strip()
-        if text and text not in seen:
-            seen.add(text)
-            fields.append(text)
-    return tuple(fields)
-
-
 def _policy_slot_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
     terms: list[str] = []
     seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
+    for plugin_ref in policy_plugin_refs:
         policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
             for raw_term in mapping.get("terms") or ():
-                term = str(raw_term or "").strip()
+                term = _first_nonempty_str(raw_term)
                 normalized = _normalize_match_term(term)
                 if len(normalized) < 3 or normalized in seen:
                     continue
                 seen.add(normalized)
                 terms.append(term)
     return tuple(terms)
-
-
-def _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    terms: list[str] = []
-    seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        for raw_term in _response_hint_string_list(policy, "metadata_anchor_preflight_block_terms"):
-            term = str(raw_term or "").strip()
-            normalized = _normalize_match_term(term)
-            if not term or not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            terms.append(term)
-    return tuple(terms)
-
-
-def _query_blocks_metadata_anchor_preflight(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    query_term = _normalize_match_term(query)
-    if not query_term:
-        return False
-    return any(
-        (normalized := _normalize_match_term(term)) and normalized in query_term
-        for term in _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs)
-    )
-
-
-def _requested_policy_slot_values_for_query(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    values: list[str] = []
-    seen: set[str] = set()
-    for _field, value in _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs):
-        normalized_value = _normalize_match_term(value)
-        if not value or not normalized_value or normalized_value in seen:
-            continue
-        seen.add(normalized_value)
-        values.append(value)
-    return tuple(values)
-
-
-def _requested_policy_slot_specs_for_query(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[tuple[str, str], ...]:
-    query_term = _normalize_match_term(query)
-    if len(query_term) < 3:
-        return ()
-    specs: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        for raw_mapping in policy.get("query_expansion_values") or ():
-            mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            field = str(mapping.get("metadata") or "").strip()
-            if not field:
-                continue
-            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
-            slot_values = raw_values or [mapping.get("value")]
-            terms = tuple(_metadata_terms(mapping.get("terms")))
-            if not terms:
-                continue
-            if not any((normalized := _normalize_match_term(term)) and normalized in query_term for term in terms):
-                continue
-            for raw_value in slot_values:
-                value = str(raw_value or "").strip()
-                normalized_value = _normalize_match_term(value)
-                key = f"{field}\0{normalized_value}"
-                if not value or not normalized_value or key in seen:
-                    continue
-                seen.add(key)
-                specs.append((field, value))
-    return tuple(specs)
 
 
 def _query_has_policy_slot_intent(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
@@ -2239,7 +692,7 @@ def _query_allows_metadata_anchor_preflight(
             query_prefers_service_anchor
             and not _query_has_quoted_anchor_candidate(query)
             and any(
-                marker in str(query or "")
+                marker in query
                 for marker in ("合并回答", "一并回答", "一起回答", "分别回答", "分开回答", "请合并", "请分别")
             )
         ):
@@ -2260,62 +713,12 @@ def _query_allows_metadata_anchor_preflight(
     return bool(query_prefers_question_anchor or query_prefers_service_anchor)
 
 
-def _metadata_anchor_should_query_question_first(
-    query: str,
-    *,
-    query_prefers_question_anchor: bool,
-    query_prefers_service_anchor: bool,
-    prefer_question_anchor_first: bool,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    if not query_prefers_question_anchor:
-        return False
-    if query_prefers_service_anchor and _query_has_quoted_anchor_candidate(query):
-        return False
-    if query_prefers_service_anchor and _requested_policy_slot_specs_for_query(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
-        return True
-    return bool(
-        prefer_question_anchor_first or not query_prefers_service_anchor or _query_has_explicit_question_form(query)
-    )
-
-
-def _mixed_intent_subject_anchor(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
-    text = _strip_mixed_intent_noise(
-        segment,
-        terms=_mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs),
-    )
-    if not text:
-        return ""
-    best_index = len(text)
-    intent_markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
-    for marker in sorted((str(item or "").strip() for item in intent_markers), key=len, reverse=True):
-        if not marker:
-            continue
-        index = text.find(marker)
-        if index >= 0:
-            best_index = min(best_index, index)
-    anchor = _strip_mixed_intent_subject_instruction_tail(text[:best_index])
-    if any(marker in anchor for marker in ("/", "线上", "线下")):
-        return ""
-    return anchor if len(_normalize_match_term(anchor)) >= 3 else ""
-
-
-def _clean_mixed_intent_query_segment(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
-    return _strip_mixed_intent_noise(
-        segment,
-        terms=_mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs),
-    )
-
-
 def _mixed_intent_retrieval_queries(
     query: str,
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    text = str(query or "").strip()
+    text = query.strip()
     if not _query_has_mixed_intent_for_policy(text, policy_plugin_refs=policy_plugin_refs):
         return ()
 
@@ -2323,7 +726,7 @@ def _mixed_intent_retrieval_queries(
         1,
         min(
             5,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES", 4) or 4),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES),
         ),
     )
     out: list[str] = []
@@ -2349,468 +752,6 @@ def _mixed_intent_retrieval_queries(
         if _append_unique_mixed_intent_query(out, seen, fallback_query, max_queries=max_queries):
             break
     return tuple(out)
-
-
-def _append_mixed_intent_queries_for_segment_parts(
-    raw_segment: str,
-    out: list[str],
-    *,
-    seen: set[str],
-    max_queries: int,
-    subject_anchor: str,
-    quoted_subject_anchor: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> str:
-    parts = _mixed_intent_segment_parts(raw_segment)
-    for raw_part in parts:
-        subject_anchor, candidates = _mixed_intent_segment_candidates(
-            raw_part,
-            subject_anchor=subject_anchor,
-            quoted_subject_anchor=quoted_subject_anchor,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-        for candidate in candidates:
-            if _append_unique_mixed_intent_query(out, seen, candidate, max_queries=max_queries):
-                return subject_anchor
-        if len(out) >= max_queries:
-            return subject_anchor
-        segment = _clean_mixed_intent_query_segment(raw_part, policy_plugin_refs=policy_plugin_refs)
-        if (
-            not out
-            and len(parts) == 1
-            and _append_first_inferred_subject_query(
-                out,
-                seen=seen,
-                query=segment,
-                max_queries=max_queries,
-                policy_plugin_refs=policy_plugin_refs,
-            )
-        ):
-            return subject_anchor
-        for expanded_candidate in _mixed_intent_policy_slot_queries(
-            segment=segment,
-            subject_anchor=subject_anchor,
-            policy_plugin_refs=policy_plugin_refs,
-        ):
-            if _append_unique_mixed_intent_query(
-                out,
-                seen,
-                expanded_candidate,
-                max_queries=max_queries,
-            ):
-                return subject_anchor
-    return subject_anchor
-
-
-def _append_first_inferred_subject_query(
-    out: list[str],
-    *,
-    seen: set[str],
-    query: str,
-    max_queries: int,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    for fallback_query in _mixed_intent_policy_slot_queries_from_inferred_subject(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
-        return _append_unique_mixed_intent_query(out, seen, fallback_query, max_queries=max_queries)
-    return False
-
-
-def _append_unique_mixed_intent_query(
-    out: list[str],
-    seen: set[str],
-    candidate: str,
-    *,
-    max_queries: int,
-) -> bool:
-    normalized = _normalize_match_term(candidate)
-    if len(normalized) < 4 or normalized in seen:
-        return False
-    seen.add(normalized)
-    out.append(candidate)
-    return len(out) >= max_queries
-
-
-def _mixed_intent_segment_candidates(
-    raw_part: str,
-    *,
-    subject_anchor: str,
-    quoted_subject_anchor: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, tuple[str, ...]]:
-    segment = _clean_mixed_intent_query_segment(raw_part, policy_plugin_refs=policy_plugin_refs)
-    normalized_segment = _normalize_match_term(segment)
-    segment_has_intent_marker = _mixed_intent_segment_has_intent_marker(
-        segment,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-    if len(normalized_segment) < 3 and not (subject_anchor and segment_has_intent_marker):
-        return subject_anchor, ()
-    segment_anchor = _mixed_intent_subject_anchor(segment, policy_plugin_refs=policy_plugin_refs)
-    if segment_anchor and not quoted_subject_anchor:
-        next_subject_anchor = segment_anchor
-        return (
-            next_subject_anchor,
-            (segment,) if segment_has_intent_marker else (),
-        )
-    if subject_anchor and not segment_has_intent_marker:
-        return subject_anchor, ()
-    candidate = f"{subject_anchor}{segment}" if subject_anchor else segment
-    return subject_anchor, (candidate,)
-
-
-def _mixed_intent_policy_slot_queries_from_inferred_subject(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
-    if len({(field, value) for field, value in requested_slots}) < 2:
-        return ()
-    subject = _infer_mixed_intent_subject_anchor(query, policy_plugin_refs=policy_plugin_refs)
-    if len(_normalize_match_term(subject)) < 3:
-        return ()
-
-    out: list[str] = []
-    seen_values: set[tuple[str, str]] = set()
-    for field, value in requested_slots:
-        key = (field, value)
-        if key in seen_values:
-            continue
-        seen_values.add(key)
-        term = _policy_slot_canonical_query_term(field=field, value=value, policy_plugin_refs=policy_plugin_refs)
-        if not term:
-            continue
-        out.append(f"{subject}{term}")
-    return tuple(out)
-
-
-def _infer_mixed_intent_subject_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
-    quoted_subject = next(iter(_quoted_query_anchor_display_terms(query)), "")
-    if quoted_subject:
-        return quoted_subject
-    direct_subject = _mixed_intent_subject_anchor(query, policy_plugin_refs=policy_plugin_refs)
-    if direct_subject:
-        return direct_subject
-    parts = _mixed_intent_segment_parts(query)
-    for part in reversed(parts):
-        cleaned = _clean_mixed_intent_query_segment(part, policy_plugin_refs=policy_plugin_refs)
-        if not _mixed_intent_segment_has_intent_marker(cleaned, policy_plugin_refs=policy_plugin_refs):
-            normalized = _normalize_match_term(cleaned)
-            if len(normalized) >= 3:
-                return cleaned.strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    return ""
-
-
-def _policy_slot_canonical_query_term(
-    *,
-    field: str,
-    value: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> str:
-    normalized_field = str(field or "").strip()
-    normalized_value = _normalize_match_term(value)
-    if not normalized_field or not normalized_value:
-        return ""
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        mappings = [
-            dict(raw_mapping)
-            for raw_mapping in policy.get("query_expansion_values") or ()
-            if isinstance(raw_mapping, dict)
-        ]
-        mappings.sort(key=lambda mapping: 1 if isinstance(mapping.get("values"), list | tuple | set) else 0)
-        for mapping in mappings:
-            if str(mapping.get("metadata") or "").strip() != normalized_field:
-                continue
-            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
-            values = raw_values or [mapping.get("value")]
-            if normalized_value not in {_normalize_match_term(item) for item in values}:
-                continue
-            terms = tuple(_metadata_terms(mapping.get("terms")))
-            return next((term for term in terms if len(_normalize_match_term(term)) >= 2), "")
-    return str(value or "").strip()
-
-
-def _policy_slot_query_terms(
-    *,
-    field: str,
-    value: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    normalized_field = str(field or "").strip()
-    normalized_value = _normalize_match_term(value)
-    if not normalized_field or not normalized_value:
-        return ()
-    out: list[str] = []
-    seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        for raw_mapping in policy.get("query_expansion_values") or ():
-            mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            if str(mapping.get("metadata") or "").strip() != normalized_field:
-                continue
-            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
-            values = raw_values or [mapping.get("value")]
-            if normalized_value not in {_normalize_match_term(item) for item in values}:
-                continue
-            for raw_term in (*_metadata_terms(mapping.get("terms")), value):
-                term = str(raw_term or "").strip()
-                normalized = _normalize_match_term(term)
-                if len(normalized) < 2 or normalized in seen:
-                    continue
-                seen.add(normalized)
-                out.append(term)
-    return tuple(out)
-
-
-def _record_covers_requested_policy_slots(
-    record: dict[str, Any],
-    requested_slot_specs: tuple[tuple[str, str], ...],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    requested_norms = tuple(
-        dict.fromkeys(
-            (field, _normalize_match_term(value))
-            for field, value in requested_slot_specs
-            if field and _normalize_match_term(value)
-        )
-    )
-    if not requested_norms:
-        return True
-    record_text = _record_policy_slot_coverage_text(record)
-    for field, normalized_value in requested_norms:
-        value = next(
-            (
-                raw_value
-                for raw_field, raw_value in requested_slot_specs
-                if raw_field == field and _normalize_match_term(raw_value) == normalized_value
-            ),
-            "",
-        )
-        if _record_matches_requested_slot(record, ((field, value),)):
-            continue
-        terms = _policy_slot_query_terms(field=field, value=value, policy_plugin_refs=policy_plugin_refs)
-        if not any((normalized := _normalize_match_term(term)) and normalized in record_text for term in terms):
-            return False
-    return True
-
-
-def _mixed_intent_policy_slot_queries(
-    *,
-    segment: str,
-    subject_anchor: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    segment_term = _normalize_match_term(segment)
-    subject = str(subject_anchor or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    if len(segment_term) < 3 or len(_normalize_match_term(subject)) < 3:
-        return ()
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for plugin_ref in policy_plugin_refs or ():
-        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        mappings = [dict(item) for item in policy.get("query_expansion_values") or () if isinstance(item, dict)]
-        canonical_terms_by_value = _policy_slot_canonical_terms_by_value(mappings)
-        for mapping in mappings:
-            mapping_terms = tuple(_metadata_terms(mapping.get("terms")))
-            if not any(
-                (normalized := _normalize_match_term(term)) and normalized in segment_term for term in mapping_terms
-            ):
-                continue
-            _append_mixed_intent_policy_slot_queries(
-                out,
-                seen=seen,
-                subject=subject,
-                segment_term=segment_term,
-                mapping=mapping,
-                canonical_terms_by_value=canonical_terms_by_value,
-            )
-    return tuple(out)
-
-
-def _policy_slot_canonical_terms_by_value(mappings: list[dict[str, Any]]) -> dict[str, list[str]]:
-    canonical_terms: dict[str, list[str]] = {}
-    for mapping in mappings:
-        if "values" in mapping:
-            continue
-        value = str(mapping.get("value") or "").strip()
-        if value:
-            canonical_terms.setdefault(value, []).extend(_metadata_terms(mapping.get("terms")))
-    return canonical_terms
-
-
-def _append_mixed_intent_policy_slot_queries(
-    out: list[str],
-    *,
-    seen: set[str],
-    subject: str,
-    segment_term: str,
-    mapping: dict[str, Any],
-    canonical_terms_by_value: dict[str, list[str]],
-) -> None:
-    raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
-    for raw_value in raw_values or [mapping.get("value")]:
-        value = str(raw_value or "").strip()
-        if not value:
-            continue
-        canonical_terms = canonical_terms_by_value.get(value, [])
-        if any((normalized := _normalize_match_term(term)) and normalized in segment_term for term in canonical_terms):
-            continue
-        canonical_term = next(
-            (
-                term
-                for term in canonical_terms
-                if (normalized := _normalize_match_term(term)) and normalized not in segment_term
-            ),
-            "",
-        )
-        normalized_canonical = _normalize_match_term(canonical_term)
-        if len(normalized_canonical) < 2 or normalized_canonical in seen:
-            continue
-        seen.add(normalized_canonical)
-        out.append(f"{subject}{canonical_term}")
-
-
-def _mixed_intent_segment_has_intent_marker(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    text = str(segment or "").strip()
-    if not text:
-        return False
-    markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
-    if not markers:
-        return True
-    return any(marker and marker in text for marker in markers)
-
-
-def _filter_records_by_mixed_intent_subject_anchor(
-    records: list[dict[str, Any]],
-    *,
-    subquery: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[dict[str, Any]]:
-    subject_anchor = _mixed_intent_subject_anchor(subquery, policy_plugin_refs=policy_plugin_refs)
-    normalized_anchor = _normalize_match_term(subject_anchor)
-    if len(normalized_anchor) < 3:
-        return records
-    anchored: list[dict[str, Any]] = []
-    for record in records or []:
-        for metadata in _iter_record_metadata_layers(record):
-            values: list[str] = []
-            for key in _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs):
-                values.extend(_metadata_terms(metadata.get(key)))
-            if any(normalized_anchor in _normalize_match_term(value) for value in values):
-                anchored.append(record)
-                break
-    return anchored or records
-
-
-def _content_with_answer_hints(
-    content: str,
-    metadata: dict[str, Any],
-    *,
-    query: str = "",
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> str:
-    body = str(content or "").strip()
-    if not body:
-        return body
-    response_hints = _response_hints_for_metadata(metadata, policy_plugin_refs=policy_plugin_refs)
-    enumerated_hints = _enumerated_answer_hints(body, query=query, response_hints=response_hints)
-    enumerated_prefix = "；".join(enumerated_hints)
-    if _content_starts_with_response_hint(body, response_hints=response_hints):
-        if enumerated_prefix and not body.startswith(enumerated_prefix):
-            return f"{enumerated_prefix}\n\n{body}"
-        return body
-    metadata_hints = _metadata_answer_highlights(
-        metadata,
-        response_hints=response_hints,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-    fields = _structured_fields_from_content(body, response_hints=response_hints)
-    if (
-        fields
-        and not metadata_hints
-        and not _matching_response_hint_group(fields, metadata, response_hints=response_hints, query=query)
-    ):
-        return body
-    hints = metadata_hints or _answer_hints_from_fields(
-        fields,
-        metadata,
-        response_hints=response_hints,
-        query=query,
-    )
-    if not hints and not enumerated_prefix:
-        return body
-    answer_prefix = _response_hint_text(
-        response_hints,
-        "answer_prefix",
-        default=_DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
-    )
-    source_prefix = _response_hint_text(
-        response_hints,
-        "source_prefix",
-        default=_DEFAULT_RESPONSE_HINT_SOURCE_PREFIX,
-    )
-    if enumerated_prefix and not hints:
-        return f"{enumerated_prefix}\n\n{source_prefix}：\n{body}"
-    if enumerated_prefix:
-        return f"{enumerated_prefix}\n\n{answer_prefix}：{'；'.join(hints)}\n\n{source_prefix}：\n{body}"
-    return f"{answer_prefix}：{'；'.join(hints)}\n\n{source_prefix}：\n{body}"
-
-
-def _record_retrieval_intents(
-    record: dict[str, Any],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    metadata_layers = _iter_record_metadata_layers(record)
-    for metadata in metadata_layers:
-        for key in _RETRIEVAL_INTENT_KEYS:
-            for term in _metadata_terms(metadata.get(key)):
-                if term in seen:
-                    continue
-                seen.add(term)
-                out.append(term)
-    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
-    policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-    for term in retrieval_policy_query_terms(policy, metadata_layers=metadata_layers):
-        if term in seen:
-            continue
-        seen.add(term)
-        out.append(term)
-    return out
-
-
-def _record_intent_bonus(
-    record: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> float:
-    query_text = str(query or "").casefold()
-    if not query_text:
-        return 0.0
-    matches = 0
-    for term in _record_retrieval_intents(record, policy_plugin_refs=policy_plugin_refs):
-        if not _is_specific_intent_term(term):
-            continue
-        folded = term.casefold()
-        if folded and (folded in query_text or query_text in folded):
-            matches += 1
-    return min(_INTENT_MATCH_BONUS * matches, _INTENT_MATCH_BONUS_MAX)
 
 
 def _record_mixed_intent_subquery_bonus(
@@ -2849,283 +790,25 @@ def _record_mixed_intent_subquery_bonus(
     return min(best, 1.4)
 
 
-@lru_cache(maxsize=128)
-def _retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
-    ref = str(plugin_ref or "").strip()
-    if not ref.startswith("plugin:"):
-        return {}
-    try:
-        from app.rag.pipeline_plugins.registry import resolve_registered_plugin_descriptor
-
-        descriptor = resolve_registered_plugin_descriptor(ref)
-    except Exception:  # noqa: BLE001
-        return {}
-    policy = getattr(descriptor, "retrieval_policy", None)
-    if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
-        return dict(policy)
-    return {}
-
-
-def _policy_string_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...], key: str) -> tuple[str, ...]:
-    return _service_policy_string_terms_for_policy_refs(
-        policy_plugin_refs,
-        key,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-        normalize_term=_normalize_match_term,
-    )
-
-
-def _service_anchor_entity_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_entity_terms")
-
-
-def _service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_leading_noise_terms")
-
-
-def _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_cutoff_terms")
-
-
-def _service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_service_anchor_admin_aliases_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-        normalize_term=_normalize_match_term,
-    )
-
-
-def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "question_anchor_generic_subject_terms")
-
-
-def _fast_response_always_labels_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "fast_response_always_labels")
-
-
-def _fast_response_field_rules_for_policy_refs(
-    policy_plugin_refs: tuple[str, ...],
-) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    return _service_fast_response_field_rules_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-    )
-
-
-def _requested_label_prefixes_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_requested_label_prefixes_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        response_hint_dict_list=_response_hint_dict_list,
-    )
-
-
-def _service_anchor_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_resolved_policy_terms_for_plugin_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=retrieval_policy_service_anchor_noise_terms,
-    )
-
-
-def _service_anchor_priority_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_resolved_policy_terms_for_plugin_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=retrieval_policy_service_anchor_priority_terms,
-    )
-
-
-def _service_anchor_query_rewrite_terms_for_policy_refs(
-    query: str, policy_plugin_refs: tuple[str, ...]
-) -> tuple[str, ...]:
-    return _service_resolved_policy_terms_for_plugin_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=lambda policy: retrieval_policy_service_anchor_query_rewrite_terms(policy, query=query),
-        normalize_term=_normalize_match_term,
-    )
-
-
-def _mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_mixed_intent_leading_noise_terms_for_policy_refs(
-        policy_plugin_refs,
-        default_terms=_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=retrieval_policy_mixed_intent_leading_noise_terms,
-        normalize_term=_normalize_match_term,
-    )
-
-
-def _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_resolved_policy_terms_for_plugin_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=retrieval_policy_mixed_intent_subject_terms,
-        normalize_term=_normalize_match_term,
-    )
-
-
-def _records_retrieval_policy_diagnostics(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    return records_retrieval_policy_diagnostics(
-        records,
-        query=query,
-        plugin_ref_for_record=lambda record: _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs),
-        metadata_layers_for_record=_iter_record_metadata_layers,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-    )
-
-
-def _response_compaction_for_records(
-    records: list[dict[str, Any]],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    return _service_response_compaction_for_records(
-        records,
-        policy_plugin_refs=policy_plugin_refs,
-        record_plugin_ref=lambda record, fallback_plugin_refs: _record_plugin_ref(
+def _record_rank_score(record: dict[str, Any], *, query: str, policy_plugin_refs: tuple[str, ...] = ()) -> float:
+    return (
+        float(record.get("score") or 0.0)
+        + _record_metadata_anchor_bonus(record, query=query)
+        + _record_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        + _record_exact_primary_alias_bonus(record, query=query)
+        + _record_url_evidence_bonus(record, query=query)
+        + _record_question_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        + _record_answerfulness_score(record, policy_plugin_refs=policy_plugin_refs)
+        + _record_mixed_intent_subquery_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        + record_retrieval_policy_bonus(
             record,
-            fallback_plugin_refs=fallback_plugin_refs,
-        ),
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        response_compaction_resolver=retrieval_policy_response_compaction,
-    )
-
-
-def _record_rank_score(
-    record: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> float:
-    return _service_record_rank_score(
-        record,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        record_metadata_anchor_bonus=lambda item, raw_query: _record_metadata_anchor_bonus(item, query=raw_query),
-        record_intent_bonus=lambda item, raw_query, refs: _record_intent_bonus(
-            item,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-        record_exact_primary_alias_bonus=lambda item, raw_query: _record_exact_primary_alias_bonus(
-            item,
-            query=raw_query,
-        ),
-        record_url_evidence_bonus=lambda item, raw_query: _record_url_evidence_bonus(item, query=raw_query),
-        record_question_intent_bonus=lambda item, raw_query, refs: _record_question_intent_bonus(
-            item,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-        record_answerfulness_score=lambda item, refs: _record_answerfulness_score(item, policy_plugin_refs=refs),
-        record_mixed_intent_subquery_bonus=lambda item, raw_query, refs: _record_mixed_intent_subquery_bonus(
-            item,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-        record_retrieval_policy_bonus=lambda item, raw_query, refs: record_retrieval_policy_bonus(
-            item,
-            query=raw_query,
-            plugin_ref_for_record=lambda candidate: _record_plugin_ref(candidate, fallback_plugin_refs=refs),
+            query=query,
+            plugin_ref_for_record=lambda candidate: _record_plugin_ref(
+                candidate, fallback_plugin_refs=policy_plugin_refs
+            ),
             metadata_layers_for_record=_iter_record_metadata_layers,
             policy_resolver=_retrieval_policy_for_plugin_ref,
-        ),
-    )
-
-
-def _compact_fast_record_content(
-    content: str,
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-    metadata: dict[str, Any] | None = None,
-) -> str:
-    return _service_compact_fast_record_content(
-        content,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        metadata=metadata,
-        max_chars=_dify_fast_content_max_chars(),
-        structured_label_values_from_content=_structured_label_values_from_content,
-        response_hints_for_metadata=lambda record_metadata, refs: _response_hints_for_metadata(
-            record_metadata,
-            policy_plugin_refs=refs,
-        ),
-        metadata_answer_highlights=lambda record_metadata, response_hints, raw_query, refs: _metadata_answer_highlights(
-            record_metadata,
-            response_hints=response_hints,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-        requested_fast_response_labels=lambda raw_query, fields, refs: _requested_fast_response_labels(
-            raw_query,
-            fields,
-            policy_plugin_refs=refs,
-        ),
-        fast_response_always_labels_for_policy_refs=_fast_response_always_labels_for_policy_refs,
-        requested_label_prefixes_for_policy_refs=_requested_label_prefixes_for_policy_refs,
-        clamp_hint_value=lambda value, limit: _clamp_hint_value(value, limit=limit),
-        compact_fast_answer_value=lambda value, raw_query, limit: _compact_fast_answer_value(
-            value,
-            query=raw_query,
-            limit=limit,
-        ),
-    )
-
-
-def _compact_fast_records_for_response(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    top_k: int,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[dict[str, Any]]:
-    return _service_compact_fast_records_for_response(
-        records,
-        query=query,
-        top_k=top_k,
-        policy_plugin_refs=policy_plugin_refs,
-        response_top_k=_dify_fast_response_top_k(top_k),
-        total_budget=_dify_fast_total_content_max_chars(),
-        compact_fast_record_content=lambda content_value, raw_query, refs, record_metadata: (
-            _compact_fast_record_content(
-                content_value,
-                query=raw_query,
-                policy_plugin_refs=refs,
-                metadata=record_metadata,
-            )
-        ),
-        clamp_hint_value=lambda value, limit: _clamp_hint_value(value, limit=limit),
-    )
-
-
-def _compact_high_confidence_for_response(
-    items: list[Any] | tuple[Any, ...],
-    scores: list[float] | tuple[float, ...],
-    raw_top_k: int,
-    enabled: bool,
-    min_top_score: float,
-    relative_score_floor: float,
-    min_items: int,
-) -> tuple[Any, ...]:
-    return compact_high_confidence_items(
-        items,
-        scores=scores,
-        top_k=raw_top_k,
-        enabled=enabled,
-        min_top_score=min_top_score,
-        relative_score_floor=relative_score_floor,
-        min_items=min_items,
+        )
     )
 
 
@@ -3164,7 +847,7 @@ def _compact_records_for_response(
             query=raw_query,
             policy_plugin_refs=refs,
         ),
-        compaction_enabled=bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True)),
+        compaction_enabled=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED),
         response_compaction_for_records=lambda items, refs: _response_compaction_for_records(
             items,
             policy_plugin_refs=refs,
@@ -3194,70 +877,27 @@ def _compact_records_for_response(
             policy_plugin_refs=refs,
         ),
         compact_high_confidence_items=_compact_high_confidence_for_response,
-        default_min_top_score=float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.7),
-        default_relative_score_floor=float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.65
-        ),
-        default_min_items=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
-    )
-
-
-def _strong_question_anchor_records(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[dict[str, Any]]:
-    return _service_strong_question_anchor_records(
-        records,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        record_has_strong_question_anchor=lambda item, raw_query, refs: _record_has_strong_question_anchor(
-            item,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-        record_content_is_answerful=lambda item, refs: _record_content_is_answerful(
-            item,
-            policy_plugin_refs=refs,
-        ),
+        default_min_top_score=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE),
+        default_relative_score_floor=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR),
+        default_min_items=int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS),
     )
 
 
 def _compact_exact_anchor_answer_record(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
+    records: list[dict[str, Any]], *, query: str, policy_plugin_refs: tuple[str, ...] = ()
 ) -> list[dict[str, Any]]:
-    return _service_compact_exact_anchor_answer_record(
-        records,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        record_exact_query_anchor_terms=lambda item, raw_query, refs: _record_exact_query_anchor_terms(
-            item,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-        record_content_is_answerful=lambda item, refs: _record_content_is_answerful(
-            item,
-            policy_plugin_refs=refs,
-        ),
-        requested_policy_slot_specs_for_query=lambda raw_query, refs: _requested_policy_slot_specs_for_query(
-            raw_query,
-            policy_plugin_refs=refs,
-        ),
-        record_covers_requested_policy_slots=lambda item, slot_specs, refs: _record_covers_requested_policy_slots(
-            item,
-            slot_specs,
-            policy_plugin_refs=refs,
-        ),
-        sort_records_for_query=lambda items, raw_query, refs: _sort_records_for_query(
-            items,
-            query=raw_query,
-            policy_plugin_refs=refs,
-        ),
-    )
+    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+    candidates = [
+        record
+        for record in records
+        if _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+        and _record_covers_requested_policy_slots(record, requested_slots, policy_plugin_refs=policy_plugin_refs)
+    ]
+    if not candidates:
+        return []
+    _sort_records_for_query(candidates, query=query, policy_plugin_refs=policy_plugin_refs)
+    return [candidates[0]]
 
 
 def _compact_mixed_intent_exact_anchor_records(
@@ -3336,57 +976,6 @@ def _sort_records_for_query(
     )
 
 
-def _record_exact_anchor_protection_scores(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[int, float]:
-    if not records:
-        return {}
-    if _strong_question_anchor_records(records, query=query, policy_plugin_refs=policy_plugin_refs):
-        return {}
-    exact_anchor_records = [
-        record
-        for record in records
-        if _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
-        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
-    ]
-    if not exact_anchor_records:
-        return {}
-    return {id(record): 1.2 for record in exact_anchor_records}
-
-
-def _record_final_rerank_text(
-    record: dict[str, Any],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> str:
-    parts: list[str] = []
-    seen: set[str] = set()
-
-    def add(value: Any) -> None:
-        text = str(value or "").strip()
-        if not text or text in seen:
-            return
-        seen.add(text)
-        parts.append(text)
-
-    add(record.get("title"))
-    add(record.get("content"))
-    metadata_fields = (
-        *_EXACT_QUERY_ANCHOR_FIELDS,
-        "answer",
-        "summary",
-        *_anchor_binding_fields_for_policy_refs(policy_plugin_refs),
-    )
-    for metadata in _iter_record_metadata_layers(record):
-        for field in metadata_fields:
-            for value in _metadata_terms(metadata.get(field)):
-                add(value)
-    return "\n".join(parts)
-
-
 async def _final_rerank_records_for_query(
     records: list[dict[str, Any]],
     *,
@@ -3419,7 +1008,7 @@ async def _final_rerank_records_for_query(
         )
         elapsed_sec = result.elapsed_sec if result.elapsed_sec is not None else time.perf_counter() - start
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Dify external final reranker failed (%s): %s", provider, exc)
+        logger.warning("Dify external final reranker failed (%s): %s", provider, exc, exc_info=True)
         return records
 
     ordered = _ordered_final_rerank_records(
@@ -3437,318 +1026,25 @@ async def _final_rerank_records_for_query(
 
 
 def _final_rerank_provider(records: list[dict[str, Any]]) -> str | None:
-    if len(records or []) <= 1:
+    if len(records) <= 1:
         return None
     if not any(_record_needs_final_rerank(record) for record in records):
         return None
     if not _dify_external_reranker_enabled():
         return None
-    provider = str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm").strip().lower()
+    provider = settings.RERANKER_PROVIDER.strip().lower()
     return None if provider in {"none", "off", "false", "0"} else provider
 
 
-def _final_rerank_candidate_count(record_count: int, top_k: int) -> int:
-    try:
-        configured_top_n = int(getattr(settings, "RERANKER_TOP_N", top_k) or top_k)
-    except (TypeError, ValueError):
-        configured_top_n = int(top_k or 1)
-    return min(record_count, max(1, int(top_k or 1), configured_top_n))
-
-
-def _final_rerank_candidates(
-    records: list[dict[str, Any]],
-    *,
-    top_k: int,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[list[RerankCandidate], dict[str, dict[str, Any]], int]:
-    candidate_count = _final_rerank_candidate_count(len(records), top_k)
-    used_ids: set[str] = set()
-    id_to_record: dict[str, dict[str, Any]] = {}
-    candidates: list[RerankCandidate] = []
-    for index, record in enumerate(records[:candidate_count]):
-        text = _record_final_rerank_text(record, policy_plugin_refs=policy_plugin_refs)
-        if not text:
-            continue
-        candidate_id = _record_final_rerank_candidate_id(record, index=index, used=used_ids)
-        metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
-        metadata["score"] = float(record.get("score") or 0.0)
-        metadata["title"] = str(record.get("title") or "")
-        candidates.append(RerankCandidate(id=candidate_id, text=text, metadata=metadata))
-        id_to_record[candidate_id] = record
-    return candidates, id_to_record, candidate_count
-
-
-def _ordered_final_rerank_records(
-    candidates: list[RerankCandidate],
-    *,
-    id_to_record: dict[str, dict[str, Any]],
-    provider: str,
-    result: Any,
-    elapsed_sec: float,
-) -> list[dict[str, Any]]:
-    ordered: list[dict[str, Any]] = []
-    consumed: set[str] = set()
-    rerank_provider = result.provider or provider
-    for candidate_id in result.ordered_ids:
-        record = id_to_record.get(str(candidate_id))
-        if record is None or candidate_id in consumed:
-            continue
-        consumed.add(str(candidate_id))
-        ordered.append(
-            _final_rerank_record_with_metadata(
-                record,
-                candidate_id=str(candidate_id),
-                rerank_provider=rerank_provider,
-                result=result,
-                elapsed_sec=elapsed_sec,
-            )
-        )
-    for candidate in candidates:
-        if candidate.id in consumed:
-            continue
-        record = id_to_record.get(candidate.id)
-        if record is not None:
-            ordered.append(record)
-    return ordered
-
-
-def _final_rerank_record_with_metadata(
-    record: dict[str, Any],
-    *,
-    candidate_id: str,
-    rerank_provider: str,
-    result: Any,
-    elapsed_sec: float,
-) -> dict[str, Any]:
-    next_record = dict(record)
-    metadata = dict(next_record.get("metadata") if isinstance(next_record.get("metadata"), dict) else {})
-    metadata["reranker_provider"] = rerank_provider
-    metadata["rerank_elapsed_sec"] = round(float(elapsed_sec or 0.0), 3)
-    metadata["rerank_model_used"] = result.model_used
-    metadata["dify_final_rerank"] = True
-    if candidate_id in result.score_map:
-        rerank_score = _clamp_score(result.score_map[candidate_id])
-        metadata["rerank_score"] = rerank_score
-        next_record["score"] = rerank_score
-    next_record["metadata"] = metadata
-    return next_record
-
-
-def _requested_fast_response_labels(
-    query: str,
-    fields: dict[str, str],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    query_text = str(query or "")
-    labels: list[str] = []
-    seen: set[str] = set()
-
-    def add(label: str) -> None:
-        if label in seen or label not in fields:
-            return
-        seen.add(label)
-        labels.append(label)
-
-    if "答案" in fields:
-        add("问题")
-        add("答案")
-        return tuple(labels)
-
-    rules = _fast_response_field_rules_for_policy_refs(policy_plugin_refs)
-    exact_labels = _requested_fast_response_exact_labels(
-        query_text,
-        rules,
-        add=add,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-    normalized_exact_labels = tuple(
-        normalized for normalized in (_normalize_match_term(label) for label in exact_labels) if normalized
-    )
-    for label, markers in rules:
-        if label in exact_labels or _fast_response_rule_is_shadowed(
-            label,
-            markers=markers,
-            query_text=query_text,
-            normalized_exact_labels=normalized_exact_labels,
-        ):
-            continue
-        add(label)
-    return tuple(labels)
-
-
-def _requested_fast_response_exact_labels(
-    query_text: str,
-    rules: tuple[tuple[str, tuple[str, ...]], ...],
-    *,
-    add: Callable[[str], None],
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> set[str]:
-    exact_labels: set[str] = set()
-    for label in _fast_response_always_labels_for_policy_refs(policy_plugin_refs):
-        add(label)
-    for label, _markers in rules:
-        if label not in query_text:
-            continue
-        exact_labels.add(label)
-        add(label)
-    return exact_labels
-
-
-def _fast_response_rule_is_shadowed(
-    label: str,
-    *,
-    markers: tuple[str, ...],
-    query_text: str,
-    normalized_exact_labels: tuple[str, ...],
-) -> bool:
-    del label
-    matched_markers = tuple(marker for marker in markers if marker in query_text)
-    if not matched_markers:
-        return True
-    if not normalized_exact_labels:
-        return False
-    for marker in matched_markers:
-        normalized_marker = _normalize_match_term(marker)
-        if not normalized_marker:
-            continue
-        if not any(
-            normalized_marker != exact_label and normalized_marker in exact_label
-            for exact_label in normalized_exact_labels
-        ):
-            return False
-    return True
-
-
-def _requested_response_hint_metadata_labels(
-    fields: tuple[str, ...],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-    enabled: bool,
-) -> tuple[str, ...]:
-    if not enabled:
-        return ()
-    query_text = str(query or "")
-    if not query_text:
-        return ()
-    available = set(fields)
-    labels: list[str] = []
-    seen: set[str] = set()
-    for label, markers in _fast_response_field_rules_for_policy_refs(policy_plugin_refs):
-        if label not in available or label in seen:
-            continue
-        if not any(marker in query_text for marker in markers):
-            continue
-        seen.add(label)
-        labels.append(label)
-    return tuple(labels)
-
-
-def _prioritized_response_hint_metadata_fields(
-    fields: tuple[str, ...],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-    enabled: bool,
-) -> tuple[str, ...]:
-    if not enabled:
-        return fields
-    requested = _requested_response_hint_metadata_labels(
-        fields,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-        enabled=True,
-    )
-    if not requested:
-        return fields
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for field in (*requested, *fields):
-        if field in seen:
-            continue
-        seen.add(field)
-        ordered.append(field)
-    return tuple(ordered)
-
-
-def _record_exact_query_anchor_terms(
-    record: dict[str, Any],
-    *,
-    query: str,
-    anchor_fields: tuple[str, ...] | None = None,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    query_term = _normalize_match_term(query)
-    if len(query_term) < 4:
-        return ()
-    out: list[str] = []
-    seen: set[str] = set()
-    effective_anchor_fields = anchor_fields or _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
-    for metadata in _iter_record_metadata_layers(record):
-        for field in effective_anchor_fields:
-            for term in _metadata_terms(metadata.get(field)):
-                normalized = _normalize_match_term(term)
-                if len(normalized) < 4 or normalized in seen:
-                    continue
-                if normalized in query_term:
-                    seen.add(normalized)
-                    out.append(normalized)
-    return tuple(out)
-
-
-def _record_content_is_answerful(
-    record: dict[str, Any],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    content = str(record.get("content") or "").strip()
-    return bool(content) and _record_has_answer_evidence(
-        record,
-        content=content,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-
-
 def _record_answerfulness_score(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> float:
-    return _service_record_answerfulness_score(
-        record,
-        policy_plugin_refs=policy_plugin_refs,
-        record_has_answer_evidence=lambda item, content, refs: _record_has_answer_evidence(
-            item,
-            content=content,
-            policy_plugin_refs=refs,
-        ),
-        record_is_anchor_only_qa=lambda item, content, refs: _record_is_anchor_only_qa(
-            item,
-            content=content,
-            policy_plugin_refs=refs,
-        ),
-        answerful_record_bonus=_ANSWERFUL_RECORD_BONUS,
-        anchor_only_qa_record_penalty=_ANCHOR_ONLY_QA_RECORD_PENALTY,
-    )
-
-
-def _records_have_exact_anchor_full_answer(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
-    quoted_anchor_query = _query_has_quoted_anchor_candidate(query)
-    for record in records or []:
-        if not _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs):
-            continue
-        if _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs):
-            if requested_slots and not (
-                quoted_anchor_query
-                or _record_is_full_answer_chunk(record)
-                or _record_is_composite_exact_anchor_answer(record)
-            ):
-                continue
-            return True
-    return False
+    content = record["content"].strip()
+    if not content:
+        return 0.0
+    if _record_has_answer_evidence(record, content=content, policy_plugin_refs=policy_plugin_refs):
+        return _ANSWERFUL_RECORD_BONUS
+    if _record_is_anchor_only_qa(record, content=content, policy_plugin_refs=policy_plugin_refs):
+        return -_ANCHOR_ONLY_QA_RECORD_PENALTY
+    return 0.0
 
 
 def _composite_record_for_exact_anchor_slots(
@@ -3789,84 +1085,6 @@ def _composite_record_for_exact_anchor_slots(
     }
 
 
-def _exact_anchor_slot_record_groups(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    requested_slot_specs: tuple[tuple[str, str], ...],
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[str, list[dict[str, Any]]]:
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for record in records:
-        if not _record_matches_requested_slot(record, requested_slot_specs):
-            continue
-        for anchor in _record_exact_query_anchor_terms(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        ):
-            groups.setdefault(anchor, []).append(record)
-    return groups
-
-
-def _requested_slot_norms(
-    requested_slot_specs: tuple[tuple[str, str], ...],
-) -> tuple[tuple[str, str], ...]:
-    return tuple(
-        (field, _normalize_match_term(value))
-        for field, value in requested_slot_specs
-        if field and _normalize_match_term(value)
-    )
-
-
-def _best_exact_anchor_slot_group_records(
-    groups: dict[str, list[dict[str, Any]]],
-    *,
-    requested_slot_specs: tuple[tuple[str, str], ...],
-) -> tuple[list[dict[str, Any]], set[tuple[str, str]]]:
-    best_records: list[dict[str, Any]] = []
-    best_covered: set[tuple[str, str]] = set()
-    for candidates in groups.values():
-        selected, covered = _selected_exact_anchor_slot_group_records(
-            candidates,
-            requested_norms=_requested_slot_norms(requested_slot_specs),
-        )
-        if len(covered) > len(best_covered):
-            best_records = selected
-            best_covered = covered
-    return best_records, best_covered
-
-
-def _selected_exact_anchor_slot_group_records(
-    candidates: list[dict[str, Any]],
-    *,
-    requested_norms: tuple[tuple[str, str], ...],
-) -> tuple[list[dict[str, Any]], set[tuple[str, str]]]:
-    selected: list[dict[str, Any]] = []
-    covered: set[tuple[str, str]] = set()
-    seen_records: set[int] = set()
-    for requested_field, requested_norm in requested_norms:
-        requested_key = (requested_field, requested_norm)
-        if not requested_norm or requested_key in covered:
-            continue
-        matching_records = [
-            record
-            for record in candidates
-            if requested_norm
-            in {_normalize_match_term(value) for value in _record_slot_field_values(record, requested_field)}
-            and id(record) not in seen_records
-        ]
-        if not matching_records:
-            continue
-        for record in _ordered_section_sibling_records(matching_records):
-            if id(record) in seen_records:
-                continue
-            selected.append(record)
-            seen_records.add(id(record))
-        covered.add(requested_key)
-    return selected, covered
-
-
 def _composite_exact_anchor_slot_metadata(
     records: list[dict[str, Any]],
     *,
@@ -3894,50 +1112,11 @@ def _composite_exact_anchor_slot_metadata(
         "dify_composite_source_chunk_ids": source_chunk_ids,
         "dify_composite_source_document_ids": source_document_ids,
     }
-    section_types = [spec["value"] for spec in covered_specs if spec.get("metadata") == "section_type"]
+    section_types = [spec["value"] for spec in covered_specs if spec["metadata"] == "section_type"]
     if section_types:
         metadata["section_type"] = "composite"
         metadata["dify_composite_section_types"] = section_types
     return metadata
-
-
-def _composite_exact_anchor_slot_content(records: list[dict[str, Any]]) -> str:
-    content_parts = [
-        part
-        for part in (
-            _composite_stitched_section_text(records),
-            "\n\n".join(str(record.get("content") or "").strip() for record in records if record.get("content")),
-        )
-        if part
-    ]
-    return "\n\n".join(content_parts)
-
-
-def _record_has_answer_evidence(
-    record: dict[str, Any],
-    *,
-    content: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    response_hints = _response_hints_for_record(record, policy_plugin_refs=policy_plugin_refs)
-    fields = _structured_fields_from_content(content, response_hints=response_hints)
-    answer_labels = _response_hint_string_list(response_hints, "answer_labels")
-    if answer_labels and any(fields.get(label) for label in answer_labels):
-        return True
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    if _matching_response_hint_group(fields, metadata, response_hints=response_hints) is not None:
-        return True
-    answer_keywords = _response_hint_string_list(response_hints, "answer_keywords")
-    if _content_starts_with_response_hint(content, response_hints=response_hints) and (
-        not answer_keywords or any(keyword in content[:_MAX_QA_HINT_VALUE_CHARS] for keyword in answer_keywords)
-    ):
-        return True
-
-    raw_metadata = record.get("metadata")
-    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
-    if _metadata_answer_highlights(metadata, response_hints=response_hints):
-        return True
-    return False
 
 
 def _record_is_anchor_only_qa(
@@ -3947,7 +1126,7 @@ def _record_is_anchor_only_qa(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     response_hints = _response_hints_for_record(record, policy_plugin_refs=policy_plugin_refs)
-    normalized = str(content or "").strip()
+    normalized = content.strip()
     answer_labels = _response_hint_string_list(response_hints, "answer_labels")
     answer_keywords = _response_hint_string_list(response_hints, "answer_keywords")
     if any(label and label in normalized for label in (*answer_labels, *answer_keywords)):
@@ -3963,237 +1142,6 @@ def _record_is_anchor_only_qa(
         return False
     markers = _response_hint_string_list(response_hints, "anchor_only_markers")
     return any(marker and marker in normalized for marker in markers)
-
-
-def _record_question_intent_terms(
-    record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()
-) -> tuple[str, ...]:
-    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
-    if not plugin_ref:
-        return ()
-    policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-    return _response_hint_string_list(policy, "question_intent_terms")
-
-
-def _record_question_anchor_bonus_value(
-    record: dict[str, Any],
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> float:
-    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
-    if not plugin_ref:
-        return _QUESTION_INTENT_MATCH_BONUS
-    policy = _retrieval_policy_for_plugin_ref(plugin_ref)
-    try:
-        value = float(policy.get("question_anchor_bonus"))
-    except (TypeError, ValueError):
-        return _QUESTION_INTENT_MATCH_BONUS
-    return max(0.0, min(2.0, value))
-
-
-def _record_question_anchor_lacks_specific_query_subject(
-    record: dict[str, Any],
-    *,
-    query: str,
-    anchor_fields: tuple[str, ...],
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    if not _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs):
-        return False
-    generic_terms = {
-        _normalize_match_term(term)
-        for term in _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs)
-    }
-    query_subject_terms: list[str] = []
-    seen_terms: set[str] = set()
-    for term in _metadata_anchor_title_query_terms(query, policy_plugin_refs=policy_plugin_refs):
-        normalized = _normalize_match_term(term)
-        if len(normalized) < 4 or normalized in seen_terms or normalized in generic_terms:
-            continue
-        seen_terms.add(normalized)
-        query_subject_terms.append(normalized)
-    if not query_subject_terms:
-        return False
-
-    record_subject_parts: list[str] = []
-    for metadata in _iter_record_metadata_layers(record):
-        for field in anchor_fields:
-            record_subject_parts.extend(_normalize_match_term(value) for value in _metadata_terms(metadata.get(field)))
-    record_subject = "\n".join(part for part in record_subject_parts if part)
-    if not record_subject:
-        return False
-    return not any(term in record_subject for term in query_subject_terms)
-
-
-def _record_question_intent_bonus(
-    record: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> float:
-    primary_anchor_fields = ("question", "primary_alias")
-    if (
-        _record_question_anchor_strength(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-            anchor_fields=primary_anchor_fields,
-        )
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
-        and not _record_question_anchor_has_intent_conflict(
-            record,
-            query=query,
-            anchor_fields=primary_anchor_fields,
-        )
-        and not _record_question_anchor_lacks_specific_query_subject(
-            record,
-            query=query,
-            anchor_fields=primary_anchor_fields,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-    ):
-        return _record_question_anchor_bonus_value(record, policy_plugin_refs=policy_plugin_refs)
-    if _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs) or _query_intent_terms(
-        query,
-        intent_terms=_record_question_intent_terms(record, policy_plugin_refs=policy_plugin_refs),
-    ):
-        return 0.0
-    alias_anchor_fields = ("aliases",)
-    if (
-        _record_question_anchor_strength(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-            anchor_fields=alias_anchor_fields,
-        )
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
-        and not _record_question_anchor_has_intent_conflict(
-            record,
-            query=query,
-            anchor_fields=alias_anchor_fields,
-        )
-        and not _record_question_anchor_lacks_specific_query_subject(
-            record,
-            query=query,
-            anchor_fields=alias_anchor_fields,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-    ):
-        return _record_question_anchor_bonus_value(record, policy_plugin_refs=policy_plugin_refs)
-    return 0.0
-
-
-def _record_question_anchor_strength(
-    record: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-    anchor_fields: tuple[str, ...] = ("question", "primary_alias", "aliases"),
-) -> float:
-    query_term = _normalize_match_term(query)
-    if len(query_term) < 4:
-        return 0.0
-    intent_terms = _query_intent_terms(
-        query,
-        intent_terms=_record_question_intent_terms(record, policy_plugin_refs=policy_plugin_refs),
-    )
-    best = 0.0
-    for metadata in _iter_record_metadata_layers(record):
-        for field in anchor_fields:
-            for anchor_value in _metadata_terms(metadata.get(field)):
-                best = max(
-                    best,
-                    _question_anchor_candidate_strength(
-                        query_term,
-                        anchor_value,
-                        field=field,
-                        intent_terms=intent_terms,
-                    ),
-                )
-    return best
-
-
-def _question_anchor_candidate_strength(
-    query_term: str,
-    anchor_value: Any,
-    *,
-    field: str,
-    intent_terms: tuple[str, ...],
-) -> float:
-    candidate = _normalize_match_term(anchor_value)
-    if len(candidate) < 3:
-        return 0.0
-    if candidate == query_term or candidate in query_term or query_term in candidate:
-        return 1.0
-    if _near_question_anchor_match(query_term, candidate):
-        return 0.9
-    lcs = _longest_common_substring_length(query_term, candidate)
-    lcs_ratio = lcs / max(1, min(len(query_term), len(candidate)))
-    if field == "aliases" and lcs >= 6 and lcs_ratio >= 0.68:
-        return 0.86
-    overlap_count = _cjk_bigram_overlap_count(query_term, candidate)
-    overlap_ratio = _cjk_bigram_overlap_ratio(query_term, candidate)
-    if overlap_count >= _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP and overlap_ratio >= _QUESTION_ANCHOR_BIGRAM_MIN_RATIO:
-        marker_bonus = _question_marker_overlap_bonus(query_term, candidate)
-        strength = 0.66 + min(0.09, overlap_ratio * 0.09) + min(0.07, lcs_ratio * 0.07) + marker_bonus
-        if overlap_count >= 8 and overlap_ratio >= 0.7:
-            strength = max(strength, 0.82)
-        return min(0.96, strength)
-    if intent_terms and any(term in candidate for term in intent_terms):
-        overlap = _longest_common_substring_length(
-            _question_anchor_subject_text(query_term, intent_terms=intent_terms),
-            _question_anchor_subject_text(candidate, intent_terms=intent_terms),
-        )
-        if overlap >= _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS:
-            return 0.8
-    return 0.0
-
-
-def _record_has_strong_question_anchor(
-    record: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    return bool(
-        _record_question_anchor_strength(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
-        and not _record_question_anchor_has_intent_conflict(
-            record,
-            query=query,
-            anchor_fields=("question", "primary_alias"),
-        )
-    )
-
-
-def _compact_by_strong_question_anchor(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[dict[str, Any]]:
-    if not records:
-        return []
-    if not _record_has_strong_question_anchor(
-        records[0],
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
-        return records
-    anchored = [
-        record
-        for record in records
-        if _record_has_strong_question_anchor(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-    ]
-    return anchored or records
 
 
 def _records_can_skip_kg_on_demand(
@@ -4212,12 +1160,7 @@ def _records_can_skip_kg_on_demand(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-    if _query_prefers_question_anchor(
-        query, policy_plugin_refs=policy_plugin_refs
-    ) and not _query_prefers_service_anchor(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
+    if _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs):
         return _records_have_strong_question_anchor(
             records,
             query=query,
@@ -4249,55 +1192,6 @@ def _dedupe_records(
     )
 
 
-def _load_dify_kg_chunk_rows(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    dataset_ids: list[UUID],
-    chunk_ids: list[UUID],
-) -> list[Any]:
-    return (
-        db.query(
-            DocumentChunk.id.label("chunk_id"),
-            DocumentChunk.document_id.label("document_id"),
-            DocumentChunk.chunk_index.label("chunk_index"),
-            DocumentChunk.page_number.label("page_number"),
-            DocumentChunk.content.label("content"),
-            DocumentChunk.doc_metadata.label("metadata"),
-            Document.dataset_id.label("dataset_id"),
-            Document.filename.label("filename"),
-        )
-        .join(Document, DocumentChunk.document_id == Document.id)
-        .filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.id.in_(chunk_ids),
-            DocumentChunk.disabled_at.is_(None),
-            Document.tenant_id == tenant_id,
-            Document.dataset_id.in_(dataset_ids),
-            Document.disabled_at.is_(None),
-        )
-        .all()
-    )
-
-
-def _load_dify_kg_chunk_rows_with_managed_session(
-    *,
-    tenant_id: UUID,
-    dataset_ids: list[UUID],
-    chunk_ids: list[UUID],
-) -> list[Any]:
-    worker_db = SessionLocal()
-    try:
-        return _load_dify_kg_chunk_rows(
-            db=worker_db,
-            tenant_id=tenant_id,
-            dataset_ids=dataset_ids,
-            chunk_ids=chunk_ids,
-        )
-    finally:
-        worker_db.close()
-
-
 async def _offload_dify_kg_chunk_rows(
     *,
     request_db: Session,
@@ -4305,10 +1199,7 @@ async def _offload_dify_kg_chunk_rows(
     dataset_ids: list[UUID],
     chunk_ids: list[UUID],
 ) -> list[Any]:
-    rollback = getattr(request_db, "rollback", None)
-    if callable(rollback):
-        with contextlib.suppress(Exception):
-            rollback()
+    request_db.rollback()
     return await run_blocking_retrieval_call(
         _load_dify_kg_chunk_rows_with_managed_session,
         tenant_id=tenant_id,
@@ -4359,13 +1250,12 @@ async def _dify_kg_on_demand_records(
     if not chunk_events:
         return []
 
-    event_by_chunk_id = dict(chunk_events)
     try:
         rows = await _offload_dify_kg_chunk_rows(
             request_db=db,
             tenant_id=tenant_id,
             dataset_ids=scoped_dataset_ids,
-            chunk_ids=list(event_by_chunk_id),
+            chunk_ids=[chunk_id for chunk_id, _event in chunk_events],
         )
     except Exception:
         logger.debug("Dify KG on-demand chunk hydration failed", exc_info=True)
@@ -4376,84 +1266,6 @@ async def _dify_kg_on_demand_records(
         chunk_events=chunk_events,
         query=query,
         policy_plugin_refs=policy_plugin_refs,
-    )
-
-
-def _dify_kg_on_demand_dataset_ids(
-    dataset_ids: list[UUID],
-    *,
-    requested_kg_flags: _DifyKGFlags,
-) -> list[UUID]:
-    if not requested_kg_flags.enabled:
-        return []
-    if not (bool(getattr(settings, "KG_ENABLED", False)) and bool(getattr(settings, "KG_CHAT_ENABLED", False))):
-        return []
-    return _dedupe_dataset_ids(list(dataset_ids or []))
-
-
-def _dify_kg_on_demand_max_records(requested_kg_flags: _DifyKGFlags) -> int:
-    return max(
-        int(requested_kg_flags.chunk_injection_max_chunks if requested_kg_flags.enable_chunk_injection else 0),
-        int(requested_kg_flags.chunk_boost_max_promoted if requested_kg_flags.enable_chunk_boost else 0),
-        1,
-    )
-
-
-def _dify_kg_chunk_events(
-    events: list[Any],
-    *,
-    max_records: int,
-) -> list[tuple[UUID, dict[str, Any]]]:
-    chunk_events: list[tuple[UUID, dict[str, Any]]] = []
-    seen_chunk_ids: set[UUID] = set()
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        raw_chunk_id = str(event.get("chunk_id") or "").strip()
-        if not raw_chunk_id:
-            continue
-        try:
-            chunk_id = UUID(raw_chunk_id)
-        except ValueError:
-            continue
-        if chunk_id in seen_chunk_ids:
-            continue
-        seen_chunk_ids.add(chunk_id)
-        chunk_events.append((chunk_id, event))
-        if len(chunk_events) >= max_records:
-            break
-    return chunk_events
-
-
-def _dify_kg_record_citation(
-    row: Any,
-    *,
-    chunk_id: UUID,
-    event: dict[str, Any],
-) -> tuple[dict[str, Any], UUID | None]:
-    metadata = _row_value(row, "metadata") or {}
-    metadata = dict(metadata) if isinstance(metadata, dict) else {}
-    metadata.update(
-        {
-            "kg_on_demand": True,
-            "kg_event_id": str(event.get("id") or event.get("event_id") or ""),
-            "kg_score": _clamp_score(event.get("score") or event.get("weight") or event.get("relevance_score")),
-            "chunk_id": str(chunk_id),
-            "document_id": str(_row_value(row, "document_id") or ""),
-            "chunk_index": _row_value(row, "chunk_index"),
-            "page_number": _row_value(row, "page_number"),
-        }
-    )
-    return (
-        {
-            "content": str(_row_value(row, "content") or ""),
-            "relevance_score": metadata["kg_score"],
-            "document_name": str(_row_value(row, "filename") or "kg-on-demand"),
-            "chunk_id": str(chunk_id),
-            "dataset_id": str(_row_value(row, "dataset_id") or ""),
-            "metadata": metadata,
-        },
-        _row_value(row, "dataset_id"),
     )
 
 
@@ -4477,7 +1289,7 @@ def _dify_kg_records_from_rows(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-        if str(record.get("content") or "").strip():
+        if record["content"].strip():
             records.append(record)
     return records
 
@@ -4488,539 +1300,16 @@ def _records_meet_primary_scope(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    min_records = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 1))
+    min_records = max(1, settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS)
     if len(records) < min_records:
         return False
-    min_top_score = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0)
+    min_top_score = settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE
     if min_top_score <= 0:
         return True
     top_score = max(
-        (_record_rank_score(record, query=query, policy_plugin_refs=policy_plugin_refs) for record in records),
-        default=0.0,
+        _record_rank_score(record, query=query, policy_plugin_refs=policy_plugin_refs) for record in records
     )
     return top_score >= min_top_score
-
-
-def _citation_needs_slot_content_hydration(
-    citation: dict[str, Any],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    content = _first_non_empty(citation, _CONTENT_KEYS)
-    if not content:
-        return True
-    if "..." not in content and "…" not in content:
-        return False
-    requested_slots = _requested_policy_slot_specs_for_query(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-    if not requested_slots:
-        return False
-    record = {
-        "content": content,
-        "title": _first_non_empty(citation, _TITLE_KEYS),
-        "metadata": dict(citation.get("metadata") or {}) if isinstance(citation.get("metadata"), dict) else {},
-    }
-    return _record_matches_requested_slot(record, requested_slots)
-
-
-def _records_from_citations(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    citations: list[dict[str, Any]],
-    fallback_dataset_id: UUID | None,
-    query: str,
-    hydration_query: str | None = None,
-    policy_plugin_refs: tuple[str, ...] = (),
-    hydrated_chunk_content_map: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:
-    slot_hydration_query = hydration_query or query
-    citations_needing_hydration = [
-        citation
-        for citation in citations or []
-        if _citation_needs_slot_content_hydration(
-            citation,
-            query=slot_hydration_query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-    ]
-    if hydrated_chunk_content_map is None:
-        chunk_content_map = (
-            _load_chunk_content_map(db=db, tenant_id=tenant_id, citations=citations_needing_hydration)
-            if citations_needing_hydration
-            else {}
-        )
-    else:
-        chunk_content_map = hydrated_chunk_content_map
-    records: list[dict[str, Any]] = []
-    for citation in citations:
-        chunk_id = _citation_chunk_id(citation)
-        if chunk_id and chunk_content_map.get(chunk_id) and citation in citations_needing_hydration:
-            citation = {**citation, "content": chunk_content_map[chunk_id]}
-        record = _citation_to_dify_record(
-            citation,
-            dataset_id=fallback_dataset_id,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-        if str(record.get("content") or "").strip():
-            records.append(record)
-    return records
-
-
-async def _records_from_citations_with_managed_hydration(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    citations: list[dict[str, Any]],
-    fallback_dataset_id: UUID | None,
-    query: str,
-    hydration_query: str | None = None,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[dict[str, Any]]:
-    slot_hydration_query = hydration_query or query
-    citations_needing_hydration = [
-        citation
-        for citation in citations or []
-        if _citation_needs_slot_content_hydration(
-            citation,
-            query=slot_hydration_query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-    ]
-    chunk_content_map: dict[str, str] = {}
-    if citations_needing_hydration:
-        try:
-            chunk_content_map = await _offload_chunk_content_hydration(
-                request_db=db,
-                tenant_id=tenant_id,
-                citations=citations_needing_hydration,
-            )
-        except Exception:  # noqa: BLE001
-            logger.warning("Failed to hydrate Dify chunk content; falling back to citation snippets", exc_info=True)
-
-    return _records_from_citations(
-        db=db,
-        tenant_id=tenant_id,
-        citations=citations,
-        fallback_dataset_id=fallback_dataset_id,
-        query=query,
-        hydration_query=hydration_query,
-        policy_plugin_refs=policy_plugin_refs,
-        hydrated_chunk_content_map=chunk_content_map,
-    )
-
-
-def _citation_to_dify_record(
-    citation: dict[str, Any],
-    *,
-    dataset_id: UUID | None,
-    query: str = "",
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    content = _first_non_empty(citation, _CONTENT_KEYS)
-    title = _first_non_empty(citation, _TITLE_KEYS) or "Untitled"
-
-    raw_metadata = citation.get("metadata")
-    metadata: dict[str, Any] = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
-    resolved_dataset_id = _citation_dataset_id(citation, fallback_dataset_id=dataset_id)
-    if resolved_dataset_id is not None:
-        metadata["dataset_id"] = str(resolved_dataset_id)
-    for key in _METADATA_KEYS:
-        value = citation.get(key)
-        if value is not None and value != "":
-            metadata[key] = value
-    content = _content_with_answer_hints(content, metadata, query=query, policy_plugin_refs=policy_plugin_refs)
-
-    return {
-        "content": content,
-        "score": _citation_score(citation),
-        "title": title,
-        "metadata": metadata,
-    }
-
-
-def _records_have_strong_question_anchor(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    return any(
-        _record_has_strong_question_anchor(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
-        for record in records or []
-    )
-
-
-def _records_have_confident_metadata_anchor(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    for record in records or []:
-        if _record_metadata_anchor_bonus(record, query=query) >= 0.1:
-            return True
-        if not _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs):
-            continue
-        if _record_has_strong_question_anchor(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        ):
-            return True
-    return False
-
-
-def _records_can_skip_metadata_anchor_fallback(
-    records: list[dict[str, Any]],
-    *,
-    query: str,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    if _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs):
-        return any(
-            _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
-            and _records_have_confident_metadata_anchor([record], query=query, policy_plugin_refs=policy_plugin_refs)
-            for record in records or []
-        )
-    if _query_prefers_question_anchor(
-        query, policy_plugin_refs=policy_plugin_refs
-    ) and not _query_prefers_service_anchor(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
-        return _records_have_strong_question_anchor(
-            records,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-    return _records_have_confident_metadata_anchor(
-        records,
-        query=query,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-
-
-def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
-    text = str(query or "").strip()
-    if not text:
-        return []
-
-    terms: list[str] = []
-    seen: set[str] = set()
-
-    def add(raw: str) -> None:
-        term = str(raw or "").strip()
-        normalized = _normalize_match_term(term)
-        if len(normalized) < 4 or normalized in seen:
-            return
-        seen.add(normalized)
-        terms.append(term)
-
-    for segment in _iter_anchor_word_segments(text):
-        add(segment)
-        if not _contains_cjk(segment):
-            continue
-        for start in range(0, len(segment)):
-            for size in (6, 4):
-                if start + size > len(segment):
-                    continue
-                add(segment[start : start + size])
-                if len(terms) >= _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS:
-                    return terms
-    return terms[:_METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS]
-
-
-def _strip_service_anchor_query_noise(
-    query: str,
-    *,
-    noise_terms: tuple[str, ...] = (),
-    leading_noise_terms: tuple[str, ...] = (),
-    cutoff_terms: tuple[str, ...] = (),
-    admin_aliases: tuple[str, ...] = (),
-) -> str:
-    text = str(query or "").strip()
-    if not text:
-        return ""
-    text = _strip_service_anchor_leading_noise(text, leading_noise_terms=leading_noise_terms)
-    declared_admin_aliases = _sorted_anchor_query_terms(admin_aliases)
-    text = _strip_service_anchor_admin_prefixes(text, declared_admin_aliases)
-    cutoff_indexes = [index for marker in _sorted_anchor_query_terms(cutoff_terms) if (index := text.find(marker)) > 0]
-    if cutoff_indexes:
-        text = text[: min(cutoff_indexes)].strip()
-    for phrase in _sorted_anchor_query_terms(noise_terms):
-        if not phrase:
-            continue
-        text = text.replace(phrase, "")
-    text = _rstrip_service_anchor_query_noise(text)
-    previous = None
-    while previous != text:
-        previous = text
-        text = _strip_trailing_service_anchor_admin(
-            text,
-            admin_aliases=declared_admin_aliases,
-        )
-        text = _rstrip_service_anchor_query_noise(text)
-    return text
-
-
-def _sorted_anchor_query_terms(terms: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            {str(term or "").strip() for term in terms if str(term or "").strip()},
-            key=len,
-            reverse=True,
-        )
-    )
-
-
-def _strip_service_anchor_leading_noise(
-    text: str,
-    *,
-    leading_noise_terms: tuple[str, ...] = (),
-) -> str:
-    for phrase in _sorted_anchor_query_terms(leading_noise_terms):
-        if text.startswith(phrase):
-            return text[len(phrase) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    return text
-
-
-def _strip_service_anchor_admin_prefixes(
-    text: str,
-    admin_aliases: tuple[str, ...],
-) -> str:
-    for _ in range(2):
-        prefix = next((alias for alias in admin_aliases if text.startswith(alias)), None)
-        if prefix is None:
-            break
-        text = text[len(prefix) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    return text
-
-
-def _service_anchor_query_noise_variants(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    common_kwargs = {
-        "noise_terms": _service_anchor_noise_terms_for_policy_refs(policy_plugin_refs),
-        "leading_noise_terms": _service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs),
-        "cutoff_terms": _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs),
-    }
-    candidates = (
-        _strip_service_anchor_query_noise(query, **common_kwargs),
-        _strip_service_anchor_query_noise(
-            query,
-            **common_kwargs,
-            admin_aliases=_service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs),
-        ),
-    )
-    variants: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        normalized = _normalize_match_term(candidate)
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        variants.append(candidate)
-    return tuple(variants)
-
-
-def _metadata_anchor_service_name_query_terms(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[str]:
-    cleaned_variants = _service_anchor_query_noise_variants(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-    if not cleaned_variants:
-        return []
-
-    terms: list[str] = []
-    seen: set[str] = set()
-    seen_text: set[str] = set()
-
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
-        literal = _quoted_anchor_match_text(match)
-        _append_literal_metadata_anchor_term(terms, literal, min_chars=4, seen_text=seen_text)
-    for quoted_anchor in _quoted_query_anchor_terms(query):
-        _append_metadata_anchor_term(terms, seen, quoted_anchor, min_chars=4, seen_text=seen_text)
-    for cleaned in cleaned_variants:
-        _append_metadata_anchor_term(terms, seen, cleaned, min_chars=4, seen_text=seen_text)
-    for rewritten in _service_anchor_query_rewrite_terms_for_policy_refs(query, policy_plugin_refs):
-        _append_metadata_anchor_term(terms, seen, rewritten, min_chars=4, seen_text=seen_text)
-    _append_metadata_anchor_segment_terms(
-        terms,
-        seen=seen,
-        cleaned_variants=cleaned_variants,
-        sizes=(12, 10, 8, 6, 4),
-        limit=_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
-        seen_text=seen_text,
-    )
-    return terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
-
-
-def _query_has_specific_service_anchor_candidate(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    for term in _metadata_anchor_service_name_query_terms(query, policy_plugin_refs=policy_plugin_refs)[:3]:
-        normalized = _normalize_match_term(term)
-        if not _CJK_RE.search(normalized):
-            continue
-        if len(normalized) < _MIN_SPECIFIC_INTENT_CHARS or len(normalized) > 30:
-            continue
-        entity_terms = tuple(
-            _normalize_match_term(term)
-            for term in _service_anchor_entity_terms_for_policy_refs(policy_plugin_refs)
-            if _normalize_match_term(term)
-        )
-        if entity_terms and any(marker in normalized for marker in entity_terms):
-            return True
-    return False
-
-
-def _query_has_specific_fast_metadata_anchor_candidate(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> bool:
-    if _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs):
-        return True
-    if not _query_has_quoted_anchor_candidate(query):
-        return False
-    for term in _quoted_query_anchor_terms(query):
-        normalized = _normalize_match_term(term)
-        if not _CJK_RE.search(normalized):
-            continue
-        if _MIN_SPECIFIC_INTENT_CHARS <= len(normalized) <= 50:
-            return True
-    return False
-
-
-def _metadata_anchor_title_query_terms(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[str]:
-    cleaned_variants = _service_anchor_query_noise_variants(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    )
-    if not cleaned_variants:
-        return []
-
-    terms: list[str] = []
-    seen: set[str] = set()
-
-    for cleaned in cleaned_variants:
-        _append_metadata_anchor_term(
-            terms,
-            seen,
-            cleaned,
-            min_chars=3,
-            cjk_min_chars=3,
-        )
-    _append_metadata_anchor_segment_terms(
-        terms,
-        seen=seen,
-        cleaned_variants=cleaned_variants,
-        sizes=(8, 6, 4, 3),
-        limit=_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
-        min_chars=3,
-        cjk_min_chars=3,
-    )
-    return terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
-
-
-def _append_literal_metadata_anchor_term(
-    terms: list[str],
-    raw: str,
-    *,
-    min_chars: int,
-    seen_text: set[str],
-) -> None:
-    term = str(raw or "").strip()
-    normalized = _normalize_match_term(term)
-    text_key = term.casefold()
-    if len(normalized) < min_chars or text_key in seen_text:
-        return
-    seen_text.add(text_key)
-    terms.append(term)
-
-
-def _append_metadata_anchor_term(
-    terms: list[str],
-    seen: set[str],
-    raw: str,
-    *,
-    min_chars: int,
-    cjk_min_chars: int | None = None,
-    seen_text: set[str] | None = None,
-) -> None:
-    term = str(raw or "").strip()
-    normalized = _normalize_match_term(term)
-    text_key = term.casefold()
-    effective_min_chars = cjk_min_chars if cjk_min_chars is not None and _contains_cjk(normalized) else min_chars
-    if len(normalized) < effective_min_chars or normalized in seen:
-        return
-    if seen_text is not None and text_key in seen_text:
-        return
-    seen.add(normalized)
-    if seen_text is not None:
-        seen_text.add(text_key)
-    terms.append(term)
-
-
-def _append_metadata_anchor_segment_terms(
-    terms: list[str],
-    *,
-    seen: set[str],
-    cleaned_variants: tuple[str, ...],
-    sizes: tuple[int, ...],
-    limit: int,
-    min_chars: int = 4,
-    cjk_min_chars: int | None = None,
-    seen_text: set[str] | None = None,
-) -> None:
-    for cleaned in cleaned_variants:
-        for segment in _iter_anchor_word_segments(cleaned):
-            _append_metadata_anchor_term(
-                terms,
-                seen,
-                segment,
-                min_chars=min_chars,
-                cjk_min_chars=cjk_min_chars,
-                seen_text=seen_text,
-            )
-            if not _contains_cjk(segment):
-                continue
-            for size in sizes:
-                if len(segment) < size:
-                    continue
-                for start in range(0, len(segment) - size + 1):
-                    _append_metadata_anchor_term(
-                        terms,
-                        seen,
-                        segment[start : start + size],
-                        min_chars=min_chars,
-                        cjk_min_chars=cjk_min_chars,
-                        seen_text=seen_text,
-                    )
-                    if len(terms) >= limit:
-                        return
 
 
 def _metadata_anchor_fallback_record_score(
@@ -5029,7 +1318,7 @@ def _metadata_anchor_fallback_record_score(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    content = str(record.get("content") or "").strip()
+    content = record["content"].strip()
     if content and _record_is_anchor_only_qa(record, content=content, policy_plugin_refs=policy_plugin_refs):
         return 0.0
     question_strength = _record_question_anchor_strength(
@@ -5107,7 +1396,7 @@ def _metadata_anchor_fallback_records_from_rows(
         1,
         min(
             max(1, int(top_k or 1)),
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS", 4) or 4),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS),
         ),
     )
     return merged[:limit]
@@ -5143,7 +1432,7 @@ def _metadata_anchor_fallback_candidate_record(
     dataset_id = _coerce_uuid_text(_row_value(row, "dataset_id"))
     if dataset_id not in scoped_dataset_ids:
         return None
-    content = str(_row_value(row, "content") or "").strip()
+    content = _row_value(row, "content").strip()
     if not content:
         return None
     metadata = _metadata_anchor_row_metadata(row, dataset_id=dataset_id)
@@ -5169,24 +1458,6 @@ def _metadata_anchor_fallback_candidate_record(
     return record
 
 
-def _metadata_anchor_row_metadata(row: Any, *, dataset_id: str) -> dict[str, Any]:
-    raw_metadata = _row_value(row, "metadata")
-    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
-    chunk_id = _coerce_uuid_text(_row_value(row, "chunk_id") or _row_value(row, "id"))
-    document_id = _coerce_uuid_text(_row_value(row, "document_id"))
-    if chunk_id:
-        metadata["chunk_id"] = chunk_id
-    if document_id:
-        metadata["document_id"] = document_id
-    metadata["dataset_id"] = dataset_id
-    metadata["dify_metadata_anchor_fallback"] = True
-    for key in ("chunk_index", "page_number"):
-        value = _row_value(row, key)
-        if value is not None:
-            metadata[key] = value
-    return metadata
-
-
 def _metadata_anchor_exact_slot_composite(
     candidates: list[dict[str, Any]],
     *,
@@ -5204,42 +1475,6 @@ def _metadata_anchor_exact_slot_composite(
         requested_slot_specs=requested_slots,
         policy_plugin_refs=policy_plugin_refs,
     )
-
-
-class _MetadataAnchorBudgetExceededError(Exception):
-    pass
-
-
-@dataclass
-class _MetadataAnchorDBFallbackPlan:
-    terms: list[str]
-    primary_term: str
-    primary_pattern: str
-    question_anchor_preferred: bool
-    service_anchor_preferred: bool
-    query_has_slot_question_intent: bool
-    question_anchor_first: bool
-    requested_slot_specs: tuple[tuple[str, str], ...]
-    service_name_terms: list[str]
-    service_anchor_fields: tuple[str, ...]
-    mixed_intent_retrieval_queries: tuple[str, ...]
-
-
-@dataclass
-class _MetadataAnchorDBFallbackContext:
-    db: Session
-    tenant_id: UUID
-    scoped_dataset_ids: list[UUID]
-    query: str
-    top_k: int
-    policy_plugin_refs: tuple[str, ...]
-    existing_records: list[dict[str, Any]] | None
-    max_scan: int
-    started: float
-    max_elapsed_ms_value: int
-    rows: list[Any]
-    seen_chunk_ids: set[str]
-    statement_timeout_ms: int = 0
 
 
 def _metadata_anchor_db_fallback_plan(
@@ -5284,99 +1519,6 @@ def _metadata_anchor_db_fallback_plan(
     )
 
 
-def _metadata_anchor_statement_timeout_ms(statement_timeout_ms_override: int | None) -> int:
-    configured_statement_timeout = (
-        statement_timeout_ms_override
-        if statement_timeout_ms_override is not None
-        else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS", 2500)
-    )
-    return max(0, min(30000, int(configured_statement_timeout or 0)))
-
-
-def _metadata_anchor_budget_exceeded(ctx: _MetadataAnchorDBFallbackContext) -> bool:
-    return bool(ctx.max_elapsed_ms_value) and ((time.perf_counter() - ctx.started) * 1000 >= ctx.max_elapsed_ms_value)
-
-
-def _metadata_anchor_is_statement_timeout_error(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return (
-        "statement timeout" in text or "querycanceled" in text or "canceling statement due to statement timeout" in text
-    )
-
-
-def _metadata_anchor_set_statement_timeout(ctx: _MetadataAnchorDBFallbackContext, timeout_ms: int) -> None:
-    ctx.statement_timeout_ms = timeout_ms
-    if timeout_ms:
-        ctx.db.execute(sql_text(f"SET LOCAL statement_timeout = {timeout_ms}"))
-
-
-def _metadata_anchor_prepare_statement_timeout(
-    ctx: _MetadataAnchorDBFallbackContext,
-    *,
-    statement_timeout_ms_override: int | None,
-) -> None:
-    timeout_ms = _metadata_anchor_statement_timeout_ms(statement_timeout_ms_override)
-    ctx.statement_timeout_ms = timeout_ms
-    if not ctx.max_elapsed_ms_value and timeout_ms:
-        _metadata_anchor_set_statement_timeout(ctx, timeout_ms)
-
-
-def _metadata_anchor_append_unique_rows(
-    ctx: _MetadataAnchorDBFallbackContext,
-    batch: list[Any] | tuple[Any, ...],
-) -> None:
-    for row in batch:
-        chunk_id = _coerce_uuid_text(_row_value(row, "chunk_id"))
-        if not chunk_id or chunk_id in ctx.seen_chunk_ids:
-            continue
-        ctx.seen_chunk_ids.add(chunk_id)
-        ctx.rows.append(row)
-
-
-def _metadata_anchor_query_matching_rows(
-    ctx: _MetadataAnchorDBFallbackContext,
-    condition: Any,
-    *,
-    limit: int,
-) -> list[Any]:
-    if _metadata_anchor_budget_exceeded(ctx):
-        raise _MetadataAnchorBudgetExceededError
-    if ctx.max_elapsed_ms_value:
-        elapsed_ms = max(0, int((time.perf_counter() - ctx.started) * 1000))
-        remaining_ms = max(1, ctx.max_elapsed_ms_value - elapsed_ms)
-        timeout_ms = min(ctx.statement_timeout_ms, remaining_ms) if ctx.statement_timeout_ms else remaining_ms
-        _metadata_anchor_set_statement_timeout(ctx, timeout_ms)
-        if _metadata_anchor_budget_exceeded(ctx):
-            raise _MetadataAnchorBudgetExceededError
-    return (
-        ctx.db.query(
-            DocumentChunk.id.label("chunk_id"),
-            DocumentChunk.document_id.label("document_id"),
-            DocumentChunk.chunk_index.label("chunk_index"),
-            DocumentChunk.page_number.label("page_number"),
-            DocumentChunk.content.label("content"),
-            DocumentChunk.doc_metadata.label("metadata"),
-            Document.dataset_id.label("dataset_id"),
-            Document.filename.label("filename"),
-        )
-        .join(Document, DocumentChunk.document_id == Document.id)
-        .filter(
-            DocumentChunk.tenant_id == ctx.tenant_id,
-            Document.tenant_id == ctx.tenant_id,
-            Document.dataset_id.in_(ctx.scoped_dataset_ids),
-            Document.status == "completed",
-            Document.publication_status == "published",
-            Document.archived_at.is_(None),
-            DocumentChunk.disabled_at.is_(None),
-            Document.disabled_at.is_(None),
-            condition,
-        )
-        .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-        .limit(max(1, int(limit or 1)))
-        .all()
-    )
-
-
 def _metadata_anchor_current_matches(ctx: _MetadataAnchorDBFallbackContext) -> list[dict[str, Any]]:
     return _metadata_anchor_fallback_records_from_rows(
         ctx.rows,
@@ -5386,17 +1528,6 @@ def _metadata_anchor_current_matches(ctx: _MetadataAnchorDBFallbackContext) -> l
         policy_plugin_refs=ctx.policy_plugin_refs,
         existing_records=ctx.existing_records,
     )
-
-
-def _metadata_anchor_rewind(
-    ctx: _MetadataAnchorDBFallbackContext,
-    *,
-    rows_before: int,
-    seen_before: set[str],
-) -> None:
-    del ctx.rows[rows_before:]
-    ctx.seen_chunk_ids.clear()
-    ctx.seen_chunk_ids.update(seen_before)
 
 
 def _metadata_anchor_first_matching_records(
@@ -5475,41 +1606,6 @@ def _metadata_anchor_exact_slot_scan_matches(
     return None
 
 
-def _metadata_anchor_exact_slot_anchor_conditions(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[Any]:
-    anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or ("service_name",)
-    exact_anchor_terms = list(_quoted_query_anchor_terms(query))
-    seen_exact_anchor_terms = {_normalize_match_term(term) for term in exact_anchor_terms}
-    for term in _metadata_anchor_title_query_terms(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    )[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]:
-        normalized = _normalize_match_term(term)
-        if len(normalized) < 4 or normalized in seen_exact_anchor_terms:
-            continue
-        seen_exact_anchor_terms.add(normalized)
-        exact_anchor_terms.append(term)
-    conditions: list[Any] = []
-    for anchor_term in exact_anchor_terms:
-        cleaned_anchor = anchor_term.replace("%", "").replace("_", "").strip()
-        if len(_normalize_match_term(cleaned_anchor)) < 4:
-            continue
-        pattern = f"%{cleaned_anchor}%"
-        conditions.extend(DocumentChunk.doc_metadata[field].astext.ilike(pattern) for field in anchor_fields)
-    return conditions
-
-
-def _metadata_anchor_slot_conditions(requested_slot_specs: tuple[tuple[str, str], ...]) -> list[Any]:
-    return [
-        DocumentChunk.doc_metadata[field].astext == str(slot_value).strip()
-        for field, slot_value in requested_slot_specs
-        if str(field).strip() and str(slot_value).strip()
-    ]
-
-
 def _metadata_anchor_primary_question_matches(
     ctx: _MetadataAnchorDBFallbackContext,
     plan: _MetadataAnchorDBFallbackPlan,
@@ -5561,47 +1657,6 @@ def _metadata_anchor_alias_question_matches(
     return _metadata_anchor_current_matches(ctx)
 
 
-def _metadata_anchor_alias_scan_conditions(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[Any]:
-    conditions: list[Any] = []
-    for alias_term in _metadata_anchor_title_query_terms(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    )[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]:
-        cleaned_alias_term = alias_term.replace("%", "").replace("_", "").strip()
-        if not cleaned_alias_term:
-            continue
-        pattern = f"%{cleaned_alias_term}%"
-        conditions.append(
-            or_(
-                DocumentChunk.doc_metadata["question"].astext.ilike(pattern),
-                DocumentChunk.doc_metadata["primary_alias"].astext.ilike(pattern),
-                DocumentChunk.doc_metadata["aliases"].astext.ilike(pattern),
-                DocumentChunk.doc_metadata.contains({"aliases": [alias_term]}),
-            )
-        )
-    return conditions
-
-
-def _metadata_anchor_question_conditions(terms: list[str]) -> list[Any]:
-    conditions: list[Any] = []
-    for term in terms[1:]:
-        cleaned_term = term.replace("%", "").replace("_", "").strip()
-        if not cleaned_term:
-            continue
-        pattern = f"%{cleaned_term}%"
-        conditions.append(
-            or_(
-                DocumentChunk.doc_metadata["question"].astext.ilike(pattern),
-                DocumentChunk.doc_metadata["primary_alias"].astext.ilike(pattern),
-            )
-        )
-    return conditions
-
-
 def _metadata_anchor_secondary_question_matches(
     ctx: _MetadataAnchorDBFallbackContext,
     plan: _MetadataAnchorDBFallbackPlan,
@@ -5649,28 +1704,6 @@ def _metadata_anchor_exact_question_matches(
     return None
 
 
-def _metadata_anchor_exact_question_conditions(query: str, *, terms: list[str]) -> list[Any]:
-    quoted_anchor_norms = tuple(_quoted_query_anchor_terms(query))
-    exact_question_terms = list(quoted_anchor_norms)
-    seen_exact_question_terms = set(exact_question_terms)
-    for term in terms:
-        normalized_term = _normalize_match_term(term)
-        if (
-            len(normalized_term) >= 4
-            and normalized_term not in seen_exact_question_terms
-            and any(normalized_term in anchor or anchor in normalized_term for anchor in quoted_anchor_norms)
-        ):
-            seen_exact_question_terms.add(normalized_term)
-            exact_question_terms.append(term)
-    return [
-        DocumentChunk.doc_metadata["question"].astext.ilike(
-            f"%{anchor_term.replace('%', '').replace('_', '').strip()}%"
-        )
-        for anchor_term in exact_question_terms
-        if anchor_term.replace("%", "").replace("_", "").strip()
-    ]
-
-
 def _metadata_anchor_quoted_slot_matches(
     ctx: _MetadataAnchorDBFallbackContext,
     plan: _MetadataAnchorDBFallbackPlan,
@@ -5707,79 +1740,6 @@ def _metadata_anchor_quoted_slot_matches(
     return None
 
 
-def _metadata_anchor_quoted_anchor_conditions(query: str, anchor_fields: tuple[str, ...]) -> list[Any]:
-    conditions: list[Any] = []
-    if not anchor_fields:
-        return conditions
-    for anchor_term in _quoted_query_anchor_terms(query):
-        cleaned_anchor = anchor_term.replace("%", "").replace("_", "").strip()
-        if len(_normalize_match_term(cleaned_anchor)) < 4:
-            continue
-        pattern = f"%{cleaned_anchor}%"
-        conditions.extend(DocumentChunk.doc_metadata[field].astext.ilike(pattern) for field in anchor_fields)
-    return conditions
-
-
-def _metadata_anchor_exact_service_name_conditions(plan: _MetadataAnchorDBFallbackPlan) -> list[Any]:
-    return [
-        DocumentChunk.doc_metadata[field].astext == term.replace("%", "").replace("_", "").strip()
-        for term in plan.service_name_terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
-        for field in plan.service_anchor_fields
-        if term.replace("%", "").replace("_", "").strip()
-    ]
-
-
-def _metadata_anchor_service_name_conditions(plan: _MetadataAnchorDBFallbackPlan) -> list[Any]:
-    return [
-        DocumentChunk.doc_metadata[field].astext.ilike(f"%{term.replace('%', '').replace('_', '').strip()}%")
-        for term in plan.service_name_terms
-        for field in plan.service_anchor_fields
-        if term.replace("%", "").replace("_", "").strip()
-    ]
-
-
-def _metadata_anchor_title_conditions(
-    query: str,
-    *,
-    policy_plugin_refs: tuple[str, ...] = (),
-) -> list[Any]:
-    conditions: list[Any] = []
-    for title_term in _metadata_anchor_title_query_terms(query, policy_plugin_refs=policy_plugin_refs):
-        cleaned_term = title_term.replace("%", "").replace("_", "").strip()
-        if not cleaned_term:
-            continue
-        pattern = f"%{cleaned_term}%"
-        conditions.append(
-            or_(
-                *[
-                    DocumentChunk.doc_metadata[field].astext.ilike(pattern)
-                    for field in _METADATA_ANCHOR_DB_FALLBACK_TITLE_FIELDS
-                ]
-            )
-        )
-    return conditions
-
-
-def _metadata_anchor_service_name_near_conditions(plan: _MetadataAnchorDBFallbackPlan) -> list[Any]:
-    conditions: list[Any] = []
-    for term in plan.service_name_terms:
-        normalized = _normalize_match_term(term)
-        if len(normalized) < 4 or not _CJK_RE.search(normalized):
-            continue
-        left = normalized[:2]
-        right = normalized[-2:]
-        if left == right:
-            continue
-        for field in plan.service_anchor_fields:
-            conditions.append(
-                and_(
-                    DocumentChunk.doc_metadata[field].astext.ilike(f"%{left}%"),
-                    DocumentChunk.doc_metadata[field].astext.ilike(f"%{right}%"),
-                )
-            )
-    return conditions
-
-
 def _metadata_anchor_service_and_title_matches(
     ctx: _MetadataAnchorDBFallbackContext,
     plan: _MetadataAnchorDBFallbackPlan,
@@ -5792,7 +1752,7 @@ def _metadata_anchor_service_and_title_matches(
     ):
         matches = _metadata_anchor_first_matching_records(
             ctx,
-            list(conditions) if isinstance(conditions, tuple) else conditions,
+            conditions,
         )
         if matches:
             return matches
@@ -5869,7 +1829,7 @@ def _metadata_anchor_text_scan_matches(
     *,
     terms: list[str],
 ) -> list[dict[str, Any]] | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)):
+    if not settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED:
         return None
     metadata_text = sql_cast(DocumentChunk.doc_metadata, SQLText)
     for term in terms[:3]:
@@ -5924,6 +1884,7 @@ def _prepare_metadata_anchor_db_fallback(
     *,
     db: Session,
     tenant_id: UUID,
+    account_id: str,
     dataset_ids: list[UUID],
     query: str,
     top_k: int,
@@ -5933,7 +1894,7 @@ def _prepare_metadata_anchor_db_fallback(
     prefer_question_anchor_first: bool = False,
     max_elapsed_ms: int | None = None,
 ) -> tuple[_MetadataAnchorDBFallbackContext, _MetadataAnchorDBFallbackPlan] | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED):
         return None
     if metadata_filter:
         return None
@@ -5953,13 +1914,14 @@ def _prepare_metadata_anchor_db_fallback(
         1,
         min(
             500,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN),
         ),
     )
     started = time.perf_counter()
     ctx = _MetadataAnchorDBFallbackContext(
         db=db,
         tenant_id=tenant_id,
+        account_id=account_id,
         scoped_dataset_ids=scoped_dataset_ids,
         query=query,
         top_k=top_k,
@@ -6009,10 +1971,7 @@ def _metadata_anchor_db_fallback_result(
             },
         )
     except Exception as exc:  # noqa: BLE001
-        try:
-            ctx.db.rollback()
-        except Exception:  # noqa: BLE001
-            logger.debug("Failed to rollback Dify metadata anchor fallback transaction", exc_info=True)
+        ctx.db.rollback()
         if _metadata_anchor_is_statement_timeout_error(exc):
             logger.info(
                 "Dify metadata anchor fallback budget exhausted query_hash=%s elapsed_ms=%s "
@@ -6034,10 +1993,7 @@ def _metadata_anchor_db_fallback_result(
             return []
     finally:
         if ctx.max_elapsed_ms_value:
-            try:
-                ctx.db.rollback()
-            except Exception:  # noqa: BLE001
-                logger.debug("Failed to reset Dify metadata anchor fallback transaction", exc_info=True)
+            ctx.db.rollback()
     return _metadata_anchor_fallback_records_from_rows(
         ctx.rows,
         dataset_ids=ctx.scoped_dataset_ids,
@@ -6052,6 +2008,7 @@ def _metadata_anchor_db_fallback_records(
     *,
     db: Session,
     tenant_id: UUID,
+    account_id: str,
     dataset_ids: list[UUID],
     query: str,
     top_k: int,
@@ -6065,6 +2022,7 @@ def _metadata_anchor_db_fallback_records(
     prepared = _prepare_metadata_anchor_db_fallback(
         db=db,
         tenant_id=tenant_id,
+        account_id=account_id,
         dataset_ids=dataset_ids,
         query=query,
         top_k=top_k,
@@ -6112,110 +2070,80 @@ async def _retrieve_dataset_citations(
     top_k: int,
     score_threshold: float,
     metadata_filter: dict[str, Any] | None = None,
-    requested_top_k: int | None = None,
-    enable_kg_query_expansion: bool | None = None,
-    enable_kg_chunk_injection: bool | None = None,
+    requested_top_k: int,
+    enable_kg_query_expansion: bool,
+    enable_kg_chunk_injection: bool,
     kg_chunk_injection_max_chunks: int | None = None,
-    enable_kg_chunk_boost: bool | None = None,
+    enable_kg_chunk_boost: bool,
     kg_chunk_boost_weight: float | None = None,
     kg_chunk_boost_max_promoted: int | None = None,
-    enable_reranker: bool | None = None,
+    enable_reranker: bool,
     retrieval_mode: str = "hybrid",
 ) -> list[dict[str, Any]]:
-    from app.api.v1.rag import EvidenceRetrieveRequest, retrieve_evidence
+    from app.api.schemas.conversations import EvidenceRetrieveRequest
+    from app.services.retrieval_requests import retrieve_evidence
 
     started = time.perf_counter()
-    evidence_top_k = max(1, int(top_k or 1))
-    if requested_top_k is None:
-        evidence_top_k = _resolve_internal_candidate_top_k(evidence_top_k)
+    evidence_top_k = max(1, top_k)
 
-    kg_query_expansion_enabled = (
-        _dify_kg_bool("DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", False)
-        if enable_kg_query_expansion is None
-        else bool(enable_kg_query_expansion)
-    )
-    kg_chunk_injection_enabled = (
-        _dify_kg_bool("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED", False)
-        if enable_kg_chunk_injection is None
-        else bool(enable_kg_chunk_injection)
-    )
-    kg_chunk_boost_enabled = (
-        _dify_kg_bool("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED", False)
-        if enable_kg_chunk_boost is None
-        else bool(enable_kg_chunk_boost)
-    )
     overfetch_multiplier = max(
         1,
-        int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
+        settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER,
     )
     overfetch_max_k = max(
         0,
-        int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
+        settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K,
     )
     if overfetch_max_k <= 0:
         overfetch_max_k = evidence_top_k
 
-    reranker_enabled = _dify_external_reranker_enabled() if enable_reranker is None else bool(enable_reranker)
-    reranker_top_n = max(
-        1,
-        int(getattr(settings, "RERANKER_TOP_N", evidence_top_k) or evidence_top_k),
-        int(evidence_top_k or 1),
-    )
+    reranker_top_n = max(evidence_top_k, settings.RERANKER_TOP_N)
     rag_config = ChatRAGConfig(
         top_k=evidence_top_k,
         score_threshold=score_threshold,
-        retrieval_mode=str(retrieval_mode or "hybrid"),
+        retrieval_mode=retrieval_mode,
         visible_evidence_only=True,
         metadata_filter=metadata_filter,
-        enable_reranker=reranker_enabled,
-        reranker_provider=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm") if reranker_enabled else "none",
+        enable_reranker=enable_reranker,
+        reranker_provider=settings.RERANKER_PROVIDER if enable_reranker else "none",
         reranker_top_n=reranker_top_n,
-        lexical_db_hybrid_fallback_only=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY", False)
+        lexical_db_hybrid_fallback_only=settings.DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY,
+        lexical_db_hybrid_metadata_exact_fallback_enabled=(
+            settings.DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_METADATA_EXACT_FALLBACK_ENABLED
         ),
-        lexical_db_hybrid_metadata_exact_fallback_enabled=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_METADATA_EXACT_FALLBACK_ENABLED", False)
-        ),
-        metadata_exact_db_fallback_enabled=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_EXACT_DB_FALLBACK_ENABLED", False)
-        ),
+        metadata_exact_db_fallback_enabled=settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_EXACT_DB_FALLBACK_ENABLED,
         retrieval_overfetch_multiplier=overfetch_multiplier,
         retrieval_overfetch_max_k=overfetch_max_k,
-        enable_kg_query_expansion=kg_query_expansion_enabled,
-        enable_kg_chunk_injection=kg_chunk_injection_enabled,
+        enable_kg_query_expansion=enable_kg_query_expansion,
+        enable_kg_chunk_injection=enable_kg_chunk_injection,
         kg_chunk_injection_max_chunks=(
             _dify_kg_int("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3)
             if kg_chunk_injection_max_chunks is None
-            else int(kg_chunk_injection_max_chunks)
+            else kg_chunk_injection_max_chunks
         ),
-        enable_kg_chunk_boost=kg_chunk_boost_enabled,
+        enable_kg_chunk_boost=enable_kg_chunk_boost,
         kg_chunk_boost_weight=(
             _dify_kg_float("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25)
             if kg_chunk_boost_weight is None
-            else float(kg_chunk_boost_weight)
+            else kg_chunk_boost_weight
         ),
         kg_chunk_boost_max_promoted=(
             _dify_kg_int("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2)
             if kg_chunk_boost_max_promoted is None
-            else int(kg_chunk_boost_max_promoted)
+            else kg_chunk_boost_max_promoted
         ),
     )
 
-    scoped_dataset_ids = _dedupe_dataset_ids(list(dataset_ids or []))
-    evidence_request_kwargs: dict[str, Any] = {"query": query, "rag_config": rag_config}
-    evidence_request_kwargs["dataset_ids"] = scoped_dataset_ids
-
+    scoped_dataset_ids = _dedupe_dataset_ids(dataset_ids)
     response = await retrieve_evidence(
-        body=EvidenceRetrieveRequest(**evidence_request_kwargs),
+        body=EvidenceRetrieveRequest(query=query, rag_config=rag_config, dataset_ids=scoped_dataset_ids),
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    response_metrics = getattr(response, "metrics", None)
-    response_trace = getattr(response, "retrieval_trace", None)
-    metrics = response_metrics if isinstance(response_metrics, dict) else {}
-    trace = response_trace if isinstance(response_trace, dict) else {}
+    metrics = response.metrics
+    trace = response.retrieval_trace or {}
     logger.info(
         "Dify evidence retrieve completed query_hash=%s dataset_count=%s top_k=%s requested_top_k=%s "
         "citations=%s elapsed_ms=%s retrieval_elapsed_sec=%s vector_backend=%s retrieval_mode=%s "
@@ -6224,62 +2152,46 @@ async def _retrieve_dataset_citations(
         len(scoped_dataset_ids),
         evidence_top_k,
         requested_top_k,
-        len(getattr(response, "citations", None) or []),
+        len(response.citations),
         elapsed_ms,
         metrics.get("retrieval_elapsed_sec"),
         metrics.get("vector_backend"),
         metrics.get("retrieval_mode") or metrics.get("requested_retrieval_mode"),
         metrics.get("evidence_post_rerank_elapsed_sec"),
         metrics.get("hard_fallback_elapsed_sec"),
-        len(trace.get("passes") or []) if isinstance(trace, dict) else 0,
+        len(trace.get("passes") or []),
     )
-    return list(getattr(response, "citations", None) or [])
+    return list(response.citations)
 
 
 def _resolve_dify_warmup_tenant_id() -> UUID | None:
-    raw_tenant = str(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or getattr(settings, "DEFAULT_TENANT_ID", "")
-    ).strip()
+    raw_tenant = (settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or settings.DEFAULT_TENANT_ID).strip()
     if not raw_tenant:
         return None
     try:
         return UUID(raw_tenant)
     except ValueError:
-        logger.warning("Skipping Dify external warmup: tenant id is invalid")
+        logger.warning("Skipping Dify external warmup: tenant id is invalid", exc_info=True)
         return None
 
 
 def _resolve_dify_warmup_query() -> str:
-    query = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "") or "").strip()
+    query = settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY.strip()
     return query or _DIFY_WARMUP_DEFAULT_QUERY
 
 
 def _resolve_dify_warmup_top_k() -> int:
-    try:
-        configured_top_k = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1) or 1)
-    except (TypeError, ValueError):
-        configured_top_k = 1
-    try:
-        configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
-    except (TypeError, ValueError):
-        configured_max = 5
+    configured_top_k = settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K
+    configured_max = settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX
     return max(1, min(configured_top_k, max(1, configured_max)))
 
 
 def _resolve_dify_warmup_timeout_sec() -> float:
-    try:
-        timeout_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 60.0)
-    except (TypeError, ValueError):
-        timeout_sec = 60.0
-    return max(1.0, timeout_sec)
+    return max(1.0, settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC)
 
 
 def _resolve_dify_warmup_start_delay_sec() -> float:
-    try:
-        delay_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0) or 0.0)
-    except (TypeError, ValueError):
-        delay_sec = 1.0
-    return max(0.0, min(60.0, delay_sec))
+    return max(0.0, min(60.0, settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC))
 
 
 async def warmup_dify_external_knowledge(
@@ -6333,8 +2245,8 @@ async def warmup_dify_external_knowledge(
         )
     _set_dify_external_warmup_status(enabled=True, status="running", attempted=len(knowledge_ids))
 
-    factory = db_factory or SessionLocal
-    account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
+    factory = db_factory if db_factory is not None else SessionLocal
+    account_id = settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID.strip()
     query = _resolve_dify_warmup_query()
     top_k = _resolve_dify_warmup_top_k()
     score_threshold = 0.0
@@ -6402,7 +2314,7 @@ async def warmup_dify_external_knowledge(
 
 
 def _dify_external_warmup_disabled_result() -> dict[str, Any] | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED:
         _set_dify_external_warmup_status(
             enabled=False,
             status="disabled",
@@ -6418,7 +2330,7 @@ def _dify_external_warmup_disabled_result() -> dict[str, Any] | None:
             "completed": 0,
             "failed": 0,
         }
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+    if not settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED:
         _set_dify_external_warmup_status(
             enabled=True,
             status="disabled",
@@ -6523,7 +2435,9 @@ async def _run_dify_external_warmup_iteration(
     db = None
     try:
         scope_plan = _resolve_knowledge_dataset_scope(knowledge_id, query=query)
-        dataset_ids = _warmup_scope_dataset_ids(scope_plan)
+        dataset_ids = _primary_scope_dataset_ids(
+            scope_plan, primary_scope_enabled=settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED
+        )
         db = factory()
         await asyncio.wait_for(
             _retrieve_dataset_citations(
@@ -6559,15 +2473,7 @@ async def _run_dify_external_warmup_iteration(
         return False
     finally:
         if db is not None:
-            close = getattr(db, "close", None)
-            if callable(close):
-                close()
-
-
-def _warmup_scope_dataset_ids(scope_plan: DatasetScopePlan) -> list[UUID]:
-    primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
-    dataset_ids = list(scope_plan.primary_dataset_ids if primary_scope_enabled else scope_plan.dataset_ids)
-    return dataset_ids or list(scope_plan.dataset_ids)
+            db.close()
 
 
 def _log_dify_external_warmup_iteration(
@@ -6637,10 +2543,10 @@ def start_dify_external_knowledge_warmup(
     *,
     create_task: Callable[[Any], Any] | None = None,
 ) -> Any | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED:
         _set_dify_external_warmup_status(enabled=False, status="disabled")
         return None
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+    if not settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED:
         _set_dify_external_warmup_status(enabled=True, status="disabled")
         return None
 
@@ -6651,7 +2557,7 @@ def start_dify_external_knowledge_warmup(
         task = create_task(coro) if create_task is not None else asyncio.create_task(coro)
     except RuntimeError:
         coro.close()
-        logger.warning("Dify external warmup was not scheduled: no running event loop")
+        logger.warning("Dify external warmup was not scheduled: no running event loop", exc_info=True)
         return None
     except Exception:  # noqa: BLE001
         coro.close()
@@ -6670,7 +2576,6 @@ def start_dify_external_knowledge_warmup(
 @router.post(
     "/conversation-turns",
     response_model=DifyConversationTurnResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 async def persist_dify_conversation_turn(
     body: DifyConversationTurnRequest,
@@ -6696,7 +2601,7 @@ async def persist_dify_conversation_turn(
     )
 
 
-@router.post("/retrieval", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/retrieval")
 async def retrieve_external_knowledge(
     request: Request,
     body: DifyExternalKnowledgeRequest,
@@ -6732,18 +2637,19 @@ class _DifyExternalRetrievalContext:
     kg_on_demand_enabled: bool
     primary_kg_flags: _DifyKGFlags
     log_extra_base: dict[str, Any]
-    trace_conversation_id: Any
-    trace_request_id: Any
+    trace_conversation_id: UUID | None
+    trace_request_id: str | None
     response_cache_key: str | None
     response_cache_ttl_sec: int
     response_cache_max_entries: int
     response_cache_enabled: bool
     singleflight_enabled: bool
-    stage_timings_ms: dict[str, Any] = dataclass_field(default_factory=dict)
+    stage_timings_ms: dict[str, float | int | bool] = dataclass_field(default_factory=dict)
     distributed_singleflight_lease: _DifyDistributedLease | None = None
     distributed_singleflight_lease_task: asyncio.Task[Any] | None = None
     singleflight_key: str | None = None
     singleflight_leader: bool = False
+    singleflight_future: asyncio.Future[dict[str, Any]] | None = None
     records: list[dict[str, Any]] = dataclass_field(default_factory=list)
     citation_count: int = 0
     primary_citation_count: int = 0
@@ -6768,14 +2674,10 @@ def _primary_scope_dataset_ids(scope_plan: DatasetScopePlan, *, primary_scope_en
 
 
 def _dify_response_cache_settings() -> tuple[int, int, bool, bool]:
-    ttl_sec = max(0, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30) or 0))
-    max_entries = max(0, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 512) or 0))
-    enabled = (
-        bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True))
-        and ttl_sec > 0
-        and max_entries > 0
-    )
-    singleflight_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True))
+    ttl_sec = max(0, settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC)
+    max_entries = max(0, settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES)
+    enabled = settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED and ttl_sec > 0 and max_entries > 0
+    singleflight_enabled = settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED
     return ttl_sec, max_entries, enabled, singleflight_enabled
 
 
@@ -6789,11 +2691,11 @@ def _build_dify_external_retrieval_context(
     started = time.perf_counter()
     scope_plan = _resolve_knowledge_dataset_scope(body.knowledge_id, query=body.query)
     dataset_ids = list(scope_plan.dataset_ids)
-    primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
+    primary_scope_enabled = settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED
     primary_dataset_ids = _primary_scope_dataset_ids(scope_plan, primary_scope_enabled=primary_scope_enabled)
     expansion_dataset_ids = list(scope_plan.expansion_dataset_ids if primary_scope_enabled else ())
-    configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
-    top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
+    configured_max = settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX
+    top_k = max(1, min(body.retrieval_setting.top_k, configured_max))
     latency_profile = _resolve_dify_latency_profile(body.retrieval_setting)
     fast_latency_profile = latency_profile == "fast"
     candidate_top_k = (
@@ -6820,9 +2722,7 @@ def _build_dify_external_retrieval_context(
         allowed_fields=_resolve_knowledge_policy_filter_fields(body.knowledge_id),
     )
     requested_kg_flags = _resolve_dify_kg_flags(body.retrieval_setting)
-    kg_on_demand_enabled = (
-        False if fast_latency_profile else bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True))
-    )
+    kg_on_demand_enabled = False if fast_latency_profile else settings.DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED
     primary_kg_flags = (
         _disabled_dify_kg_flags()
         if fast_latency_profile
@@ -6865,8 +2765,8 @@ def _build_dify_external_retrieval_context(
             "client_ip_hash": _diagnostic_value_hash(_request_client_ip(request)),
             "knowledge_id_hash": _diagnostic_value_hash(body.knowledge_id),
             "query_hash": _diagnostic_query_hash(body.query),
-            "knowledge_id_chars": len(str(body.knowledge_id or "")),
-            "query_chars": len(str(body.query or "")),
+            "knowledge_id_chars": len(body.knowledge_id),
+            "query_chars": len(body.query),
             "top_k": top_k,
             "candidate_top_k": candidate_top_k,
             "response_top_k": response_top_k,
@@ -6883,14 +2783,8 @@ def _build_dify_external_retrieval_context(
             "kg_requested": requested_kg_flags.enabled,
             "kg_on_demand_enabled": kg_on_demand_enabled,
         },
-        trace_conversation_id=_dify_trace_conversation_id(
-            request,
-            body,
-            db=db,
-            tenant_id=actor.tenant_id,
-            account_id=actor.account_id,
-        ),
-        trace_request_id=_dify_trace_request_id(request, body),
+        trace_conversation_id=None,
+        trace_request_id=_dify_trace_request_id(request.headers, body, request_id=request.state.request_id),
         response_cache_key=None,
         response_cache_ttl_sec=response_cache_ttl_sec,
         response_cache_max_entries=response_cache_max_entries,
@@ -6906,7 +2800,7 @@ def _dify_response_from_serialized_records(records: list[dict[str, Any]]) -> Dif
 
 def _set_main_trace_query(ctx: _DifyExternalRetrievalContext, path: str, *, ok: bool = True) -> None:
     entry = {"kind": "main", "query": ctx.body.query, "path": path, "ok": ok}
-    if ctx.trace_queries and str(ctx.trace_queries[0].get("kind") or "") == "main":
+    if ctx.trace_queries and ctx.trace_queries[0].get("kind") == "main":
         ctx.trace_queries[0] = entry
         return
     ctx.trace_queries.insert(0, entry)
@@ -6916,15 +2810,15 @@ async def _prepare_dify_response_cache_key(ctx: _DifyExternalRetrievalContext) -
     if not (ctx.response_cache_enabled or ctx.singleflight_enabled):
         return
     cache_token_started = time.perf_counter()
-    try:
-        corpus_token = _resolve_dify_response_cache_corpus_token(
-            db=ctx.db,
+    all_corpus_dataset_ids = [*ctx.dataset_ids, *ctx.metadata_anchor_dataset_ids]
+    corpus_token = await run_blocking_call_with_managed_session(
+        lambda worker_db: _resolve_dify_response_cache_corpus_token(
+            db=worker_db,
             tenant_id=ctx.actor.tenant_id,
-            dataset_ids=ctx.dataset_ids,
-        )
-    finally:
-        with contextlib.suppress(Exception):
-            ctx.db.rollback()
+            dataset_ids=all_corpus_dataset_ids,
+        ),
+        request_db=None,
+    )
     ctx.stage_timings_ms["response_cache_corpus_token_ms"] = round(
         (time.perf_counter() - cache_token_started) * 1000,
         2,
@@ -7027,9 +2921,6 @@ async def _maybe_return_response_cache_hit(
             "response_cache_hit": True,
         },
     )
-    _log_dify_short_circuit_trace(
-        ctx, response_records=response_records, retrieval_path="cache_hit", elapsed_ms=elapsed_ms
-    )
     return DifyExternalKnowledgeResponse(records=response_records)
 
 
@@ -7040,14 +2931,11 @@ async def _maybe_return_singleflight_hit(
         return None
     ctx.singleflight_key = ctx.response_cache_key
     singleflight_wait_started = time.perf_counter()
-    ctx.singleflight_leader, shared_payload = await _acquire_or_wait_for_inflight_response(ctx.singleflight_key)
+    ctx.singleflight_leader, shared_payload, ctx.singleflight_future = await _acquire_or_wait_for_inflight_response(
+        ctx.singleflight_key
+    )
     if not ctx.singleflight_leader:
-        shared_payload = shared_payload or {}
-        shared_records = [
-            record
-            for record in (shared_payload.get("records") if isinstance(shared_payload.get("records"), list) else [])
-            if isinstance(record, dict)
-        ]
+        shared_records = shared_payload["records"]
         response_records = [DifyExternalKnowledgeRecord(**record) for record in shared_records]
         elapsed_ms = round((time.perf_counter() - ctx.started) * 1000, 2)
         ctx.stage_timings_ms["singleflight_wait_ms"] = round(
@@ -7070,9 +2958,6 @@ async def _maybe_return_singleflight_hit(
                 "stage_timings_ms": ctx.stage_timings_ms,
             },
         )
-        _log_dify_short_circuit_trace(
-            ctx, response_records=response_records, retrieval_path="singleflight_hit", elapsed_ms=elapsed_ms
-        )
         return DifyExternalKnowledgeResponse(records=response_records)
     return None
 
@@ -7091,7 +2976,6 @@ async def _maybe_return_leader_cached_response(
     if cached_records is None:
         return None
     serialized_records = [dict(record) for record in cached_records]
-    resolve_inflight_response(ctx.singleflight_key, {"records": serialized_records})
     return _dify_response_from_serialized_records(serialized_records)
 
 
@@ -7125,20 +3009,10 @@ async def _maybe_return_distributed_singleflight_hit(
         (time.perf_counter() - distributed_wait_started) * 1000,
         2,
     )
-    if distributed_leader and ctx.distributed_singleflight_lease is not None:
+    if distributed_leader:
         _start_distributed_singleflight_lease_task(ctx)
         return None
-    if distributed_leader:
-        return None
-    serialized_records = [dict(record) for record in (distributed_records or [])]
-    if ctx.response_cache_enabled:
-        _dify_response_cache.set(
-            ctx.singleflight_key,
-            serialized_records,
-            ttl_sec=ctx.response_cache_ttl_sec,
-            max_entries=ctx.response_cache_max_entries,
-        )
-    resolve_inflight_response(ctx.singleflight_key, {"records": serialized_records})
+    serialized_records = [dict(record) for record in distributed_records]
     elapsed_ms = round((time.perf_counter() - ctx.started) * 1000, 2)
     response_records = [DifyExternalKnowledgeRecord(**record) for record in serialized_records]
     logger.info(
@@ -7161,6 +3035,34 @@ async def _maybe_return_distributed_singleflight_hit(
     return DifyExternalKnowledgeResponse(records=response_records)
 
 
+def _dify_cache_source_document_ids(records: list[DifyExternalKnowledgeRecord]) -> list[UUID] | None:
+    document_ids: list[UUID] = []
+    seen: set[UUID] = set()
+    for record in records:
+        raw_ids = []
+        document_id = record.metadata.get("document_id")
+        if document_id is not None:
+            raw_ids.append(document_id)
+        composite_ids = record.metadata.get("dify_composite_source_document_ids")
+        if composite_ids is not None:
+            if not isinstance(composite_ids, list):
+                logger.info("Dify cache declined reason=invalid_composite_identity records=%s", len(records))
+                return None
+            raw_ids.extend(composite_ids)
+        if not raw_ids:
+            logger.info("Dify cache declined reason=missing_document_identity records=%s", len(records))
+            return None
+        for raw_id in raw_ids:
+            parsed = _uuid_or_none(raw_id)
+            if parsed is None:
+                logger.info("Dify cache declined reason=invalid_document_identity records=%s", len(records))
+                return None
+            if parsed not in seen:
+                seen.add(parsed)
+                document_ids.append(parsed)
+    return document_ids
+
+
 async def _maybe_return_cached_or_inflight_dify_response(
     ctx: _DifyExternalRetrievalContext,
 ) -> DifyExternalKnowledgeResponse | None:
@@ -7173,6 +3075,41 @@ async def _maybe_return_cached_or_inflight_dify_response(
     ):
         response = await resolver(ctx)
         if response is not None:
+            document_ids = _dify_cache_source_document_ids(response.records)
+            if document_ids is None:
+                return None
+            if document_ids:
+                allowed_ids, missing_ids = await run_blocking_call_with_managed_session(
+                    lambda worker_db: get_allowed_document_id_sets(
+                        worker_db, ctx.actor.tenant_id, ctx.actor.account_id, document_ids, check_member=False
+                    ),
+                    request_db=None,
+                )
+                if missing_ids or set(document_ids) - allowed_ids:
+                    logger.info("Dify cache declined reason=document_access_changed records=%s", len(response.records))
+                    return None
+            from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
+
+            await enforce_tenant_qps_quota_async(tenant_id=ctx.actor.tenant_id, key="retrieval")
+            if resolver is _maybe_return_response_cache_hit or resolver is _maybe_return_singleflight_hit:
+                _log_dify_short_circuit_trace(
+                    ctx,
+                    response_records=response.records,
+                    retrieval_path="cache_hit" if resolver is _maybe_return_response_cache_hit else "singleflight_hit",
+                    elapsed_ms=round((time.perf_counter() - ctx.started) * 1000, 2),
+                )
+            if ctx.singleflight_key and ctx.singleflight_leader:
+                serialized_records = [record.model_dump(mode="json") for record in response.records]
+                if resolver is _maybe_return_distributed_singleflight_hit and ctx.response_cache_enabled:
+                    _dify_response_cache.set(
+                        ctx.singleflight_key,
+                        serialized_records,
+                        ttl_sec=ctx.response_cache_ttl_sec,
+                        max_entries=ctx.response_cache_max_entries,
+                    )
+                resolve_inflight_response(
+                    ctx.singleflight_key, {"records": serialized_records}, expected_future=ctx.singleflight_future
+                )
             return response
     return None
 
@@ -7181,8 +3118,8 @@ async def _run_dify_metadata_anchor_fallback(
     ctx: _DifyExternalRetrievalContext,
     **kwargs: Any,
 ) -> list[dict[str, Any]]:
-    call_kwargs = dict(kwargs)
-    call_kwargs.pop("db", None)
+    call_kwargs = kwargs
+    call_kwargs["account_id"] = ctx.actor.account_id
     fallback_started = time.perf_counter()
     budget_deadline: float | None = None
     if not ctx.fast_latency_profile and ctx.metadata_anchor_total_budget_ms:
@@ -7190,13 +3127,11 @@ async def _run_dify_metadata_anchor_fallback(
         if remaining_ms <= 0:
             return []
         configured_call_budget = call_kwargs.get("max_elapsed_ms")
-        if configured_call_budget is not None and int(configured_call_budget or 0) > 0:
-            remaining_ms = min(remaining_ms, int(configured_call_budget))
+        if configured_call_budget is not None and configured_call_budget > 0:
+            remaining_ms = min(remaining_ms, configured_call_budget)
         call_kwargs["max_elapsed_ms"] = remaining_ms
         budget_deadline = fallback_started + remaining_ms / 1000
-    rollback = getattr(ctx.db, "rollback", None)
-    if callable(rollback):
-        rollback()
+    ctx.db.rollback()
     try:
         return await _run_dify_metadata_anchor_fallback_call(call_kwargs, budget_deadline=budget_deadline)
     finally:
@@ -7230,14 +3165,14 @@ async def _run_dify_metadata_anchor_fallback_call(
     except TimeoutError:
         logger.info(
             "Dify metadata anchor fallback exceeded request budget query_hash=%s",
-            _diagnostic_query_hash(str(call_kwargs.get("query") or "")),
+            _diagnostic_query_hash(call_kwargs["query"]),
         )
         return []
 
 
 def _dify_metadata_anchor_preflight_enabled(ctx: _DifyExternalRetrievalContext) -> bool:
     return bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False)
+        settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED
         and ctx.metadata_anchor_db_fallback_enabled
         and (
             not ctx.fast_latency_profile
@@ -7261,7 +3196,6 @@ async def _apply_metadata_anchor_preflight(ctx: _DifyExternalRetrievalContext) -
     preflight_started = time.perf_counter()
     metadata_anchor_records = await _run_dify_metadata_anchor_fallback(
         ctx,
-        db=ctx.db,
         tenant_id=ctx.actor.tenant_id,
         dataset_ids=ctx.metadata_anchor_dataset_ids,
         query=ctx.body.query,
@@ -7270,12 +3204,12 @@ async def _apply_metadata_anchor_preflight(ctx: _DifyExternalRetrievalContext) -
         existing_records=[],
         metadata_filter=ctx.metadata_filter,
         statement_timeout_ms_override=(
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS", 600) or 0)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS
             if ctx.fast_latency_profile
             else None
         ),
         max_elapsed_ms=(
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS", 900) or 0)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS
             if ctx.fast_latency_profile
             else None
         ),
@@ -7284,7 +3218,7 @@ async def _apply_metadata_anchor_preflight(ctx: _DifyExternalRetrievalContext) -
     has_preflight_anchor = _dify_preflight_has_anchor(ctx, metadata_anchor_records)
     ctx.stage_timings_ms["metadata_preflight_ms"] = round((time.perf_counter() - preflight_started) * 1000, 2)
     ctx.stage_timings_ms["metadata_preflight_records"] = len(metadata_anchor_records)
-    ctx.stage_timings_ms["metadata_preflight_accepted"] = bool(has_preflight_anchor)
+    ctx.stage_timings_ms["metadata_preflight_accepted"] = has_preflight_anchor
     if has_preflight_anchor:
         ctx.metadata_anchor_fallback_count = len(metadata_anchor_records)
         ctx.records.extend(metadata_anchor_records)
@@ -7339,7 +3273,7 @@ def _dify_mixed_intent_preflight_enabled(ctx: _DifyExternalRetrievalContext) -> 
     return bool(
         not ctx.records
         and not ctx.fast_latency_profile
-        and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
+        and settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED
         and ctx.metadata_anchor_db_fallback_enabled
         and _query_has_mixed_intent_for_policy(ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs)
         and not _query_has_quoted_anchor_candidate(ctx.body.query)
@@ -7362,7 +3296,6 @@ async def _apply_mixed_intent_preflight(ctx: _DifyExternalRetrievalContext) -> N
             return
         subquery_anchor_records = await _run_dify_metadata_anchor_fallback(
             ctx,
-            db=ctx.db,
             tenant_id=ctx.actor.tenant_id,
             dataset_ids=ctx.metadata_anchor_dataset_ids,
             query=subquery,
@@ -7444,13 +3377,6 @@ async def _retrieve_primary_records(ctx: _DifyExternalRetrievalContext) -> None:
     ctx.stage_timings_ms["primary_records_from_citations_ms"] = round((time.perf_counter() - records_started) * 1000, 2)
 
 
-def _dify_mixed_intent_supplement_enabled(ctx: _DifyExternalRetrievalContext) -> bool:
-    return bool(
-        not ctx.fast_latency_profile
-        and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
-    )
-
-
 async def _apply_mixed_intent_supplement(ctx: _DifyExternalRetrievalContext) -> None:
     mixed_intent_supplement_skipped = _records_have_exact_anchor_full_answer(
         ctx.records,
@@ -7459,7 +3385,11 @@ async def _apply_mixed_intent_supplement(ctx: _DifyExternalRetrievalContext) -> 
     )
     if mixed_intent_supplement_skipped:
         ctx.retrieval_path = f"{ctx.retrieval_path}:mixed_intent_skip_exact_anchor"
-    if not (_dify_mixed_intent_supplement_enabled(ctx) and not mixed_intent_supplement_skipped):
+    if (
+        ctx.fast_latency_profile
+        or not settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED
+        or mixed_intent_supplement_skipped
+    ):
         return
     mixed_intent_queries = _mixed_intent_retrieval_queries(ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs)
     mixed_intent_subquery_top_k = _resolve_mixed_intent_subquery_top_k(
@@ -7486,7 +3416,6 @@ async def _append_mixed_intent_subquery_records(
     ):
         subquery_anchor_records = await _run_dify_metadata_anchor_fallback(
             ctx,
-            db=ctx.db,
             tenant_id=ctx.actor.tenant_id,
             dataset_ids=ctx.primary_dataset_ids,
             query=subquery,
@@ -7615,7 +3544,6 @@ async def _apply_metadata_anchor_fallback_to_records(ctx: _DifyExternalRetrieval
         return
     metadata_anchor_records = await _run_dify_metadata_anchor_fallback(
         ctx,
-        db=ctx.db,
         tenant_id=ctx.actor.tenant_id,
         dataset_ids=ctx.metadata_anchor_dataset_ids,
         query=ctx.body.query,
@@ -7637,16 +3565,17 @@ async def _execute_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) -
     ctx.query_prefers_service_anchor = _query_prefers_service_anchor(
         ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs
     )
-    ctx.metadata_anchor_db_fallback_enabled = bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
-    )
+    ctx.metadata_anchor_db_fallback_enabled = settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED
     ctx.metadata_anchor_total_budget_ms = max(
         0,
-        int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0),
+        settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS,
     )
     await _apply_metadata_anchor_preflight(ctx)
     await _apply_mixed_intent_preflight(ctx)
     if ctx.records:
+        from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
+
+        await enforce_tenant_qps_quota_async(tenant_id=ctx.actor.tenant_id, key="retrieval")
         return
     await _retrieve_primary_records(ctx)
     await _apply_mixed_intent_supplement(ctx)
@@ -7661,8 +3590,7 @@ async def _finalize_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) 
     ctx.records = _dedupe_records(ctx.records, query=ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs)
     _sort_records_for_query(ctx.records, query=ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs)
     if ctx.external_reranker_enabled:
-        with contextlib.suppress(Exception):
-            ctx.db.rollback()
+        ctx.db.rollback()
         ctx.records = await _final_rerank_records_for_query(
             ctx.records,
             query=ctx.body.query,
@@ -7691,25 +3619,28 @@ async def _finalize_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) 
     ctx.stage_timings_ms["postprocess_ms"] = round((time.perf_counter() - postprocess_started) * 1000, 2)
     serialized_response_records = [record.model_dump(mode="json") for record in response_records]
     if ctx.singleflight_key and ctx.singleflight_leader:
-        resolve_inflight_response(ctx.singleflight_key, {"records": serialized_response_records})
-    if ctx.response_cache_enabled and ctx.response_cache_key is not None:
-        _dify_response_cache.set(
-            ctx.response_cache_key,
-            serialized_response_records,
-            ttl_sec=ctx.response_cache_ttl_sec,
-            max_entries=ctx.response_cache_max_entries,
+        resolve_inflight_response(
+            ctx.singleflight_key, {"records": serialized_response_records}, expected_future=ctx.singleflight_future
         )
-        await _set_dify_response_cache_redis_payload(
-            ctx.response_cache_key,
-            serialized_response_records,
-            ttl_sec=ctx.response_cache_ttl_sec,
-        )
-    if ctx.singleflight_key and ctx.distributed_singleflight_lease is not None and not ctx.response_cache_enabled:
-        await _set_dify_response_cache_redis_payload(
-            _dify_singleflight_result_key(ctx.singleflight_key),
-            serialized_response_records,
-            ttl_sec=_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC,
-        )
+    if _dify_cache_source_document_ids(response_records) is not None:
+        if ctx.response_cache_enabled and ctx.response_cache_key is not None:
+            _dify_response_cache.set(
+                ctx.response_cache_key,
+                serialized_response_records,
+                ttl_sec=ctx.response_cache_ttl_sec,
+                max_entries=ctx.response_cache_max_entries,
+            )
+            await _set_dify_response_cache_redis_payload(
+                ctx.response_cache_key,
+                serialized_response_records,
+                ttl_sec=ctx.response_cache_ttl_sec,
+            )
+        if ctx.singleflight_key and ctx.distributed_singleflight_lease is not None and not ctx.response_cache_enabled:
+            await _set_dify_response_cache_redis_payload(
+                _dify_singleflight_result_key(ctx.singleflight_key),
+                serialized_response_records,
+                ttl_sec=_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC,
+            )
     elapsed_ms = round((time.perf_counter() - ctx.started) * 1000, 2)
     record_count = len(response_records)
     logger.info(
@@ -7783,16 +3714,9 @@ async def _finalize_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) 
     return DifyExternalKnowledgeResponse(records=response_records)
 
 
-async def _cleanup_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) -> None:
-    await _cleanup_distributed_dify_response_lease(
-        ctx.distributed_singleflight_lease_task,
-        ctx.distributed_singleflight_lease,
-    )
-
-
 def _reject_dify_inflight_response(ctx: _DifyExternalRetrievalContext, exc: Exception) -> None:
     if ctx.singleflight_key and ctx.singleflight_leader:
-        reject_inflight_response(ctx.singleflight_key, exc)
+        reject_inflight_response(ctx.singleflight_key, exc, expected_future=ctx.singleflight_future)
 
 
 def _log_dify_external_retrieval_failure(ctx: _DifyExternalRetrievalContext) -> None:
@@ -7861,27 +3785,43 @@ async def _retrieve_external_knowledge(
         actor=actor,
         db=db,
     )
-    cached_response = await _maybe_return_cached_or_inflight_dify_response(ctx)
-    if cached_response is not None:
-        return cached_response
     try:
+        all_retrieval_dataset_ids = [*ctx.dataset_ids, *ctx.metadata_anchor_dataset_ids]
+        await run_blocking_call_with_managed_session(
+            lambda worker_db: get_readable_datasets_map(
+                worker_db, ctx.actor.tenant_id, ctx.actor.account_id, all_retrieval_dataset_ids
+            ),
+            request_db=None,
+        )
+        ctx.trace_conversation_id = await run_blocking_call_with_managed_session(
+            lambda worker_db: _dify_trace_conversation_id(
+                request,
+                body,
+                db=worker_db,
+                tenant_id=actor.tenant_id,
+                account_id=actor.account_id,
+            ),
+            request_db=None,
+        )
+        cached_response = await _maybe_return_cached_or_inflight_dify_response(ctx)
+        if cached_response is not None:
+            return cached_response
         await _execute_dify_external_retrieval(ctx)
-        response = await _finalize_dify_external_retrieval(ctx)
-        await _cleanup_dify_external_retrieval(ctx)
-        return response
+        return await _finalize_dify_external_retrieval(ctx)
     except asyncio.CancelledError:
-        await _cleanup_dify_external_retrieval(ctx)
         _reject_dify_inflight_response(
             ctx,
             InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
         )
         raise
     except HTTPException as exc:
-        await _cleanup_dify_external_retrieval(ctx)
         _reject_dify_inflight_response(ctx, exc)
         raise
     except Exception as exc:
-        await _cleanup_dify_external_retrieval(ctx)
         _reject_dify_inflight_response(ctx, exc)
         _log_dify_external_retrieval_failure(ctx)
         raise
+    finally:
+        await _cleanup_distributed_dify_response_lease(
+            ctx.distributed_singleflight_lease_task, ctx.distributed_singleflight_lease
+        )

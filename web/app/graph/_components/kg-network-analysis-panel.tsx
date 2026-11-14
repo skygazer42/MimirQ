@@ -11,24 +11,14 @@ import {
   Network,
   PanelRightClose,
   PanelRightOpen,
-} from 'lucide-react'
+} from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { kgApi, type KGNetworkEdge, type KGNetworkRequest } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -37,6 +27,7 @@ import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { detachPromise } from '@/lib/utils'
 
 type KgNetworkAnalysisPanelProps = Readonly<{
+  embedded?: boolean
   nodes: GraphData['nodes']
   links: GraphData['links']
   selectedNodeId?: string | null
@@ -97,6 +88,7 @@ function getLinkType(link: GraphData['links'][number]): string {
 }
 
 export function KgNetworkAnalysisPanel({
+  embedded = false,
   nodes,
   links,
   selectedNodeId,
@@ -104,11 +96,8 @@ export function KgNetworkAnalysisPanel({
   const keyboardMoveStep = 24
   const edges = useMemo(() => toNetworkEdges(links), [links])
   const selectedNode = useMemo(
-    () =>
-      nodes.find(
-        (node) => String(node?.id ?? '') === String(selectedNodeId || '')
-      ) ?? null,
-    [nodes, selectedNodeId]
+    () => nodes.find((node) => String(node?.id ?? '') === String(selectedNodeId || '')) ?? null,
+    [nodes, selectedNodeId],
   )
   const nodeTypeStats = useMemo(() => {
     const countMap = new Map<string, { count: number; color: string }>()
@@ -232,9 +221,7 @@ export function KgNetworkAnalysisPanel({
     event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  function handlePanelDragKeyDown(
-    event: React.KeyboardEvent<HTMLButtonElement>
-  ) {
+  function handlePanelDragKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
     const step = event.shiftKey ? keyboardMoveStep * 2 : keyboardMoveStep
     if (event.key === 'ArrowLeft') {
       event.preventDefault()
@@ -266,7 +253,7 @@ export function KgNetworkAnalysisPanel({
     key: string,
     title: string,
     endpoint: string,
-    action: () => Promise<unknown>
+    action: () => Promise<unknown>,
   ): Promise<void> {
     setRunningKey(key)
     try {
@@ -280,9 +267,12 @@ export function KgNetworkAnalysisPanel({
     }
   }
 
-  if (collapsed) {
+  if (collapsed && !embedded) {
     return (
-      <div className="absolute left-4 top-20 z-20 transition-transform duration-150 md:left-auto md:right-[6.75rem] md:top-24" style={panelDragStyle}>
+      <div
+        className="absolute left-4 top-20 z-20 transition-transform duration-150 md:left-auto md:right-[6.75rem] md:top-24"
+        style={panelDragStyle}
+      >
         <Button
           type="button"
           variant="outline"
@@ -305,9 +295,13 @@ export function KgNetworkAnalysisPanel({
   return (
     <div
       id="kg-network-analysis-panel"
-      data-draggable-kg-analysis-panel="true"
-      className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform"
-      style={panelDragStyle}
+      data-draggable-kg-analysis-panel={!embedded || undefined}
+      className={
+        embedded
+          ? 'relative w-full space-y-4'
+          : 'absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform'
+      }
+      style={embedded ? undefined : panelDragStyle}
     >
       <section className="rounded-xl border border-info/15 bg-background/88 p-4 shadow-none">
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -316,15 +310,11 @@ export function KgNetworkAnalysisPanel({
               <BarChart3 className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">
-                统计信息
-              </div>
-              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                数据概览与交互信息
-              </p>
+              <div className="text-sm font-semibold text-foreground">统计信息</div>
+              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">数据概览与交互信息</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div hidden={embedded} className={embedded ? 'hidden' : 'flex shrink-0 items-center gap-1'}>
             <button
               type="button"
               className="flex h-8 w-8 cursor-grab items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-info/[0.08] hover:text-info active:cursor-grabbing"
@@ -367,9 +357,7 @@ export function KgNetworkAnalysisPanel({
               >
                 {selectedNode.label || selectedNode.id}
               </div>
-              <div className="text-[11px] text-muted-foreground">
-                {getNodeType(selectedNode)}
-              </div>
+              <div className="text-[11px] text-muted-foreground">{getNodeType(selectedNode)}</div>
             </div>
           ) : (
             <div className="flex min-h-[92px] items-center justify-center rounded-md bg-info/[0.035] px-3 text-center text-xs leading-5 text-muted-foreground">
@@ -383,9 +371,7 @@ export function KgNetworkAnalysisPanel({
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <div className="text-sm font-semibold text-foreground">
-              筛选器控制
-            </div>
+            <div className="text-sm font-semibold text-foreground">筛选器控制</div>
           </div>
           <div className="rounded-full bg-info/[0.06] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {nodes.length} / {links.length}
@@ -395,22 +381,12 @@ export function KgNetworkAnalysisPanel({
         <div className="space-y-3">
           <MetricGroup title={`节点类型 ${nodeTypeStats.length}`}>
             {nodeTypeStats.map((entry) => (
-              <MetricRow
-                key={entry.label}
-                color={entry.color}
-                label={entry.label}
-                count={entry.count}
-              />
+              <MetricRow key={entry.label} color={entry.color} label={entry.label} count={entry.count} />
             ))}
           </MetricGroup>
           <MetricGroup title={`关系类型 ${relationStats.length}`}>
             {relationStats.map((entry) => (
-              <MetricRow
-                key={entry.label}
-                color={entry.color}
-                label={entry.label}
-                count={entry.count}
-              />
+              <MetricRow key={entry.label} color={entry.color} label={entry.label} count={entry.count} />
             ))}
           </MetricGroup>
         </div>
@@ -426,9 +402,7 @@ export function KgNetworkAnalysisPanel({
           >
             <Network className="h-4 w-4" />
             网络分析
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {edges.length}
-            </span>
+            <span className="font-mono text-[11px] text-muted-foreground">{edges.length}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent side="left" align="start" className="w-[420px] p-3">
@@ -468,11 +442,7 @@ export function KgNetworkAnalysisPanel({
               <Field label="Max hops">
                 <Input
                   value={String(maxHops)}
-                  onChange={(event) =>
-                    setMaxHops(
-                      Number.parseInt(event.target.value || '0', 10) || 3
-                    )
-                  }
+                  onChange={(event) => setMaxHops(Number.parseInt(event.target.value || '0', 10) || 3)}
                   className="h-8 font-mono text-xs"
                   inputMode="numeric"
                 />
@@ -480,22 +450,13 @@ export function KgNetworkAnalysisPanel({
               <Field label="Top K">
                 <Input
                   value={String(topK)}
-                  onChange={(event) =>
-                    setTopK(
-                      Number.parseInt(event.target.value || '0', 10) || 10
-                    )
-                  }
+                  onChange={(event) => setTopK(Number.parseInt(event.target.value || '0', 10) || 10)}
                   className="h-8 font-mono text-xs"
                   inputMode="numeric"
                 />
               </Field>
               <Field label="Centrality">
-                <Select
-                  value={algorithm}
-                  onValueChange={(value) =>
-                    setAlgorithm(value as 'degree' | 'pagerank')
-                  }
-                >
+                <Select value={algorithm} onValueChange={(value) => setAlgorithm(value as 'degree' | 'pagerank')}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -514,12 +475,9 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction(
-                      'hop',
-                      'K-hop 邻居',
-                      'POST /kg/network/k_hop_neighbors',
-                      () => kgApi.getKHopNeighbors(request)
-                    )
+                    runAction('hop', 'K-hop 邻居', 'POST /kg/network/k_hop_neighbors', () =>
+                      kgApi.getKHopNeighbors(request),
+                    ),
                   )
                 }
               >
@@ -532,12 +490,9 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction(
-                      'shortest',
-                      '最短路径',
-                      'POST /kg/network/shortest_path',
-                      () => kgApi.getShortestPath(request)
-                    )
+                    runAction('shortest', '最短路径', 'POST /kg/network/shortest_path', () =>
+                      kgApi.getShortestPath(request),
+                    ),
                   )
                 }
               >
@@ -550,12 +505,9 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction(
-                      'paths',
-                      '路径枚举',
-                      'POST /kg/network/paths_between',
-                      () => kgApi.getPathsBetween(request)
-                    )
+                    runAction('paths', '路径枚举', 'POST /kg/network/paths_between', () =>
+                      kgApi.getPathsBetween(request),
+                    ),
                   )
                 }
               >
@@ -568,12 +520,9 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction(
-                      'centrality',
-                      '中心性',
-                      'POST /kg/network/centrality',
-                      () => kgApi.getCentrality(request)
-                    )
+                    runAction('centrality', '中心性', 'POST /kg/network/centrality', () =>
+                      kgApi.getCentrality(request),
+                    ),
                   )
                 }
               >
@@ -586,12 +535,9 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction(
-                      'community',
-                      '社区归属',
-                      'POST /kg/network/community_of',
-                      () => kgApi.getCommunityOf(request)
-                    )
+                    runAction('community', '社区归属', 'POST /kg/network/community_of', () =>
+                      kgApi.getCommunityOf(request),
+                    ),
                   )
                 }
               >
@@ -604,12 +550,9 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction(
-                      'component',
-                      '连通分量',
-                      'POST /kg/network/connected_component',
-                      () => kgApi.getConnectedComponent(request)
-                    )
+                    runAction('component', '连通分量', 'POST /kg/network/connected_component', () =>
+                      kgApi.getConnectedComponent(request),
+                    ),
                   )
                 }
               >
@@ -630,52 +573,33 @@ export function KgNetworkAnalysisPanel({
   )
 }
 
-function MetricGroup({
-  title,
-  children,
-}: Readonly<{ title: string; children: ReactNode }>) {
+function MetricGroup({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
   return (
     <div>
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        {title}
-      </div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
       <div className="space-y-1.5">{children}</div>
     </div>
   )
 }
 
-function MetricRow({
-  color,
-  label,
-  count,
-}: Readonly<{ color: string; label: string; count: number }>) {
+function MetricRow({ color, label, count }: Readonly<{ color: string; label: string; count: number }>) {
   return (
     <div className="flex items-center justify-between gap-3 text-xs">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className="h-2.5 w-2.5 flex-none rounded-full ring-2 ring-white/80"
-          style={{ backgroundColor: color }}
-        />
+        <span className="h-2.5 w-2.5 flex-none rounded-full ring-2 ring-white/80" style={{ backgroundColor: color }} />
         <span className="truncate text-foreground/80" title={label}>
           {label}
         </span>
       </div>
-      <span className="font-mono text-[11px] text-muted-foreground">
-        {count}
-      </span>
+      <span className="font-mono text-[11px] text-muted-foreground">{count}</span>
     </div>
   )
 }
 
-function Field({
-  label,
-  children,
-}: Readonly<{ label: string; children: ReactNode }>) {
+function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">
-        {label}
-      </Label>
+      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
       {children}
     </div>
   )

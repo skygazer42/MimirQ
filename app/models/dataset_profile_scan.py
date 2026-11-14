@@ -6,7 +6,6 @@ The real-time "profile summary" endpoint can compute on demand, while deep scans
 persist their computed summary for audit and progress tracking.
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, Integer, String, Text, text

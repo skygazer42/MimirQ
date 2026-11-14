@@ -38,7 +38,7 @@ def _safe_float(v: object, *, default: float = 0.0) -> float:
 
 def _stable_sig(s: str) -> str:
     # For deterministic tie-breaking: ASCII -> casefold; non-ASCII -> keep.
-    s = str(s or "").strip()
+    s = s.strip()
     return s.casefold() if s.isascii() else s
 
 
@@ -53,7 +53,7 @@ def _community_level(report: dict[str, Any]) -> int:
 
 
 def _community_rank_key(report: dict[str, Any]) -> tuple[float, int, int, str, str]:
-    community_id = str((report or {}).get("community_id") or "").strip()
+    community_id = report["community_id"].strip()
     return (
         -_safe_float((report or {}).get("score"), default=0.0),
         -int((report or {}).get("event_count") or 0),
@@ -67,7 +67,7 @@ def _dedupe_event_entities(entities: list[str], *, max_entities: int) -> list[st
     seen: set[str] = set()
     dedup: list[str] = []
     for entity in entities or []:
-        entity_id = str(entity or "").strip()
+        entity_id = entity.strip()
         sig = _stable_sig(entity_id)
         if entity_id and sig not in seen:
             seen.add(sig)
@@ -89,15 +89,13 @@ def _edge_counts(event_entities: dict[str, list[str]], *, max_entities_per_event
     for ents in (event_entities or {}).values():
         dedup = _dedupe_event_entities(ents, max_entities=max_entities_per_event)
         for key in _iter_entity_pairs(dedup):
-            counts[key] = float(counts.get(key, 0.0) or 0.0) + 1.0
+            counts[key] = counts.get(key, 0.0) + 1.0
     return counts
 
 
 def _community_edges_from_counts(counts: dict[tuple[str, str], float], *, min_weight: float) -> list[CommunityEdge]:
-    edges = [
-        CommunityEdge(a=a, b=b, w=float(weight)) for (a, b), weight in counts.items() if float(weight) >= min_weight
-    ]
-    edges.sort(key=lambda edge: (-float(edge.w), _stable_sig(edge.a), _stable_sig(edge.b), edge.a, edge.b))
+    edges = [CommunityEdge(a=a, b=b, w=weight) for (a, b), weight in counts.items() if weight >= min_weight]
+    edges.sort(key=lambda edge: (-edge.w, _stable_sig(edge.a), _stable_sig(edge.b), edge.a, edge.b))
     return edges
 
 
@@ -139,7 +137,7 @@ def build_multi_level_community_selection(
 
 
 def _normalized_query_scope(query_scope: str) -> str:
-    scope = str(query_scope or "").strip().lower() or "global"
+    scope = query_scope.strip().lower() or "global"
     return scope if scope in {"global", "local", "drift"} else "global"
 
 
@@ -149,7 +147,7 @@ def _reports_by_level(reports: list[dict[str, Any]], *, deep: bool = False) -> l
 
 
 def _community_id(report: dict[str, Any]) -> str:
-    return str((report or {}).get("community_id") or "").strip()
+    return report["community_id"].strip()
 
 
 def _select_drift_reports(reports: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
@@ -188,7 +186,7 @@ def label_propagation_communities(
     Returns:
         mapping: node_id -> community_label (one node id used as stable label).
     """
-    nodes_in = [str(n or "").strip() for n in (nodes or []) if str(n or "").strip()]
+    nodes_in = [n.strip() for n in (nodes or []) if n.strip()]
     nodes_sorted = sorted(set(nodes_in), key=lambda x: (_stable_sig(x), x))
     if not nodes_sorted:
         return {}
@@ -209,14 +207,14 @@ def label_propagation_communities(
 def _label_adjacency(nodes: list[str], edges: list[CommunityEdge]) -> dict[str, list[tuple[str, float]]]:
     adj: dict[str, list[tuple[str, float]]] = {node: [] for node in nodes}
     for edge in edges or []:
-        a = str(getattr(edge, "a", "") or "").strip()
-        b = str(getattr(edge, "b", "") or "").strip()
-        weight = _safe_float(getattr(edge, "w", 0.0), default=0.0)
+        a = edge.a.strip()
+        b = edge.b.strip()
+        weight = _safe_float(edge.w, default=0.0)
         if a in adj and b in adj and a != b and weight > 0:
             adj[a].append((b, weight))
             adj[b].append((a, weight))
     for node, neighbors in adj.items():
-        neighbors.sort(key=lambda item: (-float(item[1]), _stable_sig(item[0]), item[0]))
+        neighbors.sort(key=lambda item: (-item[1], _stable_sig(item[0]), item[0]))
         adj[node] = neighbors
     return adj
 
@@ -225,7 +223,7 @@ def _neighbor_label_scores(neighbors: list[tuple[str, float]], label: dict[str, 
     scores: dict[str, float] = {}
     for neighbor, weight in neighbors:
         current_label = label.get(neighbor, neighbor)
-        scores[current_label] = float(scores.get(current_label, 0.0) or 0.0) + float(weight)
+        scores[current_label] = scores.get(current_label, 0.0) + weight
     return scores
 
 
@@ -279,7 +277,7 @@ def assign_events_to_communities(
     weights = entity_weights or {}
     out: dict[str, str] = {}
     for ev_id, ents in (event_entities or {}).items():
-        ev = str(ev_id or "").strip()
+        ev = ev_id.strip()
         if not ev:
             continue
         scores = _event_community_scores(ents, entity_to_label=entity_to_label, entity_weights=weights)
@@ -298,11 +296,11 @@ def _event_community_scores(
 ) -> dict[str, float]:
     scores: dict[str, float] = {}
     for ent in entities or []:
-        entity_id = str(ent or "").strip()
+        entity_id = ent.strip()
         label = entity_to_label.get(entity_id)
         if label:
             weight = float(entity_weights.get(entity_id, 1.0) or 1.0)
-            scores[label] = float(scores.get(label, 0.0) or 0.0) + weight
+            scores[label] = scores.get(label, 0.0) + weight
     return scores
 
 
@@ -316,7 +314,7 @@ def _entity_record(entity: dict[str, Any]) -> tuple[str, dict[str, Any], float] 
         "type": str(entity.get("type") or "").strip() or "unknown",
         "weight": _safe_float(entity.get("weight"), default=0.0),
     }
-    return entity_id, record, float(record["weight"])
+    return entity_id, record, record["weight"]
 
 
 def _index_entities(entities: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, float], list[str]]:
@@ -339,8 +337,8 @@ def _index_entities(entities: list[dict[str, Any]]) -> tuple[dict[str, dict[str,
 def _filter_event_entities(event_entities: dict[str, list[str]], *, node_set: set[str]) -> dict[str, list[str]]:
     ev_map: dict[str, list[str]] = {}
     for ev_id, entities in (event_entities or {}).items():
-        event_id = str(ev_id or "").strip()
-        filtered = [str(entity or "").strip() for entity in (entities or []) if str(entity or "").strip() in node_set]
+        event_id = ev_id.strip()
+        filtered = [entity.strip() for entity in (entities or []) if entity.strip() in node_set]
         if event_id and filtered:
             ev_map[event_id] = filtered
     return ev_map
@@ -383,8 +381,8 @@ def _ranked_community_labels(
     labels = sorted(
         community_entities.keys(),
         key=lambda label: (
-            -int(len(community_events.get(label, []) or [])),
-            -int(len(community_entities.get(label, []) or [])),
+            -len(community_events.get(label, [])),
+            -len(community_entities[label]),
             _stable_sig(label),
             label,
         ),
@@ -403,7 +401,7 @@ def _scored_events(event_ids: list[str], ev_info: dict[str, dict[str, Any]]) -> 
     scored = [
         (_safe_float((ev_info.get(event_id) or {}).get("score"), default=0.0), event_id) for event_id in event_ids
     ]
-    return sorted(scored, key=lambda item: (-float(item[0]), _stable_sig(item[1]), item[1]))
+    return sorted(scored, key=lambda item: (-item[0], _stable_sig(item[1]), item[1]))
 
 
 def _top_events(event_ids: list[str], ev_info: dict[str, dict[str, Any]], *, max_events: int) -> list[dict[str, Any]]:
@@ -447,8 +445,8 @@ def _build_community_report(
         "schema": "mimirq.kg_community_report.v1",
         "community_id": str(idx),
         "label": label,
-        "entity_count": int(len(entity_ids)),
-        "event_count": int(len(event_ids)),
+        "entity_count": len(entity_ids),
+        "event_count": len(event_ids),
         "entities": top_entities,
         "events": top_events,
         "summary": _community_summary(top_entities, top_events),
@@ -458,7 +456,7 @@ def _build_community_report(
 def _build_global_summary(reports: list[dict[str, Any]], *, max_chars: int) -> str:
     parts = [f"Found {len(reports)} communities in the recalled KG subgraph."]
     for report in reports:
-        summary = str(report.get("summary") or "").strip()
+        summary = report["summary"].strip()
         if summary:
             parts.append(f"[Community {report.get('community_id')}] {summary}")
     global_summary = "\n".join(parts).strip()
@@ -491,7 +489,7 @@ def _lazy_summary_prompt(*, query: str, entity_lines: list[str], event_lines: li
     return (
         "Summarize the following knowledge graph community in the context of the user query.\n"
         "Focus on information relevant to the query. Be concise (2-3 sentences).\n\n"
-        f"User Query: {str(query or '').strip()}\n\n"
+        f"User Query: {query.strip()}\n\n"
         "Community Entities:\n"
         f"{chr(10).join(entity_lines) if entity_lines else '- (none)'}\n\n"
         "Community Events:\n"
@@ -546,8 +544,8 @@ def build_community_reports(
             _build_community_report(
                 idx=idx,
                 label=lb,
-                entity_ids=comm_entities.get(lb, []) or [],
-                event_ids=comm_events.get(lb, []) or [],
+                entity_ids=comm_entities[lb],
+                event_ids=comm_events.get(lb, []),
                 ent_info=ent_info,
                 ev_info=ev_info,
                 max_entities_per_community=max_entities_per_community,
@@ -583,7 +581,7 @@ async def lazy_summarize(
         temperature=0.3,
         max_tokens=max(1, int(max_tokens or 300)),
     )
-    return str(getattr(response, "content", "") or "").strip()
+    return response.content.strip()
 
 
 __all__ = [

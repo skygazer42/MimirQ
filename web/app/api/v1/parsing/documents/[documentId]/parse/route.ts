@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,9 @@ type RouteContext = {
 }
 
 function trimTrailingSlashes(value: string): string {
-  return String(value || '').trim().replace(/\/+$/, '')
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '')
 }
 
 function isHttpUrl(value: string): boolean {
@@ -68,9 +70,7 @@ function proxyError(error: unknown): NextResponse {
   const timedOut = name === 'TimeoutError' || name === 'AbortError'
   return NextResponse.json(
     {
-      detail: timedOut
-        ? 'Parsing request timed out before the backend responded'
-        : 'Parsing backend is unavailable',
+      detail: timedOut ? 'Parsing request timed out before the backend responded' : 'Parsing backend is unavailable',
     },
     {
       status: timedOut ? 504 : 502,

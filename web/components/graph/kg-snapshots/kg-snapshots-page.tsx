@@ -1,30 +1,7 @@
 'use client'
 
-import {
-  ArrowRightLeft,
-  BarChart3,
-  CircleDashed,
-  Database,
-  Download,
-  FileJson,
-  FolderOpen,
-  GitCompare,
-  Hash,
-  Layers,
-  PanelLeftClose,
-  PanelLeftOpen,
-  RefreshCcw,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-} from 'lucide-react'
-import {
-  startTransition,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { Trash2 } from '@/components/icons'
+import { useDeferredValue, useEffect, useMemo, useState, useCallback, useLayoutEffect, useRef } from 'react'
 
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -32,8 +9,17 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { PageHeader } from '@/components/ui/page-header'
+import { OperationalWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { useMediaQuery } from '@/hooks/use-media-query'
+import { reportClientWarning } from '@/lib/client-logging'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
@@ -51,20 +37,8 @@ import { SnapshotAuditPanel } from './components/snapshot-audit-panel'
 import { SnapshotDiffView } from './components/snapshot-diff-view'
 import { SnapshotGraphCanvas } from './components/snapshot-graph-canvas'
 import { SnapshotNodeDetailsRail } from './components/snapshot-node-details-rail'
-import { SnapshotStudioToolbar } from './components/snapshot-studio-toolbar'
-import {
-  DiffEmptyState,
-  SnapshotInlineStat,
-  WorkspaceSection,
-  getHashPairIcon,
-} from './components/shared'
-import {
-  DIFF_KEYS,
-  SNAPSHOT_HEADER_ACTION_CLASS,
-  SNAPSHOT_ICON_ACTION_CLASS,
-  SNAPSHOT_PRIMARY_COMPARE_CLASS,
-  SNAPSHOT_SECONDARY_ACTION_CLASS,
-} from './constants'
+import { DiffEmptyState } from './components/shared'
+import { DIFF_KEYS } from './constants'
 import { buildSnapshotStudioGraphFromKgGraph } from './snapshot-graph'
 import type {
   PipelineCandidate,
@@ -73,29 +47,26 @@ import type {
   SnapshotPayload,
   SnapshotView,
   StudioCanvasView,
-  WorkspaceTab,
 } from './types'
 import {
   auditSeverityForDriftScore,
   compactHashLabel,
   copyToClipboard,
   downloadJson,
-  exactDiffCount,
   firstDisplayString,
-  getDatasetLabel,
   getDocumentMetaValue,
-  getHashPairStatus,
-  getHashPairTone,
-  getScopeDocumentCountLabel,
   getSelectedDatasetLabel,
   getSnapshotScopeSubtitle,
-  inlineStatToneForDelta,
   mergePipelineCandidate,
   parseDocumentIds,
   prettyJson,
   sortPipelineCandidates,
-  tabLabelForView,
 } from './utils'
+
+function snapshotTotal(snapshot: SnapshotPayload | null, key: string): number | null {
+  const value = snapshot?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
 
 export function KGSnapshotsPage() {
   const searchParams = useSearchParams()
@@ -113,20 +84,23 @@ export function KGSnapshotsPage() {
   const [pipelineCandidates, setPipelineCandidates] = useState<PipelineCandidate[]>([])
   const [pipelineCandidatesLoading, setPipelineCandidatesLoading] = useState(false)
   const [pipelineCandidatesError, setPipelineCandidatesError] = useState<string | null>(null)
-  const [advancedHashOpen, setAdvancedHashOpen] = useState(false)
   const [liveGraph, setLiveGraph] = useState<KGGraphResponse | null>(null)
   const [liveGraphLoading, setLiveGraphLoading] = useState(false)
   const [liveGraphError, setLiveGraphError] = useState<string | null>(null)
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('studio')
   const [activeView, setActiveView] = useState<SnapshotView>('diff')
-  const [studioCanvasView, setStudioCanvasView] =
-    useState<StudioCanvasView>('graph')
+  const [studioCanvasView, setStudioCanvasView] = useState<StudioCanvasView>('table')
   const [studioSearch, setStudioSearch] = useState('')
   const [studioNodeType, setStudioNodeType] = useState('all')
   const [studioRelationType, setStudioRelationType] = useState('all')
   const [studioLayout, setStudioLayout] = useState('force')
   const [selectedStudioNodeId, setSelectedStudioNodeId] = useState('')
-  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
+  const nodeTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const [scopeSettingsOpen, setScopeSettingsOpen] = useState(false)
+  const [reloadVersion, setReloadVersion] = useState(0)
+  const [datasetsError, setDatasetsError] = useState<string | null>(null)
+  const [operationError, setOperationError] = useState<string | null>(null)
+  const inlineScope = useMediaQuery('(min-width: 900px)')
+  const inlineNode = useMediaQuery('(min-width: 1280px)')
   const [includeZeroDeltas, setIncludeZeroDeltas] = useState(true)
   const [compactAuditRows, setCompactAuditRows] = useState(true)
 
@@ -136,22 +110,38 @@ export function KGSnapshotsPage() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
-  const documentIds = useMemo(
-    () => parseDocumentIds(documentIdsRaw),
-    [documentIdsRaw]
-  )
+  const documentIds = useMemo(() => parseDocumentIds(documentIdsRaw), [documentIdsRaw])
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null,
-    [datasets, selectedDatasetId]
+    [datasets, selectedDatasetId],
   )
   const scopeDatasetId = selectedDatasetId || undefined
   const scopeDocumentIds = documentIds.length > 0 ? documentIds : undefined
   const scopeDocumentIdsKey = scopeDocumentIds?.join(',') ?? ''
   const selectedDatasetLabel = getSelectedDatasetLabel(selectedDataset, selectedDatasetId)
-  const scopeDocumentCountLabel = getScopeDocumentCountLabel(documentIds.length, selectedDatasetId)
+  const requestContext = useMemo(
+    () => ({ datasetId: selectedDatasetId, documents: scopeDocumentIdsKey, a: pipelineHashA, b: pipelineHashB }),
+    [selectedDatasetId, scopeDocumentIdsKey, pipelineHashA, pipelineHashB],
+  )
+  const requestContextRef = useRef(requestContext)
+  const clearComparison = useCallback(() => {
+    setSnapA(null)
+    setSnapB(null)
+    setDiff(null)
+    setLatencyMs(null)
+    setOperationError(null)
+    setSelectedStudioNodeId('')
+  }, [])
+  useLayoutEffect(() => {
+    requestContextRef.current = requestContext
+    clearComparison()
+    setIsRunning(false)
+  }, [requestContext, clearComparison])
 
   useEffect(() => {
     setSelectedDatasetId(datasetIdFromUrl)
+    setScopeSettingsOpen(false)
+    setDocumentIdsRaw('')
     setPipelineHashA('')
     setPipelineHashB('')
     setSnapA(null)
@@ -162,14 +152,15 @@ export function KGSnapshotsPage() {
   useEffect(() => {
     let cancelled = false
     setDatasetsLoading(true)
+    setDatasetsError(null)
     ;(async () => {
       try {
         const result = await datasetApi.listAll()
         if (!cancelled) {
           setDatasets(result)
         }
-      } catch {
-        if (!cancelled) setDatasets([])
+      } catch (error) {
+        if (!cancelled) setDatasetsError(formatApiError(error, '数据集目录读取失败'))
       } finally {
         if (!cancelled) setDatasetsLoading(false)
       }
@@ -178,7 +169,7 @@ export function KGSnapshotsPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadVersion])
 
   useEffect(() => {
     let cancelled = false
@@ -189,7 +180,10 @@ export function KGSnapshotsPage() {
       const candidateMap = new Map<string, PipelineCandidate>()
       try {
         if (selectedDataset) {
-          const report = await reportApi.getDatasetReport(selectedDataset).catch(() => null)
+          const report = await reportApi.getDatasetReport(selectedDataset).catch((error) => {
+            reportClientWarning('Snapshot version report unavailable', error)
+            return null
+          })
           for (const version of report?.pipeline_versions ?? []) {
             mergePipelineCandidate(candidateMap, {
               hash: String(version.pipeline_hash || '').trim(),
@@ -210,20 +204,16 @@ export function KGSnapshotsPage() {
           }
         }
 
-        const documents = await documentApi
-          .list({
-            skip: 0,
-            limit: 200,
-            dataset_id: selectedDataset || null,
-            order_by: 'created_at',
-            order_dir: 'desc',
-          })
-          .catch(() => null)
+        const documents = await documentApi.list({
+          skip: 0,
+          limit: 200,
+          dataset_id: selectedDataset || null,
+          order_by: 'created_at',
+          order_dir: 'desc',
+        })
 
         for (const document of documents?.items ?? []) {
-          const activeHash = firstDisplayString(
-            getDocumentMetaValue(document, 'active_pipeline_hash')
-          )
+          const activeHash = firstDisplayString(getDocumentMetaValue(document, 'active_pipeline_hash'))
           const currentHash = firstDisplayString(getDocumentMetaValue(document, 'pipeline_hash'))
           if (activeHash) {
             mergePipelineCandidate(candidateMap, {
@@ -246,12 +236,8 @@ export function KGSnapshotsPage() {
         if (!cancelled) {
           const next = sortPipelineCandidates(Array.from(candidateMap.values()))
           setPipelineCandidates(next)
-          setPipelineHashB((current) =>
-            current.trim() ? current : next[0]?.hash ?? ''
-          )
-          setPipelineHashA((current) =>
-            current.trim() ? current : next[1]?.hash ?? ''
-          )
+          setPipelineHashB((current) => (current.trim() ? current : (next[0]?.hash ?? '')))
+          setPipelineHashA((current) => (current.trim() ? current : (next[1]?.hash ?? '')))
         }
       } catch (err) {
         if (!cancelled) {
@@ -266,27 +252,15 @@ export function KGSnapshotsPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedDatasetId])
+  }, [selectedDatasetId, reloadVersion])
 
-  const snapAJson = useMemo(
-    () => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }),
-    [snapA]
-  )
-  const snapBJson = useMemo(
-    () => prettyJson(snapB ?? { hint: '点击左侧“导出 B”生成快照。' }),
-    [snapB]
-  )
-  const diffJson = useMemo(
-    () => prettyJson(diff ?? { hint: '点击左侧“开始对比”生成 diff。' }),
-    [diff]
-  )
+  const snapAJson = useMemo(() => (snapA ? prettyJson(snapA) : ''), [snapA])
+  const snapBJson = useMemo(() => (snapB ? prettyJson(snapB) : ''), [snapB])
+  const diffJson = useMemo(() => (diff ? prettyJson(diff) : ''), [diff])
 
   const diffDelta = useMemo(() => {
-    const delta =
-      diff?.delta && typeof diff.delta === 'object' ? diff.delta : null
-    const entityTypesDelta = Array.isArray(diff?.entity_types_delta)
-      ? diff.entity_types_delta
-      : []
+    const delta = diff?.delta && typeof diff.delta === 'object' ? diff.delta : null
+    const entityTypesDelta = Array.isArray(diff?.entity_types_delta) ? diff.entity_types_delta : []
     return { delta, entityTypesDelta }
   }, [diff])
   const deferredEntityTypesDelta = useDeferredValue(diffDelta.entityTypesDelta)
@@ -298,6 +272,8 @@ export function KGSnapshotsPage() {
       return
     }
 
+    const currentContext = requestContext
+    setOperationError(null)
     setIsRunning(true)
     try {
       const snapshot = await kgApi.exportSnapshot({
@@ -306,6 +282,8 @@ export function KGSnapshotsPage() {
         document_ids: scopeDocumentIds,
         include_details: true,
       })
+      if (requestContextRef.current !== currentContext) return
+      setStudioCanvasView('table')
       if (which === 'a') {
         setSnapA(snapshot)
         setActiveView('a')
@@ -313,11 +291,12 @@ export function KGSnapshotsPage() {
         setSnapB(snapshot)
         setActiveView('b')
       }
-      toast.success(`已导出 ${which.toUpperCase()} 快照`)
+      toast.success(`已读取版本 ${which.toUpperCase()}`)
     } catch (err) {
-      toast.error(formatApiError(err, '导出 KG snapshot 失败'))
+      if (requestContextRef.current !== currentContext) return
+      setOperationError(formatApiError(err, '快照读取失败'))
     } finally {
-      setIsRunning(false)
+      if (requestContextRef.current === currentContext) setIsRunning(false)
     }
   }
 
@@ -333,6 +312,8 @@ export function KGSnapshotsPage() {
       return
     }
 
+    const currentContext = requestContext
+    setOperationError(null)
     setIsRunning(true)
     setLatencyMs(null)
     try {
@@ -355,16 +336,19 @@ export function KGSnapshotsPage() {
         snapshot_a: snapshotA,
         snapshot_b: snapshotB,
       })
+      if (requestContextRef.current !== currentContext) return
+      setStudioCanvasView('table')
       setLatencyMs(Math.max(0, Date.now() - start))
       setSnapA(snapshotA)
       setSnapB(snapshotB)
       setDiff(result)
       setActiveView('diff')
-      toast.success('已生成 diff')
+      toast.success('已生成对比结果')
     } catch (err) {
-      toast.error(formatApiError(err, 'KG snapshot compare 失败'))
+      if (requestContextRef.current !== currentContext) return
+      setOperationError(formatApiError(err, '快照对比失败'))
     } finally {
-      setIsRunning(false)
+      if (requestContextRef.current === currentContext) setIsRunning(false)
     }
   }
 
@@ -380,6 +364,8 @@ export function KGSnapshotsPage() {
       return
     }
 
+    const currentContext = requestContext
+    setOperationError(null)
     setIsRunning(true)
     setLatencyMs(null)
     try {
@@ -390,14 +376,17 @@ export function KGSnapshotsPage() {
         dataset_id: scopeDatasetId,
         document_ids: scopeDocumentIds,
       })
+      if (requestContextRef.current !== currentContext) return
+      setStudioCanvasView('table')
       setLatencyMs(Math.max(0, Date.now() - start))
       setDiff(result)
       setActiveView('diff')
-      toast.success('后端对比完成')
+      toast.success('已生成数量摘要')
     } catch (err) {
-      toast.error(formatApiError(err, 'KG snapshot 后端对比失败'))
+      if (requestContextRef.current !== currentContext) return
+      setOperationError(formatApiError(err, '快照摘要读取失败'))
     } finally {
-      setIsRunning(false)
+      if (requestContextRef.current === currentContext) setIsRunning(false)
     }
   }
 
@@ -408,36 +397,30 @@ export function KGSnapshotsPage() {
   const hasHashB = Boolean(hashBValue)
   const hashATitle = hashAValue || '未设置'
   const hashBTitle = hashBValue || '未设置'
-  const hashPairStatus = getHashPairStatus(hasHashA, hasHashB)
-  const hashPairTitle = `A: ${hashAValue || '未填写'}\nB: ${hashBValue || '未填写'}`
-  const hashPairTone = getHashPairTone(hasHashA, hasHashB)
-  const hashPairIcon = getHashPairIcon(hasHashA, hasHashB)
-  const diffBaseName =
-    sanitizeFilename(
-      `kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`
-    ) || 'kg_snapshot'
+  const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`) || 'kg_snapshot'
   const snapshotScopeSubtitle = getSnapshotScopeSubtitle(
     scopeDocumentIds?.length ?? 0,
     scopeDatasetId,
-    selectedDatasetLabel
+    selectedDatasetLabel,
   )
-  const snapshotAFileName =
-    sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
-  const snapshotBFileName =
-    sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
-  useEffect(() => {
+  const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
+  const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
+  useLayoutEffect(() => {
+    if (studioCanvasView !== 'graph' || scopeSettingsOpen) return
     let cancelled = false
+    setLiveGraph(null)
     setLiveGraphLoading(true)
     setLiveGraphError(null)
     ;(async () => {
       try {
-        const meta = await metaApi.details().catch(() => null)
+        const meta = await metaApi.details().catch((error) => {
+          reportClientWarning('Snapshot graph metadata unavailable', error)
+          return null
+        })
         if (meta?.features?.kg_enabled === false) {
           if (!cancelled) {
             setLiveGraph({ nodes: [], links: [] })
-            setLiveGraphError(
-              'KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。'
-            )
+            setLiveGraphError('KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。')
           }
           return
         }
@@ -470,45 +453,36 @@ export function KGSnapshotsPage() {
     }
   }, [
     liveGraphPipelineHash,
+    studioCanvasView,
+    scopeSettingsOpen,
+    reloadVersion,
     selectedDatasetId,
     scopeDatasetId,
     scopeDocumentIds,
     scopeDocumentIdsKey,
   ])
 
-  const studioGraph = useMemo(
-    () => buildSnapshotStudioGraphFromKgGraph(liveGraph),
-    [liveGraph]
-  )
-  const nodeTypes = useMemo(
-    () => Array.from(new Set(studioGraph.nodes.map((node) => node.type))),
-    [studioGraph.nodes]
-  )
+  const studioGraph = useMemo(() => buildSnapshotStudioGraphFromKgGraph(liveGraph), [liveGraph])
+  const nodeTypes = useMemo(() => Array.from(new Set(studioGraph.nodes.map((node) => node.type))), [studioGraph.nodes])
   const relationTypes = useMemo(
     () => Array.from(new Set(studioGraph.links.map((link) => link.label))),
-    [studioGraph.links]
+    [studioGraph.links],
   )
   const selectedStudioNode = useMemo(() => {
-    return (
-      studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ??
-      studioGraph.nodes[0] ??
-      null
-    )
+    return studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ?? null
   }, [selectedStudioNodeId, studioGraph.nodes])
   useEffect(() => {
-    if (studioGraph.nodes.length === 0) {
-      if (selectedStudioNodeId) setSelectedStudioNodeId('')
-      return
-    }
-    if (!studioGraph.nodes.some((node) => node.id === selectedStudioNodeId)) {
-      setSelectedStudioNodeId(studioGraph.nodes[0]?.id ?? '')
+    if (selectedStudioNodeId && !studioGraph.nodes.some((node) => node.id === selectedStudioNodeId)) {
+      setSelectedStudioNodeId('')
     }
   }, [selectedStudioNodeId, studioGraph.nodes])
 
+  const totalsReady = DIFF_KEYS.every((key) => snapshotTotal(snapA, key) !== null && snapshotTotal(snapB, key) !== null)
   const deltaRows = useMemo<SnapshotDeltaRow[]>(() => {
+    if (!totalsReady) return []
     return DIFF_KEYS.map((key) => {
-      const a = Number(snapA?.[key] ?? 0)
-      const b = Number(snapB?.[key] ?? 0)
+      const a = snapshotTotal(snapA, key)!
+      const b = snapshotTotal(snapB, key)!
       const d = Number(diffDelta.delta?.[key] ?? b - a)
       return {
         key,
@@ -517,505 +491,305 @@ export function KGSnapshotsPage() {
         delta: Number.isFinite(d) ? d : 0,
       }
     })
-  }, [diffDelta.delta, snapA, snapB])
+  }, [diffDelta.delta, snapA, snapB, totalsReady])
   const driftScore = useMemo(() => {
-    const denominator = deltaRows.reduce(
-      (acc, row) => acc + Math.max(Math.max(row.a, row.b), 1),
-      0
-    )
+    const denominator = deltaRows.reduce((acc, row) => acc + Math.max(Math.max(row.a, row.b), 1), 0)
     if (denominator <= 0) return 0
-    const totalDelta = deltaRows.reduce(
-      (acc, row) => acc + Math.abs(row.delta),
-      0
-    )
+    const totalDelta = deltaRows.reduce((acc, row) => acc + Math.abs(row.delta), 0)
     return totalDelta / denominator
   }, [deltaRows])
   const auditSeverity = auditSeverityForDriftScore(driftScore)
   const auditDriftRows = useMemo(() => {
-    return [...deferredEntityTypesDelta].sort(
-      (a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0))
-    )
+    return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
   }, [deferredEntityTypesDelta])
-  const diffOverview = useMemo(() => {
-    const nodeAdded = exactDiffCount(diff?.node_diff, 'added_count')
-    const nodeRemoved = exactDiffCount(diff?.node_diff, 'removed_count')
-    const nodeChanged = exactDiffCount(diff?.node_diff, 'changed_count')
-    const edgeAdded = exactDiffCount(diff?.edge_diff, 'added_count')
-    const edgeRemoved = exactDiffCount(diff?.edge_diff, 'removed_count')
-    return [
-      {
-        label: '节点变化',
-        value: nodeAdded + nodeRemoved + nodeChanged,
-        tone: 'bg-muted-foreground/50',
-      },
-      { label: '属性变化', value: nodeChanged, tone: 'bg-success' },
-      { label: '新增关系', value: edgeAdded, tone: 'bg-destructive' },
-      { label: '删除关系', value: edgeRemoved, tone: 'bg-destructive' },
-      {
-        label: '重要变化',
-        value: driftScore >= 0.35 ? 1 : 0,
-        tone: 'bg-warning',
-      },
-    ]
-  }, [diff, driftScore])
-  const formInputClassName =
-    'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
-  const formTextareaClassName =
-    'min-h-[108px] resize-none rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
-
+  const view = studioCanvasView === 'table' ? activeView : studioCanvasView
+  const changeDataset = (value: string) => {
+    setSelectedDatasetId(value)
+    setPipelineHashA('')
+    setPipelineHashB('')
+    setDocumentIdsRaw('')
+    setStudioSearch('')
+    setStudioNodeType('all')
+    setStudioRelationType('all')
+  }
+  const scopeFields = (
+    <div className="grid w-full gap-4 md:grid-cols-[minmax(180px,1fr)_repeat(2,minmax(150px,1fr))]">
+      <label className="min-w-0 space-y-2 text-sm">
+        <span>数据集</span>
+        <select
+          aria-label="快照数据集"
+          value={selectedDatasetId}
+          disabled={datasetsLoading || isRunning}
+          onChange={(event) => changeDataset(event.target.value)}
+          className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+        >
+          <option value="">全部数据集</option>
+          {selectedDatasetId && !datasets.some((item) => item.id === selectedDatasetId) ? (
+            <option value={selectedDatasetId}>{selectedDatasetLabel}</option>
+          ) : null}
+          {datasets.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name || item.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {(['a', 'b'] as const).map((which) => {
+        const value = which === 'a' ? pipelineHashA : pipelineHashB
+        return (
+          <label key={which} className="min-w-0 space-y-2 text-sm">
+            <span>版本 {which.toUpperCase()}</span>
+            <select
+              aria-label={`快照 ${which.toUpperCase()}`}
+              value={value}
+              disabled={isRunning || pipelineCandidatesLoading}
+              onChange={(event) => {
+                if (which === 'a') setPipelineHashA(event.target.value)
+                else setPipelineHashB(event.target.value)
+              }}
+              className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+            >
+              <option value="">{pipelineCandidatesLoading ? '正在读取版本…' : '选择版本'}</option>
+              {value && !pipelineCandidates.some((item) => item.hash === value) ? (
+                <option value={value}>手动版本 · {compactHashLabel(value)}</option>
+              ) : null}
+              {pipelineCandidates.map((item) => (
+                <option key={item.hash} value={item.hash}>
+                  {item.active ? '当前' : '历史'} · {compactHashLabel(item.hash)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )
+      })}
+    </div>
+  )
   return (
     <AppFrame showBackground={false}>
-      <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(1200px_460px_at_12%_-18%,hsl(var(--primary)/0.08),transparent_58%),radial-gradient(960px_420px_at_88%_-24%,hsl(var(--info)/0.06),transparent_56%)] bg-background">
-        <header className="shrink-0 border-b border-border/70 bg-background/80 backdrop-blur">
-          <div className="px-4 py-3 md:px-6">
-            <PageHeader
-              title="图谱快照"
-              description="对比同一数据集不同入库/治理版本生成的图谱快照，并快速判断结构波动。"
-              iconImage="kg-snapshot"
-              icon={GitCompare}
-              iconColor="text-info"
-              badge="Graph"
-              compact
-              className="p-0"
+      <OperationalWorkspace
+        title="图谱快照"
+        icon="kg-snapshot"
+        context={selectedDatasetLabel}
+        mode="canvas"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setScopeSettingsOpen(true)} disabled={isRunning}>
+              版本与范围
+            </Button>
+            <Button
+              disabled={isRunning || !hashAValue || !hashBValue || hashAValue === hashBValue}
+              onClick={() => {
+                void runCompare()
+              }}
             >
-              <div className="flex shrink-0 items-center gap-1 rounded-full border border-border/36 bg-card/46 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={cn(SNAPSHOT_HEADER_ACTION_CLASS, 'gap-1.5')}
-                  title={
-                    hashAValue && hashBValue
-                      ? '重新导出并刷新 A/B 对比结果'
-                      : '先填写快照 A / 快照 B'
-                  }
-                  disabled={isRunning || !hashAValue || !hashBValue}
-                  onClick={() => detachPromise(runCompare())}
-                >
-                  <RefreshCcw
-                    className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')}
-                    aria-hidden="true"
-                  />
-                  刷新对比
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={SNAPSHOT_ICON_ACTION_CLASS}
-                  title="清空"
-                  onClick={() => {
-                    setSnapA(null)
-                    setSnapB(null)
-                    setDiff(null)
-                    setLatencyMs(null)
-                    startTransition(() => {
-                      setWorkspaceTab('studio')
-                      setActiveView('diff')
-                      setStudioCanvasView('graph')
-                    })
-                    toast.message('已清空')
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={SNAPSHOT_ICON_ACTION_CLASS}
-                  onClick={() => setLeftSidebarCollapsed((prev) => !prev)}
-                  aria-label={
-                    leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'
-                  }
-                  title={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
-                >
-                  {leftSidebarCollapsed ? (
-                    <PanelLeftOpen className="h-4 w-4" />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </PageHeader>
+              {isRunning ? '正在对比…' : '开始对比'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="清空快照对比"
+              disabled={isRunning}
+              onClick={() => {
+                clearComparison()
+                setActiveView('diff')
+                setStudioCanvasView('table')
+              }}
+            >
+              <Trash2 />
+            </Button>
+          </>
+        }
+        toolbar={
+          inlineScope ? (
+            scopeFields
+          ) : (
+            <>
+              <span className="min-w-0 flex-1 text-sm text-muted-foreground">
+                A {hashAValue ? compactHashLabel(hashAValue) : '未选择'} → B{' '}
+                {hashBValue ? compactHashLabel(hashBValue) : '未选择'}
+              </span>
+              <Button variant="ghost" onClick={() => setScopeSettingsOpen(true)}>
+                选择版本
+              </Button>
+            </>
+          )
+        }
+      >
+        {datasetsError ? (
+          <div className="px-5">
+            <WorkspaceNotice retry={() => setReloadVersion((value) => value + 1)}>{datasetsError}</WorkspaceNotice>
           </div>
-        </header>
-
-        <div className="flex min-h-0 flex-1">
-          <aside
-            className={cn(
-              'shrink-0 border-r border-border/70 bg-background transition-[width,opacity] duration-200',
-              leftSidebarCollapsed
-                ? 'w-0 overflow-hidden border-r-0 opacity-0'
-                : 'w-[288px] opacity-100',
-              'flex min-h-0 flex-col'
-            )}
-          >
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] px-4 py-3">
-                <div className="grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
-                  <button
-                    type="button"
-                    className={cn(
-                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
-                      workspaceTab === 'studio'
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                    )}
-                    onClick={() => {
-                      startTransition(() => setWorkspaceTab('studio'))
-                    }}
-                  >
-                    <FileJson className="h-3.5 w-3.5" aria-hidden="true" />
-                    工作台
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
-                      workspaceTab === 'audit'
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                    )}
-                    onClick={() => {
-                      startTransition(() => setWorkspaceTab('audit'))
-                    }}
-                  >
-                    <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
-                    评估
-                  </button>
-                </div>
-                <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                  <SnapshotInlineStat
-                    icon={hashPairIcon}
-                    label="A/B"
-                    value={hashPairStatus}
-                    valueTitle={hashPairTitle}
-                    tone={hashPairTone}
-                  />
-                  {typeof latencyMs === 'number' ? (
-                    <SnapshotInlineStat
-                      icon={<Sparkles className="h-3.5 w-3.5" />}
-                      label="耗时"
-                      value={`${latencyMs} ms`}
-                      tone="neutral"
-                    />
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                <div className="space-y-3">
-                  <WorkspaceSection
-                    icon={<Hash className="h-3.5 w-3.5" />}
-                    label="快照版本"
-                    hint={selectedDatasetId ? '已绑定数据集' : '全局候选'}
-                  >
-                    <div className="space-y-2.5">
-                      <div className="rounded-lg border border-info/14 bg-info/5 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
-                        选择数据集后会从后端报告和文档元数据读取可对比版本；一般选最新版本作为 B，旧版本作为 A。
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 text-[11px]">
-                        <span className="text-muted-foreground">
-                          {pipelineCandidatesLoading
-                            ? '正在加载版本…'
-                            : pipelineCandidatesError || (
-                                pipelineCandidates.length > 0
-                                  ? `已发现 ${pipelineCandidates.length} 个版本`
-                                  : '当前数据集暂无可对比版本'
-                              )}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-[11px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                          onClick={() => setAdvancedHashOpen((value) => !value)}
-                        >
-                          {advancedHashOpen ? '收起手填' : '手动填写'}
-                        </Button>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label
-                          htmlFor="pipeline-hash-a"
-                          className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-                        >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-success/10 text-[10px] font-bold text-success ring-1 ring-success/30">
-                            A
-                          </span>
-                          <span>快照 A</span>
-                        </Label>
-                        <select
-                          id="pipeline-hash-a"
-                          value={pipelineHashA}
-                          onChange={(e) => setPipelineHashA(e.target.value)}
-                          className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
-                        >
-                          <option value="">
-                            {pipelineCandidatesLoading ? '正在加载版本…' : '选择旧版本'}
-                          </option>
-                          {pipelineHashA &&
-                          !pipelineCandidates.some((item) => item.hash === pipelineHashA) ? (
-                            <option value={pipelineHashA}>
-                              手动版本 · {compactHashLabel(pipelineHashA)}
-                            </option>
-                          ) : null}
-                          {pipelineCandidates.map((item) => (
-                            <option key={`a:${item.hash}`} value={item.hash}>
-                              {item.active ? '当前' : '历史'} · {compactHashLabel(item.hash)} · {item.documents} 文档
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label
-                          htmlFor="pipeline-hash-b"
-                          className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-                        >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-info/10 text-[10px] font-bold text-info ring-1 ring-info/30">
-                            B
-                          </span>
-                          <span>快照 B</span>
-                        </Label>
-                        <select
-                          id="pipeline-hash-b"
-                          value={pipelineHashB}
-                          onChange={(e) => setPipelineHashB(e.target.value)}
-                          className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
-                        >
-                          <option value="">
-                            {pipelineCandidatesLoading ? '正在加载版本…' : '选择当前版本'}
-                          </option>
-                          {pipelineHashB &&
-                          !pipelineCandidates.some((item) => item.hash === pipelineHashB) ? (
-                            <option value={pipelineHashB}>
-                              手动版本 · {compactHashLabel(pipelineHashB)}
-                            </option>
-                          ) : null}
-                          {pipelineCandidates.map((item) => (
-                            <option key={`b:${item.hash}`} value={item.hash}>
-                              {item.active ? '当前' : '历史'} · {compactHashLabel(item.hash)} · {item.documents} 文档
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {advancedHashOpen ? (
-                        <div className="space-y-2 rounded-lg border border-dashed border-border/70 bg-muted/20 p-2.5">
-                          <Input
-                            aria-label="手动填写快照 A 哈希"
-                            placeholder="手动填写快照 A 哈希"
-                            value={pipelineHashA}
-                            onChange={(e) => setPipelineHashA(e.target.value)}
-                            className={formInputClassName}
-                          />
-                          <Input
-                            aria-label="手动填写快照 B 哈希"
-                            placeholder="手动填写快照 B 哈希"
-                            value={pipelineHashB}
-                            onChange={(e) => setPipelineHashB(e.target.value)}
-                            className={formInputClassName}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  </WorkspaceSection>
-
-                  <WorkspaceSection
-                    icon={<Layers className="h-3.5 w-3.5" />}
-                    label="作用范围"
-                    hint="数据集绑定"
-                  >
-                    <div className="space-y-1.5">
-                      <Label
-                        htmlFor="snapshot-dataset"
-                        className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-                      >
-                        数据集
-                      </Label>
-                      <select
-                        id="snapshot-dataset"
-                        value={selectedDatasetId}
-                        onChange={(event) => {
-                          setSelectedDatasetId(event.target.value)
-                          setPipelineHashA('')
-                          setPipelineHashB('')
-                          setSnapA(null)
-                          setSnapB(null)
-                          setDiff(null)
-                        }}
-                        className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
-                      >
-                        <option value="">
-                          {datasetsLoading ? '正在加载数据集…' : '全部数据集'}
-                        </option>
-                        {datasets.map((dataset) => (
-                          <option key={dataset.id} value={dataset.id}>
-                            {getDatasetLabel(dataset)}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="text-[11px] leading-5 text-muted-foreground">
-                        {selectedDatasetId
-                          ? '后端会按数据集解析可访问文档范围；文档覆盖仅用于排查单文件或子集。'
-                          : '全部数据集表示直接请求后端 KG 全局范围，不使用演示数据。'}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label
-                        htmlFor="document-ids"
-                        className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-                      >
-                        文档覆盖
-                      </Label>
-                      <Textarea
-                        id="document-ids"
-                        placeholder="按逗号或换行填写文档编号；留空使用后端按数据集解析的文档范围。"
-                        value={documentIdsRaw}
-                        onChange={(e) => setDocumentIdsRaw(e.target.value)}
-                        rows={4}
-                        className={cn(formTextareaClassName, 'min-h-[88px]')}
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <SnapshotInlineStat
-                        icon={<Database className="h-3.5 w-3.5" />}
-                        label="数据集"
-                        value={selectedDatasetLabel}
-                        valueClassName="max-w-[118px] truncate"
-                        tone={selectedDatasetId ? 'neutral' : 'muted'}
-                      />
-                      <SnapshotInlineStat
-                        icon={<FolderOpen className="h-3.5 w-3.5" />}
-                        label="文档范围"
-                        value={
-                          documentIds.length
-                            ? `${documentIds.length} 覆盖`
-                            : scopeDocumentCountLabel
-                        }
-                        tone={scopeDocumentIds?.length ? 'neutral' : 'muted'}
-                      />
-                      <SnapshotInlineStat
-                        icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                        label="模式"
-                        value="脱敏"
-                        tone="muted"
-                      />
-                    </div>
-                  </WorkspaceSection>
-                </div>
-              </div>
-
-              <div className="shrink-0 border-t border-border/44 bg-background/92 px-3 py-3 backdrop-blur">
-                <div className="rounded-[1.15rem] border border-border/36 bg-card/62 p-2.5 shadow-[0_16px_38px_-34px_hsl(var(--foreground)/0.35),inset_0_1px_0_hsl(var(--card)/0.7)]">
-                  <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/62">
-                      快照操作
-                    </div>
-                    <span className="rounded-full border border-border/32 bg-background/44 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/64">
-                      bounded diff
-                    </span>
-                  </div>
-
-                  <Button
-                    className={SNAPSHOT_PRIMARY_COMPARE_CLASS}
-                    onClick={() => detachPromise(runCompare())}
-                    disabled={isRunning}
-                  >
-                    {isRunning ? (
-                      <RefreshCcw
-                        className="h-4 w-4 animate-spin"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <GitCompare className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    {isRunning ? '对比中…' : '开始对比'}
-                  </Button>
-
-                  <div className="mt-2 grid grid-cols-3 gap-1.5">
-                    <Button
-                      variant="outline"
-                      className={SNAPSHOT_SECONDARY_ACTION_CLASS}
-                      onClick={() => detachPromise(runExport('a'))}
-                      disabled={isRunning}
-                    >
-                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                      导出 A
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className={SNAPSHOT_SECONDARY_ACTION_CLASS}
-                      onClick={() => detachPromise(runExport('b'))}
-                      disabled={isRunning}
-                    >
-                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                      导出 B
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className={SNAPSHOT_SECONDARY_ACTION_CLASS}
-                      onClick={() => detachPromise(runBackendCompare())}
-                      disabled={isRunning}
-                    >
-                      <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                      后端
-                    </Button>
-                  </div>
-                </div>
-
-                <p className="mt-2.5 px-1 text-[10.5px] leading-4 text-muted-foreground/72">
-                  节点、边、属性 hash 参与 diff；完整溯源可结合 KG diagnostics 或 traces 排查。
-                </p>
-              </div>
+        ) : null}
+        {pipelineCandidatesError ? (
+          <div className="px-5">
+            <WorkspaceNotice retry={() => setReloadVersion((value) => value + 1)}>
+              {pipelineCandidatesError}
+            </WorkspaceNotice>
+          </div>
+        ) : null}
+        {operationError ? (
+          <div className="px-5">
+            <WorkspaceNotice>{operationError}</WorkspaceNotice>
+          </div>
+        ) : null}
+        {latencyMs !== null ? (
+          <p className="px-6 pt-2 text-right text-xs text-muted-foreground">对比耗时 {latencyMs} ms</p>
+        ) : null}
+        <Tabs
+          value={view}
+          onValueChange={(value) => {
+            setSelectedStudioNodeId('')
+            if (value === 'graph' || value === 'stats') setStudioCanvasView(value)
+            else {
+              setStudioCanvasView('table')
+              setActiveView(value as SnapshotView)
+            }
+          }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="px-4 md:px-6">
+            <TabsList className={ws.tabList}>
+              <TabsTrigger value="diff">内容差异</TabsTrigger>
+              <TabsTrigger value="a">快照 A</TabsTrigger>
+              <TabsTrigger value="b">快照 B</TabsTrigger>
+              <TabsTrigger value="graph">图谱预览</TabsTrigger>
+              <TabsTrigger value="stats">统计</TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="diff" className={cn(ws.tabContent, 'flex min-h-0 flex-1 flex-col')}>
+            <SnapshotDiffView
+              titleA={`Snapshot A · ${hashATitle}`}
+              titleB={`Snapshot B · ${hashBTitle}`}
+              subtitleA={snapshotScopeSubtitle}
+              subtitleB={snapshotScopeSubtitle}
+              leftCode={snapAJson}
+              rightCode={snapBJson}
+              diff={diff}
+              pending={isRunning}
+              onLoadDetails={() => {
+                void runCompare()
+              }}
+              isEmpty={!diff}
+              emptyState={
+                <DiffEmptyState
+                  title="还没有对比结果"
+                  description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
+                  hint={hasHashA && hasHashB ? '已就绪：直接点击「开始对比」' : '提示：A / B Hash 二者皆需填写'}
+                />
+              }
+              onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
+              onDownload={() => {
+                downloadJson(diff ?? {}, `${diffBaseName}.diff.json`)
+                toast.success('已导出 diff.json')
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="a" className={cn(ws.tabContent, 'flex min-h-0 flex-1 flex-col')}>
+            <JsonCodePane
+              label="A 视图"
+              title="快照内容"
+              subtitle={hashAValue ? `Hash · ${hashAValue}` : '尚未导出'}
+              code={snapAJson}
+              isEmpty={!snapA}
+              emptyState={
+                <DiffEmptyState
+                  title="A 视图为空"
+                  description="选择版本 A，再点击“读取 A”查看快照内容。"
+                  hint={hasHashA ? '可在“版本与范围”中读取 A' : '请先选择版本 A'}
+                />
+              }
+              onCopy={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
+              onDownload={() => {
+                downloadJson(snapA ?? {}, `${snapshotAFileName}.json`)
+                toast.success('已导出 snapshot A')
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="b" className={cn(ws.tabContent, 'flex min-h-0 flex-1 flex-col')}>
+            <JsonCodePane
+              label="B 视图"
+              title="快照内容"
+              subtitle={hashBValue ? `Hash · ${hashBValue}` : '尚未导出'}
+              code={snapBJson}
+              isEmpty={!snapB}
+              emptyState={
+                <DiffEmptyState
+                  title="B 视图为空"
+                  description="选择版本 B，再点击“读取 B”查看快照内容。"
+                  hint={hasHashB ? '可在“版本与范围”中读取 B' : '请先选择版本 B'}
+                />
+              }
+              onCopy={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
+              onDownload={() => {
+                downloadJson(snapB ?? {}, `${snapshotBFileName}.json`)
+                toast.success('已导出 snapshot B')
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="graph" className={cn(ws.tabContent, 'flex min-h-0 flex-1 flex-col')}>
+            <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 md:px-6">
+              <Input
+                className="w-52 max-w-full"
+                aria-label="搜索快照节点或关系"
+                value={studioSearch}
+                onChange={(event) => setStudioSearch(event.target.value)}
+                placeholder="搜索节点或关系"
+              />
+              <select
+                aria-label="节点类型"
+                value={studioNodeType}
+                onChange={(event) => setStudioNodeType(event.target.value)}
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+              >
+                <option value="all">全部节点类型</option>
+                {nodeTypes.map((type) => (
+                  <option key={type}>{type}</option>
+                ))}
+              </select>
+              <select
+                aria-label="关系类型"
+                value={studioRelationType}
+                onChange={(event) => setStudioRelationType(event.target.value)}
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+              >
+                <option value="all">全部关系类型</option>
+                {relationTypes.map((type) => (
+                  <option key={type}>{type}</option>
+                ))}
+              </select>
+              <select
+                aria-label="图谱布局"
+                value={studioLayout}
+                onChange={(event) => setStudioLayout(event.target.value)}
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+              >
+                <option value="force">力导向</option>
+                <option value="radial">径向</option>
+                <option value="layered">分层</option>
+              </select>
+              <Button
+                className="ml-auto"
+                variant="ghost"
+                disabled={liveGraphLoading}
+                onClick={() => setReloadVersion((value) => value + 1)}
+              >
+                重新读取图谱
+              </Button>
             </div>
-          </aside>
-
-          <div className="flex min-w-0 flex-1 bg-card">
-            <section className="min-w-0 flex-1 bg-card">
-              {workspaceTab === 'studio' ? (
-                <div className="flex h-full min-h-0 flex-col">
-                  <SnapshotStudioToolbar
-                    searchValue={studioSearch}
-                    nodeType={studioNodeType}
-                    relationType={studioRelationType}
-                    nodeTypes={nodeTypes}
-                    relationTypes={relationTypes}
-                    layout={studioLayout}
-                    studioView={studioCanvasView}
-                    activeSnapshotView={activeView}
-                    onSearchChange={setStudioSearch}
-                    onNodeTypeChange={setStudioNodeType}
-                    onRelationTypeChange={setStudioRelationType}
-                    onLayoutChange={setStudioLayout}
-                    onStudioViewChange={(value) => {
-                      startTransition(() => setStudioCanvasView(value))
-                    }}
-                    onSnapshotViewChange={(value) => {
-                      startTransition(() => {
-                        setActiveView(value)
-                        setStudioCanvasView('table')
-                      })
-                    }}
-                    onDiffClick={() => {
-                      startTransition(() => {
-                        setActiveView('diff')
-                        setStudioCanvasView('table')
-                      })
-                      detachPromise(runCompare())
-                    }}
-                    isRunning={isRunning}
-                  />
-                  {studioCanvasView === 'graph' ? (
+            {liveGraphError ? (
+              <div className="px-6">
+                <WorkspaceNotice retry={() => setReloadVersion((value) => value + 1)}>{liveGraphError}</WorkspaceNotice>
+              </div>
+            ) : null}
+            <div className="flex min-h-0 flex-1">
+              <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                <div className="h-full min-h-[420px] min-w-[640px]">
+                  {!liveGraphError ? (
                     <SnapshotGraphCanvas
                       nodes={studioGraph.nodes}
                       links={studioGraph.links}
                       layout={studioLayout}
-                      selectedNodeId={selectedStudioNode?.id ?? ''}
+                      selectedNodeId={selectedStudioNodeId}
                       searchValue={studioSearch}
                       nodeType={studioNodeType}
                       relationType={studioRelationType}
@@ -1024,218 +798,33 @@ export function KGSnapshotsPage() {
                       isLoading={liveGraphLoading}
                       emptyMessage={
                         liveGraphError ||
-                        (selectedDatasetId
-                          ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
-                          : '当前后端 KG 图谱接口没有返回节点。')
+                        (studioSearch.trim() || studioNodeType !== 'all' || studioRelationType !== 'all'
+                          ? '当前筛选下没有匹配节点，可调整搜索或类型。'
+                          : selectedDatasetId
+                            ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
+                            : '当前后端 KG 图谱接口没有返回节点。')
                       }
-                      onSelectNode={setSelectedStudioNodeId}
-                    />
-                  ) : studioCanvasView === 'stats' ? (
-                    <SnapshotAuditPanel
-                      deltaRows={deltaRows}
-                      typeDriftRows={auditDriftRows}
-                      severity={auditSeverity}
-                      driftScore={driftScore}
-                      includeZeroDeltas={includeZeroDeltas}
-                      compactRows={compactAuditRows}
-                      onIncludeZeroDeltasChange={setIncludeZeroDeltas}
-                      onCompactRowsChange={setCompactAuditRows}
-                    />
-                  ) : (
-                    <Tabs
-                      value={activeView}
-                      onValueChange={(value) => {
-                        startTransition(() =>
-                          setActiveView(value as SnapshotView)
-                        )
+                      onSelectNode={(id, trigger) => {
+                        nodeTriggerRef.current = trigger
+                        setSelectedStudioNodeId(id)
                       }}
-                      className="flex h-full min-h-0 flex-col"
-                    >
-                      <div className="hidden">
-                        <div className="px-4 py-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                                <FileJson
-                                  className="h-3.5 w-3.5 text-primary/70"
-                                  aria-hidden="true"
-                                />
-                                快照工作台
-                              </div>
-                              <div className="mt-0.5 truncate text-[15px] font-semibold text-foreground">
-                                {tabLabelForView(activeView)}
-                              </div>
-                            </div>
-
-                            <TabsList className="h-9 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
-                              <TabsTrigger
-                                value="diff"
-                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm hover:text-foreground"
-                              >
-                                <ArrowRightLeft
-                                  className="h-3.5 w-3.5"
-                                  aria-hidden="true"
-                                />
-                                Diff 对比
-                              </TabsTrigger>
-                              <TabsTrigger
-                                value="a"
-                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-success data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
-                              >
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-success/10 text-[10px] font-bold text-success ring-1 ring-success/30 data-[state=active]:bg-success data-[state=active]:text-info-foreground data-[state=active]:ring-0">
-                                  A
-                                </span>
-                                <span>视图 A</span>
-                              </TabsTrigger>
-                              <TabsTrigger
-                                value="b"
-                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-info data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
-                              >
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-info/10 text-[10px] font-bold text-info ring-1 ring-info/30 data-[state=active]:bg-info data-[state=active]:text-info-foreground data-[state=active]:ring-0">
-                                  B
-                                </span>
-                                <span>视图 B</span>
-                              </TabsTrigger>
-                            </TabsList>
-                          </div>
-
-                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            {diffDelta.delta ? (
-                              deltaRows.map((row) => {
-                                const sign = row.delta > 0 ? '+' : ''
-                                return (
-                                  <SnapshotInlineStat
-                                    key={row.key}
-                                    label={row.key}
-                                    value={`${row.a} → ${row.b} (${sign}${row.delta})`}
-                                    tone={inlineStatToneForDelta(row.delta)}
-                                  />
-                                )
-                              })
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 bg-card/60 px-2.5 py-1 text-[11px] text-muted-foreground">
-                                <CircleDashed
-                                  className="h-3.5 w-3.5 text-primary/60"
-                                  aria-hidden="true"
-                                />
-                                填写 A / B Hash 后点击「开始对比」即可查看 docs
-                                / events / entities / links / relations 增量
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <TabsContent value="diff" className="mt-0 min-h-0 flex-1">
-                        <SnapshotDiffView
-                          titleA={`Snapshot A · ${hashATitle}`}
-                          titleB={`Snapshot B · ${hashBTitle}`}
-                          subtitleA={snapshotScopeSubtitle}
-                          subtitleB={snapshotScopeSubtitle}
-                          leftCode={snapAJson}
-                          rightCode={snapBJson}
-                          diff={diff}
-                          typeDrift={auditDriftRows}
-                          isEmpty={!diff}
-                          emptyState={
-                            <DiffEmptyState
-                              title="还没有对比结果"
-                              description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
-                              hint={
-                                hasHashA && hasHashB
-                                  ? '已就绪：直接点击「开始对比」'
-                                  : '提示：A / B Hash 二者皆需填写'
-                              }
-                            />
-                          }
-                          onCopy={() =>
-                            detachPromise(
-                              copyToClipboard(diffJson, 'diff JSON')
-                            )
-                          }
-                          onDownload={() => {
-                            downloadJson(
-                              diff ?? {},
-                              `${diffBaseName}.diff.json`
-                            )
-                            toast.success('已导出 diff.json')
-                          }}
-                        />
-                      </TabsContent>
-
-                      <TabsContent value="a" className="mt-0 min-h-0 flex-1">
-                        <JsonCodePane
-                          label="A 视图"
-                          title="快照内容"
-                          subtitle={
-                            hashAValue ? `Hash · ${hashAValue}` : '尚未导出'
-                          }
-                          code={snapAJson}
-                          isEmpty={!snapA}
-                          emptyState={
-                            <DiffEmptyState
-                              title="A 视图为空"
-                              description="先在左侧填写快照 A，然后点击「导出 A」即可在此查看明细快照 JSON。"
-                              hint={
-                                hasHashA
-                                  ? '已填写快照 A，可点击「导出 A」'
-                                  : '请先填写快照 A'
-                              }
-                            />
-                          }
-                          onCopy={() =>
-                            detachPromise(
-                              copyToClipboard(snapAJson, 'snapshot A JSON')
-                            )
-                          }
-                          onDownload={() => {
-                            downloadJson(
-                              snapA ?? {},
-                              `${snapshotAFileName}.json`
-                            )
-                            toast.success('已导出 snapshot A')
-                          }}
-                        />
-                      </TabsContent>
-
-                      <TabsContent value="b" className="mt-0 min-h-0 flex-1">
-                        <JsonCodePane
-                          label="B 视图"
-                          title="快照内容"
-                          subtitle={
-                            hashBValue ? `Hash · ${hashBValue}` : '尚未导出'
-                          }
-                          code={snapBJson}
-                          isEmpty={!snapB}
-                          emptyState={
-                            <DiffEmptyState
-                              title="B 视图为空"
-                              description="先在左侧填写快照 B，然后点击「导出 B」即可在此查看明细快照 JSON。"
-                              hint={
-                                hasHashB
-                                  ? '已填写快照 B，可点击「导出 B」'
-                                  : '请先填写快照 B'
-                              }
-                            />
-                          }
-                          onCopy={() =>
-                            detachPromise(
-                              copyToClipboard(snapBJson, 'snapshot B JSON')
-                            )
-                          }
-                          onDownload={() => {
-                            downloadJson(
-                              snapB ?? {},
-                              `${snapshotBFileName}.json`
-                            )
-                            toast.success('已导出 snapshot B')
-                          }}
-                        />
-                      </TabsContent>
-                    </Tabs>
-                  )}
+                    />
+                  ) : null}
                 </div>
-              ) : (
+              </div>
+              {inlineNode && selectedStudioNode ? (
+                <SnapshotNodeDetailsRail
+                  className="w-80 shrink-0 border-l border-border bg-background"
+                  selectedNode={selectedStudioNode}
+                  onClose={() => setSelectedStudioNodeId('')}
+                  onSelectRelationTarget={setSelectedStudioNodeId}
+                />
+              ) : null}
+            </div>
+          </TabsContent>
+          <TabsContent value="stats" className={cn(ws.tabContent, 'min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6')}>
+            {diff ? (
+              totalsReady ? (
                 <SnapshotAuditPanel
                   deltaRows={deltaRows}
                   typeDriftRows={auditDriftRows}
@@ -1246,17 +835,224 @@ export function KGSnapshotsPage() {
                   onIncludeZeroDeltasChange={setIncludeZeroDeltas}
                   onCompactRowsChange={setCompactAuditRows}
                 />
-              )}
-            </section>
-            <SnapshotNodeDetailsRail
-              selectedNode={selectedStudioNode}
-              diffOverview={diffOverview}
-              onClose={() => setSelectedStudioNodeId('')}
-              onSelectRelationTarget={setSelectedStudioNodeId}
-            />
-          </div>
-        </div>
-      </div>
+              ) : (
+                <div>
+                  <section className={ws.section}>
+                    <div className={ws.sectionHeading}>
+                      <div>
+                        <h2 className={ws.sectionTitle}>数量变化摘要</h2>
+                        <p className={ws.sectionDescription}>
+                          变化数量已取得；读取两份快照后可计算两侧总量和变化比例。
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        disabled={isRunning}
+                        onClick={() => {
+                          const context = requestContextRef.current
+                          void runCompare().then(() => {
+                            if (requestContextRef.current === context) {
+                              setStudioCanvasView('stats')
+                            }
+                          })
+                        }}
+                      >
+                        读取完整快照
+                      </Button>
+                    </div>
+                    <div className={ws.tableScroll}>
+                      <table className={ws.table} aria-label="快照统计对比">
+                        <thead>
+                          <tr>
+                            <th>指标</th>
+                            <th>A</th>
+                            <th>B</th>
+                            <th>变化</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {DIFF_KEYS.map((key) => {
+                            const change = diffDelta.delta?.[key]
+                            const value = typeof change === 'number' && Number.isFinite(change) ? change : null
+                            return (
+                              <tr key={key}>
+                                <td>
+                                  {
+                                    {
+                                      docs: '文档',
+                                      events: '事件',
+                                      entities: '实体',
+                                      links: '关联',
+                                      relations: '关系',
+                                    }[key]
+                                  }
+                                </td>
+                                <td>{snapshotTotal(snapA, key) ?? '未取得'}</td>
+                                <td>{snapshotTotal(snapB, key) ?? '未取得'}</td>
+                                <td>{value === null ? '未取得' : value > 0 ? `+${value}` : value}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                  <section className={ws.section}>
+                    <h2 className={ws.sectionTitle}>实体类型变化</h2>
+                    {auditDriftRows.length ? (
+                      <div className={ws.tableScroll}>
+                        <table className={ws.table}>
+                          <thead>
+                            <tr>
+                              <th>类型</th>
+                              <th>变化</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {auditDriftRows.map((row, index) => (
+                              <tr key={`${row.type || ''}:${index}`}>
+                                <td>{row.type || '未返回类型名'}</td>
+                                <td>{typeof row.delta === 'number' ? row.delta : '未取得'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="py-5 text-sm text-muted-foreground">当前摘要未返回实体类型变化明细</p>
+                    )}
+                  </section>
+                </div>
+              )
+            ) : (
+              <div className={ws.empty}>
+                <h2>尚未生成对比结果</h2>
+                <p>选择两个版本并开始对比后，查看结构变化统计。</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+        <Dialog open={scopeSettingsOpen} onOpenChange={setScopeSettingsOpen}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>版本与对比范围</DialogTitle>
+              <DialogDescription>选择版本后生成对比；也可指定文档范围。</DialogDescription>
+            </DialogHeader>
+            <div className={cn(ws.dialogBody, 'space-y-5')}>
+              {!inlineScope ? scopeFields : null}
+              <details className="text-sm">
+                <summary className="cursor-pointer font-medium">手动填写版本标识</summary>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span>快照 A 标识</span>
+                    <Input
+                      value={pipelineHashA}
+                      disabled={isRunning}
+                      onChange={(event) => setPipelineHashA(event.target.value)}
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span>快照 B 标识</span>
+                    <Input
+                      value={pipelineHashB}
+                      disabled={isRunning}
+                      onChange={(event) => setPipelineHashB(event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
+              <div className="space-y-2 text-sm">
+                <label htmlFor="snapshot-documents">文档范围（选填）</label>
+                <Textarea
+                  id="snapshot-documents"
+                  aria-describedby="snapshot-documents-help"
+                  value={documentIdsRaw}
+                  disabled={isRunning}
+                  onChange={(event) => setDocumentIdsRaw(event.target.value)}
+                  rows={4}
+                  placeholder="用逗号或换行分隔文档编号"
+                />
+                <p id="snapshot-documents-help" className={ws.muted}>
+                  留空按数据集范围读取。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  disabled={isRunning || !hashAValue}
+                  onClick={() => {
+                    setScopeSettingsOpen(false)
+                    void runExport('a')
+                  }}
+                >
+                  读取 A
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={isRunning || !hashBValue}
+                  onClick={() => {
+                    setScopeSettingsOpen(false)
+                    void runExport('b')
+                  }}
+                >
+                  读取 B
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={isRunning || !hashAValue || !hashBValue || hashAValue === hashBValue}
+                  onClick={() => {
+                    setScopeSettingsOpen(false)
+                    void runBackendCompare()
+                  }}
+                >
+                  仅比较摘要
+                </Button>
+              </div>
+            </div>
+            <DialogFooter className={ws.dialogFooter}>
+              <Button variant="outline" onClick={() => setScopeSettingsOpen(false)}>
+                完成
+              </Button>
+              <Button
+                disabled={isRunning || !hashAValue || !hashBValue || hashAValue === hashBValue}
+                onClick={() => {
+                  setScopeSettingsOpen(false)
+                  void runCompare()
+                }}
+              >
+                开始对比
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={!inlineNode && Boolean(selectedStudioNode)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedStudioNodeId('')
+          }}
+        >
+          <DialogContent
+            className={ws.dialog}
+            aria-describedby={undefined}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              nodeTriggerRef.current?.focus()
+            }}
+          >
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>节点详情</DialogTitle>
+            </DialogHeader>
+            <div className={ws.dialogBody}>
+              <SnapshotNodeDetailsRail
+                hideHeader
+                selectedNode={selectedStudioNode}
+                onClose={() => setSelectedStudioNodeId('')}
+                onSelectRelationTarget={setSelectedStudioNodeId}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      </OperationalWorkspace>
     </AppFrame>
   )
 }

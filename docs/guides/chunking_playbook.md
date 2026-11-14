@@ -1,6 +1,6 @@
 # Chunking Playbook（切块调参与反模式）
 
-本文是 MimirQ 的「工业化切块」操作手册：如何在不破坏 citations/溯源的前提下，把 chunking 调到可检索、可解释、可回归。
+本文是 Ragvia 的「工业化切块」操作手册：如何在不破坏 citations/溯源的前提下，把 chunking 调到可检索、可解释、可回归。
 
 相关参考：
 - Chunk Preview 页面与 API：[docs/guides/chunk_preview.md](./chunk_preview.md)
@@ -10,7 +10,7 @@
 
 ## 0. 你在调什么？
 
-切块（chunking）在 MimirQ 里不是“把文本切小点”这么简单，它直接影响：
+切块（chunking）在 Ragvia 里不是“把文本切小点”这么简单，它直接影响：
 - **召回**：chunk 太大/太碎都会降 recall 或造成冗余候选。
 - **重排/融合**：重复 chunk 会稀释 TopK；过度 overlap 会浪费预算。
 - **引用（citations）**：chunk 变动会导致引用粒度变化，影响回归稳定性。
@@ -22,7 +22,7 @@
 ### Hierarchy Overlay（本波新增）
 
 这一波的 hierarchy 不是新的存储模型，也不是要求把所有文档重建成固定树数据库。
-MimirQ 当前做的是 retrieval-time overlay：
+Ragvia 当前做的是 retrieval-time overlay：
 - 继续复用现有 chunk / vector / BM25 / trace 体系
 - 在 chunk metadata 上补稳定的 hierarchy 键，供 recall-first profile、family collapse、tree dedup、parent/sibling expansion 复用
 - 不改变现有 parser backend 和主索引结构
@@ -114,7 +114,7 @@ Chunk Preview 的关键检查点：
 
 ## 3. 回归套件（不要只靠感觉）
 
-MimirQ 提供 deterministic chunking regression fixtures（golden fixtures）：
+Ragvia 提供 deterministic chunking regression fixtures（golden fixtures）：
 - 输入：`tests/fixtures/chunking_regression/*`
 - Case 定义：`tests/fixtures/chunking_regression/cases.json`
 - 期望输出：`tests/fixtures/chunking_regression/expected.json`

@@ -8,12 +8,14 @@ We generate two kinds of "hard" queries from baseline failures:
 This module is designed to be unit-testable with a mocked LLM client.
 """
 
-
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from app.rag.llm.models import LLMMessage, LLMRole
+
+if TYPE_CHECKING:
+    from app.rag.llm.base import BaseLLMClient
 
 HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
 
@@ -29,11 +31,15 @@ _WS_RE = re.compile(r"\s+")
 
 
 def _collapse_ws(text: Any) -> str:
-    return _WS_RE.sub(" ", str(text or "").strip())
+    if text is None:
+        return ""
+    return _WS_RE.sub(" ", str(text).strip())
 
 
 def _normalize_kind(value: Any) -> HardcaseKind | None:
-    s = str(value or "").strip().casefold()
+    if not isinstance(value, str):
+        return None
+    s = value.strip().casefold()
     if s == "knowledge_pressure":
         return "knowledge_pressure"
     if s == "reasoning_pressure":
@@ -107,7 +113,7 @@ def sanitize_hardcases(raw: Any, *, max_items: int, max_chars: int) -> list[Hard
 
 async def generate_hardcases_llm(
     *,
-    llm_client: Any,
+    llm_client: "BaseLLMClient",
     question: str,
     evidence_snippets: list[str],
     entity_hints: list[str] | None = None,
@@ -115,10 +121,7 @@ async def generate_hardcases_llm(
     temperature: float,
 ) -> list[Hardcase]:
     """
-    Generate hardcases via an LLM client compatible with `chat_with_schema(...)`.
-
-    `llm_client` is intentionally typed as Any to keep this module import-light
-    (it can be backed by `BaseLLMClient` or a unit-test fake).
+    Generate hardcases via the selected diagnostics LLM client.
     """
     q = _collapse_ws(question)
     if not q:

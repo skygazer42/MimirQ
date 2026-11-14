@@ -10,7 +10,7 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.rag.core.logging import get_logger
 from app.rag.middleware import ToolMiddlewareChain
@@ -26,6 +26,13 @@ from app.rag.workflows.base import (
 logger = get_logger("rag.workflows.react")
 
 
+class _ReasoningResult(TypedDict):
+    thought: str
+    action: str
+    action_input: str
+    answer: str
+
+
 class Tool:
     """A tool that can be invoked by the ReAct agent."""
 
@@ -34,7 +41,7 @@ class Tool:
         name: str,
         func: Callable[[str], Awaitable[str]],
         description: str = "",
-    ):
+    ) -> None:
         self.name = name
         self.func = func
         self.description = description
@@ -62,8 +69,8 @@ class ReActWorkflow(BaseWorkflow):
         self,
         llm: Any | None = None,
         max_steps: int = 10,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the ReAct workflow.
 
@@ -113,15 +120,15 @@ class ReActWorkflow(BaseWorkflow):
         account_id: str | None = None,
     ) -> "ReActWorkflow":
         async def _keyword(input_text: str) -> str:
-            result = await keyword_search(str(input_text or ""), dataset_id=dataset_id)
+            result = await keyword_search(input_text, dataset_id=dataset_id)
             return str(result)
 
         async def _semantic(input_text: str) -> str:
-            result = await semantic_search(str(input_text or ""), dataset_id=dataset_id)
+            result = await semantic_search(input_text, dataset_id=dataset_id)
             return str(result)
 
         async def _chunk(input_text: str) -> str:
-            result = await chunk_read(document_id=str(input_text or ""), dataset_id=dataset_id, account_id=account_id)
+            result = await chunk_read(document_id=input_text, dataset_id=dataset_id, account_id=account_id)
             return str(result)
 
         self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
@@ -135,19 +142,19 @@ class ReActWorkflow(BaseWorkflow):
         async def _configure(input_text: str) -> str:
             await asyncio.sleep(0)
             payload: dict[str, Any] = {}
-            raw = str(input_text or "").strip()
+            raw = input_text.strip()
             if raw:
                 try:
                     parsed = json.loads(raw)
                     if isinstance(parsed, dict):
-                        payload = dict(parsed)
+                        payload = parsed
                 except Exception:
                     payload = {}
                     for part in raw.replace(",", " ").split():
                         if "=" not in part:
                             continue
                         key, value = part.split("=", 1)
-                        payload[str(key).strip()] = str(value).strip()
+                        payload[key.strip()] = value.strip()
 
             result = configure_retrieval(
                 top_k=payload.get("top_k", 20),
@@ -177,7 +184,7 @@ class ReActWorkflow(BaseWorkflow):
     ) -> "ReActWorkflow":
         async def _web_search(input_text: str) -> str:
             result = await web_search(
-                str(input_text or ""),
+                input_text,
                 provider_order=list(provider_order) if provider_order is not None else None,
                 max_results=max_results,
                 site_filter=site_filter,
@@ -204,7 +211,7 @@ class ReActWorkflow(BaseWorkflow):
             lines.append(f"- {name}: {tool.description}")
         return "\n".join(lines)
 
-    async def _reason(self, state: dict[str, Any]) -> dict[str, str]:
+    async def _reason(self, state: dict[str, Any]) -> _ReasoningResult:
         """
         Generate next thought and action.
 
@@ -247,10 +254,10 @@ Your response:"""
         content = response.content if hasattr(response, "content") else str(response)
 
         # Parse response
-        result = {"thought": "", "action": "", "action_input": "", "answer": ""}
+        result: _ReasoningResult = {"thought": "", "action": "", "action_input": "", "answer": ""}
 
         lines = content.strip().split("\n")
-        current_key = None
+        current_key: Literal["thought", "action", "action_input", "answer"] | None = None
 
         for line in lines:
             line = line.strip()
@@ -288,9 +295,9 @@ Your response:"""
         tool_state = chain.run_before(tool_state)
 
         async def _execute(state: dict[str, Any]) -> dict[str, Any]:
-            name = str(state.get("tool_name") or "")
+            name = state["tool_name"]
             args = state.get("arguments") or {}
-            input_text = str(args.get("input_text") or "")
+            input_text = args["input_text"]
 
             target = self._tools.get(name)
             if target is None:
@@ -315,9 +322,7 @@ Your response:"""
         workflow_state.setdefault("tool_calls", []).append(
             {
                 "tool_name": tool_state.get("tool_name"),
-                "arguments": {
-                    "input_text_preview": str((tool_state.get("arguments") or {}).get("input_text") or "")[:500]
-                },
+                "arguments": {"input_text_preview": tool_state["arguments"]["input_text"][:500]},
                 "success": tool_state.get("success"),
                 "error": tool_state.get("error"),
                 "metadata": tool_state.get("metadata"),
@@ -327,7 +332,8 @@ Your response:"""
         if not bool(tool_state.get("success")):
             return f"Error: {tool_state.get('error') or 'Tool call failed'}"
 
-        return str(tool_state.get("result") or "")
+        result_value = tool_state["result"]
+        return "" if result_value is None else str(result_value)
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
@@ -374,10 +380,10 @@ Your response:"""
                     iterations=iterations,
                 )
 
-            thought = reasoning.get("thought", "")
-            action = reasoning.get("action", "")
-            action_input = reasoning.get("action_input", "")
-            answer = reasoning.get("answer", "")
+            thought = reasoning["thought"]
+            action = reasoning["action"]
+            action_input = reasoning["action_input"]
+            answer = reasoning["answer"]
 
             # Add thought to trace
             if thought:
@@ -429,7 +435,7 @@ def create_search_tool(
 
         output_parts = []
         for i, result in enumerate(results[:3], 1):
-            content = result.get("content", "")[:500]
+            content = result["content"][:500]
             source = result.get("metadata", {}).get("source", "Unknown")
             output_parts.append(f"[{i}] {source}: {content}")
 

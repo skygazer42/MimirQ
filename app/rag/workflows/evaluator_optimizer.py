@@ -7,10 +7,9 @@ and optimized until quality threshold is met.
 Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> ... -> Result
 """
 
-
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, TypedDict
 
 from app.core.config import settings
 from app.core.optional_deps import require_dependency
@@ -24,8 +23,15 @@ from app.rag.workflows.base import (
 logger = get_logger("rag.workflows.evaluator_optimizer")
 
 # Configuration
-EVALUATOR_MAX_ITERATIONS = getattr(settings, "EVALUATOR_MAX_ITERATIONS", 3)
-EVALUATOR_THRESHOLD = getattr(settings, "EVALUATOR_THRESHOLD", 0.8)
+EVALUATOR_MAX_ITERATIONS = settings.EVALUATOR_MAX_ITERATIONS
+EVALUATOR_THRESHOLD = settings.EVALUATOR_THRESHOLD
+
+
+class _EvaluationSnapshot(TypedDict):
+    iteration: int
+    score: float
+    feedback: str
+    criteria: dict[str, float]
 
 
 class EvaluationResult:
@@ -36,7 +42,7 @@ class EvaluationResult:
         score: float,
         feedback: str = "",
         criteria_scores: dict[str, float] | None = None,
-    ):
+    ) -> None:
         self.score = score
         self.feedback = feedback
         self.criteria_scores = criteria_scores or {}
@@ -66,8 +72,8 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         llm: Any | None = None,
         threshold: float = EVALUATOR_THRESHOLD,
         max_iterations: int = EVALUATOR_MAX_ITERATIONS,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the evaluator-optimizer workflow.
 
@@ -137,21 +143,21 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         if contexts:
             context_parts = []
             for i, ctx in enumerate(contexts[:5], 1):
-                content = ctx.get("content", "")[:1000]
+                content = ctx["content"][:1000]
                 context_parts.append(f"[{i}] {content}")
             context_text = "\n".join(context_parts)
 
         prompt = f"""Answer the following question based on the provided context.
 
 Context:
-{context_text if context_text else 'No context available.'}
+{context_text if context_text else "No context available."}
 
 Question: {question}
 
 Provide a clear, comprehensive answer:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+        return response.content if hasattr(response, "content") else str(response)
 
     async def _default_evaluate(
         self,
@@ -190,7 +196,7 @@ Overall: [average score]
 Feedback: [specific feedback for improvement]"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, 'content') else str(response)
+        content = response.content if hasattr(response, "content") else str(response)
         return self._parse_evaluation_response(content)
 
     @staticmethod
@@ -200,7 +206,7 @@ Feedback: [specific feedback for improvement]"""
             score += 0.2
         if len(answer) > 200:
             score += 0.1
-        if any(c.get("content", "")[:100].lower() in answer.lower() for c in contexts[:3]):
+        if any(c["content"] and c["content"][:100].lower() in answer.lower() for c in contexts[:3]):
             score += 0.2
         return EvaluationResult(min(score, 1.0), "Heuristic evaluation")
 
@@ -208,7 +214,7 @@ Feedback: [specific feedback for improvement]"""
     def _evaluation_context_text(contexts: list[dict[str, Any]]) -> str:
         if not contexts:
             return "No context"
-        return "\n".join(ctx.get("content", "")[:500] for ctx in contexts[:3])
+        return "\n".join(ctx["content"][:500] for ctx in contexts[:3])
 
     @staticmethod
     def _parse_evaluation_response(content: str) -> EvaluationResult:
@@ -262,7 +268,7 @@ Feedback for Improvement:
 Provide an improved answer that addresses the feedback:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+        return response.content if hasattr(response, "content") else str(response)
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
@@ -286,7 +292,7 @@ Provide an improved answer that addresses the feedback:"""
         current_state = dict(state)
         execution_path: list[str] = []
         iterations = 0
-        evaluation_history: list[dict[str, Any]] = []
+        evaluation_history: list[_EvaluationSnapshot] = []
 
         # Get functions (use defaults if not set)
         generate = self._generator or self._default_generate
@@ -315,23 +321,22 @@ Provide an improved answer that addresses the feedback:"""
             execution_path.append(f"evaluate:{iteration}")
             try:
                 eval_result = await evaluate(question, answer, contexts)
-                evaluation_history.append({
-                    "iteration": iteration,
-                    "score": eval_result.score,
-                    "feedback": eval_result.feedback,
-                    "criteria": eval_result.criteria_scores,
-                })
+                evaluation_history.append(
+                    {
+                        "iteration": iteration,
+                        "score": eval_result.score,
+                        "feedback": eval_result.feedback,
+                        "criteria": eval_result.criteria_scores,
+                    }
+                )
                 current_state["score"] = eval_result.score
                 current_state["evaluation_feedback"] = eval_result.feedback
 
-                logger.debug(
-                    "Iteration %d: score=%.2f, threshold=%.2f",
-                    iteration, eval_result.score, self.threshold
-                )
+                logger.debug("Iteration %d: score=%.2f, threshold=%.2f", iteration, eval_result.score, self.threshold)
 
             except Exception as e:
                 logger.exception("Evaluation failed: %s", e)
-                # Continue with assumed pass
+                # Keep the current answer and use completed evaluations below.
                 break
 
             # Check if passed threshold
@@ -385,7 +390,7 @@ def create_ragas_evaluator(
     Create an evaluator using RAGAS metrics.
 
     Args:
-        metrics: List of RAGAS metrics to use
+        metrics: Compatibility argument; this evaluator uses faithfulness and answer_relevancy
 
     Returns:
         Evaluator function
@@ -407,9 +412,9 @@ def create_ragas_evaluator(
         if dataset_cls is None or evaluate is None or answer_relevancy is None or faithfulness is None:
             raise RuntimeError("RAGAS evaluator dependencies are missing required exports")
 
+        context_texts = [ctx["content"] for ctx in contexts]
         try:
             # Prepare data
-            context_texts = [ctx.get("content", "") for ctx in contexts]
 
             data = {
                 "question": [question],

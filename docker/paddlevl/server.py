@@ -136,7 +136,7 @@ def _run_doc_parser(
     )
 
     try:
-        stdout, _ = proc.communicate(timeout=max(30, int(timeout_sec or 0)))
+        stdout, _ = proc.communicate(timeout=max(30, timeout_sec))
     except subprocess.TimeoutExpired as exc:
         _terminate_process_group(proc)
         out = _decode_subprocess_output(exc.stdout)

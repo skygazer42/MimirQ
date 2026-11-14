@@ -2,7 +2,7 @@
 Evidence post-rerank result cache (in-memory, short TTL, best-effort).
 
 Goal:
-- Avoid repeated cross-encoder / LTR reranking work for identical evidence requests
+- Avoid repeated supported reranking work for identical evidence requests
   over a short time window (e.g., UI refresh, retry, offline replay loops).
 
 Security posture:
@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_provider
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -64,11 +65,8 @@ _invalidate_redis_client = _redis_client_slot.invalidate
 
 
 def _normalize_provider(provider: str | None) -> str:
-    p = str(provider or "").strip().lower()
-    if p in {"cross-encoder", "sentence_transformers", "sentence-transformers"}:
-        return "cross_encoder"
-    if p in {"xgboost_ltr"}:
-        return "ltr"
+    p = str((provider if provider is not None else "")).strip().lower()
+    reject_retired_provider(p, capability="reranker")
     if p in {"late_interaction"}:
         return "colbert"
     return p or "unknown"
@@ -83,45 +81,19 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
     normalized = _normalize_provider(provider)
     sig: dict[str, Any] = {"provider": normalized}
 
-    if normalized == "ltr":
-        sig.update(
-            {
-                "ltr_model_path": str(getattr(settings, "LTR_MODEL_PATH", "") or ""),
-                "ltr_manifest_path": str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or ""),
-                "ltr_feature_spec_version": int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1),
-            }
-        )
-        return sig
-
     if normalized == "colbert":
         sig.update(
             {
-                "colbert_provider": str(
-                    getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"
-                )
-                .strip()
-                .lower(),
-                "colbert_model_name": str(getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""),
-                "colbert_device": str(getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip().lower(),
-                "colbert_batch_size": int(getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16),
-                "colbert_max_length": int(getattr(settings, "COLBERT_RERANK_MAX_LENGTH", 256) or 256),
-                "colbert_embed_dim": int(getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
-            }
-        )
-        return sig
-
-    if normalized == "cross_encoder":
-        sig.update(
-            {
-                "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+                "colbert_provider": str(settings.COLBERT_RERANK_PROVIDER).strip().lower(),
+                "colbert_embed_dim": int(settings.COLBERT_RERANK_EMBED_DIM),
             }
         )
         return sig
 
     sig.update(
         {
-            "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
-            "reranker_api_base": str(getattr(settings, "RERANKER_API_BASE", "") or ""),
+            "reranker_model": settings.RERANKER_MODEL,
+            "reranker_api_base": str(settings.RERANKER_API_BASE),
         }
     )
     return sig
@@ -141,19 +113,16 @@ def _normalize_meta_value(value: Any) -> Any:
 
 
 def _fingerprint_candidate_entry(candidate: RerankCandidate) -> dict[str, Any] | None:
-    if candidate is None:
-        return None
-    cid = str(getattr(candidate, "id", "") or "").strip()
+    cid = candidate.id.strip()
     if not cid:
         return None
-    meta = getattr(candidate, "metadata", None)
-    meta = meta if isinstance(meta, dict) else {}
+    meta = candidate.metadata
 
     entry: dict[str, Any] = {"id": cid}
     for key in _META_KEYS_SORTED:
         if key not in meta:
             continue
-        nv = _normalize_meta_value(meta.get(key))
+        nv = _normalize_meta_value(meta[key])
         if nv is None:
             continue
         entry[key] = nv
@@ -196,21 +165,21 @@ def build_evidence_post_rerank_cache_key(
     """
     provider_norm = _normalize_provider(provider)
     sig = {
-        "schema": str(schema or "").strip() or "mimirq.evidence_post_rerank_cache.v1",
+        "schema": schema.strip(),
         "provider": provider_norm,
-        "top_n": int(top_n or 0),
-        "query_hash": stable_hash((query or "").strip(), length=16),
-        "candidates": str(candidates_fingerprint or ""),
-        "corpus_cache_token": str(corpus_cache_token or "") or None,
-        "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
-        "tenant_hash": stable_hash(str(tenant_id or ""), length=16),
-        "account_hash": stable_hash(str(account_id or ""), length=16),
+        "top_n": int(top_n),
+        "query_hash": stable_hash(query.strip(), length=16),
+        "candidates": candidates_fingerprint,
+        "corpus_cache_token": corpus_cache_token,
+        "embedding_space_hash": current_embedding_space_hash(),
+        "tenant_hash": stable_hash(str((tenant_id if tenant_id is not None else "")), length=16),
+        "account_hash": stable_hash(str((account_id if account_id is not None else "")), length=16),
         # Provider/model/spec identity so cache entries do not cross incompatible reranker versions.
         "provider_version": _provider_version_signature(provider_norm),
     }
     raw = json.dumps(sig, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(raw, length=32)
-    prefix = str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_PREFIX", "eprr") or "eprr").strip() or "eprr"
+    prefix = str(settings.EVIDENCE_POST_RERANK_CACHE_PREFIX).strip() or "eprr"
     return f"{prefix}:{digest}"
 
 
@@ -224,13 +193,13 @@ class _TTLCache:
             self._data.clear()
 
     def _ttl_sec(self) -> float:
-        return float(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0)
+        return float(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC)
 
     def _max_entries(self) -> int:
-        return max(0, int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0))
+        return max(0, int(settings.EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES))
 
     def _enabled(self) -> bool:
-        return bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)) and self._max_entries() > 0
+        return bool(settings.EVIDENCE_POST_RERANK_CACHE_ENABLED) and self._max_entries() > 0
 
     def get(self, key: str) -> dict[str, Any] | None:
         if not key or not self._enabled():
@@ -272,14 +241,14 @@ _CACHE = _TTLCache()
 
 
 def get_evidence_post_rerank_cache_backend() -> str:
-    backend = str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory") or "memory").strip().lower()
+    backend = str(settings.EVIDENCE_POST_RERANK_CACHE_BACKEND).strip().lower()
     if backend not in {"memory", "redis"}:
         return "memory"
     return backend
 
 
 def _get_cached_payload_from_redis(key: str) -> dict[str, Any] | None:
-    if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
+    if not key or not settings.EVIDENCE_POST_RERANK_CACHE_ENABLED:
         return None
     client = _get_redis_client()
     if client is None:
@@ -300,12 +269,12 @@ def _get_cached_payload_from_redis(key: str) -> dict[str, Any] | None:
 
 
 def _set_cached_payload_to_redis(key: str, payload: dict[str, Any]) -> bool:
-    if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
+    if not key or not settings.EVIDENCE_POST_RERANK_CACHE_ENABLED:
         return False
     client = _get_redis_client()
     if client is None:
         return False
-    ttl = int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0)
+    ttl = int(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC)
     try:
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
     except Exception:  # noqa: BLE001
@@ -328,7 +297,7 @@ def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
         payload = _get_cached_payload_from_redis(key)
     else:
         payload = _CACHE.get(key)
-    if not isinstance(payload, dict):
+    if payload is None:
         return None
 
     ordered = payload.get("ordered_ids")
@@ -358,26 +327,26 @@ def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
         ordered_ids=ordered_ids,
         score_map=score_map_out,
         elapsed_sec=0.0,
-        provider=str(payload.get("provider") or "") or None,
-        model_used=str(payload.get("model_used") or "") or None,
+        provider=payload["provider"],
+        model_used=payload["model_used"],
         stats={"cache_hit": True},
     )
 
 
 def set_cached_evidence_post_rerank_result(key: str, result: RerankResult) -> bool:
-    if not key or result is None:
+    if not key:
         return False
     payload: dict[str, Any] = {
-        "ordered_ids": list(result.ordered_ids or []),
-        "score_map": dict(result.score_map or {}),
+        "ordered_ids": list(result.ordered_ids),
+        "score_map": dict(result.score_map),
         "provider": result.provider,
         "model_used": result.model_used,
         "schema": "mimirq.rerank_result_cache_item.v1",
     }
     backend = get_evidence_post_rerank_cache_backend()
     if backend == "redis":
-        return bool(_set_cached_payload_to_redis(key, payload))
-    return bool(_CACHE.set(key, payload))
+        return _set_cached_payload_to_redis(key, payload)
+    return _CACHE.set(key, payload)
 
 
 def clear_evidence_post_rerank_cache_for_tests() -> None:

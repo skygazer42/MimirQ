@@ -2,34 +2,26 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-
-def _normalize_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
+from app.parsing.utils.scalars import coerce_float as _coerce_float
 
 
-def _normalize_kind(value: Any) -> str:
-    return str(value or "").strip().lower()
+def _normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        number = float(value)
-        if number != number:
-            return None
-        return float(number)
-    except Exception:
+def _normalize_kind(value: Any) -> str | None:
+    if value is None:
         return None
+    return str(value).strip().lower()
 
 
-def _field_aliases(field_name: str, spec: Mapping[str, Any] | None, prompt: str | None = None) -> list[str]:
+def _field_aliases(field_name: str, spec: Mapping[str, Any], prompt: str | None) -> list[str]:
     aliases: list[str] = []
-    raw_aliases = (spec or {}).get("aliases")
+    raw_aliases = spec.get("aliases")
     if isinstance(raw_aliases, list):
         aliases.extend(str(item).strip() for item in raw_aliases if str(item).strip())
 
-    field_tokens = [part.strip() for part in re.split(r"[_\-\s]+", str(field_name or "")) if part.strip()]
+    field_tokens = [part.strip() for part in re.split(r"[_\-\s]+", field_name) if part.strip()]
     aliases.extend(field_tokens)
 
     if prompt:
@@ -50,23 +42,28 @@ def _field_aliases(field_name: str, spec: Mapping[str, Any] | None, prompt: str 
     return out
 
 
-def _preferred_element_text(element: Mapping[str, Any]) -> str:
+def _preferred_element_text(element: Mapping[str, Any]) -> str | None:
     attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
     kind = _normalize_kind(element.get("kind"))
     if kind == "seal":
         primary = attrs.get("seal_primary") if isinstance(attrs.get("seal_primary"), Mapping) else {}
         for value in (attrs.get("seal_text"), primary.get("text"), element.get("text")):
+            if value is None:
+                continue
             text = _normalize_text(value)
             if text:
                 return text.removeprefix("印章识别：").strip()
-        return ""
+        return None
     if kind == "image":
         for value in (attrs.get("image_code_text"), element.get("text")):
+            if value is None:
+                continue
             text = _normalize_text(value)
             if text:
                 return text
-        return ""
-    return _normalize_text(element.get("text"))
+        return None
+    text = element.get("text")
+    return _normalize_text(text) if text is not None else None
 
 
 def _match_element(
@@ -81,7 +78,7 @@ def _match_element(
         return 0.0, ""
 
     attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
-    visual_kind = _normalize_kind(attrs.get("visual_kind")) if isinstance(attrs, Mapping) else ""
+    visual_kind = attrs.get("visual_kind")
     if source_visual_kind and visual_kind != source_visual_kind:
         return 0.0, ""
 
@@ -98,39 +95,38 @@ def _match_element(
 
     value_norm = value.lower()
     if aliases:
-        hit_count = sum(1 for alias in aliases if alias and alias in value_norm)
+        hit_count = sum(alias in value_norm for alias in aliases)
         score += min(0.15, hit_count * 0.05)
 
     return score, value
 
 
 def _build_evidence(element: Mapping[str, Any], *, score: float, value: str) -> dict[str, Any]:
-    bbox = element.get("bbox") if isinstance(element.get("bbox"), Mapping) else None
+    bbox = dict(element["bbox"]) if isinstance(element.get("bbox"), Mapping) else None
     raw_pages = element.get("pages") if isinstance(element.get("pages"), list) else None
     pages = [int(item) for item in raw_pages if isinstance(item, int)] if raw_pages else None
     attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
-    visual_kind = _normalize_kind(attrs.get("visual_kind")) if isinstance(attrs, Mapping) else ""
+    visual_kind = _normalize_kind(attrs.get("visual_kind"))
     return {
-        "element_id": str(element.get("id") or "").strip() or None,
-        "kind": _normalize_kind(element.get("kind")) or None,
+        "element_id": element["id"],
+        "kind": element["kind"],
         "page": int(element.get("page")) if isinstance(element.get("page"), int) else None,
         "pages": pages,
-        "visual_kind": visual_kind or None,
-        "bbox": dict(bbox) if isinstance(bbox, Mapping) else None,
-        "text": value or None,
-        "score": round(float(score), 3),
+        "visual_kind": visual_kind,
+        "bbox": bbox,
+        "text": value,
+        "score": round(score, 3),
     }
 
 
 def _match_markdown_alias_value(markdown: str, *, aliases: list[str]) -> str | None:
-    lines = [line.strip() for line in str(markdown or "").splitlines() if line.strip()]
+    lines = [line.strip() for line in markdown.splitlines() if line.strip()]
     for line in lines:
+        line_norm = line.lower()
         for alias in aliases:
-            if not alias:
-                continue
             for sep in (":", "："):
                 prefix = f"{alias}{sep}"
-                if line.lower().startswith(prefix.lower()):
+                if line_norm.startswith(prefix):
                     value = line[len(prefix) :].strip()
                     if value:
                         return value
@@ -138,13 +134,13 @@ def _match_markdown_alias_value(markdown: str, *, aliases: list[str]) -> str | N
 
 
 def _match_markdown_sentence(markdown: str, *, aliases: list[str]) -> str | None:
-    text = str(markdown or "").strip()
+    text = markdown.strip()
     if not text:
         return None
     sentences = [seg.strip() for seg in re.split(r"[。！？!?]\s*|\n+", text) if seg.strip()]
     for sentence in sentences:
         sentence_norm = sentence.lower()
-        if any(alias in sentence_norm for alias in aliases if alias):
+        if any(alias in sentence_norm for alias in aliases):
             return sentence
     return None
 
@@ -152,18 +148,18 @@ def _match_markdown_sentence(markdown: str, *, aliases: list[str]) -> str | None
 def _extract_field(
     *,
     field_name: str,
-    spec: Mapping[str, Any] | None,
+    spec: Mapping[str, Any],
     markdown: str,
     elements: list[dict[str, Any]],
-    prompt: str | None = None,
-    max_evidence: int = 1,
+    prompt: str | None,
+    max_evidence: int,
 ) -> dict[str, Any]:
-    source_kind = _normalize_kind((spec or {}).get("source_kind")) or None
-    source_visual_kind = _normalize_kind((spec or {}).get("source_visual_kind")) or None
+    source_kind = _normalize_kind(spec.get("source_kind")) or None
+    source_visual_kind = _normalize_kind(spec.get("source_visual_kind")) or None
     aliases = _field_aliases(field_name, spec, prompt)
 
     ranked: list[tuple[float, dict[str, Any], str]] = []
-    for raw in elements or []:
+    for raw in elements:
         if not isinstance(raw, Mapping):
             continue
         score, value = _match_element(
@@ -176,7 +172,7 @@ def _extract_field(
             continue
         ranked.append((score, dict(raw), value))
 
-    ranked.sort(key=lambda item: (float(item[0]), float(_coerce_float(item[1].get("confidence")) or 0.0)), reverse=True)
+    ranked.sort(key=lambda item: (item[0], _coerce_float(item[1].get("confidence")) or 0.0), reverse=True)
     if ranked:
         best_score, best_element, best_value = ranked[0]
         evidence = [
@@ -185,7 +181,7 @@ def _extract_field(
         ]
         return {
             "value": best_value,
-            "confidence": round(float(_coerce_float(best_element.get("confidence")) or best_score), 3),
+            "confidence": round(_coerce_float(best_element.get("confidence")) or best_score, 3),
             "evidence": evidence,
             "strategy": "element_match",
         }
@@ -231,16 +227,19 @@ def extract_parsing_fields(
     mode_norm = str(mode or "schema").strip().lower() or "schema"
     field_specs = dict(schema or {}) if mode_norm == "schema" else dict(field_hints or {})
     if mode_norm == "prompt" and not field_specs:
-        field_specs = {"prompt_result": {"type": "string", "aliases": _field_aliases("prompt_result", None, prompt)}}
+        field_specs = {"prompt_result": {"type": "string", "aliases": _field_aliases("prompt_result", {}, prompt)}}
 
+    source_markdown = markdown
+    source_elements = list(elements or [])
     results: dict[str, dict[str, Any]] = {}
     for field_name, raw_spec in field_specs.items():
-        spec = dict(raw_spec or {}) if isinstance(raw_spec, Mapping) else {}
-        results[str(field_name)] = _extract_field(
-            field_name=str(field_name),
+        spec = dict(raw_spec) if isinstance(raw_spec, Mapping) else {}
+        name = str(field_name)
+        results[name] = _extract_field(
+            field_name=name,
             spec=spec,
-            markdown=markdown,
-            elements=list(elements or []),
+            markdown=source_markdown,
+            elements=source_elements,
             prompt=prompt,
             max_evidence=max_evidence,
         )

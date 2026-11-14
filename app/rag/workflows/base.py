@@ -5,7 +5,6 @@ Defines the abstract base class for all workflow patterns
 and the WorkflowMode enumeration.
 """
 
-
 import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
@@ -19,6 +18,7 @@ from app.core.config import settings
 
 class WorkflowMode(str, Enum):
     """Available workflow modes."""
+
     CHAIN = "chain"
     ROUTING = "routing"
     PARALLEL = "parallel"
@@ -27,8 +27,15 @@ class WorkflowMode(str, Enum):
     EVALUATOR = "evaluator"
 
 
+class WorkflowPlanStep(TypedDict):
+    id: str
+    description: str
+    dependencies: list[str]
+
+
 class WorkflowState(TypedDict, total=False):
     """Standard workflow state structure."""
+
     question: str
     query: str
     history: list[dict[str, str]]
@@ -40,7 +47,7 @@ class WorkflowState(TypedDict, total=False):
     error: str | None
     # Workflow-specific fields
     route: str | None
-    plan: list[str] | None
+    plan: list[str] | list[WorkflowPlanStep] | None
     current_step: int
     iterations: int
     score: float
@@ -50,6 +57,7 @@ class WorkflowState(TypedDict, total=False):
 @dataclass
 class WorkflowResult:
     """Result of a workflow execution."""
+
     success: bool
     state: dict[str, Any]
     answer: str = ""
@@ -70,7 +78,7 @@ class BaseWorkflow(ABC):
         name: Workflow name for logging/tracing
         mode: WorkflowMode enumeration value
         max_iterations: Maximum iterations for iterative workflows
-        timeout_sec: Execution timeout in seconds
+        timeout_sec: Stored timeout setting; run implementations do not enforce a deadline
     """
 
     def __init__(
@@ -78,15 +86,15 @@ class BaseWorkflow(ABC):
         name: str | None = None,
         max_iterations: int = 10,
         timeout_sec: int = 120,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the workflow.
 
         Args:
             name: Optional workflow name
             max_iterations: Maximum iterations
-            timeout_sec: Execution timeout
+            timeout_sec: Stored timeout setting without automatic deadline enforcement
             **kwargs: Additional configuration
         """
         self.name = name or self.__class__.__name__
@@ -96,7 +104,7 @@ class BaseWorkflow(ABC):
         self._wrap_agent_middlewares()
 
     def _wrap_agent_middlewares(self) -> None:
-        enabled = bool(getattr(settings, "MIDDLEWARE_ENABLED", True))
+        enabled = settings.MIDDLEWARE_ENABLED
         if not enabled:
             return
 
@@ -173,16 +181,22 @@ class BaseWorkflow(ABC):
         """
         return "question" in state or "query" in state
 
-    def get_question(self, state: dict[str, Any]) -> str:
+    @staticmethod
+    def get_question(state: dict[str, Any]) -> str:
         """Extract question from state."""
-        return state.get("question") or state.get("query") or ""
+        question = state.get("question")
+        if question is None:
+            question = state["query"]
+        if not isinstance(question, str):
+            raise TypeError("workflow question must be a string")
+        return question
 
     def create_result(
         self,
         state: dict[str, Any],
         success: bool = True,
         error: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> WorkflowResult:
         """
         Create a WorkflowResult from state.
@@ -219,7 +233,7 @@ class WorkflowStep:
         name: str,
         func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         condition: Callable[[dict[str, Any]], bool] | None = None,
-    ):
+    ) -> None:
         """
         Initialize a workflow step.
 

@@ -50,13 +50,13 @@ def _as_uuid(value: Any) -> UUID | None:
 
 def build_drift_slice_keys(*, document_file_type: object, document_metadata: object) -> DriftSliceKeys:
     meta = document_metadata if isinstance(document_metadata, dict) else {}
-    file_type = str(document_file_type or "").strip().lower() or "unknown"
+    file_type = "unknown" if document_file_type is None else str(document_file_type).strip().lower() or "unknown"
     # Align with dataset profile slice taxonomy.
     language = extract_language_bucket(meta)
     quality_bucket = quality_bucket_from_governance_quality(meta.get("governance_quality"))
     directory = directory_bucket_from_source_path(meta.get("source_path"))
     return DriftSliceKeys(
-        file_type=file_type or "unknown",
+        file_type=file_type,
         language=language or "unknown",
         quality_bucket=quality_bucket or "unknown",
         directory=directory or "root",
@@ -118,9 +118,10 @@ def _chunk_metadata_drift(
 
     normalized_expected = expected_value.strip()
     metadata = chunk_row.get("metadata") if isinstance(chunk_row.get("metadata"), dict) else {}
-    observed_value = str(metadata.get(metadata_key) or "").strip()
-    observed[observed_key] = observed_value or None
-    if observed_value != normalized_expected:
+    observed_value = metadata.get(metadata_key)
+    observed[observed_key] = observed_value
+    comparable_value = observed_value.strip() if isinstance(observed_value, str) else observed_value
+    if comparable_value != normalized_expected:
         return False, reason, expected, observed
     return None
 

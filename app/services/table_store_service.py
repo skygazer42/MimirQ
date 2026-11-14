@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID
 
 import pandas as pd  # type: ignore
@@ -31,6 +31,11 @@ from app.services.table_store import (
     sql_table_name_for_sheet,
     table_store_path,
 )
+
+if TYPE_CHECKING:
+    from docx.document import Document as DocxDocumentType
+    from docx.oxml.xmlchemy import BaseOxmlElement
+    from docx.table import Table, _Cell
 
 logger = get_logger(__name__)
 _TABLE_STORE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical table-store fallback failure: %s"
@@ -50,6 +55,26 @@ _SQL_TABLE_REF_RE = re.compile(
 )
 _SQL_DISALLOWED_JOIN_RE = re.compile(r"(?i)\b(?:cross|natural)\s+join\b")
 _SQL_LIST_SHEET_TABLES = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'"
+
+
+class TablePlannerExecutionMismatch(TypedDict):
+    expected_sql_fingerprint: str | None
+    actual_sql_fingerprint: str | None
+    expected_tables: list[str]
+    actual_tables: list[str]
+    mismatch: bool
+    reasons: list[str]
+
+
+class _TableQueryRows(TypedDict):
+    columns: list[str]
+    rows: list[list[Any]]
+    truncated: bool
+
+
+class TableQueryResult(_TableQueryRows):
+    sql: str
+    planner_execution_mismatch: TablePlannerExecutionMismatch
 
 
 @dataclass(frozen=True)
@@ -88,11 +113,11 @@ class TableImportLimits:
 
     @property
     def row_limit(self) -> int:
-        return max(0, int(self.max_rows or 0))
+        return max(0, self.max_rows)
 
     @property
     def col_limit(self) -> int:
-        return max(0, int(self.max_cols or 0))
+        return max(0, self.max_cols)
 
 
 @dataclass(frozen=True)
@@ -114,25 +139,21 @@ class TableQueryLimits:
 
     @property
     def row_limit(self) -> int:
-        return max(1, int(self.max_rows or 0))
+        return max(1, self.max_rows)
 
     @property
     def byte_limit(self) -> int:
-        return max(10_000, int(self.max_bytes or 0))
+        return max(10_000, self.max_bytes)
 
 
 def _sqlite_timeout_sec() -> float:
     """
-    Coerce and clamp sqlite busy timeout.
+    Clamp the declared SQLite busy timeout.
 
     - Keep requests responsive by capping excessively large values.
     - Allow 0 to fail fast when the DB is locked.
     """
-    raw = getattr(settings, "TABLE_STORE_SQLITE_TIMEOUT_SEC", 30.0)
-    try:
-        timeout = float(raw)  # type: ignore[arg-type]
-    except Exception:
-        timeout = 30.0
+    timeout = settings.TABLE_STORE_SQLITE_TIMEOUT_SEC
 
     if timeout < 0:
         timeout = 0.0
@@ -159,7 +180,7 @@ def _jsonify_value(v: Any) -> Any:
 
 
 def _stable_row_hash(row: dict[str, Any], *, exclude_keys: set[str] | None = None) -> str:
-    excluded = {str(k) for k in (exclude_keys or set())}
+    excluded = set() if exclude_keys is None else exclude_keys
     payload: dict[str, Any] = {}
     for key in sorted(row.keys()):
         key_s = str(key)
@@ -171,18 +192,12 @@ def _stable_row_hash(row: dict[str, Any], *, exclude_keys: set[str] | None = Non
 
 
 def _df_sample_rows(df: "pd.DataFrame", *, sample_rows: int) -> list[dict[str, Any]]:
-    n = max(0, int(sample_rows or 0))
+    n = max(0, sample_rows)
     if n <= 0:
         return []
     head = df.head(n)
     records: list[dict[str, Any]] = []
-    try:
-        raw = head.to_dict(orient="records")
-    except Exception:
-        raw = []
-    for row in raw or []:
-        if not isinstance(row, dict):
-            continue
+    for row in head.to_dict(orient="records"):
         rec: dict[str, Any] = {}
         for k, v in row.items():
             rec[str(k)] = _jsonify_value(v)
@@ -194,19 +209,10 @@ def _df_sample_rows(df: "pd.DataFrame", *, sample_rows: int) -> list[dict[str, A
 
 def _df_columns(df: "pd.DataFrame") -> list[dict[str, Any]]:
     cols: list[dict[str, Any]] = []
-    try:
-        dtypes = getattr(df, "dtypes", None)
-    except Exception:
-        dtypes = None
+    dtypes = df.dtypes
     for c in df.columns:
         name = str(c)
-        dtype = None
-        try:
-            if dtypes is not None:
-                dtype = str(dtypes[c])
-        except Exception:
-            dtype = None
-        cols.append({"name": name, "dtype": dtype})
+        cols.append({"name": name, "dtype": str(dtypes[c])})
         if len(cols) >= 2000:
             break
     return cols
@@ -223,10 +229,13 @@ def _sanitize_column_name(name: Any, *, idx: int, seen: dict[str, int]) -> str: 
 
     key = raw.casefold()
     count = seen.get(key, 0) + 1
+    candidate = raw if count == 1 else f"{raw}_{count}"
+    while candidate.casefold() in seen:
+        count += 1
+        candidate = f"{raw}_{count}"
     seen[key] = count
-    if count > 1:
-        raw = f"{raw}_{count}"
-    return raw
+    seen[candidate.casefold()] = 1
+    return candidate
 
 
 def _sanitize_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
@@ -236,41 +245,29 @@ def _sanitize_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     This prevents SQLite import failures (duplicate/empty column names) and keeps NL->SQL
     more stable across noisy inputs.
     """
-    try:
-        cols = list(getattr(df, "columns", []))
-    except Exception as exc:
-        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
-        cols = []
-
     seen: dict[str, int] = {}
-    new_cols = [_sanitize_column_name(c, idx=i, seen=seen) for i, c in enumerate(cols)]
+    new_cols = [_sanitize_column_name(column, idx=index, seen=seen) for index, column in enumerate(df.columns)]
     if not new_cols:
         # SQLite cannot create a table with zero columns. Empty Excel sheets are
         # still valid table assets, so persist a harmless placeholder column.
-        try:
-            return pd.DataFrame({"__empty__": pd.Series(dtype="object")})
-        except Exception as exc:
-            logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
-            return df
-    try:
-        df.columns = new_cols
-    except Exception as exc:
-        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
+        return pd.DataFrame({"__empty__": pd.Series(dtype="object")})
+    df.columns = new_cols
     return df
 
 
 def _connect_rw(path: Path) -> sqlite3.Connection:
     # Ensure parent directory exists; storage path itself is deterministic (not user-controlled).
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
+    path.parent.mkdir(parents=True, exist_ok=True)
     timeout = _sqlite_timeout_sec()
     conn = sqlite3.connect(str(path), timeout=timeout)
-    conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
+    try:
+        conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -279,8 +276,12 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
     uri = f"file:{path}?mode=ro"
     timeout = _sqlite_timeout_sec()
     conn = sqlite3.connect(uri, uri=True, timeout=timeout)
-    conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
-    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
+        conn.row_factory = sqlite3.Row
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -290,7 +291,7 @@ def _drop_sheet_tables(path: Path) -> None:
         try:
             cur = conn.execute(_SQL_LIST_SHEET_TABLES)
             for row in cur.fetchall():
-                name = str(row[0] or "")
+                name = row[0]
                 if name:
                     conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(name)};")
             conn.commit()
@@ -362,7 +363,8 @@ def _sniff_csv_delimiter(path: Path, *, max_bytes: int = 64_000) -> str | None:
     Pandas' default assumes commas; many enterprise exports use tabs/semicolons.
     """
     try:
-        buf = path.read_bytes()[: max(1024, int(max_bytes or 0))]
+        with path.open("rb") as stream:
+            buf = stream.read(max(1024, max_bytes))
     except Exception:
         return None
 
@@ -377,14 +379,14 @@ def _sniff_csv_delimiter(path: Path, *, max_bytes: int = 64_000) -> str | None:
         import csv
 
         sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
-        delim = str(getattr(sniffed, "delimiter", "") or "")
+        delim = sniffed.delimiter
         return delim if delim in {",", "\t", ";", "|"} else None
     except Exception:
         return None
 
 
 def _read_csv(path: Path, *, max_rows: int, max_cols: int) -> tuple["pd.DataFrame", bool]:
-    hard_nrows = max(0, int(max_rows or 0))
+    hard_nrows = max(0, max_rows)
     # Read one extra row so we can accurately set `truncated` without loading the entire file.
     nrows = (hard_nrows + 1) if hard_nrows > 0 else None
     kwargs: dict[str, Any] = {"dtype_backend": "numpy_nullable", "encoding_errors": "replace"}
@@ -395,30 +397,23 @@ def _read_csv(path: Path, *, max_rows: int, max_cols: int) -> tuple["pd.DataFram
 
     df = pd.read_csv(str(path), nrows=nrows, **kwargs)  # type: ignore[call-arg]
     truncated = False
-    if hard_nrows > 0 and int(getattr(df, "shape", (0, 0))[0]) > hard_nrows:
+    if hard_nrows > 0 and df.shape[0] > hard_nrows:
         truncated = True
         df = df.head(hard_nrows)
-    if max_cols and int(max_cols) > 0 and int(getattr(df, "shape", (0, 0))[1]) > int(max_cols):
-        df = df.iloc[:, : int(max_cols)]
+    if max_cols > 0 and df.shape[1] > max_cols:
+        df = df.iloc[:, :max_cols]
     return df, truncated
 
 
-def _excel_sheet_names(xls: Any) -> list[str]:
-    try:
-        return list(getattr(xls, "sheet_names", []) or [])
-    except Exception:
-        return []
-
-
 def _bounded_excel_sheet_names(sheet_names: list[str]) -> tuple[list[str], bool]:
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_sheets = settings.TABLE_STORE_MAX_SHEETS or 0
     if max_sheets > 0 and len(sheet_names) > max_sheets:
-        return sheet_names[: max(0, int(max_sheets))], True
+        return sheet_names[: max(0, max_sheets)], True
     return sheet_names, False
 
 
 def _read_excel_sheet(
-    xls: Any, *, sheet_name: str, limits: TableImportLimits, workbook_truncated: bool
+    xls: pd.ExcelFile, *, sheet_name: str, limits: TableImportLimits, workbook_truncated: bool
 ) -> tuple["pd.DataFrame", bool] | None:
     hard_nrows = limits.row_limit
     nrows = (hard_nrows + 1) if hard_nrows > 0 else None
@@ -428,11 +423,11 @@ def _read_excel_sheet(
         get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
         return None
 
-    truncated = bool(workbook_truncated)
-    if hard_nrows > 0 and int(getattr(df, "shape", (0, 0))[0]) > hard_nrows:
+    truncated = workbook_truncated
+    if hard_nrows > 0 and df.shape[0] > hard_nrows:
         truncated = True
         df = df.head(hard_nrows)
-    if limits.col_limit > 0 and int(getattr(df, "shape", (0, 0))[1]) > limits.col_limit:
+    if limits.col_limit > 0 and df.shape[1] > limits.col_limit:
         df = df.iloc[:, : limits.col_limit]
     return _sanitize_dataframe(df), truncated
 
@@ -442,23 +437,6 @@ def _write_empty_sheet(context: TableStoreContext, *, sample_rows: int) -> list[
         context=context,
         df=pd.DataFrame(),
         options=SheetWriteOptions(sheet_index=0, sheet_name=None, truncated=False, sample_rows=sample_rows),
-    )
-
-
-def _import_excel(  # noqa: PLR0913 - retained for direct private-call compatibility in tests/tools.
-    *,
-    tenant_id: UUID,
-    dataset_id: UUID,
-    document_id: UUID,
-    file_path: Path,
-    max_rows: int,
-    max_cols: int,
-    sample_rows: int,
-) -> list[TableAsset]:
-    return _import_excel_from_context(
-        context=TableStoreContext(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id),
-        file_path=file_path,
-        limits=TableImportLimits(max_rows=max_rows, max_cols=max_cols, sample_rows=sample_rows),
     )
 
 
@@ -475,7 +453,7 @@ def _import_excel_from_context(
     try:
         with pd.ExcelFile(str(file_path)) as xls:
             assets: list[TableAsset] = []
-            sheet_names, workbook_truncated = _bounded_excel_sheet_names(_excel_sheet_names(xls))
+            sheet_names, workbook_truncated = _bounded_excel_sheet_names(xls.sheet_names)
 
             if not sheet_names:
                 # Produce an empty sheet0 table for consistency.
@@ -491,15 +469,15 @@ def _import_excel_from_context(
                         context=context,
                         df=df,
                         options=SheetWriteOptions(
-                            sheet_index=int(idx),
-                            sheet_name=str(name),
+                            sheet_index=idx,
+                            sheet_name=name,
                             truncated=truncated,
                             sample_rows=limits.sample_rows,
                         ),
                     )
                 )
 
-            return assets or []
+            return assets
     except Exception as exc:
         hint = ""
         ext = file_path.suffix.lower()
@@ -536,34 +514,32 @@ def _write_single_sheet(
         except Exception as exc:
             logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
 
-    rows = int(getattr(df, "shape", (0, 0))[0])
-    cols = int(getattr(df, "shape", (0, 0))[1])
+    rows = df.shape[0]
+    cols = df.shape[1]
 
     asset = TableAsset(
         table_id=table_id,
         document_id=context.document_id,
-        sheet_index=int(options.sheet_index),
-        sheet_name=(options.sheet_name if options.sheet_name else None),
+        sheet_index=options.sheet_index,
+        sheet_name=options.sheet_name,
         sql_table=sql_table,
         row_count=rows,
         col_count=cols,
-        truncated=bool(options.truncated),
+        truncated=options.truncated,
         columns=_df_columns(df),
         sample_rows=_df_sample_rows(df, sample_rows=options.sample_rows),
-        row_source_table=(str(options.row_source_table).strip() if options.row_source_table else None),
-        row_source_sync_token=(str(options.row_source_sync_token).strip() if options.row_source_sync_token else None),
-        row_source_pk_hash_col=(
-            str(options.row_source_pk_hash_col).strip() if options.row_source_pk_hash_col else None
-        ),
+        row_source_table=options.row_source_table,
+        row_source_sync_token=options.row_source_sync_token,
+        row_source_pk_hash_col=options.row_source_pk_hash_col,
     )
     return [asset]
 
 
-def _docx_block_text(block: Any, doc: Any) -> str:
+def _docx_block_text(block: "BaseOxmlElement", doc: "DocxDocumentType") -> str:
     from docx.text.paragraph import Paragraph  # type: ignore
 
     paragraph = Paragraph(block, doc)
-    text = str(getattr(paragraph, "text", "") or "").replace("\r", " ").replace("\n", " ")
+    text = paragraph.text.replace("\r", " ").replace("\n", " ")
     return _WS_RE.sub(" ", text).strip()
 
 
@@ -578,19 +554,19 @@ def _docx_table_sheet_name(prev_paras: list[str], table_index: int) -> str:
     for candidate in reversed(prev_paras[-2:]):
         if len(candidate) <= 200 and _DOCX_TABLE_CAPTION_RE.match(candidate):
             return candidate
-    return f"Table {int(table_index) + 1}"
+    return f"Table {table_index + 1}"
 
 
-def _docx_cell_text(cell: Any) -> str:
-    text = str(getattr(cell, "text", "") or "").replace("\r", " ").replace("\n", " ")
+def _docx_cell_text(cell: "_Cell") -> str:
+    text = cell.text.replace("\r", " ").replace("\n", " ")
     return _WS_RE.sub(" ", text).strip()
 
 
-def _docx_table_rows(table: Any, *, max_rows: int) -> tuple[list[list[str]], bool]:
+def _docx_table_rows(table: "Table", *, max_rows: int) -> tuple[list[list[str]], bool]:
     raw_rows: list[list[str]] = []
     truncated = False
-    for row in getattr(table, "rows", []) or []:
-        cells = [_docx_cell_text(cell) for cell in (getattr(row, "cells", []) or [])]
+    for row in table.rows:
+        cells = [_docx_cell_text(cell) for cell in row.cells]
         if any(cells):
             raw_rows.append(cells)
         if max_rows > 0 and len(raw_rows) >= max_rows:
@@ -603,7 +579,7 @@ def _docx_padded_rows(raw_rows: list[list[str]], *, max_cols: int) -> list[list[
     width = max((len(row) for row in raw_rows), default=0)
     if max_cols > 0:
         width = min(width, max_cols)
-    width = max(1, int(width))
+    width = max(1, width)
     return [(list(row) + [""] * max(0, width - len(row)))[:width] for row in raw_rows]
 
 
@@ -612,12 +588,12 @@ def _docx_row_looks_like_header(padded: list[list[str]]) -> bool:
         return False
     header = padded[0]
     width = max(1, len(header))
-    non_empty = [cell for cell in header if str(cell or "").strip()]
+    non_empty = [cell for cell in header if cell.strip()]
     if len(non_empty) < max(1, width // 2):
         return False
-    keys = [str(cell).strip().casefold() for cell in non_empty]
-    numeric = sum(1 for cell in non_empty if _NUMERIC_ONLY_RE.match(str(cell or "")))
-    avg_len = sum(len(str(cell)) for cell in non_empty) / max(1, len(non_empty))
+    keys = [cell.strip().casefold() for cell in non_empty]
+    numeric = sum(1 for cell in non_empty if _NUMERIC_ONLY_RE.match(cell))
+    avg_len = sum(len(cell) for cell in non_empty) / max(1, len(non_empty))
     return len(set(keys)) == len(keys) and numeric <= max(1, len(non_empty) // 3) and avg_len <= 40
 
 
@@ -672,7 +648,7 @@ def import_docx_tables(  # noqa: PLR0913 - public importer keeps explicit API fi
     body = getattr(getattr(doc, "element", None), "body", None)
     children = list(body.iterchildren()) if body is not None else []
 
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_sheets = settings.TABLE_STORE_MAX_SHEETS or 0
 
     prev_paras: list[str] = []
     assets: list[TableAsset] = []
@@ -700,9 +676,9 @@ def import_docx_tables(  # noqa: PLR0913 - public importer keeps explicit API fi
                 context=context,
                 df=df,
                 options=SheetWriteOptions(
-                    sheet_index=int(table_index),
+                    sheet_index=table_index,
                     sheet_name=_docx_table_sheet_name(prev_paras, table_index),
-                    truncated=bool(truncated),
+                    truncated=truncated,
                     sample_rows=limits.sample_rows,
                 ),
             )
@@ -722,7 +698,7 @@ def _extract_markdown_table_blocks(text: str) -> list[list[str]]:
     We keep this conservative (line-based) since this is used on parser-emitted table segments,
     not arbitrary user-provided markdown.
     """
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return []
 
@@ -756,11 +732,7 @@ def _split_markdown_table_row(line: str) -> list[str]:
 
 def _markdown_table_body_start(lines: list[str], header_width: int) -> tuple[int, bool]:
     separator = _split_markdown_table_row(lines[1]) if len(lines) >= 2 else []
-    if (
-        separator
-        and len(separator) == header_width
-        and all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in separator)
-    ):
+    if separator and len(separator) == header_width and all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in separator):
         return 2, True
     return 1, False
 
@@ -771,7 +743,7 @@ def _parse_markdown_table(block_lines: list[str]) -> tuple["pd.DataFrame", bool]
 
     Returns: (df, had_separator_row) or None if it doesn't look like a table.
     """
-    lines = [str(line or "") for line in (block_lines or []) if str(line or "").strip()]
+    lines = [line for line in block_lines if line.strip()]
     if len(lines) < 2:
         return None
 
@@ -815,17 +787,19 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
     context = TableStoreContext(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
     _reset_table_store(context)
 
-    max_rows_i = max(0, int(max_rows or 0))
-    max_cols_i = max(0, int(max_cols or 0))
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_rows_i = max(0, max_rows)
+    max_cols_i = max(0, max_cols)
+    max_sheets = settings.TABLE_STORE_MAX_SHEETS or 0
 
     assets: list[TableAsset] = []
     sheet_index = 0
 
-    for t in tables or []:
+    for t in tables:
         if not isinstance(t, dict):
             continue
-        md = str(t.get("markdown") or "")
+        md = t.get("markdown")
+        if md is None:
+            continue
         if not md.strip():
             continue
 
@@ -840,10 +814,10 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
             df = _sanitize_dataframe(df)
 
             truncated = False
-            if max_rows_i > 0 and int(getattr(df, "shape", (0, 0))[0]) > max_rows_i:
+            if max_rows_i > 0 and df.shape[0] > max_rows_i:
                 truncated = True
                 df = df.head(max_rows_i)
-            if max_cols_i > 0 and int(getattr(df, "shape", (0, 0))[1]) > max_cols_i:
+            if max_cols_i > 0 and df.shape[1] > max_cols_i:
                 truncated = True
                 df = df.iloc[:, :max_cols_i]
 
@@ -852,7 +826,7 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
                     context=context,
                     df=df,
                     options=SheetWriteOptions(
-                        sheet_index=int(sheet_index),
+                        sheet_index=sheet_index,
                         sheet_name=sheet_name,
                         truncated=truncated,
                         sample_rows=sample_rows,
@@ -869,10 +843,12 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
     return assets
 
 
-def _db_snapshot_column_name(raw: Any) -> str:
+def _db_snapshot_column_name(raw: Any) -> str | None:
     if isinstance(raw, dict):
-        return str(raw.get("name") or "").strip()
-    return str(raw or "").strip()
+        raw = raw["name"]
+    if raw is None:
+        return None
+    return str(raw).strip()
 
 
 def _db_snapshot_column_names(snap: dict[str, Any], *, max_cols: int) -> list[str]:
@@ -920,7 +896,7 @@ def _db_snapshot_final_columns(
     max_cols: int,
 ) -> list[str]:
     if not column_names and rows_norm:
-        column_names = [str(key) for key in rows_norm[0].keys()]
+        column_names = list(rows_norm[0])
         if max_cols > 0:
             column_names = column_names[:max_cols]
     if pk_hash_col not in column_names and (max_cols <= 0 or len(column_names) < max_cols):
@@ -951,12 +927,12 @@ def _db_snapshot_write_options(
     fallback_name = f"table_{idx + 1}"
     sheet_name = str(snap.get("sheet_name") or snap.get("source_table") or fallback_name).strip()[:200] or fallback_name
     return SheetWriteOptions(
-        sheet_index=int(idx),
+        sheet_index=idx,
         sheet_name=sheet_name,
         truncated=False,
         sample_rows=sample_rows,
-        row_source_table=str(snap.get("source_table") or "").strip() or None,
-        row_source_sync_token=str(snap.get("source_sync_token") or "").strip() or None,
+        row_source_table=snap.get("source_table"),
+        row_source_sync_token=snap.get("source_sync_token"),
         row_source_pk_hash_col=pk_hash_col,
     )
 
@@ -988,12 +964,12 @@ def import_db_row_snapshots(  # noqa: PLR0913 - public importer keeps explicit A
     context = TableStoreContext(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
     _reset_table_store(context)
 
-    max_tables_i = max(0, int(max_tables or 0))
-    max_rows_i = max(0, int(max_rows_per_table or 0))
-    max_cols_i = max(0, int(max_cols or 0))
+    max_tables_i = max(0, max_tables)
+    max_rows_i = max(0, max_rows_per_table)
+    max_cols_i = max(0, max_cols)
 
     assets: list[TableAsset] = []
-    for idx, snap in enumerate(snapshots or []):
+    for idx, snap in enumerate(snapshots):
         if max_tables_i > 0 and idx >= max_tables_i:
             break
         if not isinstance(snap, dict):
@@ -1030,15 +1006,13 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
         if not isinstance(t, dict):
             continue
         tid = t.get("table_id")
-        parsed = parse_table_id(str(tid or ""))
+        if tid is None:
+            continue
+        parsed = parse_table_id(tid)
         if parsed is None:
             continue
-        try:
-            doc_id = parsed.document_id
-            sheet_index = int(parsed.sheet_index)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
+        doc_id = parsed.document_id
+        sheet_index = parsed.sheet_index
         sql_table = sql_table_name_for_sheet(sheet_index)
         out.append(
             TableAsset(
@@ -1052,9 +1026,9 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
                 truncated=bool(t.get("truncated") or False),
                 columns=list(t.get("columns") or []),
                 sample_rows=list(t.get("sample_rows") or []),
-                row_source_table=(str(t.get("row_source_table") or "").strip() or None),
-                row_source_sync_token=(str(t.get("row_source_sync_token") or "").strip() or None),
-                row_source_pk_hash_col=(str(t.get("row_source_pk_hash_col") or "").strip() or None),
+                row_source_table=t.get("row_source_table"),
+                row_source_sync_token=t.get("row_source_sync_token"),
+                row_source_pk_hash_col=t.get("row_source_pk_hash_col"),
             )
         )
     return out
@@ -1062,8 +1036,8 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
 
 def _extract_sql_table_refs(sql: str) -> list[str]:
     refs: list[str] = []
-    for m in _SQL_TABLE_REF_RE.finditer(str(sql or "")):
-        raw = str((m.group(1) or m.group(2) or "")).strip()
+    for m in _SQL_TABLE_REF_RE.finditer(sql):
+        raw = (m.group(1) or m.group(2)).strip()
         if not raw:
             continue
         if raw.startswith("("):
@@ -1078,14 +1052,20 @@ def evaluate_planner_execution_mismatch(
     planner_diagnostics: dict[str, Any] | None,
     expected_sql_fingerprint: str | None,
     executed_sql: str,
-) -> dict[str, Any]:
+) -> TablePlannerExecutionMismatch:
     planner = planner_diagnostics if isinstance(planner_diagnostics, dict) else {}
-    expected_fp = str(expected_sql_fingerprint or planner.get("sql_fingerprint") or "").strip()
-    actual_fp = fingerprint_sql(str(executed_sql or ""), length=16)
+    expected_fp = expected_sql_fingerprint
+    if expected_fp is not None:
+        expected_fp = expected_fp.strip()
+    if not expected_fp:
+        expected_fp = planner.get("sql_fingerprint")
+        if expected_fp is not None:
+            expected_fp = expected_fp.strip()
+    actual_fp = fingerprint_sql(executed_sql, length=16)
     mismatch_reasons: list[str] = []
 
     expected_tables = [str(v).strip() for v in (planner.get("selected_tables") or []) if str(v).strip()]
-    actual_tables = _extract_sql_table_refs(str(executed_sql or ""))
+    actual_tables = _extract_sql_table_refs(executed_sql)
 
     if expected_fp and actual_fp and expected_fp != actual_fp:
         mismatch_reasons.append("sql_fingerprint_mismatch")
@@ -1096,8 +1076,8 @@ def evaluate_planner_execution_mismatch(
             mismatch_reasons.append("sql_table_set_mismatch")
 
     return {
-        "expected_sql_fingerprint": expected_fp or None,
-        "actual_sql_fingerprint": actual_fp or None,
+        "expected_sql_fingerprint": expected_fp,
+        "actual_sql_fingerprint": actual_fp,
         "expected_tables": expected_tables,
         "actual_tables": actual_tables,
         "mismatch": bool(mismatch_reasons),
@@ -1106,24 +1086,24 @@ def evaluate_planner_execution_mismatch(
 
 
 def _clamped_table_query_limits(*, max_rows: int, max_cols: int, max_bytes: int) -> TableQueryLimits:
-    hard_rows = int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 0) or 0)
-    hard_cols = int(getattr(settings, "TABLE_QUERY_MAX_COLS", 0) or 0)
-    hard_bytes = int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 0) or 0)
+    hard_rows = settings.TABLE_QUERY_MAX_ROWS
+    hard_cols = settings.TABLE_QUERY_MAX_COLS
+    hard_bytes = settings.TABLE_QUERY_MAX_BYTES
     if hard_rows > 0:
-        max_rows = min(int(max_rows or 0) or hard_rows, hard_rows)
+        max_rows = min(max_rows or hard_rows, hard_rows)
     if hard_cols > 0:
-        max_cols = min(int(max_cols or 0) or hard_cols, hard_cols)
+        max_cols = min(max_cols or hard_cols, hard_cols)
     if hard_bytes > 0:
-        max_bytes = min(int(max_bytes or 0) or hard_bytes, hard_bytes)
+        max_bytes = min(max_bytes or hard_bytes, hard_bytes)
     return TableQueryLimits(max_rows=max_rows, max_cols=max_cols, max_bytes=max_bytes)
 
 
 def _validate_table_query_sql(raw_sql: str) -> None:
     if not raw_sql.strip():
         raise ValueError("sql is required")
-    max_sql_chars = int(getattr(settings, "TABLE_QUERY_MAX_SQL_CHARS", 20_000) or 20_000)
-    if max_sql_chars > 0 and len(raw_sql) > int(max_sql_chars):
-        raise ValueError(f"sql_too_long (max {int(max_sql_chars)})")
+    max_sql_chars = settings.TABLE_QUERY_MAX_SQL_CHARS or 20_000
+    if max_sql_chars > 0 and len(raw_sql) > max_sql_chars:
+        raise ValueError(f"sql_too_long (max {max_sql_chars})")
     if ";" in raw_sql:
         raise ValueError("multiple statements are not allowed")
     if not _SQL_SELECT_PREFIX_RE.match(raw_sql):
@@ -1148,34 +1128,25 @@ def _normalize_table_query_sql(raw_sql: str, *, limit: int) -> str:
 
 def _query_allowed_tables(*, sql_table: str, allowed_sql_tables: list[str] | None) -> set[str]:
     allowed_tables = {sql_table}
-    for raw in allowed_sql_tables or []:
-        name = str(raw or "").strip()
+    for raw in allowed_sql_tables if allowed_sql_tables is not None else []:
+        name = raw.strip()
         if name:
             allowed_tables.add(name)
     return allowed_tables
 
 
 def _validate_query_table_refs(normalized_sql: str, *, allowed_tables: set[str]) -> None:
-    if _SQL_DISALLOWED_JOIN_RE.search(normalized_sql) and not bool(
-        getattr(settings, "TABLE_QUERY_ALLOW_CROSS_JOIN", False)
-    ):
+    if _SQL_DISALLOWED_JOIN_RE.search(normalized_sql) and not settings.TABLE_QUERY_ALLOW_CROSS_JOIN:
         raise ValueError("join_type_not_allowed")
 
     referenced_tables = _extract_sql_table_refs(normalized_sql)
     if not referenced_tables:
         return
-    max_join_tables = int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4)
+    max_join_tables = settings.TABLE_QUERY_MAX_JOIN_TABLES or 4
     if max_join_tables > 0 and len(set(referenced_tables)) > max_join_tables:
         raise ValueError(f"too_many_join_tables (max {max_join_tables})")
     if any(table not in allowed_tables for table in referenced_tables):
         raise ValueError("table_reference_not_allowed")
-
-
-def _query_timeout_settings() -> tuple[float, int]:
-    return (
-        float(getattr(settings, "TABLE_QUERY_TIMEOUT_SEC", 0.0) or 0.0),
-        int(getattr(settings, "TABLE_QUERY_PROGRESS_OPS", 0) or 0),
-    )
 
 
 def _install_query_progress_handler(conn: sqlite3.Connection, *, timeout_sec: float, progress_ops: int) -> None:
@@ -1186,16 +1157,13 @@ def _install_query_progress_handler(conn: sqlite3.Connection, *, timeout_sec: fl
     def _progress() -> int:  # pragma: no cover (timing dependent)
         return 1 if (time.monotonic() - start) > timeout_sec else 0
 
-    try:
-        conn.set_progress_handler(_progress, int(progress_ops))
-    except Exception as exc:
-        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
+    conn.set_progress_handler(_progress, progress_ops)
 
 
 def _limited_query_columns(cur: sqlite3.Cursor, *, max_cols: int) -> tuple[list[str], bool]:
     col_names = [description[0] for description in (cur.description or [])]
-    if max_cols and int(max_cols) > 0 and len(col_names) > int(max_cols):
-        return col_names[: int(max_cols)], True
+    if max_cols > 0 and len(col_names) > max_cols:
+        return col_names[:max_cols], True
     return col_names, False
 
 
@@ -1211,10 +1179,7 @@ def _fetch_query_rows(
             break
         values = list(row)[: len(col_names)]
         out_rows.append([_jsonify_value(value) for value in values])
-        try:
-            bytes_used += len(json.dumps(out_rows[-1], ensure_ascii=False))
-        except Exception:
-            bytes_used += 0
+        bytes_used += len(json.dumps(out_rows[-1], ensure_ascii=False))
         if bytes_used > limits.byte_limit:
             truncated = True
             break
@@ -1227,18 +1192,18 @@ def _execute_table_query(
     normalized_sql: str,
     limits: TableQueryLimits,
     timeout_sec: float,
-) -> dict[str, Any]:
+) -> _TableQueryRows:
     try:
         cur = conn.execute(normalized_sql)
     except sqlite3.OperationalError as exc:
-        msg = str(exc or "").lower()
+        msg = str(exc).lower()
         if "interrupted" in msg and timeout_sec > 0:
             raise TimeoutError(f"query_timeout ({timeout_sec:.1f}s)") from exc
         raise
 
     col_names, truncated_cols = _limited_query_columns(cur, max_cols=limits.max_cols)
     out_rows, truncated_rows = _fetch_query_rows(cur, col_names=col_names, limits=limits)
-    return {"columns": col_names, "rows": out_rows, "truncated": bool(truncated_cols or truncated_rows)}
+    return {"columns": col_names, "rows": out_rows, "truncated": truncated_cols or truncated_rows}
 
 
 def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrail fields.
@@ -1253,7 +1218,7 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
     allowed_sql_tables: list[str] | None = None,
     planner_diagnostics: dict[str, Any] | None = None,
     expected_sql_fingerprint: str | None = None,
-) -> dict[str, Any]:
+) -> TableQueryResult:
     """
     Execute a SELECT-only query against a single table within a document store.
 
@@ -1263,7 +1228,7 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
     if parsed is None:
         raise ValueError("invalid table_id")
 
-    raw_sql = str(sql or "")
+    raw_sql = sql
     limits = _clamped_table_query_limits(max_rows=max_rows, max_cols=max_cols, max_bytes=max_bytes)
     _validate_table_query_sql(raw_sql)
 
@@ -1279,7 +1244,8 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
     # SQLite authorizer: deny writes/pragma/attach and restrict reads to our sheet table only.
     conn = _connect_ro(db_path)
     try:
-        timeout_sec, progress_ops = _query_timeout_settings()
+        timeout_sec = settings.TABLE_QUERY_TIMEOUT_SEC
+        progress_ops = settings.TABLE_QUERY_PROGRESS_OPS
         _install_query_progress_handler(conn, timeout_sec=timeout_sec, progress_ops=progress_ops)
         _apply_sqlite_readonly_authorizer(conn, allowed_tables=allowed_tables)
         result = _execute_table_query(conn, normalized_sql=normalized, limits=limits, timeout_sec=timeout_sec)
@@ -1291,7 +1257,7 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
         return {
             "columns": result["columns"],
             "rows": result["rows"],
-            "truncated": bool(result["truncated"]),
+            "truncated": result["truncated"],
             "sql": normalized,
             "planner_execution_mismatch": planner_mismatch,
         }
@@ -1312,7 +1278,7 @@ def _apply_sqlite_readonly_authorizer(conn: sqlite3.Connection, *, allowed_table
     deny = sqlite3.SQLITE_DENY
     ok = sqlite3.SQLITE_OK
 
-    allowed = {str(t) for t in (allowed_tables or set()) if str(t)}
+    allowed = set(allowed_tables)
     # SQLite may read schema tables during query compilation/execution.
     # Allowing schema reads is safe within our per-document DB (no cross-tenant access),
     # while still preventing access to other user tables via the allowed set.
@@ -1357,8 +1323,8 @@ def _apply_sqlite_readonly_authorizer(conn: sqlite3.Connection, *, allowed_table
 
         # Restrict table reads to the allowed set.
         if action_code == sqlite3.SQLITE_READ:
-            table = str(arg1 or "")
-            if table and table not in allowed and table not in schema_tables:
+            table = arg1
+            if table not in allowed and table not in schema_tables:
                 return deny
             return ok
 

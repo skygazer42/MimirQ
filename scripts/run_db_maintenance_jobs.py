@@ -24,9 +24,10 @@ Examples:
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID
 
 if __package__ in {None, ""}:
@@ -144,8 +145,8 @@ def _get_regression_retention_runner() -> Callable[..., dict[str, Any]]:
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
-    except Exception as exc:  # noqa: BLE001
+        return UUID(value)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
 
 
@@ -203,27 +204,27 @@ def _run_postgres_job(
 ) -> bool:
     try:
         result = _get_postgres_runner()(
-            vacuum=bool(args.vacuum),
-            analyze=bool(args.analyze),
-            verbose=bool(args.verbose),
-            tables=[table for table in (args.table or []) if str(table or "").strip()],
+            vacuum=args.vacuum,
+            analyze=args.analyze,
+            verbose=args.verbose,
+            tables=[table for table in args.table if table.strip()],
             dry_run=dry_run,
             now=ran_at,
         )
         result["job"] = "postgres_maintenance"
         results.append(result)
-        return bool(result.get("ok") is True)
+        return result["ok"]
     except Exception as exc:  # noqa: BLE001
         results.append(_job_error("postgres_maintenance", exc))
         return False
 
 
 def _tenant_ids(args: argparse.Namespace, results: list[dict[str, Any]]) -> tuple[list[UUID], bool]:
-    if bool(args.all_tenants):
+    if args.all_tenants:
         db = _get_session_local()()
         try:
             rows = db.query(_get_tenant_model().id).all()
-            tenant_ids = [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
+            tenant_ids = [tenant_id for (tenant_id,) in rows]
             return tenant_ids, True
         except Exception as exc:  # noqa: BLE001
             results.append(_job_error("tenant_list", exc))
@@ -250,8 +251,8 @@ def _run_retention_job(
         result = runner(
             db,
             tenant_id=tenant_id,
-            retention_days=int(args.retention_days or 0),
-            max_delete=int(args.max_delete or 0),
+            retention_days=args.retention_days,
+            max_delete=args.max_delete,
             dry_run=dry_run,
             actor_id="system:db_maintenance",
             now=ran_at,
@@ -274,7 +275,7 @@ def _run_retention_jobs(
     for tenant_id in tenant_ids:
         db = _get_session_local()()
         try:
-            if bool(args.audit_logs):
+            if args.audit_logs:
                 job_ok = _run_retention_job(
                     _get_audit_retention_runner(),
                     "audit_logs_retention",
@@ -286,7 +287,7 @@ def _run_retention_jobs(
                     results=results,
                 )
                 ok = job_ok and ok
-            if bool(args.regression_runs):
+            if args.regression_runs:
                 job_ok = _run_retention_job(
                     _get_regression_retention_runner(),
                     "regression_runs_retention",
@@ -306,7 +307,7 @@ def _run_retention_jobs(
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
-    selected = bool(args.vacuum) or bool(args.analyze) or bool(args.audit_logs) or bool(args.regression_runs)
+    selected = args.vacuum or args.analyze or args.audit_logs or args.regression_runs
     if not selected:
         print(
             "No job selected. Use --vacuum/--analyze and/or --audit-logs/--regression-runs.",
@@ -314,17 +315,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    dry_run = not bool(args.execute)
-    ran_at = datetime.now(timezone.utc)
+    dry_run = not args.execute
+    ran_at = datetime.now(UTC)
     results: list[dict[str, Any]] = []
     ok = True
 
-    if bool(args.vacuum) or bool(args.analyze):
+    if args.vacuum or args.analyze:
         ok = _run_postgres_job(args, dry_run=dry_run, ran_at=ran_at, results=results) and ok
-    if bool(args.audit_logs) or bool(args.regression_runs):
+    if args.audit_logs or args.regression_runs:
         ok = _run_retention_jobs(args, dry_run=dry_run, ran_at=ran_at, results=results) and ok
 
-    print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    print(json.dumps({"ok": ok, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1
 
 

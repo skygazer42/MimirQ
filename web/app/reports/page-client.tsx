@@ -2,28 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileText } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
-import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
-import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-hero'
 
 import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { reportApi } from '@/lib/api/reports'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
-import { cn, formatDate, detachPromise } from '@/lib/utils'
+import { formatDate, detachPromise } from '@/lib/utils'
 
-import type { DatasetCategoryNode } from '@/types'
+import type { DatasetCategoryNode } from '@/types/datasets'
 
 import { ReportsControlPanel } from './components/reports-control-panel'
-import { ReportsPageHero } from './components/reports-page-hero'
 import { ReportsResultSection } from './components/reports-result-section'
-import {
-  exportChartsJsonPayload,
-  exportCompleteReportJsonPayload,
-  exportReportBlobFile,
-} from './report-export'
+import { exportChartsJsonPayload, exportCompleteReportJsonPayload, exportReportBlobFile } from './report-export'
 import {
   capCoverageValue,
   chunkStatsCoverage,
@@ -34,18 +26,14 @@ import {
   pipelineVersionLabel,
   buildIssueRows,
   buildTopDocumentRows,
-  reportDataSourceLabel,
-  reportDataSourceSub,
   reportPipelineFilterLabel,
   safeNumber,
   sumRecordValues,
 } from './report-format'
-import {
-  DEFAULT_PIPELINE_VERSION_VALUE,
-  PIE_COLORS,
-} from './report-tokens'
+import { DEFAULT_PIPELINE_VERSION_VALUE, PIE_COLORS } from './report-tokens'
 import { useDatasetReportQuery } from './use-dataset-report-query'
 import { useFlatReportFolders } from './use-flat-report-folders'
+import styles from './reports.module.css'
 
 export { useDatasetReportQuery } from './use-dataset-report-query'
 
@@ -60,7 +48,7 @@ function refreshReportQueries(
   datasetId: string,
   refetchDatasets: RefetchFn,
   refetchCategories: RefetchFn,
-  refetchReport: RefetchFn
+  refetchReport: RefetchFn,
 ) {
   refetchDatasets()
   refetchCategories()
@@ -87,39 +75,26 @@ export default function ReportsCenterPage() {
       pipeline_hash: pipelineHash.trim() || undefined,
       connector_runs_limit: connectorRunsLimit,
     }),
-    [connectorRunsLimit, pipelineHash]
+    [connectorRunsLimit, pipelineHash],
   )
 
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.exhaustive({ purpose: 'reports' }),
     queryFn: () => datasetApi.listAll(),
   })
-  const categoriesQuery = useQuery<
-    Awaited<ReturnType<typeof datasetCategoryApi.listTree>>
-  >({
+  const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: () => datasetCategoryApi.listTree(),
   })
   const reportQuery = useDatasetReportQuery(datasetId, reportParams)
 
-  const datasets = useMemo(
-    () => datasetsQuery.data || [],
-    [datasetsQuery.data]
-  )
-  const categoryTree = useMemo(
-    () => categoriesQuery.data?.items || [],
-    [categoriesQuery.data?.items]
-  )
+  const datasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
+  const categoryTree = useMemo(() => categoriesQuery.data?.items || [], [categoriesQuery.data?.items])
   const report = reportQuery.data ?? null
   const isLoadingDatasets = datasetsQuery.isFetching
   const isLoadingReport = reportQuery.isFetching
-  const reportErrorMessage = reportQuery.error
-    ? formatApiError(reportQuery.error, '报告加载失败')
-    : ''
-  const selectedDataset = useMemo(
-    () => datasets.find((d) => d.id === datasetId) || null,
-    [datasets, datasetId]
-  )
+  const reportErrorMessage = reportQuery.error ? formatApiError(reportQuery.error, '报告加载失败') : ''
+  const selectedDataset = useMemo(() => datasets.find((d) => d.id === datasetId) || null, [datasets, datasetId])
 
   useEffect(() => {
     if (!datasets.length) return
@@ -138,12 +113,7 @@ export default function ReportsCenterPage() {
     setPipelineHash(selectedPipelineHashValue(value))
   }, [])
   const handleRefresh = useCallback(() => {
-    refreshReportQueries(
-      datasetId,
-      datasetsQuery.refetch,
-      categoriesQuery.refetch,
-      reportQuery.refetch
-    )
+    refreshReportQueries(datasetId, datasetsQuery.refetch, categoriesQuery.refetch, reportQuery.refetch)
   }, [categoriesQuery.refetch, datasetId, datasetsQuery.refetch, reportQuery.refetch])
   const handleClearFolderQuery = useCallback(() => {
     setFolderQuery('')
@@ -161,7 +131,7 @@ export default function ReportsCenterPage() {
         filenameStem: 'report',
         extension: 'json',
         errorFallback: '导出 JSON 报告失败',
-      })
+      }),
     )
   }, [connectorRunsLimit, datasetId, pipelineHash, selectedDataset?.name])
 
@@ -178,15 +148,9 @@ export default function ReportsCenterPage() {
         filenameStem: 'report',
         extension: 'html',
         errorFallback: '导出 HTML 报告失败',
-      })
+      }),
     )
-  }, [
-    connectorRunsLimit,
-    datasetId,
-    pipelineHash,
-    redact,
-    selectedDataset?.name,
-  ])
+  }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
 
   const handleExportRagAuditHtml = useCallback(() => {
     detachPromise(
@@ -201,15 +165,9 @@ export default function ReportsCenterPage() {
         filenameStem: 'rag_audit',
         extension: 'html',
         errorFallback: '导出 RAG Audit 报告失败',
-      })
+      }),
     )
-  }, [
-    connectorRunsLimit,
-    datasetId,
-    pipelineHash,
-    redact,
-    selectedDataset?.name,
-  ])
+  }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
 
   const handleExportBundleZip = useCallback(() => {
     detachPromise(
@@ -224,24 +182,15 @@ export default function ReportsCenterPage() {
         filenameStem: 'report-bundle',
         extension: 'zip',
         errorFallback: '导出完整归档包失败',
-      })
+      }),
     )
-  }, [
-    connectorRunsLimit,
-    datasetId,
-    pipelineHash,
-    redact,
-    selectedDataset?.name,
-  ])
+  }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
 
   const totalDocs = report?.profile?.total_documents || 0
   const totalBytes = report?.profile?.total_size_bytes || 0
   const quarantined = report?.compliance?.quarantined_documents || 0
   const failed = report?.compliance?.failed_documents || 0
-  const pipelineVersions = useMemo(
-    () => report?.pipeline_versions ?? [],
-    [report?.pipeline_versions]
-  )
+  const pipelineVersions = useMemo(() => report?.pipeline_versions ?? [], [report?.pipeline_versions])
   const pipelineVersionsWithFill = useMemo(
     () =>
       pipelineVersions.map((version, idx) => ({
@@ -249,7 +198,7 @@ export default function ReportsCenterPage() {
         display_label: pipelineVersionLabel(version.pipeline_hash),
         fill: PIE_COLORS[idx % PIE_COLORS.length],
       })),
-    [pipelineVersions]
+    [pipelineVersions],
   )
   const connectorRuns = report?.connectors || []
   const folderTree = report?.folder_tree || null
@@ -265,25 +214,17 @@ export default function ReportsCenterPage() {
         documents: Number(v.documents || 0),
       }))
       .filter((v) => {
-        if (
-          !v.pipeline_hash ||
-          v.pipeline_hash === 'unknown' ||
-          seen.has(v.pipeline_hash)
-        )
-          return false
+        if (!v.pipeline_hash || v.pipeline_hash === 'unknown' || seen.has(v.pipeline_hash)) return false
         seen.add(v.pipeline_hash)
         return true
       })
   }, [pipelineVersions])
-  const pipelineVersionSelectValue =
-    pipelineHash.trim() || DEFAULT_PIPELINE_VERSION_VALUE
+  const pipelineVersionSelectValue = pipelineHash.trim() || DEFAULT_PIPELINE_VERSION_VALUE
 
   const folderBarData = useMemo(() => {
     const rows = flatFolders ?? []
     const q = folderQuery.trim().toLowerCase()
-    const filtered = q
-      ? rows.filter((f) => f.path.toLowerCase().includes(q))
-      : rows
+    const filtered = q ? rows.filter((f) => f.path.toLowerCase().includes(q)) : rows
     return filtered
       .slice()
       .sort((a, b) => b.documents - a.documents)
@@ -313,9 +254,7 @@ export default function ReportsCenterPage() {
 
   const categoryBarData = useMemo(() => {
     const q = categoryQuery.trim().toLowerCase()
-    const filtered = q
-      ? flatCategories.filter((c) => c.name.toLowerCase().includes(q))
-      : flatCategories
+    const filtered = q ? flatCategories.filter((c) => c.name.toLowerCase().includes(q)) : flatCategories
     return filtered
       .slice()
       .sort((a, b) => b.datasets - a.datasets)
@@ -426,63 +365,26 @@ export default function ReportsCenterPage() {
 
   const statusCounts = report?.profile?.by_status || {}
   const hasStatusCounts = Object.keys(statusCounts).length > 0
-  const completedDocs = safeNumber(
-    statusCounts.completed ?? statusCounts.ready ?? statusCounts.done
-  )
-  const successDocs = hasStatusCounts
-    ? completedDocs
-    : Math.max(0, totalDocs - failed - quarantined)
+  const completedDocs = safeNumber(statusCounts.completed ?? statusCounts.ready ?? statusCounts.done)
+  const successDocs = hasStatusCounts ? completedDocs : Math.max(0, totalDocs - failed - quarantined)
   const successRate = formatPct(successDocs, totalDocs)
   const failedRate = formatPct(failed, totalDocs)
-  const selectedDatasetName =
-    selectedDataset?.name || report?.dataset_name || '未选择数据集'
-  const latestAuditTime = report?.generated_at
-    ? formatDate(report.generated_at)
-    : '-'
-  const dataProvenance = report?.data_provenance || null
-  const dataSourceLabel = reportDataSourceLabel(dataProvenance)
-  const dataSourceSub = reportDataSourceSub(dataProvenance)
+  const latestAuditTime = report?.generated_at ? formatDate(report.generated_at) : '-'
   const piiHits = sumRecordValues(report?.compliance?.pii_hits_total)
   const secretHits = sumRecordValues(report?.compliance?.secrets_hits_total)
   const sensitiveHits = piiHits + secretHits
-  const findingRows = filterReportFindings(
-    report?.profile?.findings || [],
-    showOnlyIssues
-  )
-  const duplicateFindingCount = countFindingsByPattern(
-    findingRows,
-    /duplicate|重复/i
-  )
-  const missingFindingCount = countFindingsByPattern(
-    findingRows,
-    /missing|缺失/i
-  )
-  const lowQualityFindingCount = countFindingsByPattern(
-    findingRows,
-    /quality|低质量|low/i
-  )
-  const topDocumentRows = buildTopDocumentRows(
-    folderBarData,
-    report?.profile?.by_file_type
-  )
-  const topDocumentMax = Math.max(
-    1,
-    ...topDocumentRows.map((item) => safeNumber(item.value))
-  )
-  const versionTotal = pipelineVersions.reduce(
-    (acc, item) => acc + safeNumber(item.documents),
-    0
-  )
+  const findingRows = filterReportFindings(report?.profile?.findings || [], showOnlyIssues)
+  const duplicateFindingCount = countFindingsByPattern(findingRows, /duplicate|重复/i)
+  const missingFindingCount = countFindingsByPattern(findingRows, /missing|缺失/i)
+  const lowQualityFindingCount = countFindingsByPattern(findingRows, /quality|低质量|low/i)
+  const topDocumentRows = buildTopDocumentRows(folderBarData, report?.profile?.by_file_type)
+  const topDocumentMax = Math.max(1, ...topDocumentRows.map((item) => safeNumber(item.value)))
+  const versionTotal = pipelineVersions.reduce((acc, item) => acc + safeNumber(item.documents), 0)
   const pipelineFilterLabel = reportPipelineFilterLabel(pipelineHash)
-  const activeFindingRows = findingRows.filter(
-    (item) => safeNumber(item.count) > 0
-  )
+  const activeFindingRows = findingRows.filter((item) => safeNumber(item.count) > 0)
   const issueRows = buildIssueRows(activeFindingRows, connectorRuns)
-  const governanceCoverageMax =
-    safeNumber(governanceAudit?.used_documents) ||
-    safeNumber(governance?.used_documents)
-  const governanceAuditHasSamples =
-    safeNumber(governanceAudit?.used_documents) > 0
+  const governanceCoverageMax = safeNumber(governanceAudit?.used_documents) || safeNumber(governance?.used_documents)
+  const governanceAuditHasSamples = safeNumber(governanceAudit?.used_documents) > 0
   const governanceAuditUnavailableSub = '运行治理审计后展示'
   const governanceAuditUrlValue = governanceAuditHasSamples
     ? String(governanceAudit?.urls_changed_total || 0)
@@ -490,12 +392,8 @@ export default function ReportsCenterPage() {
   const governanceAuditImageValue = governanceAuditHasSamples
     ? String(governanceAudit?.images_removed_total || 0)
     : governanceAuditStatValue(governanceAuditHasSamples, governanceAudit?.images_removed_total)
-  const governanceAuditUrlSub = governanceAuditHasSamples
-    ? 'URL 变更记录'
-    : governanceAuditUnavailableSub
-  const governanceAuditImageSub = governanceAuditHasSamples
-    ? '图片处理记录'
-    : governanceAuditUnavailableSub
+  const governanceAuditUrlSub = governanceAuditHasSamples ? 'URL 变更记录' : governanceAuditUnavailableSub
+  const governanceAuditImageSub = governanceAuditHasSamples ? '图片处理记录' : governanceAuditUnavailableSub
   const hasGovernanceCoverage = governanceCoverageMax > 0
   const chunkStatsCovered = chunkStatsCoverage(report, totalDocs)
   const baseCoverageRows = [
@@ -506,26 +404,17 @@ export default function ReportsCenterPage() {
     },
     {
       label: '文件类型覆盖',
-      value: capCoverageValue(
-        sumRecordValues(report?.profile?.by_file_type),
-        totalDocs
-      ),
+      value: capCoverageValue(sumRecordValues(report?.profile?.by_file_type), totalDocs),
       max: totalDocs,
     },
     {
       label: '目录字段覆盖',
-      value: capCoverageValue(
-        sumRecordValues(report?.profile?.by_directory),
-        totalDocs
-      ),
+      value: capCoverageValue(sumRecordValues(report?.profile?.by_directory), totalDocs),
       max: totalDocs,
     },
     {
       label: '解析来源覆盖',
-      value: capCoverageValue(
-        report?.profile?.parsing_provenance?.docs_with_provenance,
-        totalDocs
-      ),
+      value: capCoverageValue(report?.profile?.parsing_provenance?.docs_with_provenance, totalDocs),
       max: totalDocs,
     },
     {
@@ -537,26 +426,17 @@ export default function ReportsCenterPage() {
   const governanceCoverageRows = [
     {
       label: '字符统计覆盖',
-      value: capCoverageValue(
-        governanceAudit?.docs_with_char_stats,
-        governanceCoverageMax
-      ),
+      value: capCoverageValue(governanceAudit?.docs_with_char_stats, governanceCoverageMax),
       max: governanceCoverageMax,
     },
     {
       label: '解析内容持久化',
-      value: capCoverageValue(
-        governanceAudit?.docs_with_parsed_content_persisted,
-        governanceCoverageMax
-      ),
+      value: capCoverageValue(governanceAudit?.docs_with_parsed_content_persisted, governanceCoverageMax),
       max: governanceCoverageMax,
     },
     {
       label: '治理记录覆盖',
-      value: capCoverageValue(
-        governance?.docs_with_governance,
-        governanceCoverageMax
-      ),
+      value: capCoverageValue(governance?.docs_with_governance, governanceCoverageMax),
       max: governanceCoverageMax,
     },
     {
@@ -566,16 +446,11 @@ export default function ReportsCenterPage() {
     },
     {
       label: '过滤/隔离占比',
-      value: capCoverageValue(
-        governanceAudit?.docs_dropped || quarantined,
-        governanceCoverageMax
-      ),
+      value: capCoverageValue(governanceAudit?.docs_dropped || quarantined, governanceCoverageMax),
       max: governanceCoverageMax,
     },
   ]
-  const fieldCoverageRows = hasGovernanceCoverage
-    ? governanceCoverageRows
-    : baseCoverageRows
+  const fieldCoverageRows = hasGovernanceCoverage ? governanceCoverageRows : baseCoverageRows
   const fieldCoverageBadge = hasGovernanceCoverage ? '治理审计' : '基础画像'
 
   const handleExportChartsJson = useCallback(() => {
@@ -648,104 +523,77 @@ export default function ReportsCenterPage() {
 
   return (
     <AppFrame>
-      <div
-        className={cn(KNOWLEDGE_OPS_BACKGROUND_CLASS, 'bg-info/[0.035]')}
-      >
-        <AnalysisPageShell
-          title="数据报告与审计概览"
-          description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
-          icon={FileText}
-          iconColor="text-primary"
-          badge="报告"
-          size="full"
-          showHeader={false}
-          bodyGutter="none"
-          bodyClassName="!pb-0 !pt-0"
-          bodyContainerClassName="max-w-none"
-        >
-          <div
-            data-reports-dossier="true"
-            className="space-y-3 px-4 py-3 md:px-6 md:py-4"
-          >
-            <ReportsPageHero
-              selectedDatasetName={selectedDatasetName}
-              datasetId={datasetId}
-              totalDocs={totalDocs}
-              isLoadingReport={isLoadingReport}
-              report={report}
-              latestAuditTime={latestAuditTime}
-              dataSourceLabel={dataSourceLabel}
-              dataSourceSub={dataSourceSub}
-              dataProvenance={dataProvenance}
-            />
-            <ReportsControlPanel
-              datasetId={datasetId}
-              datasets={datasets}
-              isLoadingDatasets={isLoadingDatasets}
-              pipelineVersionSelectValue={pipelineVersionSelectValue}
-              pipelineVersionOptions={pipelineVersionOptions}
-              connectorRunsLimit={connectorRunsLimit}
-              showOnlyIssues={showOnlyIssues}
-              redact={redact}
-              isExportingJson={isExportingJson}
-              isExportingHtml={isExportingHtml}
-              isExportingRagAuditHtml={isExportingRagAuditHtml}
-              isExportingBundle={isExportingBundle}
-              report={report}
-              isLoadingReport={isLoadingReport}
-              onDatasetChange={handleDatasetChange}
-              onPipelineHashChange={handlePipelineHashChange}
-              onConnectorRunsLimitChange={setConnectorRunsLimit}
-              onShowOnlyIssuesChange={setShowOnlyIssues}
-              onRedactChange={setRedact}
-              onExportJson={handleExportJson}
-              onExportCompleteJson={handleExportCompleteJson}
-              onExportChartsJson={handleExportChartsJson}
-              onExportRagAuditHtml={handleExportRagAuditHtml}
-              onExportBundleZip={handleExportBundleZip}
-              onExportHtml={handleExportHtml}
-              onRegenerateReport={reportQuery.refetch}
-              onRefresh={handleRefresh}
-            />
-
-            <ReportsResultSection
-              report={report}
-              datasetId={datasetId}
-              isLoadingReport={isLoadingReport}
-              reportErrorMessage={reportErrorMessage}
-              totalDocs={totalDocs}
-              totalBytes={totalBytes}
-              successDocs={successDocs}
-              successRate={successRate}
-              failed={failed}
-              failedRate={failedRate}
-              pipelineVersions={pipelineVersions}
-              pipelineVersionsWithFill={pipelineVersionsWithFill}
-              pipelineFilterLabel={pipelineFilterLabel}
-              latestAuditTime={latestAuditTime}
-              retrievalAudit={retrievalAudit}
-              missingFindingCount={missingFindingCount}
-              duplicateFindingCount={duplicateFindingCount}
-              lowQualityFindingCount={lowQualityFindingCount}
-              fieldCoverageRows={fieldCoverageRows}
-              fieldCoverageBadge={fieldCoverageBadge}
-              topDocumentRows={topDocumentRows}
-              topDocumentMax={topDocumentMax}
-              onClearFolderQuery={handleClearFolderQuery}
-              governanceAuditUrlValue={governanceAuditUrlValue}
-              governanceAuditUrlSub={governanceAuditUrlSub}
-              governanceAuditImageValue={governanceAuditImageValue}
-              governanceAuditImageSub={governanceAuditImageSub}
-              governanceAuditHasSamples={governanceAuditHasSamples}
-              sensitiveHits={sensitiveHits}
-              piiHits={piiHits}
-              secretHits={secretHits}
-              categoryBarData={categoryBarData}
-              versionTotal={versionTotal}
-              issueRows={issueRows}
-            />
-          </div>
-        </AnalysisPageShell>
+      <div className={styles.workspace} data-reports-dossier="true">
+        <ReportsControlPanel
+          datasetId={datasetId}
+          datasets={datasets}
+          isLoadingDatasets={isLoadingDatasets}
+          pipelineVersionSelectValue={pipelineVersionSelectValue}
+          pipelineVersionOptions={pipelineVersionOptions}
+          connectorRunsLimit={connectorRunsLimit}
+          redact={redact}
+          isExportingJson={isExportingJson}
+          isExportingHtml={isExportingHtml}
+          isExportingRagAuditHtml={isExportingRagAuditHtml}
+          isExportingBundle={isExportingBundle}
+          report={report}
+          isLoadingReport={isLoadingReport}
+          onDatasetChange={handleDatasetChange}
+          onPipelineHashChange={handlePipelineHashChange}
+          onConnectorRunsLimitChange={setConnectorRunsLimit}
+          onRedactChange={setRedact}
+          onExportJson={handleExportJson}
+          onExportCompleteJson={handleExportCompleteJson}
+          onExportChartsJson={handleExportChartsJson}
+          onExportRagAuditHtml={handleExportRagAuditHtml}
+          onExportBundleZip={handleExportBundleZip}
+          onExportHtml={handleExportHtml}
+          onRefresh={handleRefresh}
+        />
+        <ReportsResultSection
+          baseCoverageRows={baseCoverageRows}
+          showOnlyIssues={showOnlyIssues}
+          onShowOnlyIssuesChange={setShowOnlyIssues}
+          redact={redact}
+          onRetry={() => reportQuery.refetch()}
+          datasetsErrorMessage={datasetsQuery.error ? formatApiError(datasetsQuery.error, '数据集加载失败') : ''}
+          isLoadingDatasets={isLoadingDatasets}
+          onRetryDatasets={() => datasetsQuery.refetch()}
+          report={report}
+          datasetId={datasetId}
+          isLoadingReport={isLoadingReport}
+          reportErrorMessage={reportErrorMessage}
+          totalDocs={totalDocs}
+          totalBytes={totalBytes}
+          successDocs={successDocs}
+          successRate={successRate}
+          failed={failed}
+          failedRate={failedRate}
+          pipelineVersions={pipelineVersions}
+          pipelineVersionsWithFill={pipelineVersionsWithFill}
+          pipelineFilterLabel={pipelineFilterLabel}
+          latestAuditTime={latestAuditTime}
+          retrievalAudit={retrievalAudit}
+          missingFindingCount={missingFindingCount}
+          duplicateFindingCount={duplicateFindingCount}
+          lowQualityFindingCount={lowQualityFindingCount}
+          fieldCoverageRows={fieldCoverageRows}
+          fieldCoverageBadge={fieldCoverageBadge}
+          topDocumentRows={topDocumentRows}
+          topDocumentMax={topDocumentMax}
+          onClearFolderQuery={handleClearFolderQuery}
+          governanceAuditUrlValue={governanceAuditUrlValue}
+          governanceAuditUrlSub={governanceAuditUrlSub}
+          governanceAuditImageValue={governanceAuditImageValue}
+          governanceAuditImageSub={governanceAuditImageSub}
+          governanceAuditHasSamples={governanceAuditHasSamples}
+          sensitiveHits={sensitiveHits}
+          piiHits={piiHits}
+          secretHits={secretHits}
+          categoryBarData={categoryBarData}
+          versionTotal={versionTotal}
+          issueRows={issueRows}
+        />
       </div>
     </AppFrame>
   )

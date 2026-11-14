@@ -34,11 +34,7 @@ def _empty_preprocess_info() -> dict[str, Any]:
     }
 
 
-def score_pdf_quality(
-    file_path: Path,
-    sample_pages: int = 3,
-    use_ocr_validation: bool = False
-) -> dict[str, Any]:
+def score_pdf_quality(file_path: Path, sample_pages: int = 3, use_ocr_validation: bool = False) -> dict[str, Any]:
     """
     Lightweight scoring for a PDF (sample first sample_pages).
 
@@ -68,13 +64,7 @@ def score_pdf_quality(
     table_quality_score = 0.0
     reading_order_score = 1.0
     is_scanned = False
-    preprocess_info: dict[str, Any] = {
-        "skew_angle": None,
-        "orientation": 0,
-        "watermark_detected": False,
-        "watermark_regions": [],
-        "geometric_distortion": None,
-    }
+    preprocess_info = _empty_preprocess_info()
 
     try:
         with pdfplumber.open(str(file_path)) as pdf:
@@ -83,9 +73,7 @@ def score_pdf_quality(
             pages_data = pdf.pages[:sampled_pages]
 
             # Dimension 1: text extraction quality (50%).
-            text_quality_score, is_scanned = _score_text_quality(
-                pages_data, file_path, use_ocr_validation
-            )
+            text_quality_score, is_scanned = _score_text_quality(pages_data, file_path, use_ocr_validation)
 
             # Dimension 2: format consistency (30%).
             format_consistency_score = _score_format_consistency(pages_data)
@@ -94,7 +82,7 @@ def score_pdf_quality(
             table_quality_score = _score_table_quality(pages_data)
 
             # Dimension 4: reading-order consistency (15%).
-            reading_order_score = float((score_pdfplumber_reading_order(pages_data) or {}).get("score") or 1.0)
+            reading_order_score = score_pdfplumber_reading_order(pages_data)["score"]
 
     except Exception as e:
         logger.warning("PDF quality scoring failed: %s", e)
@@ -105,16 +93,16 @@ def score_pdf_quality(
         reading_order_score = 1.0
     finally:
         try:
-            preprocess_info.update(_detect_preprocess_info(file_path, sample_pages=sample_pages))
+            preprocess_info = _detect_preprocess_info(file_path, sample_pages=sample_pages)
         except Exception as exc:
             logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
 
     # Weighted sum: text 40% + format 25% + table 20% + reading order 15%.
     final_score = (
-        0.40 * text_quality_score +
-        0.25 * format_consistency_score +
-        0.20 * table_quality_score +
-        0.15 * reading_order_score
+        0.40 * text_quality_score
+        + 0.25 * format_consistency_score
+        + 0.20 * table_quality_score
+        + 0.15 * reading_order_score
     )
     final_score = max(0.0, min(1.0, final_score))
 
@@ -145,20 +133,20 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
     doc = None
     try:
         doc = fitz.open(str(file_path))
-        n = int(getattr(doc, "page_count", 0) or 0)
+        n = doc.page_count
         k = max(1, min(int(sample_pages or 0) or 1, n if n > 0 else 1))
         rot_counts: dict[int, int] = {}
         watermark_annots = 0
         for i in range(k):
             page = doc.load_page(i)
-            rot = int(getattr(page, "rotation", 0) or 0) % 360
-            rot_counts[int(rot)] = rot_counts.get(int(rot), 0) + 1
+            rot = page.rotation % 360
+            rot_counts[rot] = rot_counts.get(rot, 0) + 1
             watermark_annots += _count_watermark_annots(page)
         orientation = max(rot_counts.items(), key=lambda kv: kv[1])[0] if rot_counts else 0
-        info["orientation"] = int(orientation)
-        info["rotation_counts"] = {str(k): int(v) for k, v in sorted(rot_counts.items(), key=lambda kv: kv[0])}
-        info["watermark_annots"] = int(watermark_annots)
-        info["watermark_detected"] = bool(watermark_annots > 0)
+        info["orientation"] = orientation
+        info["rotation_counts"] = {str(k): v for k, v in sorted(rot_counts.items())}
+        info["watermark_annots"] = watermark_annots
+        info["watermark_detected"] = watermark_annots > 0
         return info
     except Exception:
         return info
@@ -179,9 +167,9 @@ def _count_watermark_annots(page: Any) -> int:
     for annot in annots:
         try:
             typ = getattr(annot, "type", None)
-            name = str(typ[1] or "") if isinstance(typ, (tuple, list)) and len(typ) >= 2 else ""
+            name = typ[1] if isinstance(typ, (tuple, list)) and len(typ) >= 2 else ""
             meta = getattr(annot, "info", None) or {}
-            subject = str((meta or {}).get("subject") or (meta or {}).get("title") or "")
+            subject = str(meta.get("subject") or meta.get("title") or "")
             hint = f"{name} {subject}".lower()
             if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
                 count += 1
@@ -191,11 +179,7 @@ def _count_watermark_annots(page: Any) -> int:
     return count
 
 
-def _score_text_quality(
-    pages: list,
-    file_path: Path,
-    use_ocr_validation: bool
-) -> tuple[float, bool]:
+def _score_text_quality(pages: list, file_path: Path, use_ocr_validation: bool) -> tuple[float, bool]:
     """
     Evaluate text extraction quality (0-1).
     Metrics: text density, noise ratio, readability, scan detection.
@@ -231,10 +215,7 @@ def _score_text_quality(
     if use_ocr_validation and (text_density < 0.3 or total_text_chars < 200 * len(pages)):
         try:
             logger.info("RapidOCR validation enabled for scanned detection")
-            _, ocr_chars = rapid_ocr_service.ocr_pdf_pages(
-                file_path,
-                max_pages=min(2, len(pages))
-            )
+            _, ocr_chars = rapid_ocr_service.ocr_pdf_pages(file_path, max_pages=min(2, len(pages)))
 
             ocr_gain = (ocr_chars - total_text_chars) / max(1, total_text_chars)
 
@@ -273,12 +254,12 @@ def _score_format_consistency(pages: list) -> float:
             chars = page.chars or []
             if chars:
                 # Font sizes.
-                font_sizes.extend([c.get("size", 0) for c in chars if c.get("size")])
+                font_sizes.extend(c["size"] for c in chars if c.get("size"))
 
                 # Line heights (group by y).
                 y_coords = sorted({c.get("top", 0) for c in chars})
                 if len(y_coords) > 1:
-                    heights = [y_coords[i+1] - y_coords[i] for i in range(len(y_coords)-1)]
+                    heights = [y_coords[i + 1] - y_coords[i] for i in range(len(y_coords) - 1)]
                     line_heights.extend(heights)
 
             # Paragraph count (split by blank lines).
@@ -293,6 +274,7 @@ def _score_format_consistency(pages: list) -> float:
 
     # Font size consistency (lower std is better).
     import statistics
+
     try:
         font_std = statistics.stdev(font_sizes) if len(font_sizes) > 1 else 0
         font_consistency = max(0.0, 1.0 - min(1.0, font_std / 10.0))  # Normalize.
@@ -333,8 +315,8 @@ def _score_table_quality(pages: list) -> float:
 
             for table in tables:
                 # Table rows/cols.
-                rows = len(table.rows) if hasattr(table, "rows") and table.rows else 0
-                cells = table.cells if hasattr(table, "cells") and table.cells else []
+                rows = len(table.rows)
+                cells = table.cells
 
                 # Consider "complete": at least 2x2 and reasonable cell count.
                 if rows >= 2 and len(cells) >= 4:
@@ -347,5 +329,5 @@ def _score_table_quality(pages: list) -> float:
         return 1.0
 
     # Proportion of well-formed tables.
-    table_ratio = well_formed_tables / max(1, total_tables)
+    table_ratio = well_formed_tables / total_tables
     return max(0.0, min(1.0, table_ratio))

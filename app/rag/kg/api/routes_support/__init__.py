@@ -13,8 +13,7 @@ size. Responsibilities:
 
 Import direction: submodules may import from each other and from leaf modules
 only -- they MUST NEVER import ``app.rag.kg.api.routes`` (circular). The routes
-module re-imports every name below, so existing references such as
-``app.rag.kg.api.routes._scope_chunks_to_pipeline`` keep working unchanged.
+module imports the helpers used by its endpoints directly from their owners.
 
 This package intentionally does not re-export anything.
 """

@@ -1,4 +1,3 @@
-
 import datetime as dt
 from collections.abc import Iterable
 

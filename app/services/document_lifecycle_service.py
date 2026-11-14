@@ -1,28 +1,186 @@
-
 import asyncio
 import contextlib
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.schemas.documents import (
+    DocumentBatchDeleteRequest,
+    DocumentBatchLifecycleRequest,
+    DocumentLifecycleMetadata,
+    DocumentLifecycleMetadataUpdateRequest,
+)
 from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
+from app.services.document_access_service import (
+    assert_document_writable_for_lifecycle,
+    assert_document_writable_for_unassigned_target,
+    get_document_for_lifecycle,
+)
 from app.storage.object.minio import minio_service
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 logger = get_logger("services.document_lifecycle")
+
+
+def _lifecycle_metadata_response(document: DBDocument) -> DocumentLifecycleMetadata:
+    return DocumentLifecycleMetadata(
+        lifecycle_owner=document.lifecycle_owner,
+        review_due_at=document.review_due_at,
+        authority_level=document.authority_level,
+        supersedes_document_id=document.supersedes_document_id,
+        publication_status=document.publication_status,
+    )
+
+
+def _snapshot_lifecycle_metadata(document: DBDocument) -> dict[str, Any]:
+    return {
+        "lifecycle_owner": document.lifecycle_owner,
+        "review_due_at": document.review_due_at,
+        "authority_level": document.authority_level,
+        "supersedes_document_id": document.supersedes_document_id,
+        "publication_status": document.publication_status,
+    }
+
+
+def _apply_lifecycle_metadata_updates(
+    *,
+    document: DBDocument,
+    payload: DocumentLifecycleMetadataUpdateRequest,
+    fields_set: set[str],
+) -> None:
+    if "lifecycle_owner" in fields_set:
+        document.lifecycle_owner = payload.lifecycle_owner
+    if "review_due_at" in fields_set:
+        document.review_due_at = payload.review_due_at
+    if "authority_level" in fields_set:
+        document.authority_level = payload.authority_level
+    if "supersedes_document_id" in fields_set:
+        if payload.supersedes_document_id == document.id:
+            raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
+        document.supersedes_document_id = payload.supersedes_document_id
+    if "publication_status" in fields_set:
+        document.publication_status = payload.publication_status
+
+
+def _build_lifecycle_audit_details(
+    *,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    fields_set: set[str],
+) -> dict[str, Any]:
+    changed_fields = [
+        field
+        for field in (
+            "lifecycle_owner",
+            "review_due_at",
+            "authority_level",
+            "supersedes_document_id",
+            "publication_status",
+        )
+        if field in fields_set and before.get(field) != after.get(field)
+    ]
+    details: dict[str, Any] = {
+        "fields": sorted(fields_set)[:50],
+        "changed_fields": changed_fields[:50],
+    }
+    if "lifecycle_owner" in fields_set:
+        owner = after.get("lifecycle_owner")
+        details["lifecycle_owner_hash"] = stable_hash(owner, length=16) if owner else None
+    if "review_due_at" in fields_set:
+        review_due_at = after.get("review_due_at")
+        details["review_due_at"] = review_due_at.isoformat() if review_due_at is not None else None
+    if "authority_level" in fields_set:
+        details["authority_level"] = after.get("authority_level")
+    if "supersedes_document_id" in fields_set:
+        supersedes_document_id = after.get("supersedes_document_id")
+        details["supersedes_document_id"] = str(supersedes_document_id) if supersedes_document_id is not None else None
+    if "publication_status" in fields_set:
+        details["publication_status"] = after.get("publication_status")
+    return details
+
+
+def get_document_lifecycle_metadata(
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> DocumentLifecycleMetadata:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    document = get_document_for_lifecycle(db, tenant_id, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
+    return _lifecycle_metadata_response(document)
+
+
+def patch_document_lifecycle_metadata(
+    *,
+    document_id: UUID,
+    payload: DocumentLifecycleMetadataUpdateRequest,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> DocumentLifecycleMetadata:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    document = get_document_for_lifecycle(db, tenant_id, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
+
+    fields_set = payload.model_fields_set
+    if not fields_set:
+        return _lifecycle_metadata_response(document)
+
+    before = _snapshot_lifecycle_metadata(document)
+    _apply_lifecycle_metadata_updates(document=document, payload=payload, fields_set=fields_set)
+    db.commit()
+    db.refresh(document)
+
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="document.lifecycle_metadata.patch",
+            resource_type="document",
+            resource_id=str(document_id),
+            details=_build_lifecycle_audit_details(
+                before=before,
+                after=_snapshot_lifecycle_metadata(document),
+                fields_set=fields_set,
+            ),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return _lifecycle_metadata_response(document)
+
 
 DOC_NOT_FOUND_DETAIL = "Document not found"
 MANUAL_FILE_PATH_PREFIX = "manual://"
@@ -41,6 +199,73 @@ _CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 _DELETE_IO_BATCH_SIZE = 16
 _MINIO_DELETE_OBJECT_BATCH_SIZE = 1000
 Indexer: Any | None = None
+
+
+def is_reprocessable_pending_document(document: DBDocument) -> bool:
+    return _is_uploaded_only_pending_document(document) or _is_idle_pending_document(document)
+
+
+def _is_uploaded_only_pending_document(document: DBDocument) -> bool:
+    """
+    True for files registered by upload-only mode but not yet queued/processed.
+
+    Those documents are persisted as `status=pending` so they appear in ingestion
+    lists, but they are not active processing jobs. Reingest may safely patch
+    their pipeline and start processing them later.
+    """
+    if document.status.strip().lower() != "pending":
+        return False
+
+    meta = document.doc_metadata
+    meta = meta if isinstance(meta, dict) else {}
+    ingest_stage = meta.get("ingest_stage")
+    if ingest_stage is None or ingest_stage.strip() != "uploaded_only":
+        return False
+    task_id = meta.get("task_id")
+    if task_id is not None and task_id.strip():
+        return False
+
+    current_stage = document.current_stage
+    if current_stage is not None:
+        current_stage = current_stage.strip().lower()
+    if current_stage and current_stage not in {"uploaded_only", "registered"}:
+        return False
+
+    return not bool(meta.get("active_pipeline_ready"))
+
+
+def _is_idle_pending_document(document: DBDocument) -> bool:
+    """
+    True for pending documents that are persisted but not attached to a live job.
+
+    Legacy imports and upload-only flows can leave a document as `status=pending`
+    without `ingest_stage=uploaded_only`. They are safe to reconfigure only when
+    no queue/task marker, active stage, or progress indicates work is running.
+    """
+    if document.status.strip().lower() != "pending":
+        return False
+
+    meta = document.doc_metadata
+    meta = meta if isinstance(meta, dict) else {}
+    for field in ("task_id", "kg_task_id"):
+        task_id = meta.get(field)
+        if task_id is not None and task_id.strip():
+            return False
+
+    current_stage = document.current_stage
+    if current_stage is not None:
+        current_stage = current_stage.strip().lower()
+    if current_stage and current_stage not in {"uploaded_only", "registered"}:
+        return False
+
+    try:
+        progress = int(document.processing_progress or 0)
+    except (TypeError, ValueError):
+        return False
+    if progress > 0:
+        return False
+
+    return not bool(meta.get("active_pipeline_ready"))
 
 
 def _get_indexer_class() -> Any:
@@ -74,13 +299,19 @@ def _assert_document_delete_permission(
     document: DBDocument,
     enforce_permissions: bool,
 ) -> None:
-    if enforce_permissions and document.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+    if not enforce_permissions:
+        return
+    if document.dataset_id:
+        ds = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
+    else:
+        assert_document_writable_for_unassigned_target(
+            db, tenant_id=tenant_id, account_id=account_id, document=document
+        )
 
 
 def _cancel_processing_document(db: Session, document: DBDocument) -> None:
-    if str(document.status or "").lower() not in {"pending", "processing"}:
+    if document.status.lower() not in {"pending", "processing"}:
         return
     doc_meta = dict(document.doc_metadata or {})
     doc_meta["cancel_requested"] = True
@@ -104,7 +335,7 @@ def _document_task_ids(document: DBDocument) -> list[str]:
 
 
 async def _abort_document_tasks_before_delete(*, document_id: UUID, task_ids: list[str]) -> None:
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or not task_ids:
+    if not bool(settings.TASK_QUEUE_ENABLED) or not task_ids:
         return
     try:
         from arq.jobs import Job
@@ -114,7 +345,7 @@ async def _abort_document_tasks_before_delete(*, document_id: UUID, task_ids: li
         q = await get_queue()
         if q is None:
             return
-        queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+        queue_name = settings.TASK_QUEUE_NAME
         for task_id in task_ids:
             job = Job(task_id, q, _queue_name=queue_name)
             with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
@@ -138,40 +369,12 @@ def _add_document_metadata_img_ids(img_ids: set[str], document: DBDocument) -> N
             img_ids.add(value)
 
 
-def _iter_query_rows(query: Any, *, batch_size: int) -> Iterable[Any]:
-    if hasattr(query, "yield_per"):
-        query = query.yield_per(batch_size)
-    if hasattr(query, "__iter__"):
-        return query
-    if hasattr(query, "all"):
-        return query.all()
-    return ()
-
-
-def _row_named_value(row: Any, key: str) -> Any:
-    mapping = getattr(row, "_mapping", None)
-    if mapping is not None and key in mapping:
-        return mapping[key]
-    if isinstance(row, dict):
-        return row.get(key)
-    if hasattr(row, key):
-        return getattr(row, key)
-    if isinstance(row, (tuple, list)):
-        return row[0] if row else None
-    try:
-        return row[0]
-    except (IndexError, KeyError, TypeError):
-        return row
-
-
 def _add_chunk_metadata_img_ids(db: Session, *, tenant_id: UUID, document_id: UUID, img_ids: set[str]) -> None:
     img_id_column = DocumentChunk.doc_metadata["img_id"].astext.label("img_id")
-    chunks = (
-        db.query(img_id_column)
-        .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
+    chunks = db.query(img_id_column).filter(
+        DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id
     )
-    for chunk in _iter_query_rows(chunks, batch_size=_CHUNK_METADATA_SCAN_BATCH_SIZE):
-        img_id = _row_named_value(chunk, "img_id")
+    for (img_id,) in chunks.yield_per(_CHUNK_METADATA_SCAN_BATCH_SIZE):
         if isinstance(img_id, str) and img_id.strip():
             img_ids.add(img_id)
 
@@ -214,7 +417,7 @@ def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: 
 
 
 def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document: DBDocument) -> None:
-    if document.dataset_id is None or str(document.file_type or "").lower() not in {"csv", "xls", "xlsx"}:
+    if document.dataset_id is None or document.file_type.lower() not in {"csv", "xls", "xlsx"}:
         return
     from app.services.table_store import table_store_path
 
@@ -227,7 +430,7 @@ def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document
         db_path.parent.parent.rmdir()
 
 
-def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
+def _delete_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
     try:
         store, ref = resolve_document_object_reference(
             raw_path,
@@ -235,7 +438,7 @@ def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: D
             dataset_id=document.dataset_id,
             document_id=document.id,
             file_type=document.file_type,
-            document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+            document_metadata=dict(document.doc_metadata or {}),
         )
     except ValueError as exc:
         if str(exc).strip().lower() not in _SAFE_OBJECT_REFERENCE_ERRORS:
@@ -268,17 +471,17 @@ def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
 
 
 def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
-    raw_path = str(document.file_path or "").strip()
+    raw_path = document.file_path.strip()
     if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         return
     if is_object_storage_uri(raw_path):
-        _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
+        _delete_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
         return
     _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
 
 
 def _touch_dataset_updated_after_delete(db: Session, *, tenant_id: UUID, document: DBDocument) -> None:
-    if getattr(document, "dataset_id", None) is None:
+    if document.dataset_id is None:
         return
     try:
         from app.models.dataset import Dataset as DBDataset  # noqa: WPS433
@@ -336,9 +539,9 @@ def _delete_document_record(
         resource_type="document",
         resource_id=str(document_id),
         details={
-            "dataset_id": str(document.dataset_id) if getattr(document, "dataset_id", None) else None,
-            "file_type": str(getattr(document, "file_type", "") or ""),
-            "file_size": int(getattr(document, "file_size", 0) or 0),
+            "dataset_id": str(document.dataset_id) if document.dataset_id else None,
+            "file_type": document.file_type,
+            "file_size": document.file_size,
         },
     )
     db.commit()
@@ -399,7 +602,7 @@ def _prepare_document_delete(
     enforce_membership: bool,
 ) -> list[str]:
     if enforce_membership:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_document_for_delete(db, tenant_id=tenant_id, document_id=document_id)
     _assert_document_delete_permission(
         db,
@@ -463,7 +666,7 @@ async def _delete_document_lifecycle(
     - `enforce_permissions=True` matches the public endpoint behavior.
     - `enforce_permissions=False` is intended for admin-only lifecycle operations.
     """
-    factory = session_factory or SessionLocal
+    factory = session_factory if session_factory is not None else SessionLocal
     task_ids = await _run_delete_step_without_blocking_event_loop(
         _run_document_delete_session_step,
         factory,
@@ -493,3 +696,92 @@ async def _delete_document_lifecycle(
         # it does not retain stale ORM state written by the isolated sessions.
         with contextlib.suppress(Exception):
             db.expire_all()
+
+
+def update_document_lifecycle_state(
+    payload: DocumentBatchLifecycleRequest,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    state_field: Literal["disabled_at", "archived_at"],
+    audit_action: Literal["document.disable", "document.enable", "document.archive", "document.unarchive"],
+    set_timestamp: bool,
+) -> dict[str, int | list[UUID]]:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+    timestamp = datetime.now(UTC) if set_timestamp else None
+
+    for document_id in payload.document_ids:
+        document = get_document_for_lifecycle(db, tenant_id, document_id)
+        if document is None:
+            not_found.append(document_id)
+            continue
+        try:
+            assert_document_writable_for_lifecycle(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                document=document,
+            )
+        except HTTPException:
+            denied.append(document_id)
+            continue
+
+        current_timestamp = document.disabled_at if state_field == "disabled_at" else document.archived_at
+        if (set_timestamp and current_timestamp is not None) or (not set_timestamp and current_timestamp is None):
+            continue
+        if state_field == "disabled_at":
+            document.disabled_at = timestamp
+        else:
+            document.archived_at = timestamp
+        updated += 1
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=audit_action,
+            resource_type="document",
+            resource_id=str(document_id),
+            details={state_field: timestamp.isoformat() if timestamp is not None else None},
+        )
+
+    if updated:
+        db.commit()
+    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+
+
+async def delete_documents(
+    payload: DocumentBatchDeleteRequest,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> dict[str, int | list[UUID]]:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    deleted = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        try:
+            await _delete_document_lifecycle(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+                enforce_permissions=True,
+            )
+            deleted += 1
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                not_found.append(document_id)
+                continue
+            if exc.status_code in (401, 403):
+                denied.append(document_id)
+                continue
+            raise
+    return {"deleted": deleted, "not_found": not_found, "denied": denied}

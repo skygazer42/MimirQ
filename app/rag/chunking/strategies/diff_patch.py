@@ -6,7 +6,6 @@ Splits by file blocks first (`diff --git ...`), then splits large file blocks
 at hunk boundaries (`@@ -a,b +c,d @@`) while preserving character offsets.
 """
 
-
 import re
 import shlex
 from dataclasses import dataclass
@@ -16,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ _HUNK_RE = re.compile(r"(?m)^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@.*$")
 
 
 def _strip_quotes(s: str) -> str:
-    t = (s or "").strip()
+    t = (s).strip()
     if len(t) >= 2 and ((t[0] == '"' and t[-1] == '"') or (t[0] == "'" and t[-1] == "'")):
         t = t[1:-1].strip()
     return t
@@ -51,7 +51,7 @@ def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = (line or "").strip()
+    s = (line).strip()
     prefix = "diff --git "
     if not s.startswith(prefix):
         return None
@@ -69,27 +69,17 @@ def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
 
 
 def _iter_file_blocks(text: str) -> list[_FileBlock]:
-    raw = text or ""
-    if not raw:
-        return []
-
     headers: list[tuple[int, str, str]] = []
-    offset = 0
-    for raw_line in raw.splitlines(keepends=True):
-        line_start = offset
-        offset += len(raw_line)
-        parsed = _parse_diff_header_line(raw_line.rstrip("\r\n"))
+    for ln in _iter_lines(text):
+        parsed = _parse_diff_header_line(ln.plain)
         if not parsed:
             continue
         a_path, b_path = parsed
-        headers.append((line_start, a_path, b_path))
-
-    if not headers:
-        return []
+        headers.append((ln.start, a_path, b_path))
 
     blocks: list[_FileBlock] = []
     for idx, (start, a_path, b_path) in enumerate(headers):
-        end = headers[idx + 1][0] if idx + 1 < len(headers) else len(raw)
+        end = headers[idx + 1][0] if idx + 1 < len(headers) else len(text)
         blocks.append(_FileBlock(start=start, end=end, index=idx, a_path=a_path, b_path=b_path))
     return blocks
 
@@ -97,8 +87,6 @@ def _iter_file_blocks(text: str) -> list[_FileBlock]:
 def _iter_hunks(text: str, *, start: int, end: int) -> list[_Span]:
     window = text[start:end]
     matches = list(_HUNK_RE.finditer(window))
-    if not matches:
-        return []
     hunks: list[_Span] = []
     for i, m in enumerate(matches):
         hs = start + m.start()
@@ -121,7 +109,7 @@ def looks_like_diff_patch(text: str) -> bool:
 
 
 class DiffPatchChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -164,16 +152,16 @@ class DiffPatchChunker(BaseChunker):
         meta["start_char"] = chunk_start
         meta["end_char"] = chunk_end
         meta.setdefault("doc_type_kwd", "diff")
-        meta["diff_file_index"] = int(file_block.index)
+        meta["diff_file_index"] = file_block.index
         meta["diff_path_a"] = file_block.a_path
         meta["diff_path_b"] = file_block.b_path
         if hunk_range is None:
             meta["diff_hunk_count"] = 0
         else:
             start_idx, end_idx = hunk_range
-            meta["diff_hunk_count"] = int(end_idx - start_idx)
-            meta["diff_hunk_start_index"] = int(start_idx)
-            meta["diff_hunk_end_index"] = int(end_idx - 1)
+            meta["diff_hunk_count"] = end_idx - start_idx
+            meta["diff_hunk_start_index"] = start_idx
+            meta["diff_hunk_end_index"] = end_idx - 1
         out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
 
     def _next_hunk_start(self, *, hunks: list[_Span], start_idx: int, end_idx: int) -> int:
@@ -186,8 +174,7 @@ class DiffPatchChunker(BaseChunker):
                 desired -= 1
                 continue
             break
-        next_start = desired if desired > start_idx else (end_idx - 1)
-        return next_start if next_start > start_idx else end_idx
+        return desired if desired > start_idx else (end_idx - 1)
 
     def _append_hunk_chunks(
         self,
@@ -211,9 +198,6 @@ class DiffPatchChunker(BaseChunker):
                     continue
                 break
 
-            if end_idx == start_idx:
-                end_idx = start_idx + 1
-
             chunk_start = file_block.start if first else hunks[start_idx].start
             chunk_end = hunks[end_idx - 1].end
             self._append_file_chunk(
@@ -236,10 +220,6 @@ class DiffPatchChunker(BaseChunker):
         base_meta: dict[str, Any],
         file_block: _FileBlock,
     ) -> None:
-        file_text = text[file_block.start : file_block.end]
-        if not file_text.strip():
-            return
-
         hunks = _iter_hunks(text, start=file_block.start, end=file_block.end)
         if not hunks:
             self._append_file_chunk(
@@ -265,7 +245,7 @@ class DiffPatchChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

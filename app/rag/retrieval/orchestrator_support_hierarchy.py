@@ -1,22 +1,29 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
 from sqlalchemy import or_
 
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.document import DocumentChunk
 
 logger = get_logger(__name__)
 _FALLBACK_LOG_MESSAGE = "Ignoring non-critical retrieval orchestrator fallback failure: %s"
 
 
-def _bounded_text(value: Any, *, limit: int) -> str:
-    text = str(value).strip()
-    return text[:limit] if text else ""
+def _bounded_text(value: Any, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip()[:limit]
 
 
 def safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict) or not raw:
+    if raw is None:
         return None
     out: dict[str, Any] = {}
     schema = _bounded_text(raw.get("schema"), limit=80)
@@ -54,7 +61,7 @@ def safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     if edges:
         out["edges"] = edges
 
-    return out or None
+    return out
 
 
 def _safe_kg_path_items(raw_items: Any, *, allowed_keys: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -88,12 +95,12 @@ def build_desired_pipeline_by_doc(docs: list[Document]) -> dict[str, str]:
         if doc is None:
             continue
         meta = doc.metadata or {}
-        doc_id = str(meta.get("document_id") or "").strip()
+        doc_id = _stringified_metadata_text(meta, "document_id")
         if not doc_id:
             continue
-        pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+        pipeline_key = _stringified_metadata_text(meta, "doc_pipeline_key")
         if not pipeline_key:
-            pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+            pipeline_hash = _stringified_metadata_text(meta, "pipeline_hash")
             if pipeline_hash:
                 pipeline_key = f"{doc_id}:{pipeline_hash}"
         if pipeline_key:
@@ -106,27 +113,27 @@ def hierarchy_fetch_pairs_by_doc(
 ) -> dict[str, set[str]]:
     by_doc: dict[str, set[str]] = {}
     for doc_id, node_key in pairs:
-        doc_id_s = str(doc_id or "").strip()
-        node_key_s = str(node_key or "").strip()
+        doc_id_s = doc_id.strip()
+        node_key_s = node_key.strip()
         if not doc_id_s or not node_key_s:
             continue
         by_doc.setdefault(doc_id_s, set()).add(node_key_s)
     return by_doc
 
 
-def chunk_document_from_row(ck: Any) -> Document | None:
-    meta = dict(getattr(ck, "doc_metadata", None) or {})
-    cid = str(getattr(ck, "id", "") or "")
-    meta.setdefault("tenant_id", str(getattr(ck, "tenant_id", "") or ""))
-    meta.setdefault("document_id", str(getattr(ck, "document_id", "") or ""))
+def chunk_document_from_row(ck: "DocumentChunk") -> Document | None:
+    meta = dict(ck.doc_metadata or {})
+    cid = str(ck.id)
+    meta.setdefault("tenant_id", str(ck.tenant_id))
+    meta.setdefault("document_id", str(ck.document_id))
     meta.setdefault("chunk_id", cid)
-    meta.setdefault("chunk_index", int(getattr(ck, "chunk_index", 0) or 0))
-    page_number = getattr(ck, "page_number", None)
+    meta.setdefault("chunk_index", int(ck.chunk_index or 0))
+    page_number = ck.page_number
     if page_number is not None:
         meta.setdefault("page", int(page_number))
         meta.setdefault("page_number", int(page_number))
-    start_char = getattr(ck, "start_char", None)
-    end_char = getattr(ck, "end_char", None)
+    start_char = ck.start_char
+    end_char = ck.end_char
     if start_char is not None:
         meta.setdefault("start_char", int(start_char))
     if end_char is not None:
@@ -134,11 +141,11 @@ def chunk_document_from_row(ck: Any) -> Document | None:
     if not meta.get("source"):
         meta["source"] = "unknown"
 
-    node_key = str(meta.get("hierarchy_node_key") or meta.get("chunk_key") or "").strip()
+    node_key = _stringified_metadata_text(meta, "hierarchy_node_key") or _stringified_metadata_text(meta, "chunk_key")
     if not node_key:
         return None
     return Document(
-        page_content=str(getattr(ck, "content", None) or ""),
+        page_content=ck.content,
         metadata=meta,
         id=cid or meta.get("chunk_id"),
     )
@@ -146,16 +153,16 @@ def chunk_document_from_row(ck: Any) -> Document | None:
 
 def _matches_desired_pipeline(
     *,
-    chunk: Any,
+    chunk: "DocumentChunk",
     desired_pipeline_by_doc: dict[str, str],
 ) -> bool:
     desired = desired_pipeline_by_doc.get(str(chunk.document_id))
     if not desired:
         return True
-    meta = dict(getattr(chunk, "doc_metadata", None) or {})
-    chunk_pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+    meta = dict(chunk.doc_metadata or {})
+    chunk_pipeline_key = _stringified_metadata_text(meta, "doc_pipeline_key")
     if not chunk_pipeline_key:
-        pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+        pipeline_hash = _stringified_metadata_text(meta, "pipeline_hash")
         if pipeline_hash:
             chunk_pipeline_key = f"{chunk.document_id}:{pipeline_hash}"
     return bool(chunk_pipeline_key and chunk_pipeline_key == desired)
@@ -163,11 +170,11 @@ def _matches_desired_pipeline(
 
 def _fetch_doc_hierarchy_chunks(
     *,
-    db: Any,
+    db: "Session",
     doc_uuid: UUID,
     tenant_uuid: UUID | None,
     keys_list: list[str],
-) -> list[Any]:
+) -> list["DocumentChunk"]:
     from app.models.document import DocumentChunk
 
     query = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid)
@@ -184,7 +191,7 @@ def _fetch_doc_hierarchy_chunks(
 
 def _load_doc_hierarchy_docs(
     *,
-    db: Any,
+    db: "Session",
     doc_id_s: str,
     tenant_uuid: UUID | None,
     keys: set[str],
@@ -213,9 +220,9 @@ def _load_doc_hierarchy_docs(
         document = chunk_document_from_row(chunk)
         if document is None:
             continue
-        node_key_s = str(
-            document.metadata.get("hierarchy_node_key") or document.metadata.get("chunk_key") or ""
-        ).strip()
+        node_key_s = _stringified_metadata_text(document.metadata, "hierarchy_node_key") or _stringified_metadata_text(
+            document.metadata, "chunk_key"
+        )
         out[(str(chunk.document_id), node_key_s)] = document
     return out
 

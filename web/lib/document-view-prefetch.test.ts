@@ -33,11 +33,7 @@ vi.mock('./doc-content-cache', () => ({
     authGeneration: mocks.generation,
     scopeWriteGeneration: mocks.generation,
   }),
-  isDocCacheScopeGuardCurrent: (scopeGuard: {
-    scope: string
-    authGeneration: number
-    scopeWriteGeneration: number
-  }) =>
+  isDocCacheScopeGuardCurrent: (scopeGuard: { scope: string; authGeneration: number; scopeWriteGeneration: number }) =>
     scopeGuard.scope === mocks.scope &&
     scopeGuard.authGeneration === mocks.generation &&
     scopeGuard.scopeWriteGeneration === mocks.generation,
@@ -78,7 +74,7 @@ describe('document view prefetch auth scope', () => {
     mocks.getDocument.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveDocument = resolve
-      })
+      }),
     )
 
     prefetchDocumentView({ documentId: 'doc-late' })
@@ -96,7 +92,7 @@ describe('document view prefetch auth scope', () => {
     mocks.getDocument.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveDocument = resolve
-      })
+      }),
     )
 
     prefetchDocumentView({ documentId: 'doc-stale' })
@@ -113,7 +109,7 @@ describe('document view prefetch auth scope', () => {
     mocks.getChunk.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveChunk = resolve
-      })
+      }),
     )
 
     prefetchDocumentView({ documentId: 'doc-1', chunkId: 'chunk-late' })
@@ -129,12 +125,16 @@ describe('document view prefetch auth scope', () => {
     let resolveOld!: (value: { available: boolean }) => void
     let resolveReplacement!: (value: { available: boolean }) => void
     mocks.getParsedContent
-      .mockReturnValueOnce(new Promise((resolve) => {
-        resolveOld = resolve
-      }))
-      .mockReturnValueOnce(new Promise((resolve) => {
-        resolveReplacement = resolve
-      }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveReplacement = resolve
+        }),
+      )
 
     prefetchDocumentView({ documentId: 'doc-race' })
     mocks.scope = 'tenant:user-b'
@@ -160,7 +160,7 @@ describe('document view prefetch auth scope', () => {
     mocks.getParsedContent.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveParsed = resolve
-      })
+      }),
     )
 
     prefetchDocumentView({ documentId: 'doc-parsed-stale' })
@@ -180,12 +180,16 @@ describe('document view prefetch auth scope', () => {
     let resolveFirstFetch!: (value: string) => void
     let resolveReplacementFetch!: (value: string) => void
     mocks.fetchAsset
-      .mockReturnValueOnce(new Promise((resolve) => {
-        resolveFirstFetch = resolve
-      }))
-      .mockReturnValueOnce(new Promise((resolve) => {
-        resolveReplacementFetch = resolve
-      }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirstFetch = resolve
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveReplacementFetch = resolve
+        }),
+      )
 
     prefetchDocumentView({ documentId: 'doc-file', rawFileUrl: '/files/doc-file' })
     window.dispatchEvent(new Event('mimirq:auth-scope-changed'))

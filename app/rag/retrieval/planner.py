@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from app.rag.core.metadata import _stringified_metadata_text
+
 
 @dataclass(frozen=True)
 class DatasetRouteHint:
@@ -24,12 +26,22 @@ class DatasetScopePlan:
     included_hint_dataset_count: int
 
 
+@dataclass(frozen=True)
+class _DatasetRouteState:
+    current: tuple[UUID, ...]
+    strict_scope: bool
+    matched_dataset_ids: tuple[UUID, ...]
+    matched_replace_dataset_ids: tuple[UUID, ...]
+    matched_terms: tuple[str, ...]
+    matched_route_count: int
+
+
 def safe_positive_int(value: Any, *, default: int, minimum: int = 1, maximum: int = 200) -> int:
     try:
         out = int(value)
     except (TypeError, ValueError):
         out = int(default)
-    return max(int(minimum), min(int(maximum), int(out)))
+    return max(int(minimum), min(int(maximum), out))
 
 
 def resolve_internal_candidate_top_k(
@@ -85,13 +97,15 @@ def compact_high_confidence_items(
 
 
 def query_terms_match(query: str, terms: tuple[str, ...] | list[str] | set[str] | str | None) -> bool:
-    query_text = str(query or "").strip().casefold()
+    query_text = query.strip().casefold()
     if not query_text:
         return False
     raw_terms: tuple[str, ...] | list[str] | set[str]
     raw_terms = (terms,) if isinstance(terms, str) or terms is None else terms
     for raw in raw_terms:
-        term = str(raw or "").strip().casefold()
+        if raw is None:
+            continue
+        term = str(raw).strip().casefold()
         if term and term in query_text:
             return True
     return False
@@ -107,7 +121,9 @@ def _policy_string_list(value: Any) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for item in value:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -133,7 +149,9 @@ def _metadata_terms(value: Any) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in raw_items:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -142,7 +160,9 @@ def _metadata_terms(value: Any) -> tuple[str, ...]:
 
 
 def _append_unique_text(out: list[str], seen: set[str], value: Any) -> None:
-    text = str(value or "").strip()
+    if value is None:
+        return
+    text = str(value).strip()
     if not text or text in seen:
         return
     seen.add(text)
@@ -240,7 +260,7 @@ def retrieval_policy_mixed_intent_subject_terms(retrieval_policy: dict[str, Any]
         *(_policy_string_list(retrieval_policy.get("service_anchor_noise_terms"))),
         *(_policy_string_list(retrieval_policy.get("question_intent_terms"))),
     ):
-        term = str(raw_term or "").strip()
+        term = raw_term.strip()
         normalized = _normalize_policy_match_text(term)
         if not term or not normalized or normalized in seen:
             continue
@@ -270,7 +290,7 @@ def retrieval_policy_service_anchor_query_rewrite_terms(
         if not rewrite_terms or not _policy_rule_matches_query(raw, query_text):
             continue
         for term in rewrite_terms:
-            text = str(term or "").strip()
+            text = term.strip()
             normalized = _normalize_policy_match_text(text)
             if not text or normalized in seen:
                 continue
@@ -304,7 +324,7 @@ def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any]
     out: list[dict[str, Any]] = []
     for raw in raw_mappings:
         mapping = _as_dict(raw)
-        field = str(mapping.get("metadata") or "").strip()
+        field = _stringified_metadata_text(mapping, "metadata")
         if not field:
             continue
         raw_values = mapping.get("values") if "values" in mapping else mapping.get("value")
@@ -317,8 +337,8 @@ def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any]
     return tuple(out)
 
 
-def _normalize_policy_match_text(value: Any) -> str:
-    text = str(value or "").strip().casefold()
+def _normalize_policy_match_text(value: str) -> str:
+    text = value.strip().casefold()
     return "".join(char for char in text if char.isalnum())
 
 
@@ -344,8 +364,6 @@ def _policy_value_matches_query(query: str, value: str, *, match_mode: str) -> b
         return query_text == value_text
     if match_mode == "fuzzy_overlap":
         return _policy_value_fuzzy_overlaps_query(query_text, value_text)
-    if match_mode == "overlap":
-        return value_text in query_text or query_text in value_text
     return value_text in query_text or query_text in value_text
 
 
@@ -385,7 +403,7 @@ def _policy_boost_bonus(
     base_bonus: float,
 ) -> float:
     boost = _as_dict(raw_boost)
-    field = str(boost.get("metadata") or "").strip()
+    field = _stringified_metadata_text(boost, "metadata")
     if not field:
         return 0.0
     match_mode = _policy_boost_match_mode(boost.get("match"))
@@ -482,7 +500,7 @@ def retrieval_policy_anchor_mismatch_penalty(
     penalty = 0.0
     for raw in raw_anchors:
         anchor = _as_dict(raw)
-        field = str(anchor.get("metadata") or "").strip()
+        field = _stringified_metadata_text(anchor, "metadata")
         if not field:
             continue
         aliases = _policy_anchor_aliases(anchor.get("aliases"))
@@ -590,7 +608,7 @@ def _policy_float(value: Any, *, default: float, minimum: float, maximum: float)
         out = float(value if value is not None else default)
     except (TypeError, ValueError):
         out = float(default)
-    return max(float(minimum), min(float(maximum), float(out)))
+    return max(float(minimum), min(float(maximum), out))
 
 
 def retrieval_policy_response_compaction(retrieval_policy: dict[str, Any] | None) -> dict[str, Any]:
@@ -623,8 +641,9 @@ def _record_value(record: dict[str, Any], key: str) -> Any:
     return _record_meta(record).get(key)
 
 
-def _record_text(record: dict[str, Any], key: str) -> str:
-    return str(_record_value(record, key) or "").strip()
+def _record_text(record: dict[str, Any], key: str) -> str | None:
+    value = _record_value(record, key)
+    return str(value).strip() if value is not None else None
 
 
 def _record_float(record: dict[str, Any], key: str) -> float:
@@ -652,7 +671,8 @@ def _record_has_kg_path(record: dict[str, Any]) -> bool:
 
 
 def _record_role(record: dict[str, Any]) -> str:
-    return _record_text(record, "retrieval_role").lower() or "main"
+    role = _record_text(record, "retrieval_role")
+    return role.lower() if role else "main"
 
 
 def _is_kg_hint_record(record: dict[str, Any]) -> bool:
@@ -728,10 +748,10 @@ def summarize_kg_hint_diagnostics(
 ) -> dict[str, Any]:
     """Summarize optional KG retrieval hints without changing ranking behavior."""
 
-    expected_chunks = {str(item or "").strip() for item in expected_chunk_ids or () if str(item or "").strip()}
-    expected_documents = {str(item or "").strip() for item in expected_document_ids or () if str(item or "").strip()}
+    expected_chunks = {item.strip() for item in expected_chunk_ids or () if item.strip()}
+    expected_documents = {item.strip() for item in expected_document_ids or () if item.strip()}
     expected_meta = dict(expected_metadata) if isinstance(expected_metadata, dict) else {}
-    view_keys = tuple(str(item or "").strip() for item in metadata_view_keys or () if str(item or "").strip())
+    view_keys = tuple(item.strip() for item in metadata_view_keys or () if item.strip())
     noise_evaluated = bool(expected_chunks or expected_documents or expected_meta)
 
     role_counts: dict[str, int] = {}
@@ -817,12 +837,12 @@ def _without_dataset_ids(dataset_ids: tuple[UUID, ...], excluded: tuple[UUID, ..
 
 
 def _matched_terms(route: DatasetRouteHint, query: str) -> tuple[str, ...]:
-    query_text = str(query or "").strip().casefold()
+    query_text = query.strip().casefold()
     if not query_text:
         return ()
     out: list[str] = []
     for raw in route.terms:
-        term = str(raw or "").strip()
+        term = raw.strip()
         if term and term.casefold() in query_text:
             out.append(term)
     return tuple(out)
@@ -861,7 +881,7 @@ def _apply_dataset_route_hints(
     query: str,
     strict_routes: bool,
     current: tuple[UUID, ...],
-) -> dict[str, Any]:
+) -> _DatasetRouteState:
     matched_dataset_ids: list[UUID] = []
     matched_replace_dataset_ids: list[UUID] = []
     matched_terms: list[str] = []
@@ -888,14 +908,14 @@ def _apply_dataset_route_hints(
         )
         if mode == "replace":
             matched_replace_dataset_ids.extend(route_dataset_ids)
-    return {
-        "current": current,
-        "strict_scope": strict_scope,
-        "matched_dataset_ids": matched_dataset_ids,
-        "matched_replace_dataset_ids": matched_replace_dataset_ids,
-        "matched_terms": matched_terms,
-        "matched_route_count": matched_route_count,
-    }
+    return _DatasetRouteState(
+        current=current,
+        strict_scope=strict_scope,
+        matched_dataset_ids=tuple(matched_dataset_ids),
+        matched_replace_dataset_ids=tuple(matched_replace_dataset_ids),
+        matched_terms=tuple(matched_terms),
+        matched_route_count=matched_route_count,
+    )
 
 
 def _plan_primary_and_expansion_scope(
@@ -942,10 +962,10 @@ def plan_dataset_scope(
         include_unmatched_hint_datasets=include_unmatched_hint_datasets,
     )
     route_state = _apply_dataset_route_hints(hints, query=query, strict_routes=strict_routes, current=current)
-    current = route_state["current"]
-    strict_scope = bool(route_state["strict_scope"])
-    matched_ids = _dedupe_dataset_ids(route_state["matched_dataset_ids"])
-    matched_replace_ids = _dedupe_dataset_ids(route_state["matched_replace_dataset_ids"])
+    current = route_state.current
+    strict_scope = route_state.strict_scope
+    matched_ids = _dedupe_dataset_ids(route_state.matched_dataset_ids)
+    matched_replace_ids = _dedupe_dataset_ids(route_state.matched_replace_dataset_ids)
     primary_ids, expansion_ids = _plan_primary_and_expansion_scope(
         base_ids=base_ids,
         current=current,
@@ -964,10 +984,10 @@ def plan_dataset_scope(
         expansion_dataset_ids=expansion_ids,
         base_dataset_ids=base_ids,
         matched_dataset_ids=matched_ids,
-        matched_terms=tuple(dict.fromkeys(route_state["matched_terms"])),
+        matched_terms=tuple(dict.fromkeys(route_state.matched_terms)),
         strict_scope=strict_scope,
         route_count=len(hints),
-        matched_route_count=int(route_state["matched_route_count"]),
+        matched_route_count=route_state.matched_route_count,
         included_hint_dataset_count=len(hint_ids),
     )
 

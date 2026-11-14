@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
 from app.rag.core.logging import get_logger
+from app.services.chat_cache_runtime import store_chat_response_cache_if_needed
 from app.services.chat_response_cache import resolve_inflight_chat_response
-from app.services.chat_runtime import store_chat_response_cache_if_needed
 from app.services.chat_turn_persistence import (
     ChatTurnPersistInput,
     persist_chat_turn_sync,
 )
 from app.services.metrics_logger import log_metrics
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 
 logger = get_logger(__name__)
 
@@ -30,8 +31,8 @@ class ChatResponseFinalizationInput:
     question: str
     document_count: int
     full_response: str
-    citations: list
-    metrics: dict
+    citations: list[Any]
+    metrics: dict[str, Any]
     structured_data: object | None
     dataset_id_used: UUID | None
     cache_eligible: bool
@@ -47,7 +48,7 @@ class ChatResponseFinalizationInput:
 
 
 def _is_extractive_fallback_trace(metrics: dict[str, Any]) -> bool:
-    return str(metrics.get("generation_fallback_kind") or "").strip() == "extractive_retrieval_summary"
+    return metrics.get("generation_fallback_kind") == "extractive_retrieval_summary"
 
 
 def _retrieval_elapsed_seconds(metrics: dict[str, Any]) -> float | None:
@@ -68,7 +69,7 @@ def _retrieval_elapsed_seconds(metrics: dict[str, Any]) -> float | None:
 
 def _compact_retrieval_errors(metrics: dict[str, Any]) -> list[str]:
     errors_raw = metrics.get("retrieval_errors") or metrics.get("errors") or []
-    return [str(item)[:200] for item in errors_raw if str(item or "").strip()]
+    return [str(item)[:200] for item in errors_raw if item.strip()]
 
 
 def _safe_non_negative_int(value: Any) -> int:
@@ -78,7 +79,7 @@ def _safe_non_negative_int(value: Any) -> int:
         return 0
 
 
-def _fallback_rerank_elapsed_seconds(citations: list) -> float | None:
+def _fallback_rerank_elapsed_seconds(citations: list[Any]) -> float | None:
     values: list[float] = []
     for citation in citations or []:
         if not isinstance(citation, dict):
@@ -95,7 +96,7 @@ def _fallback_rerank_elapsed_seconds(citations: list) -> float | None:
 def _extractive_fallback_cost_attribution(
     *,
     metrics: dict[str, Any],
-    citations: list,
+    citations: list[Any],
     question: str,
 ) -> dict[str, Any]:
     per_query = [item for item in (metrics.get("retrieval_per_query") or []) if isinstance(item, dict)]
@@ -104,7 +105,7 @@ def _extractive_fallback_cost_attribution(
         query_chars = sum(_safe_non_negative_int(item.get("query_chars")) for item in per_query)
         query_tokens = sum(_safe_non_negative_int(item.get("query_tokens")) for item in per_query)
     else:
-        fallback_query = str(metrics.get("query_for_retrieval") or question or "")
+        fallback_query = str(metrics.get("query_for_retrieval") or question)
         query_count = _safe_non_negative_int(metrics.get("retrieval_query_count")) or int(bool(fallback_query))
         query_chars = len(fallback_query)
         query_tokens = num_tokens_from_string(fallback_query) if fallback_query else 0
@@ -120,8 +121,8 @@ def _extractive_fallback_cost_attribution(
             "source": "extractive_fallback",
         },
         "embeddings": {
-            "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
-            "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+            "provider": settings.EMBEDDING_PROVIDER,
+            "model": settings.EMBEDDING_MODEL,
             "query_count": int(query_count),
             "query_chars": int(query_chars),
             "query_tokens": int(query_tokens),
@@ -130,13 +131,13 @@ def _extractive_fallback_cost_attribution(
         "retrieval": {
             "elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
             "rerank_elapsed_sec": _fallback_rerank_elapsed_seconds(citations),
-            "vector_backend": str(metrics.get("vector_backend") or settings.VECTOR_BACKEND or ""),
+            "vector_backend": str(metrics.get("vector_backend") or settings.VECTOR_BACKEND),
             "query_count": int(query_count),
         },
     }
 
 
-def _online_eval_contexts(citations: list) -> list[str]:
+def _online_eval_contexts(citations: list[Any]) -> list[str]:
     contexts: list[str] = []
     for citation in citations or []:
         if hasattr(citation, "model_dump"):
@@ -147,7 +148,7 @@ def _online_eval_contexts(citations: list) -> list[str]:
                 continue
         if not isinstance(citation, dict):
             continue
-        text = str(citation.get("chunk_content") or citation.get("quote") or citation.get("text") or "").strip()
+        text = citation["chunk_content"].strip()
         if not text or text in contexts:
             continue
         contexts.append(text)
@@ -157,7 +158,7 @@ def _online_eval_contexts(citations: list) -> list[str]:
 
 
 def _online_eval_retrieval_mode(metrics: dict[str, Any], retrieval_mode_default: str | None) -> str | None:
-    return str(metrics.get("retrieval_mode") or retrieval_mode_default or "") or None
+    return metrics.get("retrieval_mode", retrieval_mode_default)
 
 
 def _resolve_singleflight_payload(
@@ -178,6 +179,7 @@ def _chat_turn_persist_input(
         tenant_id=options.tenant_id,
         conversation_id=options.conversation_id,
         account_id=options.account_id,
+        audit_action="chat.ask",
         assistant_message_id=options.assistant_message_id,
         request_id=options.request_id,
         question=options.question,
@@ -203,7 +205,7 @@ def _maybe_enqueue_online_eval(options: ChatResponseFinalizationInput, metrics_o
             tenant_id=options.tenant_id,
             dataset_id=options.dataset_id_used,
             request_id=str(options.request_id),
-            answer=str(options.full_response or ""),
+            answer=options.full_response,
             contexts=_online_eval_contexts(options.citations),
             retrieval_mode=_online_eval_retrieval_mode(metrics_out, options.retrieval_mode_default),
             citations_count=int(len(options.citations or [])),
@@ -218,14 +220,14 @@ def _log_extractive_fallback_rag_trace(
     conversation_id: UUID,
     request_id: str,
     question: str,
-    citations: list,
+    citations: list[Any],
     metrics: dict[str, Any],
     retrieval_mode_default: str | None,
 ) -> None:
     if not _is_extractive_fallback_trace(metrics):
         return
 
-    retrieval_mode_used = str(metrics.get("retrieval_mode") or retrieval_mode_default or "").strip()
+    retrieval_mode_used = _online_eval_retrieval_mode(metrics, retrieval_mode_default)
     retrieval_elapsed_sec = _retrieval_elapsed_seconds(metrics)
     errors = _compact_retrieval_errors(metrics)
 
@@ -234,12 +236,12 @@ def _log_extractive_fallback_rag_trace(
         "conversation_id": str(conversation_id),
         "tenant_id": str(tenant_id),
         "request_id": str(request_id),
-        "question": str(question or ""),
-        "query_for_retrieval": str(metrics.get("query_for_retrieval") or question or ""),
+        "question": question,
+        "query_for_retrieval": str(metrics.get("query_for_retrieval") or question),
         "citations_count": int(len(citations or [])),
         "citations": list(citations or []),
         "retrieval": {
-            "mode": retrieval_mode_used or None,
+            "mode": retrieval_mode_used,
             "elapsed_sec": retrieval_elapsed_sec,
             "errors": errors,
         },
@@ -296,3 +298,18 @@ def finalize_chat_response_sync(
         )
 
     return metrics_out
+
+
+async def finalize_chat_response(*, options: ChatResponseFinalizationInput) -> dict[str, Any]:
+    metrics = await run_blocking_call_with_managed_session(
+        lambda worker_db: finalize_chat_response_sync(
+            options=replace(options, db=worker_db, singleflight_leader=False)
+        ),
+        request_db=options.db,
+    )
+    if options.singleflight_key and options.singleflight_leader:
+        resolve_inflight_chat_response(
+            options.singleflight_key,
+            jsonable_encoder(_resolve_singleflight_payload(options, metrics)),
+        )
+    return metrics

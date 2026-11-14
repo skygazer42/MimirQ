@@ -11,7 +11,9 @@ _CONVERSATION_TITLE_PREVIEW_CHARS = 50
 
 
 def derive_auto_conversation_title(message: str | None) -> str | None:
-    text = re.sub(r"\s+", " ", str(message or "").strip())
+    if message is None:
+        return None
+    text = re.sub(r"\s+", " ", message.strip())
     if not text:
         return None
     if len(text) <= _CONVERSATION_TITLE_PREVIEW_CHARS:
@@ -20,14 +22,13 @@ def derive_auto_conversation_title(message: str | None) -> str | None:
 
 
 def get_conversation_title_source(conversation: Conversation) -> str:
-    raw = str(getattr(conversation, "title_source", "") or "").strip().lower()
+    raw = conversation.title_source.strip().lower()
     if raw in {CONVERSATION_TITLE_SOURCE_AUTO, CONVERSATION_TITLE_SOURCE_MANUAL}:
         return raw
-    return (
-        CONVERSATION_TITLE_SOURCE_MANUAL
-        if str(getattr(conversation, "title", "") or "").strip()
-        else CONVERSATION_TITLE_SOURCE_AUTO
-    )
+    title = conversation.title
+    if title is None:
+        return CONVERSATION_TITLE_SOURCE_AUTO
+    return CONVERSATION_TITLE_SOURCE_MANUAL if title.strip() else CONVERSATION_TITLE_SOURCE_AUTO
 
 
 def apply_auto_conversation_title(conversation: Conversation, message: str | None) -> None:
@@ -53,6 +54,6 @@ def get_latest_user_message_content(
         .order_by(Message.created_at.desc(), Message.id.desc())
         .first()
     )
-    if not row:
+    if row is None:
         return None
-    return str(row[0] or "").strip() or None
+    return row[0]

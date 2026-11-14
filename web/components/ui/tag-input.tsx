@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { X } from 'lucide-react'
+import { X } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
@@ -26,41 +26,58 @@ export function TagInput({
   maxTagLen?: number
   className?: string
   inputClassName?: string
-  }>) {
-    const t = useTranslations('CommonUi')
-    const [draft, setDraft] = React.useState('')
+}>) {
+  const t = useTranslations('CommonUi')
+  const [draft, setDraft] = React.useState('')
 
-    const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
-    const resolvedPlaceholder = placeholder ?? t('tagInput.placeholder')
+  const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
+  const resolvedPlaceholder = placeholder ?? t('tagInput.placeholder')
 
   const addTags = React.useCallback(
     (incoming: string[]) => {
       const cap = Math.max(0, Math.min(200, Number(maxTags || 0)))
-      const seen = new Set(tags.map((t) => String(t || '').trim().toLowerCase()).filter(Boolean))
+      const seen = new Set(
+        tags
+          .map((t) =>
+            String(t || '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      )
       const next = [...tags]
 
       for (const raw of incoming) {
+        if (cap && next.length >= cap) break
         const norm = normalizeTag(raw, { maxLen: maxTagLen })
         if (!norm) continue
         const key = norm.trim().toLowerCase()
         if (!key || seen.has(key)) continue
         seen.add(key)
         next.push(norm)
-        if (cap && next.length >= cap) break
       }
 
       onValueChange(next)
     },
-    [maxTagLen, maxTags, onValueChange, tags]
+    [maxTagLen, maxTags, onValueChange, tags],
   )
 
   const removeTag = React.useCallback(
     (tag: string) => {
-      const key = String(tag || '').trim().toLowerCase()
+      const key = String(tag || '')
+        .trim()
+        .toLowerCase()
       if (!key) return
-      onValueChange(tags.filter((t) => String(t || '').trim().toLowerCase() !== key))
+      onValueChange(
+        tags.filter(
+          (t) =>
+            String(t || '')
+              .trim()
+              .toLowerCase() !== key,
+        ),
+      )
     },
-    [onValueChange, tags]
+    [onValueChange, tags],
   )
 
   const commitDraft = React.useCallback(() => {

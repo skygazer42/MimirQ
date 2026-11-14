@@ -11,7 +11,6 @@ Config via env/.env:
 - QIANFAN_OCR_LAYOUT_AS_THOUGHT=false
 """
 
-
 import json
 import re
 from pathlib import Path
@@ -21,13 +20,14 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.parsers.response_text import extract_markdown_from_json as _extract_markdown_from_json
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.qianfan_ocr")
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "qianfan_ocr"
     return text
 
@@ -46,10 +46,10 @@ class QianfanOCRParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-        self._api_url = (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "QIANFAN_OCR_TIMEOUT_SEC", 1800) or 1800)
-        self._layout_as_thought = bool(getattr(settings, "QIANFAN_OCR_LAYOUT_AS_THOUGHT", False))
+        self._enabled = settings.QIANFAN_OCR_ENABLED
+        self._api_url = settings.QIANFAN_OCR_API_URL.strip()
+        self._timeout_sec = float(settings.QIANFAN_OCR_TIMEOUT_SEC or 1800)
+        self._layout_as_thought = settings.QIANFAN_OCR_LAYOUT_AS_THOUGHT
 
         if not self._enabled:
             raise RuntimeError("Qianfan-OCR is disabled (QIANFAN_OCR_ENABLED=false).")
@@ -64,7 +64,7 @@ class QianfanOCRParser:
 
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
-        suffix = (file_path.suffix or "").lower()
+        suffix = (file_path.suffix).lower()
         content_type = "application/pdf" if suffix == ".pdf" else "application/octet-stream"
         files = {"file": (file_path.name, file_bytes, content_type)}
         data = {
@@ -72,15 +72,6 @@ class QianfanOCRParser:
             "layout_as_thought": str(self._layout_as_thought).lower(),
         }
         return self._session.post(self._api_url, files=files, data=data, timeout=self._timeout_sec)
-
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
 
     def parse(
         self,
@@ -101,8 +92,8 @@ class QianfanOCRParser:
 
         logger.info("[qianfan_ocr] parsing %s", file_path.name)
         resp = self._post_multipart(file_path=file_path)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"Qianfan-OCR API error {resp.status_code}: {(resp.text or '')[:500]}")
+        if resp.status_code != 200:
+            raise RuntimeError(f"Qianfan-OCR API error {resp.status_code}: {(resp.text)[:500]}")
 
         markdown_text = ""
         ctype = str(resp.headers.get("content-type") or "").lower()
@@ -110,14 +101,14 @@ class QianfanOCRParser:
             try:
                 data = resp.json()
             except Exception:
-                data = json.loads((resp.text or "").strip() or "{}")
-            markdown_text = self._extract_markdown_from_json(data)
+                data = json.loads((resp.text).strip() or "{}")
+            markdown_text = _extract_markdown_from_json(data)
         else:
-            markdown_text = resp.text or ""
+            markdown_text = resp.text
 
         try:
             artifact_root.mkdir(parents=True, exist_ok=True)
-            (artifact_root / "result.md").write_text(markdown_text or "", encoding="utf-8")
+            (artifact_root / "result.md").write_text(markdown_text, encoding="utf-8")
         except Exception as exc:
             # Best-effort only; do not block parsing.
             logger.debug("Failed to write Qianfan OCR parse artifact; continuing: %s", exc)
@@ -127,7 +118,7 @@ class QianfanOCRParser:
             "file_type": "pdf",
             "parser_backend": "qianfan_ocr",
             "artifact_dir": str(artifact_root),
-            "qianfan_ocr_layout_as_thought": bool(self._layout_as_thought),
+            "qianfan_ocr_layout_as_thought": self._layout_as_thought,
         }
         if dataset_id:
             metadata["dataset_id"] = str(dataset_id)

@@ -6,10 +6,11 @@ methods below run on the ``HybridRetriever`` instance via mixin inheritance.
 
 import math
 from collections import Counter
-from typing import Any
+from typing import Any, TypedDict
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.hybrid.common import (
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     _apply_exact_content_bonus_to_result,
@@ -19,6 +20,16 @@ from app.rag.retrieval.hybrid.common import (
 from app.rag.retrieval.query_phrase_match import query_phrase_match
 
 
+class _FusionRuntime(TypedDict):
+    field_aware_enabled: bool
+    field_aware_title_boost: float
+    field_aware_heading_boost: float
+    field_aware_max_boost: float
+    chunk_type_weighting_enabled: bool
+    chunk_type_match_boost: float
+    preferred_chunk_type: str | None
+
+
 class FusionMixin:
     """Merges per-channel candidate lists and applies weight/MMR reranking."""
 
@@ -26,7 +37,7 @@ class FusionMixin:
 
     @staticmethod
     def _resolve_query_chunk_type_signal(text: str | None) -> str | None:
-        raw = str(text or "").strip().lower()
+        raw = str((text if text is not None else "")).strip().lower()
         if not raw:
             return None
         if any(token in raw for token in ("表格", "字段", "列", "schema", "table", "column")):
@@ -42,16 +53,16 @@ class FusionMixin:
         return None
 
     @staticmethod
-    def _build_fusion_runtime(query: str | None) -> dict[str, Any]:
-        field_aware_enabled = bool(getattr(settings, "RETRIEVAL_FIELD_AWARE_RECALL_ENABLED", False))
-        field_aware_title_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.08) or 0.0))
+    def _build_fusion_runtime(query: str | None) -> _FusionRuntime:
+        field_aware_enabled = settings.RETRIEVAL_FIELD_AWARE_RECALL_ENABLED
+        field_aware_title_boost = max(0.0, settings.RETRIEVAL_FIELD_AWARE_TITLE_BOOST)
         field_aware_heading_boost = max(
             0.0,
-            float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.05) or 0.0),
+            settings.RETRIEVAL_FIELD_AWARE_HEADING_BOOST,
         )
-        field_aware_max_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.10) or 0.0))
-        chunk_type_weighting_enabled = bool(getattr(settings, "RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED", False))
-        chunk_type_match_boost = max(0.0, float(getattr(settings, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST", 0.08) or 0.0))
+        field_aware_max_boost = max(0.0, settings.RETRIEVAL_FIELD_AWARE_MAX_BOOST)
+        chunk_type_weighting_enabled = settings.RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED
+        chunk_type_match_boost = max(0.0, settings.RETRIEVAL_CHUNK_TYPE_MATCH_BOOST)
         return {
             "field_aware_enabled": field_aware_enabled,
             "field_aware_title_boost": min(field_aware_title_boost, field_aware_max_boost),
@@ -65,12 +76,20 @@ class FusionMixin:
     @staticmethod
     def _resolve_chunk_type(result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
-        raw = str(meta.get("chunk_type") or meta.get("content_type") or meta.get("visual_kind") or "").strip().lower()
+        raw = (
+            _stringified_metadata_text(meta, "chunk_type")
+            or _stringified_metadata_text(meta, "content_type")
+            or _stringified_metadata_text(meta, "visual_kind")
+        )
+        if raw is not None:
+            raw = raw.lower()
         if raw in {"text", "formula", "table", "code", "figure", "chart_data", "seal"}:
             return raw
         if raw == "chart":
             return "figure"
-        role = str(meta.get("chunk_semantic_role") or "").strip().lower()
+        role = _stringified_metadata_text(meta, "chunk_semantic_role")
+        if role is not None:
+            role = role.lower()
         if role == "code":
             return "code"
         if role == "table":
@@ -78,25 +97,30 @@ class FusionMixin:
         return "text"
 
     @staticmethod
-    def _chunk_type_boost(chunk_type: str, runtime: dict[str, Any]) -> float:
+    def _chunk_type_boost(chunk_type: str, runtime: _FusionRuntime) -> float:
         if not runtime["chunk_type_weighting_enabled"] or not runtime["preferred_chunk_type"]:
             return 0.0
         if chunk_type == runtime["preferred_chunk_type"]:
-            return float(runtime["chunk_type_match_boost"])
+            return runtime["chunk_type_match_boost"]
         if runtime["preferred_chunk_type"] == "chart_data" and chunk_type == "figure":
-            return max(0.0, float(runtime["chunk_type_match_boost"]) * 0.75)
+            return max(0.0, runtime["chunk_type_match_boost"] * 0.75)
         return 0.0
 
     def _resolve_field_signal(self, result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
         hinted = (
-            str(meta.get("embedding_field_role") or meta.get("embedding_field_kind") or meta.get("field_channel") or "")
-            .strip()
-            .lower()
+            _stringified_metadata_text(meta, "embedding_field_role")
+            or _stringified_metadata_text(meta, "embedding_field_kind")
+            or _stringified_metadata_text(meta, "field_channel")
         )
+        if hinted is not None:
+            hinted = hinted.lower()
         if hinted in {"title", "heading", "body"}:
             return hinted
-        chunk_id = str(result.get("chunk_id") or meta.get("chunk_id") or "").strip().lower()
+        chunk_id = _stringified_metadata_text(result, "chunk_id") or _stringified_metadata_text(meta, "chunk_id")
+        if chunk_id is None:
+            return "body"
+        chunk_id = chunk_id.lower()
         if chunk_id.endswith(":title"):
             return "title"
         if chunk_id.endswith(":heading"):
@@ -104,13 +128,13 @@ class FusionMixin:
         return "body"
 
     @staticmethod
-    def _field_boost(field_signal: str, runtime: dict[str, Any]) -> float:
+    def _field_boost(field_signal: str, runtime: _FusionRuntime) -> float:
         if not runtime["field_aware_enabled"]:
             return 0.0
         if field_signal == "title":
-            return float(runtime["field_aware_title_boost"])
+            return runtime["field_aware_title_boost"]
         if field_signal == "heading":
-            return float(runtime["field_aware_heading_boost"])
+            return runtime["field_aware_heading_boost"]
         return 0.0
 
     def _normalize_channel_results(
@@ -118,7 +142,7 @@ class FusionMixin:
         results: list[dict[str, Any]],
         *,
         channel: str,
-        runtime: dict[str, Any],
+        runtime: _FusionRuntime,
     ) -> dict[str, dict[str, Any]]:
         if not results:
             return {}
@@ -137,18 +161,18 @@ class FusionMixin:
             if channel == "vector":
                 field_signal = self._resolve_field_signal(result)
                 field_boost = min(self._field_boost(field_signal, runtime), runtime["field_aware_max_boost"])
-            scored = float(norm_score) + float(field_boost) + float(chunk_type_boost)
+            scored = float(norm_score) + field_boost + chunk_type_boost
             existing = normalized.get(key)
-            if existing is not None and float(scored) <= float(existing.get("score", 0.0) or 0.0):
+            if existing is not None and scored <= float(existing.get("score", 0.0) or 0.0):
                 continue
             normalized[key] = {
-                "score": float(scored),
+                "score": scored,
                 "base_score": float(norm_score),
                 "data": result,
                 "chunk_type": chunk_type,
-                "chunk_type_boost": float(chunk_type_boost),
+                "chunk_type_boost": chunk_type_boost,
                 "field_aware_signal": field_signal if channel == "vector" else None,
-                "field_aware_boost": float(field_boost if channel == "vector" else 0.0),
+                "field_aware_boost": field_boost if channel == "vector" else 0.0,
             }
         return normalized
 
@@ -156,7 +180,7 @@ class FusionMixin:
         self,
         *,
         vector_norm: dict[str, dict[str, Any]],
-        runtime: dict[str, Any],
+        runtime: _FusionRuntime,
     ) -> None:
         try:
             if not isinstance(self._last_channel_metrics, dict):
@@ -175,21 +199,21 @@ class FusionMixin:
                 if float(payload.get("chunk_type_boost") or 0.0) > 0.0:
                     chunk_boosted += 1
             self._last_channel_metrics["field_aware"] = {
-                "enabled": bool(runtime["field_aware_enabled"]),
-                "title_boost": round(float(runtime["field_aware_title_boost"]), 6),
-                "heading_boost": round(float(runtime["field_aware_heading_boost"]), 6),
-                "max_boost": round(float(runtime["field_aware_max_boost"]), 6),
-                "candidates": int(len(vector_norm)),
-                "boosted_candidates": int(boosted),
-                "signals": dict(sorted((str(key), int(value)) for key, value in field_signal_counts.items())),
+                "enabled": runtime["field_aware_enabled"],
+                "title_boost": round(runtime["field_aware_title_boost"], 6),
+                "heading_boost": round(runtime["field_aware_heading_boost"], 6),
+                "max_boost": round(runtime["field_aware_max_boost"], 6),
+                "candidates": len(vector_norm),
+                "boosted_candidates": boosted,
+                "signals": dict(sorted((key, value) for key, value in field_signal_counts.items())),
             }
             self._last_channel_metrics["chunk_type_weighting"] = {
-                "enabled": bool(runtime["chunk_type_weighting_enabled"]),
+                "enabled": runtime["chunk_type_weighting_enabled"],
                 "preferred_chunk_type": runtime["preferred_chunk_type"],
-                "match_boost": round(float(runtime["chunk_type_match_boost"]), 6),
-                "candidates": int(len(vector_norm)),
-                "boosted_candidates": int(chunk_boosted),
-                "signals": dict(sorted((str(key), int(value)) for key, value in chunk_type_counts.items())),
+                "match_boost": round(runtime["chunk_type_match_boost"], 6),
+                "candidates": len(vector_norm),
+                "boosted_candidates": chunk_boosted,
+                "signals": dict(sorted((key, value) for key, value in chunk_type_counts.items())),
             }
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
@@ -283,7 +307,7 @@ class FusionMixin:
     @staticmethod
     def _rank_score(rank_map: dict[str, int], key: str) -> float:
         rank = rank_map.get(key)
-        if not rank or int(rank) <= 0:
+        if not rank or rank <= 0:
             return 0.0
         return 1.0 / float(rank)
 
@@ -349,7 +373,7 @@ class FusionMixin:
             return
         phrase_boost_weight = max(
             0.0,
-            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST,
         )
         for item in merged.values():
             _apply_exact_content_bonus_to_result(
@@ -386,7 +410,7 @@ class FusionMixin:
             return {}
         budgets: dict[str, int] = {}
         for key, value in raw.items():
-            channel = str(key or "").strip().lower()
+            channel = key.strip().lower()
             if not channel:
                 continue
             try:
@@ -401,7 +425,7 @@ class FusionMixin:
             return {}
         min_scores: dict[str, float] = {}
         for key, value in raw.items():
-            channel = str(key or "").strip().lower()
+            channel = key.strip().lower()
             if not channel:
                 continue
             try:
@@ -417,7 +441,7 @@ class FusionMixin:
         allowed = set(FusionMixin._FUSION_CHANNELS)
         weights: dict[str, float] = {}
         for key, value in raw.items():
-            channel = str(key or "").strip().lower()
+            channel = key.strip().lower()
             if not channel or channel not in allowed:
                 continue
             try:
@@ -449,7 +473,7 @@ class FusionMixin:
         index = 0
         while remaining > 0 and active_channels:
             channel = active_channels[index % len(active_channels)]
-            budgets[channel] = int(budgets.get(channel, 0) or 0) + 1
+            budgets[channel] += 1
             remaining -= 1
             index += 1
         return budgets
@@ -523,10 +547,7 @@ class FusionMixin:
             used.add(key)
             selected_keys.append(key)
             picked += 1
-            try:
-                picked_by_channel[channel] = int(picked_by_channel.get(channel, 0) or 0) + 1
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            picked_by_channel[channel] += 1
 
     def _fill_budgeted_prefix(
         self,
@@ -549,10 +570,7 @@ class FusionMixin:
                 continue
             used.add(key)
             selected_keys.append(key)
-            try:
-                picked_by_channel["fill"] = int(picked_by_channel.get("fill", 0) or 0) + 1
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            picked_by_channel["fill"] += 1
 
     def _record_budgeted_rrf_metrics(
         self,
@@ -583,7 +601,7 @@ class FusionMixin:
                 "k_prefix": int(k_prefix),
                 "rrf_k": int(k0),
                 "budgets": budgets_out,
-                "min_scores": min_scores_out or None,
+                "min_scores": (min_scores_out),
                 "eligible_total": int(eligible_total),
                 "selected_prefix": int(len(selected_keys)),
                 "picked_by_channel": picked_out,
@@ -603,7 +621,7 @@ class FusionMixin:
             channel: sorted(channel_results[channel], key=self._rank_sort_key) for channel in self._FUSION_CHANNELS
         }
         rank_maps = {channel: self._build_rank_map(sorted_results[channel]) for channel in self._FUSION_CHANNELS}
-        k0 = max(1, int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60))
+        k0 = max(1, int((rrf_k if rrf_k is not None else 0)) or int(getattr(self, "rrf_k", 60) or 60))
         merged, raw_scores, _keys = self._build_rrf_merged_items(
             channel_norms=channel_norms,
             rank_maps=rank_maps,
@@ -631,14 +649,14 @@ class FusionMixin:
             channel: sorted(channel_results[channel], key=self._rank_sort_key) for channel in self._FUSION_CHANNELS
         }
         rank_maps = {channel: self._build_rank_map(sorted_results[channel]) for channel in self._FUSION_CHANNELS}
-        k_prefix = max(1, int(top_k or 0) or int(getattr(self, "k", 0) or 0) or 10)
+        k_prefix = max(1, int((top_k if top_k is not None else 0)) or int(getattr(self, "k", 0) or 0) or 10)
         budgets = self._resolve_budgeted_budgets(
             configured=self._coerce_budgets(getattr(self, "fusion_budgets", None)),
             channel_results=sorted_results,
             k_prefix=k_prefix,
         )
         min_scores = self._coerce_min_scores(getattr(self, "fusion_min_scores", None))
-        k0 = max(1, int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60))
+        k0 = max(1, int((rrf_k if rrf_k is not None else 0)) or int(getattr(self, "rrf_k", 60) or 60))
         merged, raw_scores, keys = self._build_rrf_merged_items(
             channel_norms=channel_norms,
             rank_maps=rank_maps,
@@ -686,7 +704,7 @@ class FusionMixin:
         prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
         rest = [item for item in all_sorted if self._result_key(item) not in selected_set]
         for index, item in enumerate(prefix, 1):
-            item["fusion_budgeted_prefix_rank"] = int(index)
+            item["fusion_budgeted_prefix_rank"] = index
         self._record_budgeted_rrf_metrics(
             budgets=budgets,
             min_scores=min_scores,
@@ -818,8 +836,8 @@ class FusionMixin:
         channel_results = {
             "vector": list(vector_results or []),
             "bm25": list(bm25_results or []),
-            "lexical": list(lexical_results or []),
-            "sparse": list(sparse_results or []),
+            "lexical": list((lexical_results if lexical_results is not None else [])),
+            "sparse": list((sparse_results if sparse_results is not None else [])),
         }
         runtime = self._build_fusion_runtime(query)
         channel_norms = {
@@ -827,7 +845,18 @@ class FusionMixin:
             for channel in self._FUSION_CHANNELS
         }
         self._update_fusion_observability(vector_norm=channel_norms["vector"], runtime=runtime)
-        fusion = (fusion_strategy or "linear").lower().strip()
+        fusion = ("linear" if fusion_strategy is None else fusion_strategy).lower().strip()
+        if fusion not in {
+            "linear",
+            "rrf",
+            "reciprocal_rank_fusion",
+            "budgeted_rrf",
+            "budget_rrf",
+            "weighted",
+            "weighted_linear",
+            "weighted_sum",
+        }:
+            raise ValueError(f"Unknown retrieval fusion strategy: {fusion!r}")
         if fusion in ("rrf", "reciprocal_rank_fusion"):
             return self._merge_results_rrf(
                 channel_results=channel_results,
@@ -860,8 +889,8 @@ class FusionMixin:
         if not documents:
             return documents
 
-        query_tokens = self._bm25_tokenize(query)
-        doc_tokens_list = [self._bm25_tokenize(doc.get("content", "")) for doc in documents]
+        query_tokens = self._tokenize_lexical_text(query)
+        doc_tokens_list = [self._tokenize_lexical_text(doc["content"]) for doc in documents]
 
         doc_term_frequencies = [Counter(tokens) for tokens in doc_tokens_list]
         document_frequencies: Counter[str] = Counter()
@@ -893,10 +922,10 @@ class FusionMixin:
         keyword_scores = [cosine(query_vec, v) for v in doc_vecs]
 
         reranked: list[dict[str, Any]] = []
-        phrase_boost_weight = max(0.0, float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0))
+        phrase_boost_weight = max(0.0, settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST)
         for doc, kw_score in zip(documents, keyword_scores, strict=False):
             vec_score = doc.get("vector_score", doc.get("score", 0.0))
-            phrase = query_phrase_match(query, str(doc.get("content", "") or ""))
+            phrase = query_phrase_match(query, doc["content"])
             phrase_score = float(phrase.get("score", 0.0) or 0.0)
             phrase_boost = phrase_score * phrase_boost_weight
             final_score = vector_weight * float(vec_score) + keyword_weight * float(kw_score) + phrase_boost
@@ -929,7 +958,7 @@ class FusionMixin:
         if not selected:
             return 0.0
         similarities = [self._mmr_doc_similarity(tokens_map, doc, selected_doc) for selected_doc in selected]
-        return max(similarities) if similarities else 0.0
+        return max(similarities)
 
     def _best_mmr_candidate(
         self,
@@ -969,7 +998,7 @@ class FusionMixin:
         selected: list[dict[str, Any]] = []
         candidates = list(documents)
         # Pre-cache tokens to avoid multiple tokenizations
-        tokens_map = {id(doc): self._tokenize_for_similarity(doc.get("content", "")) for doc in candidates}
+        tokens_map = {id(doc): self._tokenize_for_similarity(doc["content"]) for doc in candidates}
 
         while candidates and len(selected) < top_k:
             best = self._best_mmr_candidate(

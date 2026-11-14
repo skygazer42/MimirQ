@@ -8,7 +8,6 @@ Config via env/.env:
 - TEXTIN_SECRET_CODE=<secret-code>
 """
 
-
 import json
 import re
 from pathlib import Path
@@ -24,7 +23,7 @@ logger = get_logger("parsing.textin")
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "textin"
     return text
 
@@ -49,6 +48,29 @@ def _collect_markdown_like_strings(node: Any) -> list[str]:
     return results
 
 
+def _extract_markdown_from_payload(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+    result = data.get("result")
+    if isinstance(result, dict):
+        for key in ("markdown", "text", "content"):
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    strings = _collect_markdown_like_strings(result)
+    return "\n\n".join(item.strip() for item in dict.fromkeys(strings))
+
+
+def _extract_error_message(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+    for key in ("message", "msg", "detail", "error"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 class TextInParser:
     """
     Call the TextIn xParse quickstart endpoint and return Markdown output.
@@ -58,18 +80,18 @@ class TextInParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-        self._api_url = (getattr(settings, "TEXTIN_API_URL", "") or "").strip()
-        self._app_id = (getattr(settings, "TEXTIN_APP_ID", "") or "").strip()
-        self._secret_code = (getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "TEXTIN_TIMEOUT_SEC", 180) or 180)
-        self._parse_mode = (getattr(settings, "TEXTIN_PARSE_MODE", "") or "auto").strip().lower() or "auto"
-        self._table_flavor = (getattr(settings, "TEXTIN_TABLE_FLAVOR", "") or "html").strip().lower() or "html"
-        self._apply_document_tree = bool(getattr(settings, "TEXTIN_APPLY_DOCUMENT_TREE", True))
-        self._markdown_details = bool(getattr(settings, "TEXTIN_MARKDOWN_DETAILS", True))
-        self._get_image = (getattr(settings, "TEXTIN_GET_IMAGE", "") or "none").strip().lower() or "none"
-        self._dpi = max(0, int(getattr(settings, "TEXTIN_DPI", 144) or 0))
-        self._page_count = max(0, int(getattr(settings, "TEXTIN_PAGE_COUNT", 0) or 0))
+        self._enabled = settings.TEXTIN_ENABLED
+        self._api_url = settings.TEXTIN_API_URL.strip()
+        self._app_id = settings.TEXTIN_APP_ID.strip()
+        self._secret_code = settings.TEXTIN_SECRET_CODE.strip()
+        self._timeout_sec = float(settings.TEXTIN_TIMEOUT_SEC or 180)
+        self._parse_mode = (settings.TEXTIN_PARSE_MODE or "auto").strip().lower() or "auto"
+        self._table_flavor = (settings.TEXTIN_TABLE_FLAVOR or "html").strip().lower() or "html"
+        self._apply_document_tree = settings.TEXTIN_APPLY_DOCUMENT_TREE
+        self._markdown_details = settings.TEXTIN_MARKDOWN_DETAILS
+        self._get_image = (settings.TEXTIN_GET_IMAGE or "none").strip().lower() or "none"
+        self._dpi = max(0, settings.TEXTIN_DPI)
+        self._page_count = max(0, settings.TEXTIN_PAGE_COUNT)
 
         if not self._enabled:
             raise RuntimeError("TextIn is disabled (TEXTIN_ENABLED=false).")
@@ -117,36 +139,6 @@ class TextInParser:
             timeout=self._timeout_sec,
         )
 
-    @staticmethod
-    def _extract_markdown_from_payload(data: Any) -> str:
-        if not isinstance(data, dict):
-            return ""
-        result = data.get("result")
-        if isinstance(result, dict):
-            for key in ("markdown", "text", "content"):
-                value = result.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value
-        strings = _collect_markdown_like_strings(result)
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for item in strings:
-            if item in seen:
-                continue
-            seen.add(item)
-            deduped.append(item)
-        return "\n\n".join(s.strip() for s in deduped if s.strip()).strip()
-
-    @staticmethod
-    def _extract_error_message(data: Any) -> str:
-        if not isinstance(data, dict):
-            return ""
-        for key in ("message", "msg", "detail", "error"):
-            value = data.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return ""
-
     def parse(
         self,
         file_path: Path,
@@ -166,26 +158,26 @@ class TextInParser:
         logger.info("[textin] parsing %s", file_path.name)
 
         resp = self._post_binary(file_path=file_path)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"TextIn API error {resp.status_code}: {(resp.text or '')[:500]}")
+        if resp.status_code != 200:
+            raise RuntimeError(f"TextIn API error {resp.status_code}: {(resp.text)[:500]}")
 
         try:
             data = resp.json()
         except Exception:
-            data = json.loads((resp.text or "").strip() or "{}")
+            data = json.loads((resp.text).strip() or "{}")
 
         code = data.get("code") if isinstance(data, dict) else None
         if code not in {None, 0, 200, "0", "200"}:
-            message = self._extract_error_message(data)
+            message = _extract_error_message(data)
             raise RuntimeError(f"TextIn parse failed (code={code}): {message[:500]}")
 
-        markdown_text = self._extract_markdown_from_payload(data)
+        markdown_text = _extract_markdown_from_payload(data)
         if not markdown_text and resp.text.strip():
             markdown_text = resp.text
 
         artifact_root.mkdir(parents=True, exist_ok=True)
         (artifact_root / "result.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        (artifact_root / "result.md").write_text(markdown_text or "", encoding="utf-8")
+        (artifact_root / "result.md").write_text(markdown_text, encoding="utf-8")
 
         metadata: dict[str, Any] = {
             "source": str(file_path.name),

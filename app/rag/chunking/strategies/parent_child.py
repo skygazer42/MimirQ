@@ -34,7 +34,7 @@ class ParentChildChunker(BaseChunker):
         chunk_overlap: int,
         child_ratio: float = 0.5,
         min_child_size: int = 200,
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.child_ratio = child_ratio
@@ -63,23 +63,23 @@ class ParentChildChunker(BaseChunker):
         )
 
     def _cache_key_for_document(self, doc: Document) -> str:
-        meta = dict(doc.metadata or {})
+        meta = dict(doc.metadata)
         meta_json = json.dumps(meta, ensure_ascii=False, sort_keys=True, default=str)
         return stable_hash(
             f"pc-cache:{self.chunk_size}:{self.chunk_overlap}:{self.child_ratio}:{self.min_child_size}:"
-            f"{stable_hash(doc.page_content or '', length=None)}:{stable_hash(meta_json, length=None)}",
+            f"{stable_hash(doc.page_content, length=None)}:{stable_hash(meta_json, length=None)}",
             length=32,
         )
 
     @staticmethod
     def _clone_documents(documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-        for doc in documents or []:
-            meta = dict(doc.metadata or {})
+        for doc in documents:
+            meta = dict(doc.metadata)
             try:
                 out.append(doc.model_copy(update={"metadata": meta}))
             except Exception:
-                out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+                out.append(Document(page_content=doc.page_content, metadata=meta, id=doc.id))
         return out
 
     def _split_single_document(
@@ -127,21 +127,23 @@ class ParentChildChunker(BaseChunker):
             f"pc:{parent_start}:{parent_end}:{stable_hash(parent_text, length=None)}",
             length=32,
         )
-        parent_metadata = dict(doc.metadata or {})
-        parent_metadata.update({
-            "start_char": parent_start,
-            "end_char": parent_end,
-            "chunk_strategy": "parent_child",
-            "chunk_role": "parent",
-            "parent_id": parent_id,
-            "hierarchy_basis": "parent_child",
-            "hierarchy_level": "parent",
-            "hierarchy_node_key": parent_id,
-            "hierarchy_family_key": parent_id,
-            "hierarchy_parent_key": None,
-            "child_chunk_size": self.child_size,
-            "child_chunk_overlap": self.child_overlap,
-        })
+        parent_metadata = dict(doc.metadata)
+        parent_metadata.update(
+            {
+                "start_char": parent_start,
+                "end_char": parent_end,
+                "chunk_strategy": "parent_child",
+                "chunk_role": "parent",
+                "parent_id": parent_id,
+                "hierarchy_basis": "parent_child",
+                "hierarchy_level": "parent",
+                "hierarchy_node_key": parent_id,
+                "hierarchy_family_key": parent_id,
+                "hierarchy_parent_key": None,
+                "child_chunk_size": self.child_size,
+                "child_chunk_overlap": self.child_overlap,
+            }
+        )
         parent_doc = Document(page_content=parent_text, metadata=parent_metadata)
         parent_child_docs = self._build_child_documents(
             doc=doc,
@@ -175,25 +177,27 @@ class ParentChildChunker(BaseChunker):
 
             child_start = parent_start + child_rel_start
             child_end = parent_start + child_rel_end
-            child_metadata = dict(doc.metadata or {})
+            child_metadata = dict(doc.metadata)
             child_node_key = stable_hash(
                 f"pc-child:{parent_id}:{child_start}:{child_end}:{stable_hash(child_text, length=None)}",
                 length=32,
             )
-            child_metadata.update({
-                "start_char": child_start,
-                "end_char": child_end,
-                "chunk_strategy": "parent_child",
-                "chunk_role": "child",
-                "parent_id": parent_id,
-                "hierarchy_basis": "parent_child",
-                "hierarchy_level": "child",
-                "hierarchy_node_key": child_node_key,
-                "hierarchy_parent_key": parent_id,
-                "hierarchy_family_key": parent_id,
-                "parent_start_char": parent_start,
-                "parent_end_char": parent_end,
-            })
+            child_metadata.update(
+                {
+                    "start_char": child_start,
+                    "end_char": child_end,
+                    "chunk_strategy": "parent_child",
+                    "chunk_role": "child",
+                    "parent_id": parent_id,
+                    "hierarchy_basis": "parent_child",
+                    "hierarchy_level": "child",
+                    "hierarchy_node_key": child_node_key,
+                    "hierarchy_parent_key": parent_id,
+                    "hierarchy_family_key": parent_id,
+                    "parent_start_char": parent_start,
+                    "parent_end_char": parent_end,
+                }
+            )
             child_docs.append(Document(page_content=child_text, metadata=child_metadata))
 
         return child_docs
@@ -214,12 +218,12 @@ class ParentChildChunker(BaseChunker):
             local_chunks, parent_docs, child_docs_by_parent = self._split_single_document(doc, text)
 
             apply_sibling_hierarchy_links(
-                [d.metadata for d in parent_docs if isinstance(getattr(d, "metadata", None), dict)],
+                [d.metadata for d in parent_docs],
                 overwrite=True,
             )
             for siblings in child_docs_by_parent.values():
                 apply_sibling_hierarchy_links(
-                    [d.metadata for d in siblings if isinstance(getattr(d, "metadata", None), dict)],
+                    [d.metadata for d in siblings],
                     overwrite=True,
                 )
 

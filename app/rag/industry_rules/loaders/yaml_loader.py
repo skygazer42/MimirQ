@@ -1,10 +1,10 @@
-
 import os
 import tempfile
 import threading
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 import yaml
 
@@ -19,12 +19,19 @@ def _ruleset_root() -> Path:
 
 
 def _ruleset_dir(name: str) -> Path | None:
-    candidate = str(name or "").strip()
+    candidate = name.strip()
     if not candidate:
         return None
     root = _ruleset_root().resolve()
     base = (root / candidate).resolve()
     return base if base.parent == root else None
+
+
+def _require_ruleset_dir(name: str) -> Path:
+    base = _ruleset_dir(name)
+    if base is None or not base.is_dir():
+        raise FileNotFoundError(f"Unknown industry ruleset: {name or '<empty>'}")
+    return base
 
 
 def _load_yaml(path: Path) -> Any:
@@ -72,14 +79,16 @@ def _normalize_glossary(glossary: Any) -> dict[str, list[str]]:
         return {}
     normalized: dict[str, list[str]] = {}
     for key, value in glossary.items():
-        term = str(key or "").strip()
+        if key is None:
+            continue
+        term = str(key).strip()
         if not term:
             continue
         aliases: list[str] = []
         if isinstance(value, (list, tuple, set)):
-            aliases = [str(item or "").strip() for item in value if str(item or "").strip()]
+            aliases = [str(item).strip() for item in value if item is not None and str(item).strip()]
         elif value is not None:
-            alias = str(value or "").strip()
+            alias = str(value).strip()
             if alias:
                 aliases = [alias]
         normalized[term] = aliases
@@ -90,28 +99,25 @@ def list_rulesets() -> list[str]:
     root = _ruleset_root()
     if not root.exists():
         return []
-    return sorted(
-        entry.name
-        for entry in root.iterdir()
-        if entry.is_dir() and _ruleset_dir(entry.name) is not None
-    )
+    return sorted(entry.name for entry in root.iterdir() if entry.is_dir() and _ruleset_dir(entry.name) is not None)
 
 
 def ruleset_exists(name: str) -> bool:
     base = _ruleset_dir(name)
-    return bool(base is not None and base.is_dir())
+    return base is not None and base.is_dir()
 
 
 def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    ruleset_name = name.strip()
+    base = _require_ruleset_dir(ruleset_name)
 
     tokens: list[str] = []
     seen: set[str] = set()
-    for item in candidates or []:
-        token = str((item or {}).get("token") if isinstance(item, dict) else item or "").strip()
+    for item in candidates:
+        raw_token = item.get("token") if isinstance(item, dict) else item
+        if raw_token is None:
+            continue
+        token = str(raw_token).strip()
         if not token or token in seen:
             continue
         seen.add(token)
@@ -135,9 +141,9 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
 
     return {
         "ruleset": ruleset_name,
-        "candidate_count": int(len(tokens)),
-        "added_count": int(len(added)),
-        "skipped_count": int(len(skipped)),
+        "candidate_count": len(tokens),
+        "added_count": len(added),
+        "skipped_count": len(skipped),
         "added_tokens": added,
         "skipped_tokens": skipped,
         "generated_path": str(generated_path),
@@ -145,42 +151,36 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
 
 
 def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    ruleset_name = name.strip()
+    base = _require_ruleset_dir(ruleset_name)
     normalized = dict(sorted(_normalize_glossary(glossary).items()))
     with _ruleset_write_lock(base):
         _write_yaml(base / _GLOSSARY_FILENAME, normalized)
-    return {"ruleset": ruleset_name, "section": "glossary", "updated_count": int(len(normalized))}
+    return {"ruleset": ruleset_name, "section": "glossary", "updated_count": len(normalized)}
 
 
 def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    ruleset_name = name.strip()
+    base = _require_ruleset_dir(ruleset_name)
     normalized = [dict(item) for item in (patterns or []) if isinstance(item, dict)]
     with _ruleset_write_lock(base):
         _write_yaml(base / "patterns.yaml", normalized)
-    return {"ruleset": ruleset_name, "section": "patterns", "updated_count": int(len(normalized))}
+    return {"ruleset": ruleset_name, "section": "patterns", "updated_count": len(normalized)}
 
 
 def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    ruleset_name = name.strip()
+    base = _require_ruleset_dir(ruleset_name)
     normalized = [dict(item) for item in (intents or []) if isinstance(item, dict)]
     with _ruleset_write_lock(base):
         _write_yaml(base / "intents.yaml", normalized)
-    return {"ruleset": ruleset_name, "section": "intents", "updated_count": int(len(normalized))}
+    return {"ruleset": ruleset_name, "section": "intents", "updated_count": len(normalized)}
 
 
 def load_ruleset(name: str) -> IndustryRuleset:
     base = _ruleset_dir(name)
     if base is None:
-        return IndustryRuleset(name=str(name or "").strip(), glossary={}, patterns=[], intents=[])
+        return IndustryRuleset(name=name.strip(), glossary={}, patterns=[], intents=[])
     glossary = _normalize_glossary(_load_yaml(base / _GLOSSARY_FILENAME))
     generated_glossary = _normalize_glossary(_load_yaml(base / "glossary.generated.yaml"))
     patterns = _load_yaml(base / "patterns.yaml")
@@ -194,7 +194,7 @@ def load_ruleset(name: str) -> IndustryRuleset:
         if term not in merged_glossary:
             merged_glossary[term] = list(aliases)
     return IndustryRuleset(
-        name=str(name or "").strip(),
+        name=name.strip(),
         glossary=merged_glossary,
         patterns=[dict(item) for item in patterns if isinstance(item, dict)],
         intents=[dict(item) for item in intents if isinstance(item, dict)],

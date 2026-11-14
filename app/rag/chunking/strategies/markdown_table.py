@@ -8,7 +8,6 @@ substring of the original text so highlight offsets remain valid).
 Non-table text is chunked with a fallback RecursiveCharacterTextSplitter.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,13 +15,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -40,7 +34,7 @@ class _Span:
 
 
 def _trim_table_edges(line: str) -> str:
-    inner = str(line or "").strip()
+    inner = line.strip()
     if inner.startswith("|"):
         inner = inner[1:]
     if inner.endswith("|"):
@@ -49,7 +43,7 @@ def _trim_table_edges(line: str) -> str:
 
 
 def _is_alignment_cell(cell: str) -> bool:
-    text = (cell or "").strip().strip(":").strip()
+    text = (cell).strip().strip(":").strip()
     return len(text) >= 3 and all(ch == "-" for ch in text)
 
 
@@ -60,7 +54,7 @@ def _looks_like_align_row(line: str) -> bool:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or "|" not in s:
         return False
     inner = _trim_table_edges(s)
@@ -73,28 +67,15 @@ def _looks_like_align_row(line: str) -> bool:
 def _is_table_start(lines: list[_Line], i: int) -> bool:
     if i + 1 >= len(lines):
         return False
-    a = lines[i].text.rstrip("\r\n")
-    b = lines[i + 1].text.rstrip("\r\n")
+    a = lines[i].plain
+    b = lines[i + 1].plain
     if "|" not in a or "|" not in b:
         return False
     return _looks_like_align_row(b)
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
-
-
 def _is_table_body_line(line: _Line) -> bool:
-    text = line.text.rstrip("\r\n")
+    text = line.plain
     return bool(text.strip()) and "|" in text
 
 
@@ -173,7 +154,7 @@ def _iter_table_rows(text: str, *, start: int, end: int, header_end: int) -> lis
 
 
 class MarkdownTableChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -258,8 +239,8 @@ class MarkdownTableChunker(BaseChunker):
         return [self._build_text_chunk(base_meta, block, split_doc) for split_doc in split_docs]
 
     def _split_table_block(self, text: str, base_meta: dict[str, Any], block: _Block) -> list[Document]:
-        header_end = int(block.header_end or block.start)
-        header_text = text[block.start:header_end]
+        header_end = block.header_end or block.start
+        header_text = text[block.start : header_end]
         rows = _iter_table_rows(text, start=block.start, end=block.end, header_end=header_end)
         if not rows:
             meta = self._table_meta(
@@ -290,9 +271,9 @@ class MarkdownTableChunker(BaseChunker):
                 table_end=block.end,
                 header_text=header_text,
             )
-            meta["table_row_count"] = int(end_idx - start_idx)
-            meta["table_row_start_index"] = int(start_idx)
-            meta["table_row_end_index"] = int(end_idx - 1)
+            meta["table_row_count"] = end_idx - start_idx
+            meta["table_row_start_index"] = start_idx
+            meta["table_row_end_index"] = end_idx - 1
             chunks.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
 
             next_start = self._next_table_row_start(rows, start_idx=start_idx, end_idx=end_idx)
@@ -301,7 +282,7 @@ class MarkdownTableChunker(BaseChunker):
         return chunks
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

@@ -11,7 +11,7 @@ from app.core.database import get_db
 
 def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> None:
     import app.api.v1.pipeline as pipeline_module
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -19,9 +19,9 @@ def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(pipeline_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(pipeline_module.settings, "MAX_FILE_SIZE", 1024 * 1024, raising=False)
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
 
     async def _fake_save_upload_file(file, path, *, max_bytes):  # noqa: ANN001, ANN202
         path.write_bytes(await file.read())

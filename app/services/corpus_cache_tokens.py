@@ -13,56 +13,43 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
 from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 
-logger = get_logger(__name__)
 
-
-def _as_iso(value: Any) -> str | None:
-    if value is None:
-        return None
+def _as_iso(value: datetime | str | None) -> str | None:
     if isinstance(value, datetime):
-        try:
-            return value.isoformat()
-        except Exception:
-            return None
-    text = str(value or "").strip()
-    return text or None
-
-
-def _active_pipeline_hash(meta: Any) -> str | None:
-    payload = meta if isinstance(meta, dict) else {}
-    out = str(payload.get("active_pipeline_hash") or payload.get("pipeline_hash") or "").strip()
-    return out or None
+        return value.isoformat()
+    return value
 
 
 def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
     metadata = dict(dataset_meta or {}) if isinstance(dataset_meta, dict) else {}
     runtime = resolve_dataset_embedding_runtime(metadata)
-    raw_defaults = metadata.get("embedding_defaults") if isinstance(metadata.get("embedding_defaults"), dict) else {}
+    raw_defaults = metadata.get("embedding_defaults")
+    if not isinstance(raw_defaults, dict):
+        raw_defaults = {}
+    embedding_defaults = {key: raw_defaults.get(key) for key in ("provider", "model", "api_base")}
     return {
-        "dataset_scoped": bool(runtime.dataset_scoped),
+        "dataset_scoped": runtime.dataset_scoped,
         "provider": runtime.provider,
         "model": runtime.model,
         "api_base": runtime.api_base,
         "embedding_space_hash": runtime.embedding_space_hash,
-        "embedding_defaults": {
-            "provider": str(raw_defaults.get("provider") or "").strip() or None,
-            "model": str(raw_defaults.get("model") or "").strip() or None,
-            "api_base": str(raw_defaults.get("api_base") or "").strip() or None,
-        },
+        "embedding_defaults": embedding_defaults,
     }
 
 
 def build_dataset_scope_corpus_cache_token(
     *, dataset_id: Any, updated_at: Any, dataset_embedding_binding: Any = None
 ) -> str | None:
-    ds = str(dataset_id or "").strip()
+    if dataset_id is None:
+        return None
+    ds = str(dataset_id).strip()
     if not ds:
         return None
     sig = {
@@ -79,15 +66,18 @@ def build_document_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
     items: list[dict[str, Any]] = []
     for row in rows or []:
         payload = row if isinstance(row, dict) else {}
-        doc_id = str(payload.get("id") or "").strip()
+        raw_id = payload.get("id")
+        if raw_id is None:
+            continue
+        doc_id = str(raw_id).strip()
         if not doc_id:
             continue
         items.append(
             {
                 "id": doc_id,
-                "dataset_id": str(payload.get("dataset_id") or "").strip() or None,
+                "dataset_id": payload.get("dataset_id"),
                 "updated_at": _as_iso(payload.get("updated_at")),
-                "active_pipeline_hash": _active_pipeline_hash(payload),
+                "active_pipeline_hash": get_active_pipeline_hash(payload),
                 "dataset_embedding_binding": payload.get("dataset_embedding_binding"),
             }
         )
@@ -113,7 +103,12 @@ def build_multi_dataset_scope_corpus_cache_token(rows: Sequence[Any]) -> str | N
     items: list[dict[str, Any]] = []
     for row in rows or []:
         payload = row if isinstance(row, dict) else {}
-        dataset_id = str(payload.get("dataset_id") or payload.get("id") or "").strip()
+        raw_id = payload.get("dataset_id")
+        if raw_id is None:
+            raw_id = payload.get("id")
+        if raw_id is None:
+            continue
+        dataset_id = str(raw_id).strip()
         if not dataset_id:
             continue
         items.append(
@@ -149,7 +144,7 @@ def resolve_corpus_cache_token(
     dataset_ids: Sequence[UUID] | None = None,
     document_ids: Sequence[UUID] | None = None,
 ) -> str | None:
-    doc_ids = [d for d in (document_ids or []) if d is not None]
+    doc_ids = [d for d in (document_ids if document_ids is not None else []) if d is not None]
     if doc_ids:
         rows = (
             db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.updated_at, DBDocument.doc_metadata)
@@ -177,7 +172,7 @@ def resolve_corpus_cache_token(
                     "id": str(doc_id),
                     "dataset_id": str(scope_dataset_id) if scope_dataset_id is not None else None,
                     "updated_at": updated_at,
-                    "active_pipeline_hash": _active_pipeline_hash(doc_meta),
+                    "active_pipeline_hash": get_active_pipeline_hash(doc_meta if isinstance(doc_meta, dict) else {}),
                     "dataset_embedding_binding": _dataset_embedding_binding(
                         dataset_meta_by_id.get(str(scope_dataset_id))
                     )
@@ -193,8 +188,9 @@ def resolve_corpus_cache_token(
             .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
             .first()
         )
-        updated_at = row[0] if row else None
-        dataset_meta = row[1] if row and len(row) > 1 else None
+        if row is None:
+            return None
+        updated_at, dataset_meta = row
         return build_dataset_scope_corpus_cache_token(
             dataset_id=str(dataset_id),
             updated_at=updated_at,
@@ -202,7 +198,12 @@ def resolve_corpus_cache_token(
         )
 
     scope_dataset_ids = sorted(
-        {dataset_scope_id for dataset_scope_id in (dataset_ids or []) if dataset_scope_id is not None}, key=str
+        {
+            dataset_scope_id
+            for dataset_scope_id in (dataset_ids if dataset_ids is not None else [])
+            if dataset_scope_id is not None
+        },
+        key=str,
     )
     if scope_dataset_ids:
         rows = (
@@ -246,12 +247,7 @@ def invalidate_dataset_cache_namespace(
     invalidated_at = datetime.now(UTC)
     dataset.updated_at = invalidated_at
 
-    try:
-        flush = getattr(db, "flush", None)
-        if callable(flush):
-            flush()
-    except Exception as exc:
-        logger.debug("Ignoring corpus cache namespace flush failure: %s", exc)
+    db.flush()
 
     current_token = resolve_corpus_cache_token(
         db,
@@ -271,6 +267,36 @@ def invalidate_dataset_cache_namespace(
             "Dataset caches are invalidated by rotating the dataset corpus token. Existing redis entries expire by TTL."
         ),
     }
+
+
+def invalidate_corpus_cache_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_ids: Sequence[UUID] = (),
+    document_ids: Sequence[UUID] = (),
+) -> None:
+    """Rotate existing document/dataset revisions after an index rebuild; caller commits."""
+    documents = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+    if dataset_ids:
+        documents = documents.filter(DBDocument.dataset_id.in_(list(dataset_ids)))
+    if document_ids:
+        documents = documents.filter(DBDocument.id.in_(list(document_ids)))
+    affected_datasets = set(dataset_ids)
+    if document_ids and not dataset_ids:
+        affected_datasets.update(
+            dataset_id
+            for (dataset_id,) in documents.with_entities(DBDocument.dataset_id).distinct()
+            if dataset_id is not None
+        )
+    now = datetime.now(UTC)
+    documents.update({DBDocument.updated_at: now}, synchronize_session=False)
+    datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+    if dataset_ids or document_ids:
+        datasets = datasets.filter(Dataset.id.in_(list(affected_datasets)))
+    datasets.update({Dataset.updated_at: now}, synchronize_session=False)
+    db.flush()
+    clear_evidence_post_rerank_cache()
 
 
 __all__ = [

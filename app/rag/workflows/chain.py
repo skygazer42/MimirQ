@@ -7,7 +7,6 @@ becomes the next step's input.
 Pattern: Step1 -> Step2 -> Step3 -> ... -> Result
 """
 
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -40,8 +39,8 @@ class ChainWorkflow(BaseWorkflow):
         self,
         steps: list[WorkflowStep] | None = None,
         stop_on_error: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the chain workflow.
 
@@ -113,7 +112,7 @@ class ChainWorkflow(BaseWorkflow):
 
             try:
                 logger.debug("Executing step: %s", step_name)
-                current_state = await step.execute(current_state)
+                current_state = await step.func(current_state)
                 execution_path.append(step_name)
 
                 # Check for error in state
@@ -148,7 +147,7 @@ class ChainWorkflow(BaseWorkflow):
 def create_rag_chain(
     retrieve_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
     generate_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
-    **kwargs,
+    **kwargs: Any,
 ) -> ChainWorkflow:
     """
     Create a standard RAG chain workflow.

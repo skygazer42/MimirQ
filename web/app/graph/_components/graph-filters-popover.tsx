@@ -1,6 +1,6 @@
 'use client'
 
-import { SlidersHorizontal } from 'lucide-react'
+import { SlidersHorizontal } from '@/components/icons'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -68,7 +68,11 @@ export function GraphFiltersPopover({
         <Button
           variant="ghost"
           size="sm"
-          className={activeGraphFilterCount > 0 ? 'bg-primary/10 text-primary hover:text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'}
+          className={
+            activeGraphFilterCount > 0
+              ? 'bg-primary/10 text-primary hover:text-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+          }
           title="图谱筛选：predicate / entity type / confidence bucket"
         >
           <SlidersHorizontal className="w-4 h-4 mr-2" />
@@ -138,10 +142,7 @@ export function GraphFiltersPopover({
                 filteredEntityTypes.map((item) => {
                   const checked = entityTypeFilters.includes(item.value)
                   return (
-                    <label
-                      key={item.value}
-                      className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60"
-                    >
+                    <label key={item.value} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60">
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(next) => onEntityTypeCheckedChange(item.value, !!next)}
@@ -183,10 +184,7 @@ export function GraphFiltersPopover({
                 filteredPredicates.map((item) => {
                   const checked = predicateFilters.includes(item.value)
                   return (
-                    <label
-                      key={item.value}
-                      className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60"
-                    >
+                    <label key={item.value} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60">
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(next) => onPredicateCheckedChange(item.value, !!next)}

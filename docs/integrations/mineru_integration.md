@@ -1,6 +1,6 @@
 # MinerU 集成文档
 
-MimirQ 现已集成 **MinerU 在线文档解析服务**，支持高级 PDF 解析功能。
+Ragvia 现已集成 **MinerU 在线文档解析服务**，支持高级 PDF 解析功能。
 
 ## 功能特性
 

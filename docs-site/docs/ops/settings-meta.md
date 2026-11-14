@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # 运行配置参考
 
-MimirQ 使用 Pydantic Settings 从进程环境和仓库根目录 `.env` 读取配置。变量全集与注释以 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) 和 `app/core/config.py` 为准。
+Ragvia 使用 Pydantic Settings 从进程环境和仓库根目录 `.env` 读取配置。变量全集与注释以 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/.env.example) 和 `app/core/config.py` 为准。
 
 :::info 初始化行为
 `make init` 只创建缺失的 `.env` / `web/.env.local`，自动填充 `SECRET_KEY` 和 `MARKDOWN_IMAGE_PROXY_SECRET`，不会覆盖已有配置。

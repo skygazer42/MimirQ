@@ -31,7 +31,7 @@ def _percentile(values: list[float], pct: int) -> float | None:
         return None
     ordered = sorted(float(v) for v in values)
     idx = max(0, min(len(ordered) - 1, math.ceil((pct / 100.0) * len(ordered)) - 1))
-    return round(float(ordered[idx]), 4)
+    return round(ordered[idx], 4)
 
 
 def _extract_eval_metric(row: dict[str, Any], *path: str) -> float | None:
@@ -128,7 +128,7 @@ def _abstain_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
     unanswerable_rows = [
         row
         for row in rows
-        if str(row.get("query_type") or "").strip().lower() == "unanswerable"
+        if (isinstance(row.get("query_type"), str) and row["query_type"].strip().lower() == "unanswerable")
         or _extract_eval_metric(row, "answer_det", "refusal_correct") is not None
     ]
     abstain_values: list[float] = []
@@ -140,7 +140,7 @@ def _abstain_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
         abstain_values.append(1.0 if bool(answer_det.get("refusal_correct")) else 0.0)
     return {
         "abstain_rate": _avg(abstain_values),
-        "evaluated_unanswerable": int(len(abstain_values)),
+        "evaluated_unanswerable": len(abstain_values),
     }
 
 
@@ -158,7 +158,10 @@ def _cost_dimension(rows: list[dict[str, Any]], *, token_cost_values: list[float
 def _stability_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped_by_sample: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        sample_id = str(row.get("sample_id") or "").strip()
+        raw_id = row.get("sample_id")
+        if raw_id is None:
+            continue
+        sample_id = str(raw_id).strip()
         if sample_id:
             grouped_by_sample[sample_id].append(row)
 
@@ -178,7 +181,7 @@ def _stability_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if len(latency_group) >= 2:
             latency_std_values.append(round(float(pstdev(latency_group)), 4))
     return {
-        "sample_groups_with_repeats": int(repeated_groups),
+        "sample_groups_with_repeats": repeated_groups,
         "answer_f1_std_avg": _avg(answer_f1_std_values),
         "latency_ms_std_avg": _avg(latency_std_values),
     }
@@ -254,29 +257,36 @@ def _compute_dimensions(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_eval_dashboard_11d(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    normalized_rows = [dict(row or {}) for row in (rows or []) if isinstance(row, dict)]
+    normalized_rows = [dict(row) for row in (rows or []) if isinstance(row, dict)]
     route_ids = sorted(
-        {str(row.get("route_id") or "").strip() for row in normalized_rows if str(row.get("route_id") or "").strip()}
+        {
+            str(row["route_id"]).strip()
+            for row in normalized_rows
+            if row.get("route_id") is not None and str(row["route_id"]).strip()
+        }
     )
 
     by_query_type: dict[str, dict[str, Any]] = {}
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in normalized_rows:
-        query_type = str(row.get("query_type") or "").strip()
+        raw_type = row.get("query_type")
+        if raw_type is None:
+            continue
+        query_type = str(raw_type).strip()
         if not query_type:
             continue
         groups[query_type].append(row)
 
     for query_type, group in sorted(groups.items(), key=lambda kv: kv[0]):
         by_query_type[query_type] = {
-            "sample_count": int(len(group)),
+            "sample_count": len(group),
             "dimensions": _compute_dimensions(group),
         }
 
     return {
         "schema": "mimirq.eval.dashboard_11d.v1",
         "summary": {
-            "sample_count": int(len(normalized_rows)),
+            "sample_count": len(normalized_rows),
             "route_ids": route_ids,
         },
         "dimensions": _compute_dimensions(normalized_rows),

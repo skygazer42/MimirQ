@@ -1,4 +1,3 @@
-
 import uuid
 
 from fastapi import FastAPI
@@ -12,36 +11,36 @@ from tests.helpers.async_utils import yield_control
 
 
 def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
-    from app.api.v1.documents import batch_reingest_documents
+    from types import SimpleNamespace
+
+    from app.api.v1.document_batches import batch_reingest_documents
+    from app.services import document_batch_operations, document_metadata_operations, document_processing_operations
 
     tenant_id = uuid.uuid4()
     doc1 = uuid.uuid4()
     doc2 = uuid.uuid4()
 
     # Avoid auth/DB logic in unit test.
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        document_batch_operations.dataset_service,
+        "ensure_member",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
 
     calls = {"patch": 0, "retry": 0}
 
-    async def _fake_patch(**kwargs):  # noqa: ANN001, ANN202
-        await yield_control()
+    def _fake_patch(**kwargs):  # noqa: ANN001, ANN202
         calls["patch"] += 1
         return None
 
     async def _fake_retry(**kwargs):  # noqa: ANN001, ANN202
         await yield_control()
         calls["retry"] += 1
-        return {
-            "id": kwargs.get("document_id"),
-            "status": "pending",
-            "processing_progress": 0,
-            "current_stage": "queued",
-            "error_message": None,
-        }
+        return SimpleNamespace(status="pending")
 
-    monkeypatch.setattr(documents_module, "patch_document_pipeline", _fake_patch, raising=True)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _fake_retry, raising=True)
+    monkeypatch.setattr(document_metadata_operations, "patch_pipeline", _fake_patch, raising=True)
+    monkeypatch.setattr(document_processing_operations, "retry_document", _fake_retry, raising=True)
 
     class _DummyDB:
         pass
@@ -70,4 +69,3 @@ def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: A
     assert body["queued"] == 2
     assert calls["patch"] == 2
     assert calls["retry"] == 2
-

@@ -7,13 +7,10 @@ This module provides conservative, semantics-preserving normalization used by:
 - Retrieval/query handling (optional)
 """
 
-
 import re
 
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-ZERO_WIDTH_RE = re.compile(
-    r"[\u200b\u200c\u200d\u2060\ufeff\u200e\u200f\u202a-\u202e\u2066-\u2069]"
-)
+ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 SOFT_HYPHEN_RE = re.compile("\u00ad")
 
 PDF_LIGATURES = {
@@ -38,9 +35,6 @@ def normalize_text(
 
     This is intentionally conservative and does not attempt semantic rewriting.
     """
-    if not isinstance(text, str) or not text:
-        return ""
-
     out = text
 
     if normalize_line_endings:
@@ -63,8 +57,7 @@ def normalize_text(
 
     # Normalize common PDF ligatures (ﬁ/ﬂ/ﬃ/ﬄ/…); improves tokenization/search.
     for src, dst in PDF_LIGATURES.items():
-        if src in out:
-            out = out.replace(src, dst)
+        out = out.replace(src, dst)
 
     if remove_control_chars:
         out = CONTROL_CHARS_RE.sub("", out)
@@ -75,4 +68,4 @@ def normalize_text(
 def normalize_query(text: str) -> str:
     """Normalize query text for retrieval (strip + collapse whitespace)."""
     norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
-    return " ".join((norm or "").strip().split())
+    return " ".join(norm.split())

@@ -15,7 +15,7 @@ Query parameters:
 - `include_archived_evidence`: include archived evidence rows when `true`
 - `max_rows_per_source`: per-source cap, default `2000`
 
-The export is intentionally dataset-scoped so downstream LTR/rerank experiments can stay aligned with one corpus/version boundary.
+The export is intentionally dataset-scoped so downstream retrieval/rerank experiments can stay aligned with one corpus/version boundary.
 
 ## Row Schema
 
@@ -67,4 +67,4 @@ Recommended usage:
 3. Use `reference_sources` as positive grounding references.
 4. Use `trace_snapshot` + `rag_config_snapshot` to segment experiments by retrieval policy or config hash.
 
-The export is designed for single-node workflows: reproducible enough for LTR/rerank iteration, without introducing a separate training data service.
+The export is designed for single-node workflows: reproducible enough for retrieval/rerank iteration, without introducing a separate training data service.

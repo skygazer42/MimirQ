@@ -1,11 +1,14 @@
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 logger = get_logger(__name__)
 
@@ -41,7 +44,7 @@ def _iso_now() -> str:
     return _utc_now().isoformat()
 
 
-def _get_client() -> Any:
+def _get_client() -> "Redis":
     client = _get_redis_client()
     if client is None:
         raise RuntimeError("Redis client unavailable for dataset-analysis PNG task state")
@@ -49,24 +52,24 @@ def _get_client() -> Any:
 
 
 def _prefix() -> str:
-    return str(getattr(settings, "DATASET_ANALYSIS_PNG_REDIS_PREFIX", "dataset-analysis-png") or "dataset-analysis-png")
+    return str(settings.DATASET_ANALYSIS_PNG_REDIS_PREFIX)
 
 
 def _active_ttl_sec() -> int:
-    stale_after = max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 60) or 60))
+    stale_after = max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC))
     return max(300, stale_after * 4)
 
 
 def _terminal_ttl_sec() -> int:
-    return max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC", 600) or 600))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC))
 
 
 def _stale_after_sec() -> int:
-    return max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 60) or 60))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC))
 
 
 def _result_max_bytes() -> int:
-    return max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES", 5_000_000) or 5_000_000))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES))
 
 
 def get_png_export_task_heartbeat_interval_sec() -> float:
@@ -75,11 +78,11 @@ def get_png_export_task_heartbeat_interval_sec() -> float:
 
 
 def _task_key(task_id: str) -> str:
-    return f"{_prefix()}:task:{str(task_id or '').strip()}"
+    return f"{_prefix()}:task:{task_id.strip()}"
 
 
 def _result_key(task_id: str) -> str:
-    return f"{_prefix()}:result:{str(task_id or '').strip()}"
+    return f"{_prefix()}:result:{task_id.strip()}"
 
 
 def _serialize_task(task: dict[str, Any]) -> bytes:
@@ -107,7 +110,7 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _read_task(client: Any, task_id: str) -> tuple[bytes, dict[str, Any]]:
+def _read_task(client: "Redis", task_id: str) -> tuple[bytes, dict[str, Any]]:
     try:
         raw = client.get(_task_key(task_id))
     except Exception as exc:  # noqa: BLE001
@@ -119,14 +122,14 @@ def _read_task(client: Any, task_id: str) -> tuple[bytes, dict[str, Any]]:
     return current_raw, _deserialize_task(raw)
 
 
-def _delete_result_best_effort(client: Any, task_id: str) -> None:
+def _delete_result_best_effort(client: "Redis", task_id: str) -> None:
     try:
         client.delete(_result_key(task_id))
     except Exception:  # noqa: BLE001
         _invalidate_redis_client()
 
 
-def _cas_task(client: Any, task_id: str, current_raw: bytes, next_task: dict[str, Any], *, ttl_sec: int) -> bool:
+def _cas_task(client: "Redis", task_id: str, current_raw: bytes, next_task: dict[str, Any], *, ttl_sec: int) -> bool:
     try:
         return bool(
             client.eval(
@@ -144,27 +147,24 @@ def _cas_task(client: Any, task_id: str, current_raw: bytes, next_task: dict[str
 
 
 def _scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str) -> bool:
-    return str(task.get("tenant_id") or "") == str(tenant_id or "") and str(task.get("dataset_id") or "") == str(
-        dataset_id or ""
-    )
+    return task["tenant_id"] == tenant_id and task["dataset_id"] == dataset_id
 
 
 def _task_account_id(task: dict[str, Any]) -> str:
-    account_id = str(task.get("account_id") or "").strip()
-    if account_id:
-        return account_id
-    return str(task.get("requested_by") or "").strip()
+    account_id = task.get("account_id")
+    if account_id is None:
+        account_id = task["requested_by"]
+    return account_id.strip()
 
 
 def _read_scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str, account_id: str) -> bool:
-    return (
-        _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id)
-        and _task_account_id(task) == str(account_id or "").strip()
-    )
+    return _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id) and _task_account_id(task) == account_id
 
 
 def _parse_iso_datetime(value: Any) -> datetime | None:
-    text = str(value or "").strip()
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
     if not text:
         return None
     if text.endswith("Z"):
@@ -177,7 +177,7 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
 
 
 def _is_stale(task: dict[str, Any]) -> bool:
-    status = str(task.get("status") or "")
+    status = task["status"]
     now = _utc_now()
     if status == "pending":
         updated_at = _parse_iso_datetime(task.get("updated_at")) or _parse_iso_datetime(task.get("created_at"))
@@ -188,12 +188,12 @@ def _is_stale(task: dict[str, Any]) -> bool:
     return False
 
 
-def _transition_to_worker_lost(client: Any, task_id: str, *, tenant_id: str, dataset_id: str) -> dict[str, Any]:
+def _transition_to_worker_lost(client: "Redis", task_id: str, *, tenant_id: str, dataset_id: str) -> dict[str, Any]:
     for _attempt in range(4):
         current_raw, current = _read_task(client, task_id)
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
             raise KeyError(task_id)
-        if str(current.get("status") or "") not in {"pending", "running"} or not _is_stale(current):
+        if current["status"] not in {"pending", "running"} or not _is_stale(current):
             return _public_task(current)
 
         failed = dict(current)
@@ -220,14 +220,14 @@ def create_png_export_task(
 ) -> dict[str, Any]:
     client = _get_client()
     task_id = uuid4().hex
-    owner_account_id = str(account_id or requested_by or "").strip()
+    owner_account_id = (account_id if account_id is not None else requested_by).strip()
     payload = {
         "task_id": task_id,
-        "tenant_id": str(tenant_id or ""),
-        "dataset_id": str(dataset_id or ""),
+        "tenant_id": tenant_id,
+        "dataset_id": dataset_id,
         "filters": dict(filters or {}),
-        "requested_by": str(requested_by or "").strip() or None,
-        "account_id": owner_account_id or None,
+        "requested_by": (requested_by),
+        "account_id": (owner_account_id),
         "status": "pending",
         "created_at": _iso_now(),
         "updated_at": _iso_now(),
@@ -246,7 +246,7 @@ def begin_png_export_task(task_id: str, *, tenant_id: str, dataset_id: str) -> d
         current_raw, current = _read_task(client, task_id)
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
             raise KeyError(task_id)
-        if str(current.get("status") or "") != "pending":
+        if current["status"] != "pending":
             return dict(current)
 
         started = dict(current)
@@ -272,9 +272,9 @@ def heartbeat_png_export_task(
         current_raw, current = _read_task(client, task_id)
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
             raise KeyError(task_id)
-        if str(current.get("status") or "") != "running":
+        if current["status"] != "running":
             return False
-        if str(current.get("owner_token") or "") != str(owner_token or ""):
+        if current["owner_token"] != owner_token:
             return False
 
         renewed = dict(current)
@@ -308,9 +308,7 @@ def complete_png_export_task(
         current_raw, current = _read_task(client, task_id)
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
             raise KeyError(task_id)
-        if str(current.get("status") or "") != "running" or str(current.get("owner_token") or "") != str(
-            owner_token or ""
-        ):
+        if current["status"] != "running" or current["owner_token"] != owner_token:
             return _public_task(current)
 
         try:
@@ -347,16 +345,16 @@ def fail_png_export_task(
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
             raise KeyError(task_id)
 
-        current_status = str(current.get("status") or "")
+        current_status = current["status"]
         if current_status not in {"pending", "running"}:
             return _public_task(current)
-        if owner_token is not None and str(current.get("owner_token") or "") != str(owner_token or ""):
+        if owner_token is not None and current.get("owner_token") != owner_token:
             return _public_task(current)
 
         failed = dict(current)
         failed["status"] = "failed"
         failed["error_code"] = str(error_code or "render_failed")[:100]
-        failed["error"] = str(error or "")[:500]
+        failed["error"] = error[:500]
         failed["updated_at"] = _iso_now()
         failed["completed_at"] = failed["updated_at"]
         failed.pop("owner_token", None)
@@ -372,14 +370,14 @@ def get_png_export_task(task_id: str, *, tenant_id: str, dataset_id: str, accoun
     current = _read_task(client, task_id)[1]
     if not _read_scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id):
         raise KeyError(task_id)
-    if str(current.get("status") or "") in {"pending", "running"} and _is_stale(current):
+    if current["status"] in {"pending", "running"} and _is_stale(current):
         return _transition_to_worker_lost(client, task_id, tenant_id=tenant_id, dataset_id=dataset_id)
     return _public_task(current)
 
 
 def get_png_export_task_result(task_id: str, *, tenant_id: str, dataset_id: str, account_id: str) -> bytes:
     task = get_png_export_task(task_id, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    if str(task.get("status") or "") != "done":
+    if task["status"] != "done":
         raise KeyError(task_id)
     client = _get_client()
     try:

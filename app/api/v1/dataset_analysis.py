@@ -1,308 +1,271 @@
-
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
-from app.services.dataset_analysis_service import (
-    build_dataset_analysis_examples,
-    build_dataset_analysis_rule_suggestions,
-    build_dataset_analysis_summary,
-    build_tenant_dataset_analysis_dashboard,
-    create_dataset_analysis_png_task,
-    export_dataset_analysis_html,
-    export_dataset_analysis_json,
-    export_dataset_analysis_jsonl,
-    get_dataset_analysis_png_result,
-    get_dataset_analysis_png_task_status,
-    writeback_dataset_analysis_glossary_candidates,
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets import (
+    DatasetAnalysisDashboardQuery,
+    DatasetAnalysisExamplesQuery,
+    DatasetAnalysisQuery,
+    DatasetAnalysisRulesQuery,
+    DatasetAnalysisWritebackQuery,
 )
-from app.services.dataset_service import DatasetService
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.core.database import get_db
+from app.services import dataset_analysis_service as analysis_service
+from app.services import dataset_service
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
+if TYPE_CHECKING:
+    from app.models.dataset import Dataset
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-def _require_dataset_readable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+def _require_dataset_readable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str) -> "Dataset":
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     return dataset
 
 
-def _require_dataset_writable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+def _require_dataset_writable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str) -> "Dataset":
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
     return dataset
 
 
-@router.get("/analysis/dashboard", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _get_png_task_status(*, task_id: str, tenant_id: UUID, dataset_id: UUID, account_id: str) -> dict[str, Any]:
+    try:
+        return analysis_service.get_dataset_analysis_png_task_status(
+            task_id=task_id, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="PNG export task not found") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
+
+
+@router.get("/analysis/dashboard")
 def get_tenant_dataset_analysis_dashboard(
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    query: Annotated[DatasetAnalysisDashboardQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return the tenant-level dataset analysis dashboard."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    return build_tenant_dataset_analysis_dashboard(
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    return analysis_service.build_tenant_dataset_analysis_dashboard(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        limit=limit,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        limit=query.limit,
     )
 
 
-@router.get("/{dataset_id}/analysis/summary", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/summary")
 def get_dataset_analysis_summary(
     dataset_id: UUID,
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
+    query: Annotated[DatasetAnalysisQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return an analysis summary for one dataset."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    return build_dataset_analysis_summary(
+    return analysis_service.build_dataset_analysis_summary(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
+        dataset_name=dataset.name,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        category=query.category,
     )
 
 
-@router.get("/{dataset_id}/analysis/examples", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/examples")
 def get_dataset_analysis_examples(
     dataset_id: UUID,
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    query: Annotated[DatasetAnalysisExamplesQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return representative analysis examples for one dataset."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    return build_dataset_analysis_examples(
+    return analysis_service.build_dataset_analysis_examples(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
-        limit=limit,
+        dataset_name=dataset.name,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        category=query.category,
+        limit=query.limit,
     )
 
 
-@router.get("/{dataset_id}/analysis/rule-suggestions", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/rule-suggestions")
 def get_dataset_analysis_rule_suggestions(
     dataset_id: UUID,
-    ruleset: Annotated[str, Query(min_length=1)],
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    query: Annotated[DatasetAnalysisRulesQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return glossary and rule suggestions for dataset analysis."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    return build_dataset_analysis_rule_suggestions(
+    return analysis_service.build_dataset_analysis_rule_suggestions(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        ruleset_name=ruleset,
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        limit=limit,
+        dataset_name=dataset.name,
+        ruleset_name=query.ruleset,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        limit=query.limit,
     )
 
 
-@router.get("/{dataset_id}/analysis/export.json", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/export.json")
 def export_dataset_analysis_json_endpoint(
     dataset_id: UUID,
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
+    query: Annotated[DatasetAnalysisQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export dataset analysis as JSON."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    return export_dataset_analysis_json(
+    return analysis_service.export_dataset_analysis_json(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
+        dataset_name=dataset.name,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        category=query.category,
     )
 
 
-@router.get("/{dataset_id}/analysis/export.jsonl", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/export.jsonl")
 def export_dataset_analysis_jsonl_endpoint(
     dataset_id: UUID,
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
+    query: Annotated[DatasetAnalysisQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export dataset analysis as newline-delimited JSON."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    payload = export_dataset_analysis_jsonl(
+    payload = analysis_service.export_dataset_analysis_jsonl(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
+        dataset_name=dataset.name,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        category=query.category,
     )
     return Response(content=payload, media_type="application/x-ndjson")
 
 
-@router.get("/{dataset_id}/analysis/report.html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/report.html")
 def export_dataset_analysis_html_endpoint(
     dataset_id: UUID,
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
+    query: Annotated[DatasetAnalysisQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export dataset analysis as an HTML report."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    payload = export_dataset_analysis_html(
+    payload = analysis_service.export_dataset_analysis_html(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
+        dataset_name=dataset.name,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        category=query.category,
     )
     return Response(content=payload, media_type="text/html")
 
 
-@router.post("/{dataset_id}/analysis/glossary-writeback", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/{dataset_id}/analysis/glossary-writeback")
 def writeback_dataset_analysis_glossary_endpoint(
     dataset_id: UUID,
-    ruleset: Annotated[str, Query(min_length=1)],
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    query: Annotated[DatasetAnalysisWritebackQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Write suggested glossary entries back to a ruleset."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_writable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    return writeback_dataset_analysis_glossary_candidates(
+    return analysis_service.writeback_dataset_analysis_glossary_candidates(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        ruleset_name=ruleset,
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
-        limit=limit,
+        dataset_name=dataset.name,
+        ruleset_name=query.ruleset,
+        from_ts=query.from_ts,
+        to_ts=query.to_ts,
+        feedback_polarity=query.feedback_polarity,
+        category=query.category,
+        limit=query.limit,
     )
 
 
-@router.post("/{dataset_id}/analysis/export.png", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/{dataset_id}/analysis/export.png", status_code=202)
 def create_dataset_analysis_png_task_endpoint(
     dataset_id: UUID,
     background_tasks: BackgroundTasks,
-    from_ts: Annotated[str | None, Query()] = None,
-    to_ts: Annotated[str | None, Query()] = None,
-    feedback_polarity: Annotated[str | None, Query()] = None,
-    category: Annotated[str | None, Query()] = None,
+    query: Annotated[DatasetAnalysisQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create an asynchronous PNG export task for dataset analysis."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     try:
-        return create_dataset_analysis_png_task(
+        return analysis_service.create_dataset_analysis_png_task(
             db=db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
-            dataset_name=str(getattr(dataset, "name", "") or ""),
+            dataset_name=dataset.name,
             account_id=account_id,
             background_tasks=background_tasks,
-            from_ts=from_ts,
-            to_ts=to_ts,
-            feedback_polarity=feedback_polarity,
-            category=category,
+            from_ts=query.from_ts,
+            to_ts=query.to_ts,
+            feedback_polarity=query.feedback_polarity,
+            category=query.category,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
 
 
-@router.get("/{dataset_id}/analysis/export-tasks/{task_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/export-tasks/{task_id}")
 def get_dataset_analysis_png_task_endpoint(
     dataset_id: UUID,
     task_id: str,
@@ -312,22 +275,11 @@ def get_dataset_analysis_png_task_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return the status of a dataset analysis PNG export task."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    try:
-        return get_dataset_analysis_png_task_status(
-            task_id=task_id,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            account_id=account_id,
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="PNG export task not found") from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
+    return _get_png_task_status(task_id=task_id, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
 
 
-@router.get("/{dataset_id}/analysis/export-tasks/{task_id}/result.png", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/analysis/export-tasks/{task_id}/result.png")
 def get_dataset_analysis_png_task_result_endpoint(
     dataset_id: UUID,
     task_id: str,
@@ -337,27 +289,13 @@ def get_dataset_analysis_png_task_result_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return the PNG result for a completed dataset analysis export task."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    try:
-        status = get_dataset_analysis_png_task_status(
-            task_id=task_id,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            account_id=account_id,
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="PNG export task not found") from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
-    if str(status.get("status") or "") != "done":
+    status = _get_png_task_status(task_id=task_id, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
+    if status["status"] != "done":
         raise HTTPException(status_code=409, detail="PNG export task is not finished")
     try:
-        payload = get_dataset_analysis_png_result(
-            task_id=task_id,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            account_id=account_id,
+        payload = analysis_service.get_dataset_analysis_png_result(
+            task_id=task_id, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task result not found") from exc

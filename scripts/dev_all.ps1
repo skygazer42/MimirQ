@@ -1,5 +1,6 @@
 param(
-  [string]$Host = "0.0.0.0",
+  [Alias("Host")]
+  [string]$BackendHost = "0.0.0.0",
   [int]$Port = 8000,
   [switch]$NoReload,
   [switch]$SkipWeb,
@@ -28,6 +29,6 @@ if (-not $SkipWeb) {
   Write-Host "[dev] Skip: web"
 }
 
-Write-Host "[dev] starting backend (host=$Host port=$Port reload=$(-not $NoReload))"
-& (Join-Path $RepoRoot "scripts/dev_backend.ps1") -Host $Host -Port $Port -NoReload:$NoReload
+Write-Host "[dev] starting backend (host=$BackendHost port=$Port reload=$(-not $NoReload))"
+& (Join-Path $RepoRoot "scripts/dev_backend.ps1") -Host $BackendHost -Port $Port -NoReload:$NoReload
 

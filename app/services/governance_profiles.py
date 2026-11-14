@@ -8,8 +8,9 @@ This module intentionally keeps profiles declarative:
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
-from app.api.schemas.governance_profile import GovernanceProfileOut, GovernanceProfilePayload, RegexRuleModel
+from app.api.schemas.pipelines import GovernanceProfileOut, GovernanceProfilePayload, RegexRuleModel
 from app.core.regex_safety import DEFAULT_ALLOWED_FLAG_BITS, validate_regex_rules
 from app.services.pipeline_patch_validator import normalize_document_pipeline_patch
 
@@ -27,66 +28,53 @@ WIKI_LONGFORM_PROFILE_KEY = "builtin:wiki_longform"
 def validate_profile_key(key: str | None) -> str | None:
     if key is None:
         return None
-    val = str(key or "").strip()
-    if not val:
+    normalized_key = str(key).strip()
+    if not normalized_key:
         return None
-    if val.startswith("builtin:"):
+    if normalized_key.startswith("builtin:"):
         raise ValueError("profile key must not start with 'builtin:'")
-    if not PROFILE_KEY_RE.match(val):
+    if not PROFILE_KEY_RE.match(normalized_key):
         raise ValueError("invalid profile key format")
-    return val
+    return normalized_key
 
 
-def _normalize_pipeline_patch(raw: object) -> dict:
-    return normalize_document_pipeline_patch(
-        raw,
+def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> GovernanceProfilePayload:
+    extends = None
+    raw_extends = payload.extends
+    if raw_extends is not None:
+        ref = raw_extends.strip()
+        if ref:
+            # Keep it safe for logs/storage/JSON; existence is resolved later.
+            if "\x7f" in ref or any(ord(ch) < 32 for ch in ref):
+                raise ValueError("payload.extends contains control characters")
+            extends = ref
+
+    cleaned_formats = list(dict.fromkeys(payload.input_formats)) or ["markdown"]
+    cleaned_patch = normalize_document_pipeline_patch(
+        payload.pipeline_patch,
         field_label="payload.pipeline_patch",
         invalid_message="invalid payload.pipeline_patch",
     )
+    from app.core.model_execution import reject_retired_provider
 
-
-def _normalize_regex_rules(raw: object) -> list[dict]:
-    return validate_regex_rules(
-        raw,
+    reject_retired_provider(cleaned_patch.get("governance_keywords_provider"), capability="keyword")
+    cleaned_rules = validate_regex_rules(
+        payload.regex_rules,
         max_rules=MAX_PROFILE_RULES,
         max_pattern_len=MAX_PROFILE_RULE_PATTERN,
         max_repl_len=MAX_PROFILE_RULE_REPL,
         allowed_flag_bits=DEFAULT_ALLOWED_FLAG_BITS,
     )
-
-
-def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> GovernanceProfilePayload:
-    extends = None
-    raw_extends = getattr(payload, "extends", None)
-    if raw_extends is not None:
-        ref = str(raw_extends or "").strip()
-        if ref:
-            # Keep it safe for logs/storage/JSON; existence is resolved later.
-            if "\x7f" in ref or any(ord(ch) < 32 for ch in ref):
-                raise ValueError("payload.extends contains control characters")
-            extends = ref[:120]
-
-    cleaned_formats: list[str] = []
-    for fmt in payload.input_formats or []:
-        v = str(fmt or "").strip().lower()
-        if v in {"markdown", "html"} and v not in cleaned_formats:
-            cleaned_formats.append(v)
-    if not cleaned_formats:
-        cleaned_formats = ["markdown"]
-
-    cleaned_patch = _normalize_pipeline_patch(payload.pipeline_patch)
-    cleaned_rules = _normalize_regex_rules(payload.regex_rules)
-    scripts = list(payload.processing_scripts or [])
-    if len(scripts) > 10:
+    if len(payload.processing_scripts) > 10:
         raise ValueError("payload.processing_scripts contains too many entries (max=10)")
 
     return GovernanceProfilePayload(
         version="1",
         extends=extends,
-        input_formats=cleaned_formats,  # type: ignore[arg-type]
+        input_formats=cleaned_formats,
         pipeline_patch=cleaned_patch,
         regex_rules=[RegexRuleModel(**r) for r in cleaned_rules],
-        processing_scripts=scripts,
+        processing_scripts=payload.processing_scripts,
     )
 
 
@@ -100,17 +88,15 @@ class BuiltinGovernanceProfile:
 
 def _p(
     *,
-    input_formats: list[str],
+    input_formats: list[Literal["markdown", "html"]],
     pipeline_patch: dict,
-    regex_rules: list[dict] | None = None,
     extends: str | None = None,
 ) -> GovernanceProfilePayload:
     return GovernanceProfilePayload(
         version="1",
         extends=extends,
-        input_formats=[f for f in input_formats if f in {"markdown", "html"}] or ["markdown"],  # type: ignore[arg-type]
-        pipeline_patch=dict(pipeline_patch or {}),
-        regex_rules=[RegexRuleModel(**r) for r in (regex_rules or [])],
+        input_formats=input_formats,
+        pipeline_patch=pipeline_patch,
     )
 
 
@@ -163,7 +149,6 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_drop_duplicate_paragraphs_min_chars": 40,
                     "governance_drop_duplicate_paragraphs_max_chars": 1200,
                 },
-                regex_rules=[],
             ),
         ),
         BuiltinGovernanceProfile(

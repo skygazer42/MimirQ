@@ -8,7 +8,6 @@ image tags. Removal is code-fence aware and supports:
 - mode="all": remove all images
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -73,8 +72,8 @@ def _replace_markdown_image(
         removed[0] += 1
         return ""
 
-    alt = (match.group("alt") or "").strip()
-    url = (match.group(url_group) or "").strip()
+    alt = (match.group("alt")).strip()
+    url = (match.group(url_group)).strip()
     if _is_decorative_image(alt=alt, url=url):
         removed[0] += 1
         return ""
@@ -86,31 +85,16 @@ def _replace_html_image(match: re.Match[str], *, mode: ImageRemoveMode, removed:
         removed[0] += 1
         return ""
 
-    tag = match.group(0) or ""
-    attrs = {
-        (m.group("key") or "").strip().lower(): (m.group("val") or "").strip()
-        for m in _HTML_ATTR_RE.finditer(tag)
-    }
+    tag = match.group(0)
+    attrs = {(m.group("key")).strip().lower(): (m.group("val")).strip() for m in _HTML_ATTR_RE.finditer(tag)}
     if _is_decorative_image(alt=attrs.get("alt", ""), url=attrs.get("src", "")):
         removed[0] += 1
         return ""
     return tag
 
 
-def _strip_image_line(line: str, *, mode: ImageRemoveMode, removed: list[int]) -> str:
-    current = _HTML_IMG_RE.sub(lambda match: _replace_html_image(match, mode=mode, removed=removed), line)
-    current = _MD_IMAGE_INLINE_RE.sub(
-        lambda match: _replace_markdown_image(match, mode=mode, url_group="url", removed=removed),
-        current,
-    )
-    return _MD_IMAGE_REF_RE.sub(
-        lambda match: _replace_markdown_image(match, mode=mode, url_group="ref", removed=removed),
-        current,
-    )
-
-
 def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
-    original = text or ""
+    original = text
     if not original or mode == "none":
         return ImageStripResult(text=original, removed=0, changed=False)
 
@@ -127,7 +111,17 @@ def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
             out_lines.append(line)
             continue
 
-        out_lines.append(_strip_image_line(line, mode=mode, removed=removed))
+        current = _HTML_IMG_RE.sub(lambda match: _replace_html_image(match, mode=mode, removed=removed), line)
+        current = _MD_IMAGE_INLINE_RE.sub(
+            lambda match: _replace_markdown_image(match, mode=mode, url_group="url", removed=removed),
+            current,
+        )
+        out_lines.append(
+            _MD_IMAGE_REF_RE.sub(
+                lambda match: _replace_markdown_image(match, mode=mode, url_group="ref", removed=removed),
+                current,
+            )
+        )
 
     cleaned = "\n".join(out_lines)
     return ImageStripResult(text=cleaned, removed=removed[0], changed=(cleaned != original))

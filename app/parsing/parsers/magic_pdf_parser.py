@@ -43,9 +43,7 @@ MAGIC_PDF_SERVICE_HOSTNAMES = {"mimirq-magicpdf"}
 
 
 def magicpdf_service_configured(configured_url: str | None = None) -> bool:
-    return bool(
-        (configured_url if configured_url is not None else getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
-    )
+    return bool((configured_url if configured_url is not None else settings.MAGIC_PDF_API_URL).strip())
 
 
 def _has_required_magicpdf_models(models_dir: Path) -> bool:
@@ -55,25 +53,22 @@ def _has_required_magicpdf_models(models_dir: Path) -> bool:
         return False
 
 
-def _is_dir_readable(path: Path) -> bool:
-    try:
-        return path.is_dir()
-    except PermissionError:
-        return False
-
-
 def _resolve_magicpdf_candidate(candidate: Path) -> Path | None:
     if candidate.name == "models" and _has_required_magicpdf_models(candidate):
         return candidate
-    if _is_dir_readable(candidate):
-        snapshots = sorted(
-            (p / "models" for p in candidate.glob("*") if (p / "models").is_dir()),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        for models_dir in snapshots:
-            if _has_required_magicpdf_models(models_dir):
-                return models_dir
+    try:
+        if not candidate.is_dir():
+            return None
+    except PermissionError:
+        return None
+    snapshots = sorted(
+        (p / "models" for p in candidate.glob("*") if (p / "models").is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for models_dir in snapshots:
+        if _has_required_magicpdf_models(models_dir):
+            return models_dir
     return None
 
 
@@ -111,21 +106,56 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
     return None
 
 
+def _decode_service_response(resp: requests.Response) -> tuple[Any, str]:
+    data: Any = {}
+    ctype = str(resp.headers.get("content-type") or "").lower()
+    if "application/json" in ctype:
+        data = resp.json()
+        return data, extract_markdown_response_text(data)
+    return data, resp.text
+
+
+def _build_service_metadata(
+    *,
+    file_path: Path,
+    dataset_id: str | None,
+    method: str,
+    data: Any,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "source": str(file_path.name),
+        "file_type": "pdf",
+        "parser_backend": "magicpdf",
+        "magicpdf_method": method,
+        "magicpdf_mode": "service",
+    }
+    if dataset_id:
+        metadata["dataset_id"] = str(dataset_id)
+    if not isinstance(data, dict):
+        return metadata
+    if data.get("asset_base_dir"):
+        metadata["asset_base_dir"] = str(data["asset_base_dir"])
+    if data.get("artifact_dir"):
+        metadata["artifact_dir"] = str(data["artifact_dir"])
+    if data.get("elapsed_sec") is not None:
+        try:
+            metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
+        except (TypeError, ValueError):
+            metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
+    return metadata
+
+
 class MagicPDFParser:
     def __init__(self) -> None:
-        self._cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        self._api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
-        self._request_timeout_sec = float(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)
+        self._cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+        self._api_url = settings.MAGIC_PDF_API_URL.strip()
+        self._request_timeout_sec = float(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC)
         self._session = requests.Session()
 
-    @staticmethod
-    def required_model_files() -> tuple[str, ...]:
-        return MAGIC_PDF_REQUIRED_MODEL_FILES
-
     def _ensure_cli(self) -> str:
-        resolved = resolve_cli_command(self._cli) if self._cli else None
+        resolved = resolve_cli_command(self._cli)
         if resolved:
-            return str(resolved)
+            return resolved
         raise RuntimeError(
             f"MagicPDF CLI not found: {self._cli!r}. "
             "Install `magic-pdf` and ensure `magic-pdf` is on PATH (or run the backend with the same conda/venv), "
@@ -140,7 +170,7 @@ class MagicPDFParser:
         return file_path.parent / ".magicpdf" / run_id
 
     def _resolve_method(self) -> str:
-        method = (getattr(settings, "MAGIC_PDF_METHOD", "") or "auto").strip().lower()
+        method = (settings.MAGIC_PDF_METHOD or "auto").strip().lower()
         if method not in {"auto", "ocr", "txt"}:
             raise ValueError("MAGIC_PDF_METHOD must be one of: auto, ocr, txt")
         return method
@@ -157,23 +187,21 @@ class MagicPDFParser:
         files = {"file": (file_path.name, file_bytes, content_type)}
         data = {
             "method": self._resolve_method(),
-            "debug": str(bool(getattr(settings, "MAGIC_PDF_DEBUG", False))).lower(),
-            "device_mode": (getattr(settings, "MAGIC_PDF_DEVICE_MODE", "") or "cuda").strip().lower() or "cuda",
-            "keep_artifacts": str(bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False))).lower(),
+            "debug": str(settings.MAGIC_PDF_DEBUG).lower(),
+            "device_mode": (settings.MAGIC_PDF_DEVICE_MODE or "cuda").strip().lower() or "cuda",
+            "keep_artifacts": str(settings.MAGIC_PDF_KEEP_ARTIFACTS).lower(),
         }
-        lang = (getattr(settings, "MAGIC_PDF_LANG", "") or "").strip()
+        lang = settings.MAGIC_PDF_LANG.strip()
         if lang:
             data["lang"] = lang
         if document_id:
             data["document_id"] = str(document_id)
 
         candidate_urls = self._candidate_api_urls()
-        last_error: Exception | None = None
         for index, url in enumerate(candidate_urls):
             try:
                 return self._session.post(url, files=files, data=data, timeout=self._request_timeout_sec)
             except requests.RequestException as exc:
-                last_error = exc
                 if index == len(candidate_urls) - 1:
                     raise
                 logger.warning(
@@ -182,80 +210,7 @@ class MagicPDFParser:
                     exc.__class__.__name__,
                     candidate_urls[index + 1],
                 )
-        if last_error is not None:
-            raise last_error
         raise RuntimeError("MagicPDF service parser requires MAGIC_PDF_API_URL.")
-
-    @staticmethod
-    def _extract_service_markdown(data: Any) -> str:
-        return extract_markdown_response_text(data)
-
-    @staticmethod
-    def _decode_service_response(resp: requests.Response) -> tuple[Any, str]:
-        data: Any = {}
-        ctype = str(resp.headers.get("content-type") or "").lower()
-        if "application/json" in ctype:
-            try:
-                data = resp.json()
-            except Exception:
-                data = json.loads((resp.text or "").strip() or "{}")
-            return data, extract_markdown_response_text(data)
-        return data, resp.text or ""
-
-    def _build_service_metadata(
-        self,
-        *,
-        file_path: Path,
-        dataset_id: str | None,
-        method: str,
-        data: Any,
-    ) -> dict[str, Any]:
-        metadata: dict[str, Any] = {
-            "source": str(file_path.name),
-            "file_type": "pdf",
-            "parser_backend": "magicpdf",
-            "magicpdf_method": method,
-            "magicpdf_mode": "service",
-        }
-        if dataset_id:
-            metadata["dataset_id"] = str(dataset_id)
-        if not isinstance(data, dict):
-            return metadata
-        if data.get("asset_base_dir"):
-            metadata["asset_base_dir"] = str(data["asset_base_dir"])
-        if data.get("artifact_dir"):
-            metadata["artifact_dir"] = str(data["artifact_dir"])
-        if data.get("elapsed_sec") is not None:
-            try:
-                metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
-            except (TypeError, ValueError):
-                metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
-        return metadata
-
-    def _build_local_cli_command(
-        self,
-        *,
-        cli: str,
-        safe_pdf_path: Path,
-        artifact_root: Path,
-        method: str,
-        lang: str | None,
-        debug: bool,
-    ) -> list[str]:
-        cmd = [
-            cli,
-            "--path",
-            str(safe_pdf_path),
-            "--output-dir",
-            str(artifact_root),
-            "--method",
-            method,
-        ]
-        if lang:
-            cmd.extend(["--lang", lang])
-        if debug:
-            cmd.extend(["--debug", "true"])
-        return cmd
 
     @staticmethod
     def _prepare_safe_pdf(file_path: Path, artifact_root: Path) -> Path:
@@ -272,15 +227,13 @@ class MagicPDFParser:
         env.setdefault("YOLO_CONFIG_DIR", str(artifact_root / ".ultralytics"))
         return env
 
+    @staticmethod
     def _run_local_cli(
-        self,
         *,
         cmd: list[str],
         timeout_sec: float,
         env: dict[str, str],
-        artifact_root: Path,
     ) -> str:
-        stdout_text = ""
         try:
             proc = run_resolved_cli(
                 cmd,
@@ -291,7 +244,7 @@ class MagicPDFParser:
                 timeout=timeout_sec,
                 env=env,
             )
-            stdout_text = proc.stdout or ""
+            stdout_text = proc.stdout
             if stdout_text:
                 logger.info("[magicpdf] %s", stdout_text.strip()[:4000])
             return stdout_text
@@ -326,27 +279,6 @@ class MagicPDFParser:
         markdown_text = re.sub(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*", "", markdown_text)
         return re.sub(r"<img[^>]*?>", "", markdown_text, flags=re.IGNORECASE)
 
-    @staticmethod
-    def _build_local_metadata(
-        *,
-        file_path: Path,
-        md_path: Path,
-        artifact_root: Path,
-        method: str,
-        lang: str | None,
-    ) -> dict[str, Any]:
-        metadata = {
-            "source": str(file_path.name),
-            "file_type": "pdf",
-            "parser_backend": "magicpdf",
-            "asset_base_dir": str(md_path.parent),
-            "artifact_dir": str(artifact_root),
-            "magicpdf_method": method,
-        }
-        if lang:
-            metadata["magicpdf_lang"] = lang
-        return metadata
-
     def _parse_service(
         self,
         file_path: Path,
@@ -359,18 +291,18 @@ class MagicPDFParser:
 
         logger.info("[magicpdf] parsing %s via service", file_path.name)
         resp = self._post_service_multipart(file_path=file_path, document_id=document_id)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text or '')[:500]}")
+        if resp.status_code != 200:
+            raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text)[:500]}")
 
-        data, markdown_text = self._decode_service_response(resp)
-        if not str(markdown_text or "").strip():
+        data, markdown_text = _decode_service_response(resp)
+        if not markdown_text.strip():
             raise RuntimeError("MagicPDF service returned empty Markdown.")
 
         method = self._resolve_method()
         if isinstance(data, dict):
             method = str(data.get("method") or method)
 
-        metadata = self._build_service_metadata(
+        metadata = _build_service_metadata(
             file_path=file_path,
             dataset_id=dataset_id,
             method=method,
@@ -386,7 +318,7 @@ class MagicPDFParser:
         We generate a minimal config per-run and point the subprocess at it via
         the `MINERU_TOOLS_CONFIG_JSON` env var.
         """
-        configured = (getattr(settings, "MINERU_TOOLS_CONFIG_JSON", "") or "").strip()
+        configured = settings.MINERU_TOOLS_CONFIG_JSON.strip()
         if not configured:
             configured = (os.environ.get("MINERU_TOOLS_CONFIG_JSON") or "").strip()
         if configured:
@@ -401,7 +333,7 @@ class MagicPDFParser:
         if cfg_path.exists():
             return cfg_path
 
-        models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+        models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
         if models_dir is None:
             expected = ", ".join(MAGIC_PDF_REQUIRED_MODEL_FILES)
             raise RuntimeError(
@@ -409,7 +341,7 @@ class MagicPDFParser:
                 "or set MAGIC_PDF_MODELS_DIR to a directory containing: "
                 f"{expected}"
             )
-        device_mode = (getattr(settings, "MAGIC_PDF_DEVICE_MODE", "") or "cpu").strip().lower()
+        device_mode = (settings.MAGIC_PDF_DEVICE_MODE or "cpu").strip().lower()
         if device_mode not in {"cpu", "cuda"}:
             device_mode = "cpu"
 
@@ -426,7 +358,7 @@ class MagicPDFParser:
             # Keep formula recognition off by default to avoid heavy Unimernet deps and
             # version coupling issues with `transformers` generation APIs. Enable explicitly
             # via MAGIC_PDF_FORMULA_ENABLED=true when the runtime has the required deps.
-            "formula-config": {"enable": bool(getattr(settings, "MAGIC_PDF_FORMULA_ENABLED", False))},
+            "formula-config": {"enable": settings.MAGIC_PDF_FORMULA_ENABLED},
             # Keep table recognition off by default for the local fallback. The
             # dedicated Docling/ETL4LLM/Marker paths cover table-heavy documents
             # and avoid forcing extra MagicPDF table weights for basic local
@@ -440,11 +372,10 @@ class MagicPDFParser:
         self,
         file_path: Path,
         *,
-        dataset_id: str | None = None,  # kept for interface parity
+        dataset_id: str | None = None,
         document_id: str | None = None,
         **_kwargs,
     ) -> list[Document]:
-        _ = dataset_id
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -454,24 +385,20 @@ class MagicPDFParser:
 
         cli = self._ensure_cli()
         method = self._resolve_method()
-        lang = (getattr(settings, "MAGIC_PDF_LANG", "") or "").strip() or None
-        debug = bool(getattr(settings, "MAGIC_PDF_DEBUG", False))
-        timeout_sec = float(getattr(settings, "MAGIC_PDF_TIMEOUT_SEC", 600) or 600)
+        lang = settings.MAGIC_PDF_LANG.strip() or None
+        debug = settings.MAGIC_PDF_DEBUG
+        timeout_sec = float(settings.MAGIC_PDF_TIMEOUT_SEC or 600)
 
-        artifact_root = self._build_artifact_root(file_path, document_id)
-        artifact_root = artifact_root.absolute()
+        artifact_root = self._build_artifact_root(file_path, document_id).absolute()
         artifact_root.mkdir(parents=True, exist_ok=True)
 
         # Avoid spaces/unicode in the input filename (some parsers/tools are brittle).
         safe_pdf_path = self._prepare_safe_pdf(file_path, artifact_root)
-        cmd = self._build_local_cli_command(
-            cli=cli,
-            safe_pdf_path=safe_pdf_path,
-            artifact_root=artifact_root,
-            method=method,
-            lang=lang,
-            debug=debug,
-        )
+        cmd = [cli, "--path", str(safe_pdf_path), "--output-dir", str(artifact_root), "--method", method]
+        if lang:
+            cmd.extend(["--lang", lang])
+        if debug:
+            cmd.extend(["--debug", "true"])
 
         logger.info("[magicpdf] parsing %s (method=%s)", file_path.name, method)
         env = self._cli_environment(
@@ -482,7 +409,6 @@ class MagicPDFParser:
             cmd=cmd,
             timeout_sec=timeout_sec,
             env=env,
-            artifact_root=artifact_root,
         )
         md_path = self._resolve_markdown_path(artifact_root=artifact_root, method=method)
         if not md_path.exists():
@@ -496,12 +422,15 @@ class MagicPDFParser:
 
         markdown_text = md_path.read_text(encoding="utf-8", errors="ignore")
         markdown_text = self._sanitize_markdown(markdown_text)
-        metadata = self._build_local_metadata(
-            file_path=file_path,
-            md_path=md_path,
-            artifact_root=artifact_root,
-            method=method,
-            lang=lang,
-        )
+        metadata = {
+            "source": str(file_path.name),
+            "file_type": "pdf",
+            "parser_backend": "magicpdf",
+            "asset_base_dir": str(md_path.parent),
+            "artifact_dir": str(artifact_root),
+            "magicpdf_method": method,
+        }
+        if lang:
+            metadata["magicpdf_lang"] = lang
 
         return [Document(page_content=markdown_text, metadata=metadata)]

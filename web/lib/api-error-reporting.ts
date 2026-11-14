@@ -8,7 +8,11 @@ type CaptureApiErrorOptions = {
   tags?: Record<string, string>
 }
 
-export function captureApiError(err: unknown, fallbackMessage: string, options: CaptureApiErrorOptions = {}): ApiErrorInfo {
+export function captureApiError(
+  err: unknown,
+  fallbackMessage: string,
+  options: CaptureApiErrorOptions = {},
+): ApiErrorInfo {
   const info = toApiErrorInfo(err, fallbackMessage)
   const requestId = info.requestId || extractRequestIdFromError(err)
   const eventError = err instanceof Error ? err : new Error(withRequestId(info.message, requestId))

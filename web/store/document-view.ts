@@ -2,11 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { getClientStorage } from '@/lib/client-storage'
-import {
-  AUTH_SCOPE_CHANGED_EVENT,
-  DOCUMENT_VIEW_STORAGE_KEY,
-  getAuthCacheScope,
-} from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, DOCUMENT_VIEW_STORAGE_KEY, getAuthCacheScope } from '@/lib/auth-storage'
 import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 import { sanitizeDocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 
@@ -41,7 +37,7 @@ export type DocumentViewLayout = {
   textScrollTop?: number
 }
 
-interface DocumentViewState {
+type DocumentViewState = {
   authScope: string
   isOpen: boolean
   documentId: string | null
@@ -61,7 +57,7 @@ interface DocumentViewState {
       previewAnchor?: Partial<DocumentPreviewAnchor> | null
       activeTab?: DocumentViewTab
       sourceContext?: DocumentViewSourceContext | null
-    }
+    },
   ) => void
   closeDocument: () => void
   reopenLastDocument: () => void
@@ -83,8 +79,8 @@ const noopStorage = {
   removeItem: (_name: string) => {},
 }
 
-function normalizeDocumentId(documentId: string | null | undefined): string | null {
-  const normalized = String(documentId || '').trim()
+function normalizeId(id: string | null | undefined): string | null {
+  const normalized = String(id || '').trim()
   return normalized || null
 }
 
@@ -99,7 +95,9 @@ function sanitizePanelWidthPx(value: unknown): number | undefined {
   return width >= 360 && width <= 1800 ? width : undefined
 }
 
-function sanitizeHighlightRange(range: Partial<HighlightRange> | HighlightRange | null | undefined): HighlightRange | null {
+function sanitizeHighlightRange(
+  range: Partial<HighlightRange> | HighlightRange | null | undefined,
+): HighlightRange | null {
   const startRaw = range?.start
   const endRaw = range?.end
   const start = typeof startRaw === 'number' && Number.isFinite(startRaw) ? Math.trunc(startRaw) : null
@@ -107,12 +105,10 @@ function sanitizeHighlightRange(range: Partial<HighlightRange> | HighlightRange 
   return start != null && end != null && end > start ? ({ start, end } satisfies HighlightRange) : null
 }
 
-function normalizeChunkId(chunkId: string | null | undefined): string | null {
-  const normalized = String(chunkId || '').trim()
-  return normalized || null
-}
-
-function normalizeOptionalText(value: string | null | undefined, maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS): string | null {
+function normalizeOptionalText(
+  value: string | null | undefined,
+  maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS,
+): string | null {
   const normalized = String(value || '').trim()
   if (!normalized) return null
   return normalized.length > maxChars ? normalized.slice(0, maxChars) : normalized
@@ -130,18 +126,20 @@ function sanitizeDocumentViewTab(tab: unknown): DocumentViewTab | undefined {
   return isDocumentViewTab(tab) ? tab : undefined
 }
 
-function sanitizeSourceContext(sourceContext: DocumentViewSourceContext | null | undefined): DocumentViewSourceContext | null {
+function sanitizeSourceContext(
+  sourceContext: DocumentViewSourceContext | null | undefined,
+): DocumentViewSourceContext | null {
   if (sourceContext?.kind !== 'chat-citation') return null
 
   const messageId = String(sourceContext.messageId || '').trim()
-  const documentId = normalizeDocumentId(sourceContext.documentId)
+  const documentId = normalizeId(sourceContext.documentId)
   if (!messageId || !documentId) return null
 
   return {
     kind: 'chat-citation',
     messageId,
     documentId,
-    chunkId: normalizeChunkId(sourceContext.chunkId),
+    chunkId: normalizeId(sourceContext.chunkId),
     documentName: normalizeOptionalText(sourceContext.documentName, 300),
     chunkContent: normalizeOptionalText(sourceContext.chunkContent),
     chunkIndex: normalizeOptionalNumber(sourceContext.chunkIndex),
@@ -155,12 +153,12 @@ function buildResumeTarget(
   rawChunkId?: string | null,
   range?: Partial<HighlightRange> | HighlightRange | null,
   previewAnchor?: Partial<DocumentPreviewAnchor> | DocumentPreviewAnchor | null,
-  sourceContext?: DocumentViewSourceContext | null
+  sourceContext?: DocumentViewSourceContext | null,
 ): DocumentViewResumeTarget | null {
-  const documentId = normalizeDocumentId(rawDocumentId)
+  const documentId = normalizeId(rawDocumentId)
   if (!documentId) return null
 
-  const chunkId = normalizeChunkId(rawChunkId)
+  const chunkId = normalizeId(rawChunkId)
   const highlightRange = sanitizeHighlightRange(range)
   const sanitizedPreviewAnchor = sanitizeDocumentPreviewAnchor(previewAnchor)
   const sanitizedSourceContext = sanitizeSourceContext(sourceContext)
@@ -177,13 +175,13 @@ function buildResumeTarget(
 function sanitizeResumeTarget(target: DocumentViewResumeTarget | null | undefined): DocumentViewResumeTarget | null {
   if (!target) return null
 
-  const documentId = normalizeDocumentId(target.documentId)
+  const documentId = normalizeId(target.documentId)
   if (!documentId) return null
   const sourceContext = sanitizeSourceContext(target.sourceContext)
 
   return {
     documentId,
-    chunkId: normalizeChunkId(target.chunkId),
+    chunkId: normalizeId(target.chunkId),
     highlightRange: sanitizeHighlightRange(target.highlightRange),
     previewAnchor: sanitizeDocumentPreviewAnchor(target.previewAnchor),
     activeTab: sanitizeDocumentViewTab(target.activeTab),
@@ -211,7 +209,7 @@ function sanitizeDocumentLayoutPatch(patch: Partial<DocumentViewLayout>): Partia
 
 function mergeDocumentLayout(
   current: DocumentViewLayout | undefined,
-  patch: Partial<DocumentViewLayout>
+  patch: Partial<DocumentViewLayout>,
 ): DocumentViewLayout | null {
   const sanitizedPatch = sanitizeDocumentLayoutPatch(patch)
   const next = current ? { ...current, ...sanitizedPatch } : { ...sanitizedPatch }
@@ -222,7 +220,7 @@ function mergeDocumentLayout(
 function persistActiveTabForDocument(
   documentId: string | null,
   documentLayouts: Record<string, DocumentViewLayout>,
-  activeTab: DocumentViewTab
+  activeTab: DocumentViewTab,
 ) {
   if (!documentId) return documentLayouts
 
@@ -249,7 +247,7 @@ export const useDocumentView = create<DocumentViewState>()(
 
       openDocument: (rawDocumentId, chunkId, range, options) =>
         set((state) => {
-          const documentId = normalizeDocumentId(rawDocumentId)
+          const documentId = normalizeId(rawDocumentId)
           if (!documentId) return state
 
           const highlightRange = sanitizeHighlightRange(range)
@@ -265,7 +263,7 @@ export const useDocumentView = create<DocumentViewState>()(
             chunkId || null,
             highlightRange,
             previewAnchor,
-            sourceContext
+            sourceContext,
           )
 
           return {
@@ -297,8 +295,7 @@ export const useDocumentView = create<DocumentViewState>()(
           if (!lastOpenedTarget) return state
 
           const savedLayout = state.documentLayouts[lastOpenedTarget.documentId]
-          const activeTab =
-            lastOpenedTarget.activeTab || savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
+          const activeTab = lastOpenedTarget.activeTab || savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
 
           return {
             isOpen: true,
@@ -308,11 +305,7 @@ export const useDocumentView = create<DocumentViewState>()(
             previewAnchor: lastOpenedTarget.previewAnchor || null,
             sourceContext: lastOpenedTarget.sourceContext || null,
             activeTab,
-            documentLayouts: persistActiveTabForDocument(
-              lastOpenedTarget.documentId,
-              state.documentLayouts,
-              activeTab
-            ),
+            documentLayouts: persistActiveTabForDocument(lastOpenedTarget.documentId, state.documentLayouts, activeTab),
             lastOpenedTarget: {
               ...lastOpenedTarget,
               activeTab,
@@ -325,8 +318,14 @@ export const useDocumentView = create<DocumentViewState>()(
           highlightChunkId: chunkId,
           highlightRange: null,
           lastOpenedTarget:
-            buildResumeTarget(state.documentId, state.activeTab, chunkId, null, state.previewAnchor, state.sourceContext) ||
-            state.lastOpenedTarget,
+            buildResumeTarget(
+              state.documentId,
+              state.activeTab,
+              chunkId,
+              null,
+              state.previewAnchor,
+              state.sourceContext,
+            ) || state.lastOpenedTarget,
         })),
 
       setHighlightRange: (range) =>
@@ -339,9 +338,8 @@ export const useDocumentView = create<DocumentViewState>()(
               state.highlightChunkId,
               range,
               state.previewAnchor,
-              state.sourceContext
-            ) ||
-            state.lastOpenedTarget,
+              state.sourceContext,
+            ) || state.lastOpenedTarget,
         })),
 
       setActiveTab: (tab) =>
@@ -355,20 +353,19 @@ export const useDocumentView = create<DocumentViewState>()(
               state.highlightChunkId,
               state.highlightRange,
               state.previewAnchor,
-              state.sourceContext
-            ) ||
-            state.lastOpenedTarget,
+              state.sourceContext,
+            ) || state.lastOpenedTarget,
         })),
 
       getDocumentLayout: (documentId) => {
-        const id = normalizeDocumentId(documentId)
+        const id = normalizeId(documentId)
         if (!id) return null
         return get().documentLayouts[id] || null
       },
 
       setDocumentLayout: (documentId, patch) =>
         set((state) => {
-          const id = normalizeDocumentId(documentId)
+          const id = normalizeId(documentId)
           if (!id) return state
 
           const nextLayouts = { ...state.documentLayouts }
@@ -398,8 +395,8 @@ export const useDocumentView = create<DocumentViewState>()(
         const saved = persisted as Partial<DocumentViewState>
         return saved.authScope === getAuthCacheScope() ? { ...current, ...saved } : current
       },
-    }
-  )
+    },
+  ),
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {

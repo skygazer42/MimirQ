@@ -85,7 +85,7 @@ EVIDENCE_POST_RERANK_TOP_N=30
 
 ## 4) 如何离线评估它到底值不值得开？
 
-先取 Evidence API 的 pre-rerank 候选，再在本地串接 `ltr` / `colbert` 管线：
+先取 Evidence API 的 pre-rerank 候选，再使用保留的确定性 `colbert` 管线：
 
 ```bash
 python scripts/eval_rerank_pipeline_offline.py \
@@ -93,9 +93,7 @@ python scripts/eval_rerank_pipeline_offline.py \
   --pipeline '[{"provider":"colbert","top_n":20}]' \
   --top-k 50 \
   --k 20 \
-  --colbert-provider hf \
-  --colbert-model-name colbert-ir/colbertv2.0 \
-  --colbert-device cpu
+  --colbert-provider deterministic
 ```
 
 脚本输出除了 baseline / pipeline 的平均指标，还会给出每个指标的 `wins/losses/ties` 计数。
@@ -103,7 +101,7 @@ python scripts/eval_rerank_pipeline_offline.py \
 判断方式：
 - `MRR/NDCG` wins 明显大于 losses：说明 late-interaction 值得继续灰度
 - `Recall/Hit` 没有明显提升但 losses 上升：说明你可能只是把本来可命中的证据排坏了
-- deterministic 路径适合先做 wiring / 回归门禁，HF 路径才适合判断真实收益
+- 当前 deterministic 路径用于接线和回归门禁，不代表真实模型的检索质量收益；原 HF 本地模型路径已退出。
 
 ## 5) 什么时候不该用？
 

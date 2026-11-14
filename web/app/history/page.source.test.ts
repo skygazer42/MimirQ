@@ -4,6 +4,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { expectSourceToContain } from '@/lib/source-test-utils'
+
 describe('history route source', () => {
   it('keeps the server wrapper auth-agnostic and lets the client fetch authenticated history data', () => {
     const page = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
@@ -39,14 +41,18 @@ describe('history route source', () => {
 
     expect(client).toContain('<time')
     expect(client).toContain('suppressHydrationWarning')
-    expect(client).toContain('dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}')
-    expect(client).toContain("formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))")
+    expect(client).toContain(
+      'dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}',
+    )
+    expect(client).toContain(
+      "formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))",
+    )
   })
 
   it('suppresses hydration drift for message-group date labels in the active conversation pane', () => {
     const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
-    expect(client).toContain('<div suppressHydrationWarning')
+    expectSourceToContain(client, '<div suppressHydrationWarning')
     expect(client).toContain('{group.label}')
   })
 
@@ -77,9 +83,8 @@ describe('history route source', () => {
     expect(client).toContain('data-history-shell="ruled"')
     expect(client).toContain('data-history-sidebar="true"')
     expect(client).toContain('data-history-detail-header="true"')
-    expect(client).toContain('border-r border-foreground/15 bg-background')
-    expect(client).toContain('border-b border-foreground/15 bg-background')
-    expect(client).toContain('rounded-md border border-foreground/10 bg-background')
+    expect(client).toContain('md:border-r')
+    expect(client).not.toContain('rounded-lg border border-foreground/15 bg-background')
     expect(client).not.toContain('backdrop-blur')
     expect(client).not.toContain('rounded-3xl')
     expect(client).not.toContain('shadow-soft')

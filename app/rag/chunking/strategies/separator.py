@@ -2,8 +2,8 @@
 Custom separator-based chunking strategy.
 """
 
-
 import re
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -36,7 +36,7 @@ class SeparatorChunker(BaseChunker):
         separator: str = "\n\n",
         keep_separator: bool = True,
         max_chunk_size: int = 0,
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.separator = separator
@@ -47,7 +47,7 @@ class SeparatorChunker(BaseChunker):
         chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             if not text.strip():
                 continue
 
@@ -59,11 +59,7 @@ class SeparatorChunker(BaseChunker):
                 raw_end = raw_start + len(part)
 
                 offset = raw_end
-                if (
-                    not self.keep_separator
-                    and self.separator
-                    and i < len(parts) - 1
-                ):
+                if not self.keep_separator and self.separator and i < len(parts) - 1:
                     # text.split() drops the separator; account for it between parts.
                     offset += len(self.separator)
 
@@ -74,7 +70,7 @@ class SeparatorChunker(BaseChunker):
                     chunks.extend(self._split_large_chunk(part, raw_start, doc.metadata))
                     continue
 
-                metadata = dict(doc.metadata or {})
+                metadata = dict(doc.metadata)
                 content = part
                 start_idx = raw_start
                 end_idx = raw_end
@@ -123,7 +119,7 @@ class SeparatorChunker(BaseChunker):
         self,
         text: str,
         base_pos: int,
-        base_metadata: dict | None,
+        base_metadata: dict[str, Any],
     ) -> list[Document]:
         """
         Split oversized chunks at sentence boundaries (best-effort).
@@ -158,7 +154,7 @@ class SeparatorChunker(BaseChunker):
                 end_char = base_pos + end - rstrip_len
 
             if chunk_text:
-                metadata = dict(base_metadata or {})
+                metadata = dict(base_metadata)
                 metadata["start_char"] = start_char
                 metadata["end_char"] = end_char
                 metadata["chunk_strategy"] = "separator"
@@ -169,4 +165,3 @@ class SeparatorChunker(BaseChunker):
             pos = end
 
         return chunks
-

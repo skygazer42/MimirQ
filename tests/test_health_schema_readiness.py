@@ -93,7 +93,7 @@ def _stub_ready_dependencies(monkeypatch: pytest.MonkeyPatch, health_module: obj
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )

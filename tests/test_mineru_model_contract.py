@@ -45,10 +45,7 @@ def test_pipeline_readiness_requires_current_ocr_models(tmp_path, monkeypatch):
 def test_vlm_discovery_uses_the_runtime_model_repository(tmp_path, monkeypatch):
     startup = _load_start_local_api()
     monkeypatch.setenv("HOME", str(tmp_path))
-    snapshot = (
-        tmp_path
-        / ".cache/huggingface/hub/models--opendatalab--MinerU2.5-Pro-2605-1.2B/snapshots/revision"
-    )
+    snapshot = tmp_path / ".cache/huggingface/hub/models--opendatalab--MinerU2.5-Pro-2605-1.2B/snapshots/revision"
     snapshot.mkdir(parents=True)
     for relative_path in startup.VLM_REQUIRED_FILES:
         (snapshot / relative_path).touch()

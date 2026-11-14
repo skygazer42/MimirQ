@@ -148,9 +148,9 @@ def test_create_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch
         }
         return dataset_obj
 
-    monkeypatch.setattr(ds_api.DatasetService, "create_dataset", _create_dataset, raising=True)
-    monkeypatch.setattr(ds_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(ds_api.DatasetService, "_assert_edit_role", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ds_api.dataset_service, "create_dataset", _create_dataset, raising=True)
+    monkeypatch.setattr(ds_api.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(ds_api.dataset_service, "_assert_edit_role", lambda *_a, **_k: None, raising=True)
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
@@ -205,8 +205,8 @@ def test_get_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -
         updated_at=now,
     )
 
-    monkeypatch.setattr(ds_api.DatasetService, "get_dataset", lambda *_a, **_k: dataset_obj, raising=True)
-    monkeypatch.setattr(ds_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ds_api.dataset_service, "get_dataset", lambda *_a, **_k: dataset_obj, raising=True)
+    monkeypatch.setattr(ds_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id

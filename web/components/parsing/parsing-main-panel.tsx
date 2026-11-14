@@ -1,11 +1,11 @@
 'use client'
 
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
 type ParsingMainPanelProps = HTMLAttributes<HTMLDivElement> & {
-  children: React.ReactNode
+  children: ReactNode
   className?: string
 }
 

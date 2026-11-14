@@ -11,7 +11,6 @@ Design:
   then the extractor's built-in defaults.
 """
 
-
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -32,7 +31,7 @@ def load_enabled_predicates(db: Session, *, tenant_id: UUID) -> list[str]:
         out: list[str] = []
         seen: set[str] = set()
         for r in rows:
-            key = str(getattr(r, "predicate", "") or "").strip()
+            key = r.predicate.strip()
             if not key:
                 continue
             if key in seen:
@@ -67,9 +66,8 @@ def resolve_allowed_predicates(
     raw = str(raw_override or "").strip()
     if raw:
         parts = [p.strip() for p in raw.replace("\r\n", "\n").split("\n") for p in p.split(",")]
-        cleaned = [p for p in (str(x or "").strip() for x in parts) if p]
+        cleaned = [p for p in parts if p]
         if cleaned:
             return cleaned
 
     return [str(p).strip() for p in (fallback_default or []) if str(p).strip()]
-

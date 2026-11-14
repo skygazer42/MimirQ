@@ -1,14 +1,19 @@
 'use client'
 
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { isCancelledError, keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
-import type { DocumentListParams, DocumentListResponse, UpdateCachedDocuments } from './use-document-shared'
+import type {
+  CaptureDocumentListOperation,
+  DocumentListParams,
+  DocumentListResponse,
+  UpdateCachedDocuments,
+} from './use-document-shared'
 
 type UseDocumentListOptions = {
   setActionError: (error: string | null) => void
@@ -20,10 +25,7 @@ const DEFAULT_LIST_PARAMS: DocumentListParams = {
   lifecycle: 'active',
 }
 
-function areDocumentListParamsEqual(
-  a: DocumentListParams,
-  b: DocumentListParams
-): boolean {
+function areDocumentListParamsEqual(a: DocumentListParams, b: DocumentListParams): boolean {
   return (
     a.skip === b.skip &&
     a.limit === b.limit &&
@@ -37,19 +39,18 @@ function areDocumentListParamsEqual(
   )
 }
 
-export function useDocumentList({
-  setActionError,
-  initialParams = DEFAULT_LIST_PARAMS,
-}: UseDocumentListOptions) {
+export function useDocumentList({ setActionError, initialParams = DEFAULT_LIST_PARAMS }: UseDocumentListOptions) {
   const queryClient = useQueryClient()
   const [listParams, setListParams] = useState<DocumentListParams>(initialParams)
   const lastListParamsRef = useRef<DocumentListParams>(initialParams)
+  const previousInitialParamsRef = useRef<DocumentListParams>(initialParams)
 
   useEffect(() => {
-    if (areDocumentListParamsEqual(lastListParamsRef.current, initialParams)) {
+    if (areDocumentListParamsEqual(previousInitialParamsRef.current, initialParams)) {
       return
     }
 
+    previousInitialParamsRef.current = initialParams
     lastListParamsRef.current = initialParams
     setActionError(null)
     setListParams(initialParams)
@@ -62,42 +63,87 @@ export function useDocumentList({
     isLoading: isListLoading,
   } = useQuery<DocumentListResponse>({
     queryKey: queryKeys.documents.list(listParams),
-    queryFn: () => documentApi.list(listParams),
-    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => documentApi.list(listParams, { signal }),
+    placeholderData: (previousData, previousQuery) => {
+      if (!previousQuery) return undefined
+      return queryClient.getQueryCache().get<DocumentListResponse>(previousQuery.queryHash) === previousQuery
+        ? keepPreviousData(previousData)
+        : undefined
+    },
   })
 
-  const updateCachedDocuments = useCallback<UpdateCachedDocuments>(
-    (updater) => {
-      queryClient.setQueryData<DocumentListResponse>(
-        queryKeys.documents.list(lastListParamsRef.current),
-        updater
-      )
+  const subscribeToQueryRemoval = useCallback(
+    (onChange: () => void) =>
+      queryClient.getQueryCache().subscribe((event) => {
+        if (event.type === 'removed') onChange()
+      }),
+    [queryClient],
+  )
+  const getCurrentQuery = useCallback(
+    () => queryClient.getQueryCache().find({ queryKey: queryKeys.documents.list(listParams), exact: true }),
+    [listParams, queryClient],
+  )
+  const currentQuery = useSyncExternalStore(subscribeToQueryRemoval, getCurrentQuery, getCurrentQuery)
+  useEffect(() => {
+    setActionError(null)
+  }, [currentQuery, setActionError])
+
+  const fetchDocuments = useCallback(
+    async (params: DocumentListParams) => {
+      try {
+        await queryClient.fetchQuery({
+          queryKey: queryKeys.documents.list(params),
+          queryFn: ({ signal }) => documentApi.list(params, { signal }),
+        })
+      } catch (err) {
+        if (isCancelledError(err) || lastListParamsRef.current !== params) return
+        setActionError(formatApiError(err, 'Failed to load documents'))
+        reportClientError('Load documents failed', err)
+      }
     },
-    [queryClient]
+    [queryClient, setActionError],
+  )
+
+  const captureDocumentListOperation = useCallback<CaptureDocumentListOperation>(() => {
+    const params = lastListParamsRef.current
+    const queryKey = queryKeys.documents.list(params)
+    const query = queryClient.getQueryCache().find({ queryKey, exact: true })
+    const isActive = () => query !== undefined && queryClient.getQueryCache().find({ queryKey, exact: true }) === query
+    const isCurrent = () => isActive() && lastListParamsRef.current === params
+
+    return {
+      params,
+      isActive,
+      isCurrent,
+      updateCachedDocuments: (updater) => {
+        if (!isActive()) return
+        queryClient.setQueryData<DocumentListResponse>(queryKey, updater)
+      },
+      refresh: async () => {
+        if (!isActive()) return
+        if (isCurrent()) setActionError(null)
+        await fetchDocuments(params)
+      },
+    }
+  }, [fetchDocuments, queryClient, setActionError])
+
+  const updateCachedDocuments = useCallback<UpdateCachedDocuments>(
+    (updater) => captureDocumentListOperation().updateCachedDocuments(updater),
+    [captureDocumentListOperation],
   )
 
   const loadDocuments = useCallback(
     async (params?: DocumentListParams) => {
       setActionError(null)
 
-      const effective = params
-        ? { ...lastListParamsRef.current, ...params }
-        : { ...lastListParamsRef.current }
+      const effective = params ? { ...lastListParamsRef.current, ...params } : { ...lastListParamsRef.current }
 
       lastListParamsRef.current = effective
       setListParams(effective)
 
-      try {
-        await queryClient.fetchQuery({
-          queryKey: queryKeys.documents.list(effective),
-          queryFn: () => documentApi.list(effective),
-        })
-      } catch (err) {
-        setActionError(formatApiError(err, 'Failed to load documents'))
-        reportClientError('Load documents failed', err)
-      }
+      await fetchDocuments(effective)
     },
-    [queryClient, setActionError]
+    [fetchDocuments, setActionError],
   )
 
   return {
@@ -109,5 +155,6 @@ export function useDocumentList({
     loadDocuments,
     lastListParamsRef,
     updateCachedDocuments,
+    captureDocumentListOperation,
   }
 }

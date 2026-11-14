@@ -2,26 +2,30 @@
 Process-document flow helpers extracted from the main processor module.
 """
 
-
 import asyncio
 import contextlib
 import datetime as dt
 import re
-import sys
 import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
+from app.parsing.backends import require_resolved_parser_backend
+
+if TYPE_CHECKING:
+    from app.services.table_store_service import TableAsset
+    from app.types.indexing import IndexingOptions
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.processors.cross_page_merge import merge_cross_page_documents
@@ -29,6 +33,26 @@ from app.parsing.processors.parse_cache import LocalParseCacheStore
 from app.parsing.processors.parse_cache import ParseCacheEntry as LocalParseCacheEntry
 from app.parsing.processors.parse_cache import build_parse_cache_key as build_local_parse_cache_key
 from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
+from app.parsing.processors.processor import (
+    _apply_llm_auto_tagging,
+    _apply_table_sidecar_exclusive_routing,
+    _build_cancel_check,
+    _build_governance_audit_metadata_patch,
+    _cleanup_parser_artifacts,
+    _import_parsed_markdown_tables_to_store,
+    _persist_parsed_content,
+    _record_auto_chunking_metadata,
+    _record_chunk_postprocess_metadata,
+    _record_chunking_stats_metadata,
+    _record_document_image_ids,
+    _record_governance_enrichment_metadata,
+    _record_governance_metadata,
+    _record_pipeline_effective,
+    _rollback_and_cleanup_indexes,
+    _strip_doc_enrichment_fields,
+    index_chunks,
+    update_document_status,
+)
 from app.parsing.processors.support.assets import _apply_inline_asset_audit_patch, _collect_parser_asset_refs
 from app.parsing.processors.support.chunk_postprocess import (
     _ensure_ingest_page_indices,
@@ -53,19 +77,33 @@ from app.parsing.processors.support.parse_io import (
 )
 from app.parsing.processors.support.quality import _seal_summary_to_specialty_signals
 from app.parsing.processors.support.recovery import (
+    CheckpointedRetryRequiredError,
+    apply_pending_retry_cleanup,
     audit_ingest_gate,
     indexed_checkpoint_is_reusable,
+    maybe_enrich_document_questions,
     parsed_checkpoint_is_reusable,
     record_ingest_gate_outcome,
+    run_post_completion_kg,
     upsert_ingest_checkpoint,
 )
-from app.parsing.processors.support.recovery import (
-    maybe_enrich_document_questions as _maybe_enrich_document_questions,
+from app.parsing.processors.support.results import (
+    ChunkAssetOptions,
+    ChunkPostprocessStats,
+    DocumentCancelledError,
+    GovernanceResult,
+    IndexResult,
+    ParseResult,
 )
-from app.parsing.processors.support.recovery import (
-    run_post_completion_kg as _run_post_completion_kg,
+from app.parsing.processors.support.stages import (
+    chunk_documents,
+    deduplicate_chunks,
+    enrich_inline_assets,
+    govern_documents,
+    normalize_documents,
+    parse_document,
+    process_chunk_assets,
 )
-from app.parsing.processors.support.results import ChunkAssetOptions, ChunkPostprocessStats, ParseResult
 from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
@@ -78,11 +116,9 @@ from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate,
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.processor import GovernanceStats
 from app.rag.preprocessing.simhash import simhash64, simhash64_hex
-from app.services.metrics_logger import log_metrics as _log_metrics
-from app.services.metrics_logger import metrics_span as _metrics_span
-from app.services.metrics_logger import set_metrics_context
-from app.services.pipeline_config import build_indexing_options as _build_indexing_options
-from app.services.pipeline_config import resolve_pipeline_effective as _resolve_pipeline_effective
+from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
+from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective
+from app.services.tenant_quota_service import TenantQuotaExceededError
 from app.types.pipeline import PipelineEffective
 
 logger = get_logger("parsing.document_processor")
@@ -90,40 +126,112 @@ LOG_DOC_ID_FMT = "%s document_id=%s"
 AUDIT_ACTION_DOCUMENT_QUARANTINE = "document.quarantine"
 
 
-def _processor_override(name: str, default: Any) -> Any:
-    processor_module = sys.modules.get("app.parsing.processors.processor")
-    if processor_module is None:
-        return default
-    return getattr(processor_module, name, default)
+async def process_document(
+    file_path: Path,
+    document_id: UUID,
+    tenant_id: UUID,
+    parser_backend: str | None = None,
+    chunk_strategy: str | None = None,
+    db: Session | None = None,
+) -> dict[str, Any]:
+    """
+    Full document processing flow.
 
+    Steps:
+    1. Parse document
+    2. Split text
+    3. Generate embeddings
+    4. Persist to vector store
+    5. Persist to database
 
-def metrics_span(*args: Any, **kwargs: Any) -> Any:
-    return _processor_override("metrics_span", _metrics_span)(*args, **kwargs)
+    Args:
+        file_path: Path to the file
+        document_id: Document ID
+        db: Database session
 
+    Returns:
+        Processing result
+    """
+    owns_db = False
+    if db is None:
+        db = SessionLocal()
+        owns_db = True
 
-def log_metrics(*args: Any, **kwargs: Any) -> Any:
-    return _processor_override("log_metrics", _log_metrics)(*args, **kwargs)
+    runtime_state: dict[str, Any] = {"preprocessed_temp_path": None, "parse_state": None}
+    try:
+        return await run_process_document_body(
+            db=db,
+            file_path=file_path,
+            document_id=document_id,
+            tenant_id=tenant_id,
+            parser_backend=parser_backend,
+            chunk_strategy=chunk_strategy,
+            runtime_state=runtime_state,
+        )
 
-
-def resolve_pipeline_effective(*args: Any, **kwargs: Any) -> Any:
-    return _processor_override("resolve_pipeline_effective", _resolve_pipeline_effective)(*args, **kwargs)
-
-
-def build_indexing_options(*args: Any, **kwargs: Any) -> Any:
-    return _processor_override("build_indexing_options", _build_indexing_options)(*args, **kwargs)
-
-
-def maybe_enrich_document_questions(*args: Any, **kwargs: Any) -> Any:
-    return _processor_override("maybe_enrich_document_questions", _maybe_enrich_document_questions)(*args, **kwargs)
-
-
-async def run_post_completion_kg(*args: Any, **kwargs: Any) -> Any:
-    return await _processor_override("run_post_completion_kg", _run_post_completion_kg)(*args, **kwargs)
+    except DocumentCancelledError as e:
+        return await handle_document_cancelled(
+            db=db,
+            db_document=runtime_state.get("db_document"),
+            tenant_id=tenant_id,
+            document_id=document_id,
+            error=e,
+            with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
+        )
+    except asyncio.CancelledError:
+        await handle_asyncio_cancelled(
+            db=db,
+            db_document=runtime_state.get("db_document"),
+            tenant_id=tenant_id,
+            document_id=document_id,
+            with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
+        )
+        raise
+    except CheckpointedRetryRequiredError as e:
+        return handle_retry_boundary_failure(tenant_id=tenant_id, document_id=document_id, error=e)
+    except TenantQuotaExceededError as e:
+        return await handle_tenant_quota_exceeded(
+            db=db,
+            db_document=runtime_state.get("db_document"),
+            tenant_id=tenant_id,
+            document_id=document_id,
+            error=e,
+            with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
+            resolved_backend=(
+                runtime_state.get("parse_state").resolved_backend
+                if runtime_state.get("parse_state") is not None
+                else None
+            ),
+            resolved_chunk_strategy=(
+                runtime_state.get("parse_state").resolved_chunk_strategy
+                if runtime_state.get("parse_state") is not None
+                else None
+            ),
+        )
+    except Exception as e:
+        await handle_process_document_failure(
+            db=db,
+            db_document=runtime_state.get("db_document"),
+            tenant_id=tenant_id,
+            document_id=document_id,
+            error=e,
+            with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
+        )
+        raise
+    finally:
+        preprocessed_temp_path = runtime_state.get("preprocessed_temp_path")
+        if preprocessed_temp_path is not None:
+            try:
+                preprocessed_temp_path.unlink(missing_ok=True)
+            except Exception as exc:
+                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        if owns_db:
+            db.close()
 
 
 def record_stage_duration(stage_durations_ms: dict[str, int], stage: str, elapsed_ms: float) -> None:
     try:
-        key = str(stage or "").strip()
+        key = stage.strip()
         if not key:
             return
         ms = int(round(float(elapsed_ms)))
@@ -135,7 +243,7 @@ def record_stage_duration(stage_durations_ms: dict[str, int], stage: str, elapse
 
 
 def attach_stage_durations(stage_durations_ms: dict[str, int], meta: dict[str, Any] | None) -> dict[str, Any]:
-    out = dict(meta or {})
+    out = dict((meta if meta is not None else {}))
     if stage_durations_ms:
         out["ingest_stage_durations_ms"] = dict(stage_durations_ms)
     return out
@@ -143,8 +251,6 @@ def attach_stage_durations(stage_durations_ms: dict[str, int], meta: dict[str, A
 
 async def raise_if_cancelled(cancel_check: Any, *, force: bool = False) -> None:
     if await cancel_check(force=force):
-        from app.parsing.processors.support.results import DocumentCancelledError
-
         raise DocumentCancelledError("cancel_requested")
 
 
@@ -156,7 +262,7 @@ class PreparedProcessDocumentState:
     document_img_ids: set[str]
     artifact_dirs: set[str]
     pipeline_effective: PipelineEffective
-    index_options: Any
+    index_options: "IndexingOptions"
     governance_kwargs: dict[str, Any]
     table_sidecar_tables_imported: int = 0
     table_sidecar_routing_audit: dict[str, Any] | None = None
@@ -172,40 +278,36 @@ class ParseExecutionState:
     resumed_from_parse_cache: bool
 
 
-def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
-    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
-    rule_packs = list(getattr(pipeline_effective, "governance_rule_packs", None) or [])
-    from app.rag.preprocessing.rules import build_governance_rules
-
-    return build_governance_rules(extra_rules, rule_packs=rule_packs) if (extra_rules or rule_packs) else None
-
-
 def _commit_document_metadata(db: Session, db_document: DBDocument, metadata: dict[str, Any]) -> None:
     db_document.doc_metadata = metadata
     db.commit()
     db.refresh(db_document)
 
 
-def _table_store_tables_payload(assets: Any) -> list[dict[str, Any]]:
+def _table_store_tables_payload(assets: list["TableAsset"]) -> list[dict[str, Any]]:
     tables_payload: list[dict[str, Any]] = []
-    for asset in assets or []:
+    for asset in assets:
         tables_payload.append(
             {
-                "table_id": str(getattr(asset, "table_id", "")),
-                "sheet_index": int(getattr(asset, "sheet_index", 0) or 0),
-                "sheet_name": getattr(asset, "sheet_name", None),
-                "row_count": int(getattr(asset, "row_count", 0) or 0),
-                "col_count": int(getattr(asset, "col_count", 0) or 0),
-                "truncated": bool(getattr(asset, "truncated", False)),
-                "columns": list(getattr(asset, "columns", None) or []),
-                "sample_rows": list(getattr(asset, "sample_rows", None) or []),
+                "table_id": str(asset.table_id),
+                "sheet_index": int(asset.sheet_index or 0),
+                "sheet_name": asset.sheet_name,
+                "row_count": int(asset.row_count or 0),
+                "col_count": int(asset.col_count or 0),
+                "truncated": bool(asset.truncated),
+                "columns": list(asset.columns),
+                "sample_rows": list(asset.sample_rows),
             }
         )
     return tables_payload
 
 
 def _build_governance_kwargs(pipeline_effective: PipelineEffective) -> dict[str, Any]:
-    combined_rules = _build_combined_governance_rules(pipeline_effective)
+    extra_rules = list(pipeline_effective.governance_regex_rules or [])
+    rule_packs = list(pipeline_effective.governance_rule_packs or [])
+    from app.rag.preprocessing.rules import build_governance_rules
+
+    combined_rules = build_governance_rules(extra_rules, rule_packs=rule_packs) if (extra_rules or rule_packs) else None
     return {
         **({"rules": combined_rules} if combined_rules else {}),
         "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
@@ -259,13 +361,12 @@ def _dataset_metadata(db: Session, *, db_document: DBDocument, tenant_id: UUID) 
     if not db_document.dataset_id:
         return {}
     ds = db.query(Dataset).filter(Dataset.id == db_document.dataset_id, Dataset.tenant_id == tenant_id).first()
-    if ds is None or not isinstance(getattr(ds, "dataset_metadata", None), dict):
+    if ds is None or not isinstance(ds.dataset_metadata, dict):
         return {}
-    return dict(ds.dataset_metadata or {})
+    return dict(ds.dataset_metadata)
 
 
 def _initialize_prepared_process_document_state(
-    service: Any,
     db: Session,
     *,
     db_document: DBDocument,
@@ -279,8 +380,11 @@ def _initialize_prepared_process_document_state(
         document_metadata=(db_document.doc_metadata or {}),
         request_overrides=None,
     )
+    from app.services.pipeline_config import validate_pipeline_execution
+
+    validate_pipeline_execution(pipeline_effective)
     index_options = build_indexing_options(pipeline_effective)
-    service._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
+    _record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
     return PreparedProcessDocumentState(
         file_path=Path(),
         preprocessed_temp_path=None,
@@ -293,25 +397,37 @@ def _initialize_prepared_process_document_state(
     )
 
 
+def _checkpoint_backend(metadata: dict[str, Any]) -> str | None:
+    try:
+        return require_resolved_parser_backend(metadata.get("parser_backend"))
+    except ValueError:
+        return None
+
+
 async def _resume_from_indexed_checkpoint(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
     tenant_id: UUID,
     document_id: UUID,
-    parser_backend: str | None,
-    chunk_strategy: str | None,
     prepared_state: PreparedProcessDocumentState,
     with_stage_durations: Any,
 ) -> dict[str, Any] | None:
     meta0 = dict(db_document.doc_metadata or {})
     if not indexed_checkpoint_is_reusable(meta0):
         return None
+    resolved_backend = _checkpoint_backend(meta0)
+    resolved_chunk_strategy = meta0.get("chunk_strategy")
+    if resolved_backend is None or not isinstance(resolved_chunk_strategy, str) or not resolved_chunk_strategy.strip():
+        return None
     checkpoint = dict(meta0.get("ingest_checkpoint") or {})
-    doc_pipeline_key = str(
-        checkpoint.get("doc_pipeline_key") or f"{document_id}:{str(meta0.get('pipeline_hash') or '').strip()}"
-    ).strip()
+    doc_pipeline_key = checkpoint.get("doc_pipeline_key")
+    if doc_pipeline_key is not None:
+        doc_pipeline_key = doc_pipeline_key.strip()
+    if not doc_pipeline_key:
+        pipeline_hash = meta0.get("pipeline_hash")
+        pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
+        doc_pipeline_key = f"{document_id}:{pipeline_hash}" if pipeline_hash else None
     indexed_chunks_query = db.query(DocumentChunk).filter(
         DocumentChunk.document_id == document_id,
         DocumentChunk.tenant_id == tenant_id,
@@ -330,23 +446,15 @@ async def _resume_from_indexed_checkpoint(
         document_id,
         doc_pipeline_key or "document",
     )
-    resolved_backend = (
-        str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip()
-        or "auto"
-    )
-    resolved_chunk_strategy = (
-        str(meta0.get("chunk_strategy") or meta0.get("chunk_strategy_requested") or chunk_strategy or "auto").strip()
-        or "auto"
-    )
     total_chars = int(
         checkpoint.get("total_characters")
         or meta0.get("indexed_total_characters")
-        or sum(len(str(getattr(chunk, "content", "") or "")) for chunk in indexed_chunks)
+        or sum(len(chunk.content) for chunk in indexed_chunks)
     )
     meta_patch = dict(db_document.doc_metadata or {})
     meta_patch.pop("ingest_resume_required", None)
     meta_patch = with_stage_durations(meta_patch)
-    await service._update_status(
+    await update_document_status(
         db,
         tenant_id,
         document_id,
@@ -378,7 +486,6 @@ async def _resume_from_indexed_checkpoint(
 
 
 async def _run_pre_poc_quality_gate(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -390,7 +497,7 @@ async def _run_pre_poc_quality_gate(
     add_stage_duration: Any,
     with_stage_durations: Any,
 ) -> dict[str, Any] | None:
-    if not bool(getattr(prepared_state.pipeline_effective, "ingest_pre_poc_scanner_enabled", False)):
+    if not bool(prepared_state.pipeline_effective.ingest_pre_poc_scanner_enabled):
         return None
     try:
         from app.services.ingest_pre_poc_quality_gate import evaluate_ingest_pre_poc_quality_gate
@@ -400,9 +507,7 @@ async def _run_pre_poc_quality_gate(
             pre_poc_gate = evaluate_ingest_pre_poc_quality_gate(
                 prepared_state.file_path,
                 enabled=True,
-                mode=str(
-                    getattr(prepared_state.pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"
-                ),
+                mode=str(prepared_state.pipeline_effective.ingest_pre_poc_quality_gate_mode or "warn"),
             )
         add_stage_duration("pre_poc_quality_gate", (time.perf_counter() - t0) * 1000)
         next_meta = dict(db_document.doc_metadata or {})
@@ -412,7 +517,7 @@ async def _run_pre_poc_quality_gate(
         if not bool(pre_poc_gate.get("blocked")):
             return None
         msg = "Document blocked by Pre-POC quality gate"
-        await service._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -429,17 +534,12 @@ async def _run_pre_poc_quality_gate(
             "reason": "pre_poc_quality_gate_blocked",
             "chunk_count": 0,
             "total_characters": 0,
-            "parser_backend": parser_backend or "auto",
-            "chunk_strategy": chunk_strategy or "auto",
+            "parser_backend": (parser_backend),
+            "chunk_strategy": (chunk_strategy),
         }
     except Exception as exc:  # noqa: BLE001
         _log_processor_fallback("process_document", exc)
-        if (
-            str(
-                getattr(prepared_state.pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"
-            ).lower()
-            == "strict"
-        ):
+        if str(prepared_state.pipeline_effective.ingest_pre_poc_quality_gate_mode or "warn").lower() == "strict":
             raise RuntimeError(f"pre_poc_quality_gate_failed: {str(exc)[:200]}") from exc
         return None
 
@@ -469,9 +569,9 @@ def _apply_document_preprocess(
             _commit_document_metadata(db, db_document, next_meta)
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-        if not bool(getattr(result, "changed", False)):
+        if not result.changed:
             return file_path, preprocessed_temp_path
-        out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+        out_path = Path(result.output_path).resolve(strict=False)
         return out_path, out_path
     except Exception as exc:  # noqa: BLE001
         _log_processor_fallback("process_document", exc)
@@ -488,7 +588,7 @@ def _apply_image_preprocess(
     add_stage_duration: Any,
 ) -> tuple[Path, Path | None, dict[str, Any] | None]:
     try:
-        if not bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False)):
+        if not bool(settings.IMAGE_PREPROCESS_ENABLED):
             return file_path, preprocessed_temp_path, None
         ext = file_path.suffix.lower()
         if ext != ".pdf" and ext not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
@@ -502,7 +602,7 @@ def _apply_image_preprocess(
 
                     pdf_quality = score_pdf_quality(
                         file_path,
-                        sample_pages=int(getattr(settings, "PREPROCESS_SAMPLE_PAGES", 3) or 3),
+                        sample_pages=int(settings.PREPROCESS_SAMPLE_PAGES),
                         use_ocr_validation=False,
                     )
                     try:
@@ -527,8 +627,8 @@ def _apply_image_preprocess(
             _commit_document_metadata(db, db_document, next_meta)
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-        if bool(getattr(result, "changed", False)):
-            out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+        if result.changed:
+            out_path = Path(result.output_path).resolve(strict=False)
             return out_path, out_path, pdf_quality if isinstance(pdf_quality, dict) else None
         return file_path, preprocessed_temp_path, pdf_quality if isinstance(pdf_quality, dict) else None
     except Exception as exc:  # noqa: BLE001
@@ -537,7 +637,6 @@ def _apply_image_preprocess(
 
 
 async def _maybe_import_tabular_document(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -549,7 +648,7 @@ async def _maybe_import_tabular_document(
     add_stage_duration: Any,
 ) -> dict[str, Any] | None:
     if not (
-        bool(getattr(prepared_state.pipeline_effective, "table_store_enabled", False))
+        bool(prepared_state.pipeline_effective.table_store_enabled)
         and db_document.dataset_id is not None
         and prepared_state.file_path.suffix.lower() in {".csv", ".xls", ".xlsx"}
     ):
@@ -561,13 +660,11 @@ async def _maybe_import_tabular_document(
 
         table_decision = decide_table_route(
             file_path=prepared_state.file_path,
-            auto_route=bool(getattr(prepared_state.pipeline_effective, "table_store_auto_route", False)),
-            file_bytes_threshold=int(
-                getattr(prepared_state.pipeline_effective, "table_store_auto_file_bytes_threshold", 0) or 0
-            ),
-            row_threshold=int(getattr(prepared_state.pipeline_effective, "table_store_auto_row_threshold", 0) or 0),
-            col_threshold=int(getattr(prepared_state.pipeline_effective, "table_store_auto_col_threshold", 0) or 0),
-            sheet_threshold=int(getattr(prepared_state.pipeline_effective, "table_store_auto_sheet_threshold", 0) or 0),
+            auto_route=bool(prepared_state.pipeline_effective.table_store_auto_route),
+            file_bytes_threshold=int(prepared_state.pipeline_effective.table_store_auto_file_bytes_threshold or 0),
+            row_threshold=int(prepared_state.pipeline_effective.table_store_auto_row_threshold or 0),
+            col_threshold=int(prepared_state.pipeline_effective.table_store_auto_col_threshold or 0),
+            sheet_threshold=int(prepared_state.pipeline_effective.table_store_auto_sheet_threshold or 0),
         )
     except Exception as exc:
         _log_processor_fallback("process_document", exc)
@@ -577,19 +674,19 @@ async def _maybe_import_tabular_document(
             next_meta = dict(db_document.doc_metadata or {})
             next_meta["table_routing"] = {
                 "version": "1",
-                "route": getattr(table_decision, "route", None),
-                "reason": getattr(table_decision, "reason", None),
-                "stats": dict(getattr(table_decision, "stats", None) or {}),
+                "route": table_decision.route,
+                "reason": table_decision.reason,
+                "stats": dict(table_decision.stats),
             }
             _commit_document_metadata(db, db_document, next_meta)
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
-    if table_decision is not None and str(getattr(table_decision, "route", "") or "").lower() == "rag":
+    if table_decision is not None and table_decision.route.lower() == "rag":
         return None
 
     await raise_if_cancelled(force=True)
-    await service._update_status(db, tenant_id, document_id, "processing", 15, "table_import")
+    await update_document_status(db, tenant_id, document_id, "processing", 15, "table_import")
     try:
         from app.services.table_store_service import import_table_document
 
@@ -599,16 +696,16 @@ async def _maybe_import_tabular_document(
             dataset_id=db_document.dataset_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            max_rows=int(getattr(prepared_state.pipeline_effective, "table_store_max_rows", 0) or 0),
-            max_cols=int(getattr(prepared_state.pipeline_effective, "table_store_max_cols", 0) or 0),
-            sample_rows=int(getattr(prepared_state.pipeline_effective, "table_store_sample_rows", 0) or 0),
+            max_rows=int(prepared_state.pipeline_effective.table_store_max_rows or 0),
+            max_cols=int(prepared_state.pipeline_effective.table_store_max_cols or 0),
+            sample_rows=int(prepared_state.pipeline_effective.table_store_sample_rows or 0),
         )
         add_stage_duration("table_import", (time.perf_counter() - t0) * 1000)
     except Exception as exc:  # noqa: BLE001
         msg = f"table_import_failed: {(str(exc) or exc.__class__.__name__)[:200]}"
         logger.warning("Table import failed: %s document_id=%s", msg, document_id)
         meta_patch = with_stage_durations(dict(db_document.doc_metadata or {}))
-        await service._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -643,7 +740,7 @@ async def _maybe_import_tabular_document(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to persist table_store metadata (ignored): %s", str(exc)[:200])
 
-    await service._update_status(
+    await update_document_status(
         db,
         tenant_id,
         document_id,
@@ -675,7 +772,7 @@ async def _maybe_import_docx_table_sidecar(
     raise_if_cancelled: Any,
 ) -> None:
     if not (
-        bool(getattr(prepared_state.pipeline_effective, "table_store_enabled", False))
+        bool(prepared_state.pipeline_effective.table_store_enabled)
         and db_document.dataset_id is not None
         and prepared_state.file_path.suffix.lower() == ".docx"
     ):
@@ -689,9 +786,9 @@ async def _maybe_import_docx_table_sidecar(
             dataset_id=db_document.dataset_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            max_rows=int(getattr(prepared_state.pipeline_effective, "table_store_max_rows", 0) or 0),
-            max_cols=int(getattr(prepared_state.pipeline_effective, "table_store_max_cols", 0) or 0),
-            sample_rows=int(getattr(prepared_state.pipeline_effective, "table_store_sample_rows", 0) or 0),
+            max_rows=int(prepared_state.pipeline_effective.table_store_max_rows or 0),
+            max_cols=int(prepared_state.pipeline_effective.table_store_max_cols or 0),
+            sample_rows=int(prepared_state.pipeline_effective.table_store_sample_rows or 0),
         )
         await raise_if_cancelled(force=True)
         try:
@@ -715,7 +812,6 @@ async def _maybe_import_docx_table_sidecar(
 
 
 async def prepare_process_document_pipeline(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -729,7 +825,6 @@ async def prepare_process_document_pipeline(
     raise_if_cancelled: Any,
 ) -> dict[str, Any]:
     prepared_state = _initialize_prepared_process_document_state(
-        service,
         db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -738,13 +833,10 @@ async def prepare_process_document_pipeline(
     prepared_state.file_path = file_path
 
     early_result = await _resume_from_indexed_checkpoint(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
         document_id=document_id,
-        parser_backend=parser_backend,
-        chunk_strategy=chunk_strategy,
         prepared_state=prepared_state,
         with_stage_durations=with_stage_durations,
     )
@@ -754,7 +846,6 @@ async def prepare_process_document_pipeline(
     prepared_state.governance_kwargs = _build_governance_kwargs(prepared_state.pipeline_effective)
 
     early_result = await _run_pre_poc_quality_gate(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -789,7 +880,6 @@ async def prepare_process_document_pipeline(
     )
 
     early_result = await _maybe_import_tabular_document(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -819,18 +909,24 @@ def _resume_parse_result_from_checkpoint(
     db_document: DBDocument,
     document_id: UUID,
     tenant_id: UUID,
-    parser_backend: str | None,
     chunk_strategy: str | None,
 ) -> ParseResult | None:
     try:
         meta0 = dict(db_document.doc_metadata or {})
-        checkpoint = meta0.get("ingest_checkpoint") if isinstance(meta0, dict) else None
+        checkpoint = meta0.get("ingest_checkpoint")
         if not parsed_checkpoint_is_reusable(meta0):
             return None
-        pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
-        file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
-        checkpoint_pipeline = str((checkpoint or {}).get("pipeline_hash") or "").strip()
-        checkpoint_sha = str((checkpoint or {}).get("file_sha256") or "").strip().lower()
+        resolved_backend = _checkpoint_backend(meta0)
+        if resolved_backend is None:
+            return None
+        raw_pipeline = meta0.get("pipeline_hash")
+        raw_sha = meta0.get("file_sha256")
+        raw_checkpoint_pipeline = (checkpoint or {}).get("pipeline_hash")
+        raw_checkpoint_sha = (checkpoint or {}).get("file_sha256")
+        pipeline_hash0 = raw_pipeline.strip() if raw_pipeline is not None else None
+        file_sha0 = raw_sha.strip().lower() if raw_sha is not None else None
+        checkpoint_pipeline = raw_checkpoint_pipeline.strip() if raw_checkpoint_pipeline is not None else None
+        checkpoint_sha = raw_checkpoint_sha.strip().lower() if raw_checkpoint_sha is not None else None
         if (pipeline_hash0 and checkpoint_pipeline != pipeline_hash0) or (
             file_sha0 and checkpoint_sha and checkpoint_sha != file_sha0
         ):
@@ -840,10 +936,12 @@ def _resume_parse_result_from_checkpoint(
             .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
             .first()
         )
-        cleaned_md = str(getattr(rec, "markdown_content", "") or "").strip() if rec is not None else ""
+        if rec is None:
+            return None
+        cleaned_md = rec.markdown_content.strip()
         if not cleaned_md:
             return None
-        original_md = str(getattr(rec, "original_markdown_content", "") or "").strip() if rec is not None else ""
+        original_md = rec.original_markdown_content.strip()
         logger.info(
             "Resuming ingest from parsed checkpoint: tenant=%s document=%s pipeline_hash=%s",
             tenant_id,
@@ -854,12 +952,7 @@ def _resume_parse_result_from_checkpoint(
         if original_md and original_md != cleaned_md:
             resume_meta["position_tagged_markdown"] = original_md
         return ParseResult(
-            resolved_backend=(
-                str(
-                    meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto"
-                ).strip()
-                or "auto"
-            ),
+            resolved_backend=resolved_backend,
             resolved_chunk_strategy=chunker_factory.resolve_strategy(chunk_strategy),
             documents=[Document(page_content=cleaned_md, metadata=resume_meta)],
         )
@@ -874,15 +967,16 @@ def _resume_parse_result_from_cache(
     db_document: DBDocument,
     tenant_id: UUID,
     parser_backend: str | None,
-    chunk_strategy: str | None,
     pipeline_effective: PipelineEffective,
 ) -> tuple[ParseResult | None, LocalParseCacheStore | None, str | None]:
     try:
         meta0 = dict(db_document.doc_metadata or {})
-        file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
-        pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
-        parser_backend_key = str(parser_backend or "").strip().lower() or "auto"
-        if not (bool(getattr(pipeline_effective, "parse_cache_enabled", False)) and file_sha0 and pipeline_hash0):
+        raw_sha = meta0.get("file_sha256")
+        raw_pipeline = meta0.get("pipeline_hash")
+        file_sha0 = raw_sha.strip().lower() if raw_sha is not None else None
+        pipeline_hash0 = raw_pipeline.strip() if raw_pipeline is not None else None
+        parser_backend_key = parser_backend
+        if not (bool(pipeline_effective.parse_cache_enabled) and file_sha0 and pipeline_hash0):
             return None, None, None
         parse_cache_store = LocalParseCacheStore(
             root=Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse_cache"
@@ -894,15 +988,13 @@ def _resume_parse_result_from_cache(
         )
         cached_entry, cached_age_ms = parse_cache_store.get(
             parse_cache_key,
-            ttl_sec=int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+            ttl_sec=int(pipeline_effective.parse_cache_ttl_sec or 0),
         )
         if cached_entry is None or (cached_entry.documents is None and cached_entry.chunks is None):
             return None, parse_cache_store, parse_cache_key
         parsed = ParseResult(
-            resolved_backend=str(cached_entry.resolved_backend or parser_backend_key),
-            resolved_chunk_strategy=str(
-                cached_entry.resolved_chunk_strategy or chunker_factory.resolve_strategy(chunk_strategy)
-            ),
+            resolved_backend=require_resolved_parser_backend(cached_entry.resolved_backend),
+            resolved_chunk_strategy=cached_entry.resolved_chunk_strategy,
             documents=_deserialize_documents_from_parse_cache(cached_entry.documents),
             chunks=_deserialize_documents_from_parse_cache(cached_entry.chunks),
         )
@@ -911,7 +1003,7 @@ def _resume_parse_result_from_cache(
             "enabled": True,
             "hit": True,
             "age_ms": int(cached_age_ms or 0),
-            "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+            "ttl_sec": int(pipeline_effective.parse_cache_ttl_sec or 0),
         }
         _commit_document_metadata(db, db_document, meta_hit)
         return parsed, parse_cache_store, parse_cache_key
@@ -927,36 +1019,17 @@ def _parse_stage_otel_attributes(
     parser_backend: str | None,
     chunk_strategy: str | None,
 ) -> dict[str, Any]:
-    return {
+    metadata = {} if db_document.doc_metadata is None else db_document.doc_metadata
+    attributes = {
         "ingest.stage": "parse",
-        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-        "parser.backend_requested": (
-            str(
-                (db_document.doc_metadata or {}).get("parser_backend_requested")
-                or (db_document.doc_metadata or {}).get("parser_backend")
-                or parser_backend
-                or "auto"
-            )
-            .strip()
-            .lower()
-            or "auto"
-        ),
-        "chunk.strategy_requested": (
-            str(
-                (db_document.doc_metadata or {}).get("chunk_strategy_requested")
-                or (db_document.doc_metadata or {}).get("chunk_strategy")
-                or chunk_strategy
-                or ""
-            )
-            .strip()
-            .lower()
-            or "default"
-        ),
+        "document.file_type": file_path.suffix.lstrip(".").lower() or "unknown",
+        "parser.backend_requested": metadata.get("parser_backend_requested", parser_backend),
+        "chunk.strategy_requested": metadata.get("chunk_strategy_requested", chunk_strategy),
     }
+    return {key: value for key, value in attributes.items() if value is not None}
 
 
 async def _run_parse_stage(
-    parsing_stage: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -981,7 +1054,7 @@ async def _run_parse_stage(
         ),
     ):
         started_at = time.perf_counter()
-        parsed = await parsing_stage.run(
+        parsed = await parse_document(
             db=db,
             db_document=db_document,
             file_path=file_path,
@@ -998,19 +1071,19 @@ async def _run_parse_stage(
 
 
 def _parsed_joined_text(documents: list[Document] | None) -> str:
-    return "\n\n".join([(doc.page_content or "") for doc in (documents or [])])
+    return "\n\n".join([(doc.page_content) for doc in (documents if documents is not None else [])])
 
 
 def _magicpdf_available() -> bool:
-    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+    if not bool(settings.MAGIC_PDF_ENABLED):
         return False
     from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
 
-    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+    if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", "")))
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR))
 
 
 def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
@@ -1022,30 +1095,20 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
         ),
         (
             "deepseek_ocr",
-            lambda: (
-                bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-                and bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
-            ),
+            lambda: bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY).strip()),
         ),
         (
             "qianfan_ocr",
-            lambda: (
-                bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-                and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip())
-            ),
+            lambda: bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL).strip()),
         ),
         (
             "etl4llm",
-            lambda: (
-                bool(getattr(settings, "ETL4LLM_ENABLED", False))
-                and bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
-            ),
+            lambda: bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL).strip()),
         ),
         ("deepdoc", lambda: settings.DEEPDOC_ENABLED),
         (
             "docling",
-            lambda: bool(getattr(settings, "DOCLING_ENABLED", False))
-            and bool((getattr(settings, "DOCLING_API_URL", "") or "").strip()),
+            lambda: bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL).strip()),
         ),
         ("magicpdf", _magicpdf_available),
         ("markitdown", lambda: settings.MARKITDOWN_ENABLED),
@@ -1054,17 +1117,10 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
     for candidate, enabled in candidate_checks:
         if enabled():
             candidates.append(candidate)
-    filtered: list[str] = []
-    for candidate in candidates:
-        candidate_norm = (candidate or "").strip().lower()
-        if not candidate_norm or candidate_norm == current_backend or candidate_norm in filtered:
-            continue
-        filtered.append(candidate_norm)
-    return filtered
+    return [candidate for candidate in candidates if candidate != current_backend]
 
 
 async def begin_process_document(
-    service: Any,
     *,
     db: Session,
     tenant_id: UUID,
@@ -1077,14 +1133,14 @@ async def begin_process_document(
         return None, {"status": "skipped", "reason": "document_not_found"}
 
     await raise_if_cancelled(force=True)
-    retry_cleanup_status = service._apply_pending_retry_cleanup(
+    retry_cleanup_status = apply_pending_retry_cleanup(
         db,
         db_document=db_document,
         tenant_id=tenant_id,
         document_id=document_id,
     )
     if retry_cleanup_status == "invalid":
-        await service._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -1095,7 +1151,7 @@ async def begin_process_document(
         )
         return db_document, {"status": "failed", "reason": "invalid_retry_cleanup_intent"}
     if retry_cleanup_status == "deferred":
-        await service._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -1106,12 +1162,11 @@ async def begin_process_document(
         )
         return db_document, {"status": "failed", "reason": "retry_cleanup_deferred"}
 
-    await service._update_status(db, tenant_id, document_id, "processing", 0, "parsing")
+    await update_document_status(db, tenant_id, document_id, "processing", 0, "parsing")
     return db_document, None
 
 
 async def handle_document_cancelled(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1121,8 +1176,8 @@ async def handle_document_cancelled(
     with_stage_durations: Any,
 ) -> dict[str, Any]:
     logger.info("Document processing cancelled: tenant=%s document=%s (%s)", tenant_id, document_id, str(error)[:120])
-    service._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
-    await service._update_status(
+    _rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
+    await update_document_status(
         db,
         tenant_id,
         document_id,
@@ -1136,7 +1191,6 @@ async def handle_document_cancelled(
 
 
 async def handle_asyncio_cancelled(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1144,10 +1198,10 @@ async def handle_asyncio_cancelled(
     document_id: UUID,
     with_stage_durations: Any,
 ) -> None:
-    service._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
+    _rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
     try:
         await asyncio.shield(
-            service._update_status(
+            update_document_status(
                 db,
                 tenant_id,
                 document_id,
@@ -1181,18 +1235,17 @@ def handle_retry_boundary_failure(*, tenant_id: UUID, document_id: UUID, error: 
 
 
 async def handle_tenant_quota_exceeded(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
     tenant_id: UUID,
     document_id: UUID,
-    error: Exception,
+    error: "TenantQuotaExceededError",
     with_stage_durations: Any,
     resolved_backend: str | None,
     resolved_chunk_strategy: str | None,
 ) -> dict[str, Any]:
-    quota_key = str(getattr(error, "quota", "") or "").strip() or "quota"
+    quota_key = error.quota
     logger.info(
         "Tenant quota exceeded: tenant=%s document=%s quota=%s",
         tenant_id,
@@ -1234,7 +1287,7 @@ async def handle_tenant_quota_exceeded(
     if not should_preserve_existing_versions(meta_patch):
         update_kwargs["chunk_count"] = 0
         update_kwargs["total_characters"] = 0
-    await service._update_status(
+    await update_document_status(
         db,
         tenant_id,
         document_id,
@@ -1263,7 +1316,6 @@ async def handle_tenant_quota_exceeded(
 
 
 async def handle_process_document_failure(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1274,8 +1326,8 @@ async def handle_process_document_failure(
 ) -> None:
     logger.exception("Error processing document %s: %s", document_id, error)
     log_metrics({"event": "ingest.failed", "success": False, "error": str(error)[:200]})
-    service._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
-    await service._update_status(
+    _rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
+    await update_document_status(
         db,
         tenant_id,
         document_id,
@@ -1288,7 +1340,6 @@ async def handle_process_document_failure(
 
 
 async def run_process_document_body(
-    service: Any,
     *,
     db: Session,
     file_path: Path,
@@ -1297,16 +1348,8 @@ async def run_process_document_body(
     parser_backend: str | None,
     chunk_strategy: str | None,
     runtime_state: dict[str, Any],
-    parsing_stage_factory: Any,
-    inline_asset_stage_factory: Any,
-    normalize_stage_factory: Any,
-    governance_stage_factory: Any,
-    chunking_stage_factory: Any,
-    chunk_dedup_stage_factory: Any,
-    chunk_asset_stage_factory: Any,
-    index_stage_factory: Any,
 ) -> dict[str, Any]:
-    cancel_check = service._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
+    cancel_check = _build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
     stage_durations_ms: dict[str, int] = {}
     add_stage_duration = partial(record_stage_duration, stage_durations_ms)
     with_stage_durations = partial(attach_stage_durations, stage_durations_ms)
@@ -1314,7 +1357,6 @@ async def run_process_document_body(
     runtime_state["with_stage_durations"] = with_stage_durations
 
     db_document, early_result = await begin_process_document(
-        service,
         db=db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -1323,11 +1365,8 @@ async def run_process_document_body(
     runtime_state["db_document"] = db_document
     if early_result is not None:
         return early_result
-    if db_document is None:
-        return {"status": "skipped", "reason": "document_not_found"}
 
     prepared = await prepare_process_document_pipeline(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -1341,14 +1380,11 @@ async def run_process_document_body(
     )
     prepared_state = prepared["state"]
     runtime_state["preprocessed_temp_path"] = prepared_state.preprocessed_temp_path
-    early_result = prepared.get("result")
+    early_result = prepared["result"]
     if early_result is not None:
         return early_result
 
-    parsing_stage = parsing_stage_factory(service)
     parse_result = await execute_parse_pipeline(
-        service,
-        parsing_stage,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -1366,20 +1402,12 @@ async def run_process_document_body(
         return early_result
 
     return await continue_process_document_flow(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
         document_id=document_id,
         prepared_state=prepared_state,
         parse_state=parse_result["state"],
-        inline_asset_stage=inline_asset_stage_factory(service),
-        normalize_stage=normalize_stage_factory(),
-        governance_stage=governance_stage_factory(),
-        chunking_stage=chunking_stage_factory(),
-        chunk_dedup_stage=chunk_dedup_stage_factory(),
-        chunk_asset_stage=chunk_asset_stage_factory(service),
-        index_stage=index_stage_factory(),
         add_stage_duration=add_stage_duration,
         with_stage_durations=with_stage_durations,
         raise_if_cancelled=raise_if_cancelled_cb,
@@ -1387,7 +1415,6 @@ async def run_process_document_body(
 
 
 async def _attempt_parse_fallback_candidates(
-    parsing_stage: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1412,7 +1439,7 @@ async def _attempt_parse_fallback_candidates(
         retries_left -= 1
         try:
             with metrics_span("ingest.parse_fallback", backend=candidate):
-                alt = await parsing_stage.run(
+                alt = await parse_document(
                     db=db,
                     db_document=db_document,
                     file_path=file_path,
@@ -1443,8 +1470,8 @@ async def _attempt_parse_fallback_candidates(
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             parsed_text_quality=q1.to_dict(),
         )
-        q1_score = float(q1_quality.get("score") or 0.0)
-        q1_chars = int(getattr(q1, "content_chars", 0) or 0)
+        q1_score = q1_quality["score"]
+        q1_chars = q1.content_chars
         accepted = not should_attempt_pdf_fallback(
             grade="warn",
             parse_score=q1_score,
@@ -1468,7 +1495,6 @@ async def _attempt_parse_fallback_candidates(
 
 
 async def _maybe_apply_parse_fallback(
-    parsing_stage: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1485,18 +1511,18 @@ async def _maybe_apply_parse_fallback(
     pdf_quality: dict[str, Any] | None,
 ) -> ParseResult:
     if not (
-        bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
+        bool(pipeline_effective.parse_fallback_enabled)
         and file_path.suffix.lower() == ".pdf"
-        and (str(parser_backend or "").strip().lower() in {"", "auto"})
+        and (str((parser_backend if parser_backend is not None else "")).strip().lower() in {"", "auto"})
         and (not resumed_from_checkpoint)
         and (not resumed_from_parse_cache)
         and parsed.documents is not None
     ):
         return parsed
     try:
-        min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-        min_parse_score = max(0.0, float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0))
-        max_retries = max(0, int(getattr(pipeline_effective, "parse_fallback_max_retries", 0) or 0))
+        min_chars = max(0, int(pipeline_effective.parse_fallback_min_content_chars or 0))
+        min_parse_score = max(0.0, float(pipeline_effective.parse_fallback_min_parse_score or 0.0))
+        max_retries = max(0, int(pipeline_effective.parse_fallback_max_retries or 0))
         if (min_chars <= 0 and min_parse_score <= 0.0) or max_retries <= 0:
             return parsed
         joined = _parsed_joined_text(parsed.documents)
@@ -1505,8 +1531,8 @@ async def _maybe_apply_parse_fallback(
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             parsed_text_quality=q0.to_dict(),
         )
-        q0_score = float(q0_quality.get("score") or 0.0)
-        q0_chars = int(getattr(q0, "content_chars", 0) or 0)
+        q0_score = q0_quality["score"]
+        q0_chars = q0.content_chars
         if not should_attempt_pdf_fallback(
             grade="fail" if q0_chars <= 0 else "warn",
             parse_score=q0_score,
@@ -1516,7 +1542,6 @@ async def _maybe_apply_parse_fallback(
         ):
             return parsed
         accepted_parse, attempts = await _attempt_parse_fallback_candidates(
-            parsing_stage,
             db=db,
             db_document=db_document,
             file_path=file_path,
@@ -1529,15 +1554,15 @@ async def _maybe_apply_parse_fallback(
             min_chars=min_chars,
             min_parse_score=min_parse_score,
             max_retries=max_retries,
-            current_backend=str(parsed.resolved_backend or "").strip().lower(),
+            current_backend=parsed.resolved_backend.strip().lower(),
         )
         if attempts:
             meta = dict(db_document.doc_metadata or {})
             meta["parse_fallback"] = {
                 "enabled": True,
                 "attempts": attempts,
-                "min_content_chars": int(min_chars),
-                "max_retries": int(max_retries),
+                "min_content_chars": min_chars,
+                "max_retries": max_retries,
             }
             _commit_document_metadata(db, db_document, meta)
         return accepted_parse or parsed
@@ -1581,8 +1606,6 @@ def _persist_parse_cache_entry(
     parse_cache_store: LocalParseCacheStore | None,
     parse_cache_key: str | None,
     parsed: ParseResult,
-    resolved_backend: str,
-    resolved_chunk_strategy: str,
     resumed_from_checkpoint: bool,
     resumed_from_parse_cache: bool,
 ) -> None:
@@ -1593,10 +1616,10 @@ def _persist_parse_cache_entry(
             parse_cache_key,
             LocalParseCacheEntry(
                 created_at_epoch=time.time(),
-                file_sha256=str((db_document.doc_metadata or {}).get("file_sha256") or "").strip().lower(),
-                parser_backend=str(parser_backend or "").strip().lower() or "auto",
-                resolved_backend=str(parsed.resolved_backend or resolved_backend),
-                resolved_chunk_strategy=str(parsed.resolved_chunk_strategy or resolved_chunk_strategy),
+                file_sha256=db_document.doc_metadata["file_sha256"].strip().lower(),
+                parser_backend=parser_backend,
+                resolved_backend=parsed.resolved_backend,
+                resolved_chunk_strategy=parsed.resolved_chunk_strategy,
                 documents=_serialize_documents_for_parse_cache(parsed.documents),
                 chunks=_serialize_documents_for_parse_cache(parsed.chunks),
             ),
@@ -1605,7 +1628,7 @@ def _persist_parse_cache_entry(
         meta_cached["parse_cache"] = {
             "enabled": True,
             "hit": False,
-            "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+            "ttl_sec": int(pipeline_effective.parse_cache_ttl_sec or 0),
         }
         _commit_document_metadata(db, db_document, meta_cached)
     except Exception as exc:  # noqa: BLE001
@@ -1613,7 +1636,6 @@ def _persist_parse_cache_entry(
 
 
 async def _maybe_apply_parse_quality_gate(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1630,22 +1652,22 @@ async def _maybe_apply_parse_quality_gate(
     pdf_quality: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     if not (
-        bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
+        bool(pipeline_effective.parse_fallback_enabled)
         and db_document.file_type == "pdf"
-        and (str(parser_backend or "").strip().lower() in {"", "auto"})
+        and (str((parser_backend if parser_backend is not None else "")).strip().lower() in {"", "auto"})
         and (not resumed_from_checkpoint)
         and (not resumed_from_parse_cache)
         and parsed.documents is not None
     ):
         return None
     try:
-        min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-        min_parse_score = max(0.0, float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0))
+        min_chars = max(0, int(pipeline_effective.parse_fallback_min_content_chars or 0))
+        min_parse_score = max(0.0, float(pipeline_effective.parse_fallback_min_parse_score or 0.0))
         if min_chars <= 0 and min_parse_score <= 0.0:
             return None
         joined_final = _parsed_joined_text(parsed.documents)
         q_final = score_parsed_text_quality(joined_final)
-        final_chars = int(getattr(q_final, "content_chars", 0) or 0)
+        final_chars = q_final.content_chars
         meta = dict(db_document.doc_metadata or {})
         attempted = bool(meta.get("parse_fallback"))
         specialty_signals = _seal_summary_to_specialty_signals(
@@ -1669,7 +1691,7 @@ async def _maybe_apply_parse_quality_gate(
             parsed_text_quality=q_final.to_dict(),
             specialty_signals=specialty_signals,
         )
-        final_score = float(final_quality.get("score") or 0.0)
+        final_score = final_quality["score"]
         if not should_attempt_pdf_fallback(
             grade="warn",
             parse_score=final_score,
@@ -1678,7 +1700,7 @@ async def _maybe_apply_parse_quality_gate(
             min_parse_score=min_parse_score,
         ):
             return None
-        quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
+        quarantined = bool(pipeline_effective.governance_quarantine_on_drop)
         status = "quarantined" if quarantined else "failed"
         reason = "quarantined_by_parse_quality" if quarantined else "dropped_by_parse_quality"
         msg = (
@@ -1693,9 +1715,9 @@ async def _maybe_apply_parse_quality_gate(
             outcome=("quarantine" if quarantined else "closed"),
             reason=reason,
             details={
-                "parser_backend": str(resolved_backend or ""),
-                "parsed_content_chars": int(final_chars),
-                "parse_score": round(float(final_score), 3),
+                "parser_backend": resolved_backend,
+                "parsed_content_chars": final_chars,
+                "parse_score": round(final_score, 3),
             },
         )
 
@@ -1705,22 +1727,22 @@ async def _maybe_apply_parse_quality_gate(
         if not should_preserve_existing_versions(meta_patch):
             update_kwargs["chunk_count"] = 0
             update_kwargs["total_characters"] = 0
-        await service._update_status(db, tenant_id, document_id, status, 0, status, **update_kwargs)
+        await update_document_status(db, tenant_id, document_id, status, 0, status, **update_kwargs)
         with contextlib.suppress(Exception):
             from app.services.audit_log_service import audit_log_event
 
             audit_log_event(
                 db,
                 tenant_id=tenant_id,
-                actor_id=(getattr(db_document, "owner_id", None) or None),
+                actor_id=db_document.owner_id,
                 action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.parse_drop"),
                 resource_type="document",
                 resource_id=str(document_id),
                 details={
                     "reason": reason,
-                    "parse_fallback_min_content_chars": int(min_chars),
-                    "parsed_content_chars": int(final_chars),
-                    "parser_backend": str(resolved_backend or ""),
+                    "parse_fallback_min_content_chars": min_chars,
+                    "parsed_content_chars": final_chars,
+                    "parser_backend": resolved_backend,
                 },
             )
             db.commit()
@@ -1755,8 +1777,6 @@ async def _maybe_apply_parse_quality_gate(
 
 
 async def execute_parse_pipeline(
-    service: Any,
-    parsing_stage: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1778,7 +1798,6 @@ async def execute_parse_pipeline(
         db_document=db_document,
         document_id=document_id,
         tenant_id=tenant_id,
-        parser_backend=parser_backend,
         chunk_strategy=chunk_strategy,
     )
     if parsed is not None:
@@ -1789,7 +1808,6 @@ async def execute_parse_pipeline(
             db_document=db_document,
             tenant_id=tenant_id,
             parser_backend=parser_backend,
-            chunk_strategy=chunk_strategy,
             pipeline_effective=prepared_state.pipeline_effective,
         )
         resumed_from_parse_cache = parsed is not None
@@ -1797,7 +1815,6 @@ async def execute_parse_pipeline(
     parse_started_at = 0.0
     if parsed is None:
         parsed, parse_started_at = await _run_parse_stage(
-            parsing_stage,
             db=db,
             db_document=db_document,
             file_path=prepared_state.file_path,
@@ -1811,7 +1828,6 @@ async def execute_parse_pipeline(
         await raise_if_cancelled(force=True)
 
     parsed = await _maybe_apply_parse_fallback(
-        parsing_stage,
         db=db,
         db_document=db_document,
         file_path=prepared_state.file_path,
@@ -1827,20 +1843,10 @@ async def execute_parse_pipeline(
         pdf_quality=prepared_state.pdf_quality,
     )
 
-    if resumed_from_checkpoint:
-        meta0 = dict(db_document.doc_metadata or {})
-        resolved_backend = (
-            str(
-                meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto"
-            ).strip()
-            or "auto"
-        )
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-    else:
-        if not resumed_from_parse_cache:
-            add_stage_duration("parse", (time.perf_counter() - parse_started_at) * 1000)
-        resolved_backend = parsed.resolved_backend
-        resolved_chunk_strategy = parsed.resolved_chunk_strategy
+    if not resumed_from_checkpoint and not resumed_from_parse_cache:
+        add_stage_duration("parse", (time.perf_counter() - parse_started_at) * 1000)
+    resolved_backend = parsed.resolved_backend
+    resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
     parsed = _attach_logical_source_metadata_to_parsed_result(
         parsed,
@@ -1855,13 +1861,10 @@ async def execute_parse_pipeline(
         parse_cache_store=parse_cache_store,
         parse_cache_key=parse_cache_key,
         parsed=parsed,
-        resolved_backend=resolved_backend,
-        resolved_chunk_strategy=resolved_chunk_strategy,
         resumed_from_checkpoint=resumed_from_checkpoint,
         resumed_from_parse_cache=resumed_from_parse_cache,
     )
     early_result = await _maybe_apply_parse_quality_gate(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -1898,13 +1901,13 @@ def _maybe_merge_cross_page_parsed_documents(
     pipeline_effective: PipelineEffective,
     add_stage_duration: Any,
 ) -> list[Document] | None:
-    if not parsed_documents or not bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
+    if not parsed_documents or not bool(pipeline_effective.cross_page_merge_enabled):
         return parsed_documents
     t0 = time.perf_counter()
     with metrics_span("ingest.cross_page_merge"):
         merged_documents = merge_cross_page_documents(
             parsed_documents,
-            max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
+            max_page_gap=int(pipeline_effective.cross_page_merge_max_page_gap or 1),
         )
     add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
     return merged_documents
@@ -1921,7 +1924,7 @@ def _maybe_record_pdf_reading_order(
     if parsed.chunks is None or not parsed_documents or not _is_pdf_document(file_path):
         return
     try:
-        joined_for_ro = "\n\n".join([(d.page_content or "") for d in parsed_documents])
+        joined_for_ro = "\n\n".join([(d.page_content) for d in parsed_documents])
         meta_patch = dict(db_document.doc_metadata or {})
         meta_patch["reading_order"] = score_reading_order(joined_for_ro)
         _commit_document_metadata(db, db_document, meta_patch)
@@ -1941,9 +1944,9 @@ async def _maybe_apply_vlm_correction_to_documents(
     if not parsed_documents or not _is_pdf_document(prepared_state.file_path):
         return parsed_documents
     if not should_apply_vlm_correction(
-        enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
+        enabled=bool(pipeline_effective.vlm_correction_enabled),
         pdf_quality=prepared_state.pdf_quality,
-        min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
+        min_table_score=float(pipeline_effective.vlm_correction_min_table_score or 0.6),
     ):
         return parsed_documents
     t0 = time.perf_counter()
@@ -1951,7 +1954,7 @@ async def _maybe_apply_vlm_correction_to_documents(
         corrected_docs, correction_meta = await apply_vlm_correction_async(
             documents=parsed_documents,
             file_path=prepared_state.file_path,
-            max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
+            max_pages=int(pipeline_effective.vlm_correction_max_pages or 2),
         )
     add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
     if bool(correction_meta.get("applied")):
@@ -1962,7 +1965,6 @@ async def _maybe_apply_vlm_correction_to_documents(
 
 
 def _maybe_import_pdf_table_sidecars(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1973,7 +1975,7 @@ def _maybe_import_pdf_table_sidecars(
 ) -> int:
     if not parsed_documents or not _is_pdf_document(prepared_state.file_path):
         return prepared_state.table_sidecar_tables_imported
-    return service._import_parsed_markdown_tables_to_store(
+    return _import_parsed_markdown_tables_to_store(
         db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -1983,7 +1985,6 @@ def _maybe_import_pdf_table_sidecars(
 
 
 async def _prepare_parsed_documents_for_continuation(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -1991,7 +1992,6 @@ async def _prepare_parsed_documents_for_continuation(
     document_id: UUID,
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
-    inline_asset_stage: Any,
     add_stage_duration: Any,
     raise_if_cancelled: Any,
 ) -> tuple[list[Document] | None, int]:
@@ -2005,14 +2005,14 @@ async def _prepare_parsed_documents_for_continuation(
     if parsed.documents:
         t0 = time.perf_counter()
         with metrics_span("ingest.inline_assets"):
-            inline_result = inline_asset_stage.run(
+            inline_result = enrich_inline_assets(
                 documents=parsed.documents,
                 tenant_id=tenant_id,
                 dataset_id=prepared_state.dataset_id,
                 document_id=document_id,
                 origin_path=prepared_state.file_path,
                 start_index=0,
-                image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
+                image_caption_enabled=bool(pipeline_effective.image_caption_enabled),
             )
         add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
         parsed_documents = inline_result.documents
@@ -2042,7 +2042,6 @@ async def _prepare_parsed_documents_for_continuation(
         add_stage_duration=add_stage_duration,
     )
     table_sidecar_tables_imported = _maybe_import_pdf_table_sidecars(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -2050,24 +2049,23 @@ async def _prepare_parsed_documents_for_continuation(
         prepared_state=prepared_state,
         pipeline_effective=pipeline_effective,
     )
-    service._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
+    _cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
     await raise_if_cancelled()
     return parsed_documents, table_sidecar_tables_imported
 
 
 def _governance_plugin_ref(pipeline_effective: PipelineEffective) -> str:
-    return str(getattr(pipeline_effective, "governance_python_plugin", "") or "").strip()
+    return pipeline_effective.governance_python_plugin.strip()
 
 
 def _run_governance_stage(
-    governance_stage: Any,
     *,
     items: list[Document],
     file_path: Path,
     pipeline_effective: PipelineEffective,
     governance_kwargs: dict[str, Any],
     add_stage_duration: Any,
-) -> Any:
+) -> GovernanceResult:
     t0 = time.perf_counter()
     with metrics_span(
         "ingest.governance",
@@ -2079,7 +2077,7 @@ def _run_governance_stage(
             "governance.enabled": bool(pipeline_effective.governance_enabled),
         },
     ):
-        gov = governance_stage.run(
+        gov = govern_documents(
             items=items,
             enabled=bool(pipeline_effective.governance_enabled),
             kwargs=governance_kwargs,
@@ -2105,7 +2103,7 @@ def _apply_governance_python_plugin_if_needed(
         processed_items = apply_governance_python_plugin(
             items,
             plugin_ref=governance_plugin_ref,
-            params=dict(getattr(pipeline_effective, "governance_python_params", {}) or {}),
+            params=dict(pipeline_effective.governance_python_params or {}),
             context={
                 "document_id": str(document_id),
                 "tenant_id": str(tenant_id),
@@ -2117,7 +2115,6 @@ def _apply_governance_python_plugin_if_needed(
 
 
 def _maybe_build_governance_audit_patch(
-    service: Any,
     *,
     before_items: list[Document] | None,
     after_items: list[Document] | None,
@@ -2126,7 +2123,7 @@ def _maybe_build_governance_audit_patch(
     if not enabled:
         return None
     try:
-        return service._build_governance_audit_metadata_patch(
+        return _build_governance_audit_metadata_patch(
             before_items=before_items,
             after_items=after_items,
         )
@@ -2136,7 +2133,6 @@ def _maybe_build_governance_audit_patch(
 
 
 async def _maybe_apply_llm_auto_tagging_audit(
-    service: Any,
     items: list[Document],
     *,
     pipeline_effective: PipelineEffective,
@@ -2144,16 +2140,15 @@ async def _maybe_apply_llm_auto_tagging_audit(
 ) -> dict[str, Any] | None:
     if not items:
         return governance_audit_patch
-    llm_tagging_meta = await service._apply_llm_auto_tagging(items, pipeline_effective=pipeline_effective)
+    llm_tagging_meta = await _apply_llm_auto_tagging(items, pipeline_effective=pipeline_effective)
     if not llm_tagging_meta:
         return governance_audit_patch
-    audit_patch = dict(governance_audit_patch or {})
+    audit_patch = dict((governance_audit_patch if governance_audit_patch is not None else {}))
     audit_patch["governance_llm_auto_tagging"] = llm_tagging_meta
     return audit_patch
 
 
 async def _maybe_return_governance_drop_result(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -2171,21 +2166,21 @@ async def _maybe_return_governance_drop_result(
         return None
     if governance_stats is None or items:
         return None
-    if int(getattr(governance_stats, "dropped", 0) or 0) <= 0:
+    if governance_stats.dropped <= 0:
         return None
-    service._record_governance_metadata(
+    _record_governance_metadata(
         db,
         tenant_id,
         document_id,
         governance_stats,
-        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+        rule_packs=list(pipeline_effective.governance_rule_packs or []),
         audit_patch=governance_audit_patch,
     )
-    quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
-    reasons = getattr(governance_stats, "drop_reasons", {}) or {}
-    reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
+    quarantined = bool(pipeline_effective.governance_quarantine_on_drop)
+    reasons = governance_stats.drop_reasons
+    reason_str = ", ".join(f"{k}:{v}" for k, v in sorted(reasons.items()))
     hint = "You can disable outline/low-density filters or relax thresholds."
-    if isinstance(reasons, dict) and any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
+    if any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
         hint = "You can adjust PII/Secrets gates (pii_max_hits/secrets_max_hits) or disable them."
     msg = (
         ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
@@ -2202,16 +2197,16 @@ async def _maybe_return_governance_drop_result(
     if not should_preserve_existing_versions(meta_patch):
         update_kwargs["chunk_count"] = 0
         update_kwargs["total_characters"] = 0
-    await service._update_status(db, tenant_id, document_id, status, 0, status, **update_kwargs)
+    await update_document_status(db, tenant_id, document_id, status, 0, status, **update_kwargs)
     with contextlib.suppress(Exception):
         from app.services.audit_log_service import audit_log_event
 
-        pii_hits = getattr(governance_stats, "pii_hits", None) or {}
-        secrets_hits = getattr(governance_stats, "secrets_hits", None) or {}
+        pii_hits = governance_stats.pii_hits
+        secrets_hits = governance_stats.secrets_hits
         audit_log_event(
             db,
             tenant_id=tenant_id,
-            actor_id=(getattr(db_document, "owner_id", None) or None),
+            actor_id=db_document.owner_id,
             action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
             resource_type="document",
             resource_id=str(document_id),
@@ -2234,20 +2229,7 @@ async def _maybe_return_governance_drop_result(
     }
 
 
-def _should_record_governance_enrichment(
-    pipeline_effective: PipelineEffective,
-    *,
-    governance_plugin_ref: str,
-) -> bool:
-    return (
-        bool(pipeline_effective.governance_enabled)
-        or bool(governance_plugin_ref)
-        or bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False))
-    )
-
-
 def _maybe_record_governance_enrichment(
-    service: Any,
     *,
     db: Session,
     tenant_id: UUID,
@@ -2256,13 +2238,14 @@ def _maybe_record_governance_enrichment(
     pipeline_effective: PipelineEffective,
     governance_plugin_ref: str,
 ) -> None:
-    if not items or not _should_record_governance_enrichment(
-        pipeline_effective,
-        governance_plugin_ref=governance_plugin_ref,
+    if not items or not (
+        bool(pipeline_effective.governance_enabled)
+        or bool(governance_plugin_ref)
+        or bool(pipeline_effective.governance_llm_auto_tagging_enabled)
     ):
         return
     try:
-        service._record_governance_enrichment_metadata(
+        _record_governance_enrichment_metadata(
             db,
             tenant_id=tenant_id,
             document_id=document_id,
@@ -2270,11 +2253,10 @@ def _maybe_record_governance_enrichment(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
-    service._strip_doc_enrichment_fields(items)
+    _strip_doc_enrichment_fields(items)
 
 
 def _maybe_persist_parsed_content(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -2284,18 +2266,18 @@ def _maybe_persist_parsed_content(
     parsed_documents: list[Document],
     pipeline_effective: PipelineEffective,
 ) -> None:
-    if not bool(getattr(pipeline_effective, "persist_parsed_content", False)):
+    if not bool(pipeline_effective.persist_parsed_content):
         return
     try:
         original_md = _join_original_markdown_for_persistence(parsed_documents_before_governance)
         cleaned_md = _join_document_page_content(parsed_documents)
-        persist_meta = service._persist_parsed_content(
+        persist_meta = _persist_parsed_content(
             db,
             tenant_id=tenant_id,
             document_id=document_id,
             original_markdown=original_md,
             cleaned_markdown=cleaned_md,
-            max_chars=int(getattr(pipeline_effective, "persist_parsed_content_max_chars", 0) or 0),
+            max_chars=int(pipeline_effective.persist_parsed_content_max_chars or 0),
         )
         meta = dict(db_document.doc_metadata or {})
         meta["parsed_content_persisted"] = persist_meta
@@ -2309,7 +2291,6 @@ def _maybe_persist_parsed_content(
 
 
 async def _run_chunk_governance_flow(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -2317,19 +2298,16 @@ async def _run_chunk_governance_flow(
     document_id: UUID,
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
-    normalize_stage: Any,
-    governance_stage: Any,
     add_stage_duration: Any,
     with_stage_durations: Any,
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     with metrics_span("ingest.normalize"):
-        parsed_chunks = normalize_stage.run(items=parse_state.parsed.chunks)
+        parsed_chunks = normalize_documents(items=parse_state.parsed.chunks)
     add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
 
     pipeline_effective = prepared_state.pipeline_effective
     gov = _run_governance_stage(
-        governance_stage,
         items=parsed_chunks,
         file_path=prepared_state.file_path,
         pipeline_effective=pipeline_effective,
@@ -2347,19 +2325,16 @@ async def _run_chunk_governance_flow(
         add_stage_duration=add_stage_duration,
     )
     governance_audit_patch = _maybe_build_governance_audit_patch(
-        service,
         before_items=parsed_chunks,
         after_items=chunks,
         enabled=bool(pipeline_effective.governance_enabled) or bool(governance_plugin),
     )
     governance_audit_patch = await _maybe_apply_llm_auto_tagging_audit(
-        service,
         chunks,
         pipeline_effective=pipeline_effective,
         governance_audit_patch=governance_audit_patch,
     )
     early_result = await _maybe_return_governance_drop_result(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -2375,7 +2350,6 @@ async def _run_chunk_governance_flow(
     if early_result is not None:
         return {"result": early_result}
     _maybe_record_governance_enrichment(
-        service,
         db=db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -2391,7 +2365,6 @@ async def _run_chunk_governance_flow(
 
 
 async def _run_document_governance_flow(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -2400,14 +2373,12 @@ async def _run_document_governance_flow(
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
     parsed_documents: list[Document] | None,
-    normalize_stage: Any,
-    governance_stage: Any,
     add_stage_duration: Any,
     with_stage_durations: Any,
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     with metrics_span("ingest.normalize"):
-        normalized_documents = normalize_stage.run(items=parsed_documents or [])
+        normalized_documents = normalize_documents(items=(parsed_documents if parsed_documents is not None else []))
     add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
 
     pipeline_effective = prepared_state.pipeline_effective
@@ -2423,7 +2394,6 @@ async def _run_document_governance_flow(
         add_stage_duration=add_stage_duration,
     )
     gov = _run_governance_stage(
-        governance_stage,
         items=normalized_documents,
         file_path=prepared_state.file_path,
         pipeline_effective=pipeline_effective,
@@ -2432,20 +2402,17 @@ async def _run_document_governance_flow(
     )
     normalized_documents = gov.items
     governance_audit_patch = _maybe_build_governance_audit_patch(
-        service,
         before_items=parsed_documents_before_governance,
         after_items=normalized_documents,
         enabled=bool(pipeline_effective.governance_enabled) or bool(governance_plugin),
     )
     governance_audit_patch = await _maybe_apply_llm_auto_tagging_audit(
-        service,
         normalized_documents,
         pipeline_effective=pipeline_effective,
         governance_audit_patch=governance_audit_patch,
     )
     _ensure_ingest_page_indices(normalized_documents)
     _maybe_persist_parsed_content(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -2455,7 +2422,6 @@ async def _run_document_governance_flow(
         pipeline_effective=pipeline_effective,
     )
     early_result = await _maybe_return_governance_drop_result(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -2471,7 +2437,6 @@ async def _run_document_governance_flow(
     if early_result is not None:
         return {"result": early_result}
     _maybe_record_governance_enrichment(
-        service,
         db=db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -2487,7 +2452,6 @@ async def _run_document_governance_flow(
 
 
 async def _chunk_governed_documents(
-    service: Any,
     *,
     db: Session,
     tenant_id: UUID,
@@ -2495,10 +2459,9 @@ async def _chunk_governed_documents(
     prepared_state: PreparedProcessDocumentState,
     resolved_chunk_strategy: str,
     parsed_documents: list[Document],
-    chunking_stage: Any,
     add_stage_duration: Any,
 ) -> dict[str, Any]:
-    await service._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
+    await update_document_status(db, tenant_id, document_id, "processing", 33, "chunking")
     t0 = time.perf_counter()
     pipeline_effective = prepared_state.pipeline_effective
     with metrics_span(
@@ -2510,17 +2473,17 @@ async def _chunk_governed_documents(
         otel_attributes={
             "ingest.stage": "chunk",
             "document.file_type": str(prepared_state.file_path.suffix.lstrip(".") or "unknown").lower(),
-            "chunk.strategy": str(resolved_chunk_strategy or "").strip().lower() or "default",
+            "chunk.strategy": resolved_chunk_strategy.strip().lower() or "default",
         },
     ):
-        chunked = chunking_stage.run(
+        chunked = chunk_documents(
             documents=parsed_documents,
             chunk_strategy=resolved_chunk_strategy,
             chunk_size=int(pipeline_effective.chunk_size),
             chunk_overlap=int(pipeline_effective.chunk_overlap),
-            chunk_strategy_params=dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {}),
-            chunk_python_plugin=str(getattr(pipeline_effective, "chunk_python_plugin", "") or ""),
-            chunk_python_params=dict(getattr(pipeline_effective, "chunk_python_params", {}) or {}),
+            chunk_strategy_params=dict(pipeline_effective.chunk_strategy_params or {}),
+            chunk_python_plugin=pipeline_effective.chunk_python_plugin,
+            chunk_python_params=dict(pipeline_effective.chunk_python_params or {}),
         )
     chunks = _rebase_chunk_offsets_by_page_index(
         documents=parsed_documents,
@@ -2528,7 +2491,7 @@ async def _chunk_governed_documents(
         join_separator="\n\n",
     )
     add_stage_duration("chunking", (time.perf_counter() - t0) * 1000)
-    merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
+    merge_min = max(0, int(pipeline_effective.chunk_merge_small_min_chars or 0))
     merge_small_after = len(chunks)
     merge_small_reduced = 0
     if merge_min > 0 and chunks:
@@ -2559,12 +2522,13 @@ def _filter_short_chunks(chunks: list[Document], *, min_chars: int, document_id:
     before = len(chunks)
     filtered: list[Document] = []
     for chunk in chunks:
-        content = (chunk.page_content or "").strip()
+        content = (chunk.page_content).strip()
         if len(content) >= min_chars:
             filtered.append(chunk)
             continue
-        meta = chunk.metadata or {}
-        doc_type = str(meta.get("doc_type_kwd") or "").lower()
+        meta = chunk.metadata
+        raw_type = meta.get("doc_type_kwd")
+        doc_type = raw_type.lower() if isinstance(raw_type, str) else None
         if (
             doc_type in {"image", "table"}
             or meta.get("image") is not None
@@ -2575,12 +2539,12 @@ def _filter_short_chunks(chunks: list[Document], *, min_chars: int, document_id:
             filtered.append(chunk)
     kept_short_fallback = False
     if not filtered:
-        longest = max(chunks, key=lambda d: len((d.page_content or "").strip()))
+        longest = max(chunks, key=lambda d: len((d.page_content).strip()))
         filtered = [longest]
         kept_short_fallback = True
     dropped = before - len(filtered)
     if kept_short_fallback:
-        kept_len = len((filtered[0].page_content or "").strip()) if filtered else 0
+        kept_len = len(filtered[0].page_content.strip())
         logger.info(
             "All chunks shorter than %s chars; kept 1 (%s chars) and dropped %s for document %s",
             min_chars,
@@ -2594,7 +2558,6 @@ def _filter_short_chunks(chunks: list[Document], *, min_chars: int, document_id:
 
 
 def _run_chunk_dedup_stage(
-    chunk_dedup_stage: Any,
     *,
     chunks: list[Document],
     document_id: UUID,
@@ -2602,7 +2565,7 @@ def _run_chunk_dedup_stage(
 ) -> tuple[list[Document], int]:
     t0 = time.perf_counter()
     with metrics_span("ingest.chunk_dedup", enabled=True):
-        deduped = chunk_dedup_stage.run(chunks=chunks, enabled=True)
+        deduped = deduplicate_chunks(chunks=chunks, enabled=True)
     add_stage_duration("chunk_dedup", (time.perf_counter() - t0) * 1000)
     duplicates_dropped = int(deduped.duplicates_dropped)
     if duplicates_dropped > 0:
@@ -2626,16 +2589,17 @@ def _compute_near_dedup_state(
     def update_fn(buckets: dict[str, list[str]]):
         nonlocal near_dedup_dropped, sample_match
         for chunk in chunks:
-            meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
+            meta = chunk.metadata
             if _should_skip_near_dedup_for_chunk(chunk):
                 kept_chunks.append(chunk)
                 continue
             content_norm = normalize_text(
-                chunk.page_content or "",
+                chunk.page_content,
                 normalize_line_endings=True,
                 remove_control_chars=True,
             )
-            sh_hex = str(meta.get("simhash64") or "").strip().lower()
+            raw_hash = meta.get("simhash64")
+            sh_hex = str(raw_hash).strip().lower() if raw_hash is not None else None
             if not sh_hex:
                 sh_hex = simhash64_hex(simhash64(content_norm))
                 meta = dict(meta)
@@ -2687,7 +2651,7 @@ def _finalize_near_dedup_result(
         return chunks
     updated_chunks = list(state["kept_chunks"])
     if not updated_chunks:
-        longest = max(chunks, key=lambda d: len((d.page_content or "").strip()), default=None)
+        longest = max(chunks, key=lambda d: len((d.page_content).strip()), default=None)
         if longest is not None:
             updated_chunks = [longest]
     logger.info(
@@ -2723,8 +2687,8 @@ def _run_near_dedup_stage(
     t0 = time.perf_counter()
     updated_chunks = chunks
     try:
-        threshold = max(0, int(getattr(pipeline_effective, "near_dedup_hamming_threshold", 0) or 0))
-        max_bucket_size = max(0, int(getattr(pipeline_effective, "near_dedup_max_bucket_size", 0) or 0))
+        threshold = max(0, int(pipeline_effective.near_dedup_hamming_threshold or 0))
+        max_bucket_size = max(0, int(pipeline_effective.near_dedup_max_bucket_size or 0))
         safe_dataset = re.sub(r"[^A-Za-z0-9._-]+", "_", str(prepared_state.dataset_id or tenant_id))
         index_path = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_dedup" / f"{safe_dataset}.json"
         state = _compute_near_dedup_state(
@@ -2775,7 +2739,10 @@ def _truncate_chunks_for_document(
     truncation_info["truncated_dropped"] = max(0, len(chunks) - len(truncated_chunks))
     truncation_info["truncated_asset_total"] = int(details.get("asset_total") or 0)
     truncation_info["truncated_asset_kept"] = int(details.get("asset_kept") or 0)
-    truncation_info["truncated_strategy_used"] = str(details.get("strategy") or "").strip() or str(truncation_strategy)
+    selected_strategy = details.get("strategy")
+    if selected_strategy is not None:
+        selected_strategy = selected_strategy.strip()
+    truncation_info["truncated_strategy_used"] = selected_strategy or truncation_strategy
     logger.info(
         "Truncated chunks for document %s: kept=%s dropped=%s assets=%s/%s strategy=%s (MAX_CHUNKS_PER_DOCUMENT=%s)",
         document_id,
@@ -2802,7 +2769,6 @@ def _truncate_chunks_for_document(
 
 
 def _record_chunk_postprocess_metadata_if_needed(
-    service: Any,
     *,
     db: Session,
     tenant_id: UUID,
@@ -2819,7 +2785,7 @@ def _record_chunk_postprocess_metadata_if_needed(
 ) -> None:
     if merge_small_min_chars <= 0 and not dedup_enabled and max_chunks_per_document <= 0:
         return
-    service._record_chunk_postprocess_metadata(
+    _record_chunk_postprocess_metadata(
         db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -2843,7 +2809,6 @@ def _record_chunk_postprocess_metadata_if_needed(
 
 
 def _apply_common_chunk_postprocess(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -2852,7 +2817,6 @@ def _apply_common_chunk_postprocess(
     prepared_state: PreparedProcessDocumentState,
     chunks: list[Document],
     pipeline_effective: PipelineEffective,
-    chunk_dedup_stage: Any,
     add_stage_duration: Any,
     table_sidecar_tables_imported: int,
     table_sidecar_routing_audit: dict[str, Any] | None,
@@ -2863,19 +2827,18 @@ def _apply_common_chunk_postprocess(
 ) -> dict[str, Any]:
     filtered_chunks = _filter_short_chunks(
         chunks,
-        min_chars=max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0)),
+        min_chars=max(0, int(settings.CHUNK_MIN_CHARS or 0)),
         document_id=document_id,
     )
-    dedup_enabled = bool(getattr(settings, "CHUNK_DEDUP_ENABLED", False))
+    dedup_enabled = bool(settings.CHUNK_DEDUP_ENABLED)
     dedup_dropped = 0
     if dedup_enabled and filtered_chunks:
         filtered_chunks, dedup_dropped = _run_chunk_dedup_stage(
-            chunk_dedup_stage,
             chunks=filtered_chunks,
             document_id=document_id,
             add_stage_duration=add_stage_duration,
         )
-    if bool(getattr(pipeline_effective, "near_dedup_enabled", False)) and filtered_chunks:
+    if bool(pipeline_effective.near_dedup_enabled) and filtered_chunks:
         filtered_chunks = _run_near_dedup_stage(
             db=db,
             db_document=db_document,
@@ -2887,13 +2850,13 @@ def _apply_common_chunk_postprocess(
             add_stage_duration=add_stage_duration,
         )
     if filtered_chunks and table_sidecar_tables_imported >= 0:
-        filtered_chunks, table_sidecar_routing_audit = service._apply_table_sidecar_exclusive_routing(
+        filtered_chunks, table_sidecar_routing_audit = _apply_table_sidecar_exclusive_routing(
             chunks=filtered_chunks,
-            enabled=bool(getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False)),
+            enabled=bool(pipeline_effective.table_store_sidecar_exclusive_routing),
             sidecar_tables_imported=table_sidecar_tables_imported,
         )
-    max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
-    truncation_strategy = str(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "head") or "head")
+    max_chunks_per_document = max(0, int(settings.MAX_CHUNKS_PER_DOCUMENT or 0))
+    truncation_strategy = str(settings.MAX_CHUNKS_PER_DOCUMENT_STRATEGY or "head")
     filtered_chunks, truncation_info = _truncate_chunks_for_document(
         filtered_chunks,
         document_id=document_id,
@@ -2901,7 +2864,6 @@ def _apply_common_chunk_postprocess(
         truncation_strategy=truncation_strategy,
     )
     _record_chunk_postprocess_metadata_if_needed(
-        service,
         db=db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -2922,7 +2884,6 @@ def _apply_common_chunk_postprocess(
 
 
 def _maybe_record_governance_metadata(
-    service: Any,
     *,
     db: Session,
     tenant_id: UUID,
@@ -2933,18 +2894,17 @@ def _maybe_record_governance_metadata(
 ) -> None:
     if governance_stats is None:
         return
-    service._record_governance_metadata(
+    _record_governance_metadata(
         db,
         tenant_id,
         document_id,
         governance_stats,
-        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+        rule_packs=list(pipeline_effective.governance_rule_packs or []),
         audit_patch=governance_audit_patch,
     )
 
 
 async def _maybe_return_no_chunks_result(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -2954,14 +2914,24 @@ async def _maybe_return_no_chunks_result(
     table_sidecar_routing_audit: dict[str, Any] | None,
     resolved_backend: str,
     resolved_chunk_strategy: str,
-) -> dict[str, Any] | None:
-    sidecar_excluded = int((table_sidecar_routing_audit or {}).get("table_chunks_excluded_from_rag") or 0)
-    sidecar_imported = int((table_sidecar_routing_audit or {}).get("sidecar_tables_imported") or 0)
+) -> dict[str, Any]:
+    sidecar_excluded = int(
+        (table_sidecar_routing_audit if table_sidecar_routing_audit is not None else {}).get(
+            "table_chunks_excluded_from_rag"
+        )
+        or 0
+    )
+    sidecar_imported = int(
+        (table_sidecar_routing_audit if table_sidecar_routing_audit is not None else {}).get("sidecar_tables_imported")
+        or 0
+    )
     if sidecar_excluded > 0 and sidecar_imported > 0:
         meta_patch = dict(db_document.doc_metadata or {})
-        meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit or {})
+        meta_patch["table_sidecar_routing"] = dict(
+            (table_sidecar_routing_audit if table_sidecar_routing_audit is not None else {})
+        )
         meta_patch = with_stage_durations(meta_patch)
-        await service._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -2989,7 +2959,7 @@ async def _maybe_return_no_chunks_result(
     meta_patch = with_stage_durations(dict(db_document.doc_metadata or {}))
     if table_sidecar_routing_audit:
         meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
-    await service._update_status(
+    await update_document_status(
         db,
         tenant_id,
         document_id,
@@ -3012,7 +2982,6 @@ async def _maybe_return_no_chunks_result(
 
 
 def _record_chunking_stats_metadata_with_guard(
-    service: Any,
     *,
     db: Session,
     tenant_id: UUID,
@@ -3021,7 +2990,7 @@ def _record_chunking_stats_metadata_with_guard(
     parsed_documents: list[Document] | None,
 ) -> None:
     try:
-        service._record_chunking_stats_metadata(
+        _record_chunking_stats_metadata(
             db,
             tenant_id=tenant_id,
             document_id=document_id,
@@ -3035,14 +3004,13 @@ def _record_chunking_stats_metadata_with_guard(
 def _selected_chunk_strategy_counts(chunks: list[Document]) -> dict[str, int]:
     selected_counts: dict[str, int] = {}
     for chunk in chunks:
-        selected = (chunk.metadata or {}).get("chunk_strategy_selected")
+        selected = chunk.metadata.get("chunk_strategy_selected")
         if isinstance(selected, str) and selected.strip():
             selected_counts[selected] = selected_counts.get(selected, 0) + 1
     return selected_counts
 
 
 def _apply_chunk_asset_stage_and_metadata(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -3051,7 +3019,6 @@ def _apply_chunk_asset_stage_and_metadata(
     prepared_state: PreparedProcessDocumentState,
     chunks: list[Document],
     pipeline_effective: PipelineEffective,
-    chunk_asset_stage: Any,
     add_stage_duration: Any,
     governance_stats: GovernanceStats | None,
     resolved_backend: str,
@@ -3059,7 +3026,7 @@ def _apply_chunk_asset_stage_and_metadata(
 ) -> list[Document]:
     t0 = time.perf_counter()
     with metrics_span("ingest.chunk_assets"):
-        chunk_asset = chunk_asset_stage.run(
+        chunk_asset = process_chunk_assets(
             chunks=chunks,
             tenant_id=tenant_id,
             document_id=document_id,
@@ -3067,30 +3034,27 @@ def _apply_chunk_asset_stage_and_metadata(
                 dataset_id=prepared_state.dataset_id,
                 resolved_backend=resolved_backend,
                 resolved_chunk_strategy=resolved_chunk_strategy,
-                image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
-                image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
-                image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
-                pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
-                pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
-                pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
-                secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
-                secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
-                secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
+                image_caption_enabled=bool(pipeline_effective.image_caption_enabled),
+                image_ocr_enabled=bool(pipeline_effective.image_ocr_enabled),
+                image_ocr_max_chars=int(pipeline_effective.image_ocr_max_chars or 0),
+                image_ocr_max_images=int(pipeline_effective.image_ocr_max_images or 0),
+                pii_anonymize=bool(pipeline_effective.governance_pii_anonymize),
+                pii_mode=str(pipeline_effective.governance_pii_mode or "mask"),
+                pii_mask=str(pipeline_effective.governance_pii_mask or REDACTED_MASK),
+                secrets_redact=bool(pipeline_effective.governance_secrets_redact),
+                secrets_mode=str(pipeline_effective.governance_secrets_mode or "mask"),
+                secrets_mask=str(pipeline_effective.governance_secrets_mask or SECRET_MASK),
             ),
         )
     add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
     chunked_items = chunk_asset.chunks
-    pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
-    file_type = (
-        str(getattr(db_document, "file_type", "") or "").strip().lower()
-        or str(prepared_state.file_path.suffix.lstrip(".")).lower()
-    )
-    governance_version = (
-        str(getattr(governance_stats, "version", "") or "").strip() if governance_stats is not None else ""
-    )
+    pipeline_hash = (db_document.doc_metadata or {}).get("pipeline_hash")
+    if pipeline_hash is not None:
+        pipeline_hash = pipeline_hash.strip()
+    file_type = db_document.file_type.strip().lower() or str(prepared_state.file_path.suffix.lstrip(".")).lower()
+    governance_version = governance_stats.version.strip() if governance_stats is not None else None
     for chunk in chunked_items:
-        meta = dict(chunk.metadata or {})
+        meta = dict(chunk.metadata)
         if pipeline_hash:
             meta.setdefault("pipeline_hash", pipeline_hash)
             meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
@@ -3105,13 +3069,13 @@ def _apply_chunk_asset_stage_and_metadata(
     if resolved_chunk_strategy == "auto" and chunked_items:
         selected_counts = _selected_chunk_strategy_counts(chunked_items)
         if selected_counts:
-            service._record_auto_chunking_metadata(
+            _record_auto_chunking_metadata(
                 db,
                 tenant_id=tenant_id,
                 document_id=document_id,
                 selected_counts=selected_counts,
             )
-    service._record_document_image_ids(
+    _record_document_image_ids(
         db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -3121,7 +3085,6 @@ def _apply_chunk_asset_stage_and_metadata(
 
 
 def _run_index_stage(
-    index_stage: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -3130,28 +3093,27 @@ def _run_index_stage(
     prepared_state: PreparedProcessDocumentState,
     chunks: list[Document],
     add_stage_duration: Any,
-) -> Any:
+) -> IndexResult:
     t0 = time.perf_counter()
     with metrics_span(
         "ingest.index",
         chunk_count=len(chunks),
-        chunk_vector_enabled=bool(getattr(prepared_state.index_options, "chunk_vector_enabled", True)),
-        bm25_index_enabled=bool(getattr(prepared_state.index_options, "bm25_index_enabled", True)),
+        chunk_vector_enabled=bool(prepared_state.index_options.chunk_vector_enabled),
+        bm25_index_enabled=bool(prepared_state.index_options.bm25_index_enabled),
         otel_span_name="ingest.index",
         otel_attributes={
             "ingest.stage": "index",
             "document.file_type": str(prepared_state.file_path.suffix.lstrip(".") or "unknown").lower(),
-            "index.chunk_vector_enabled": bool(getattr(prepared_state.index_options, "chunk_vector_enabled", True)),
-            "index.bm25_index_enabled": bool(getattr(prepared_state.index_options, "bm25_index_enabled", True)),
+            "index.chunk_vector_enabled": bool(prepared_state.index_options.chunk_vector_enabled),
+            "index.bm25_index_enabled": bool(prepared_state.index_options.bm25_index_enabled),
         },
     ):
-        indexed = index_stage.run(
+        indexed = index_chunks(
             db=db,
             tenant_id=tenant_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            default_source=str(getattr(db_document, "filename", "") or "").strip()
-            or str(prepared_state.file_path.name),
+            default_source=db_document.filename.strip() or str(prepared_state.file_path.name),
             chunks=chunks,
             options=prepared_state.index_options,
         )
@@ -3160,7 +3122,6 @@ def _run_index_stage(
 
 
 async def _finalize_indexed_document(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -3169,7 +3130,7 @@ async def _finalize_indexed_document(
     prepared_state: PreparedProcessDocumentState,
     pipeline_effective: PipelineEffective,
     chunks: list[Document],
-    indexed: Any,
+    indexed: IndexResult,
     table_sidecar_routing_audit: dict[str, Any] | None,
     with_stage_durations: Any,
     raise_if_cancelled: Any,
@@ -3182,16 +3143,19 @@ async def _finalize_indexed_document(
         "ingest.finalize",
         chunk_count=len(chunks),
         total_characters=total_chars,
-        kg_enabled=bool(getattr(pipeline_effective, "kg_enabled", False)),
+        kg_enabled=bool(pipeline_effective.kg_enabled),
         otel_span_name="ingest.finalize",
         otel_attributes={
             "ingest.stage": "finalize",
             "document.file_type": str(prepared_state.file_path.suffix.lstrip(".") or "unknown").lower(),
-            "pipeline.kg_enabled": bool(getattr(pipeline_effective, "kg_enabled", False)),
+            "pipeline.kg_enabled": bool(pipeline_effective.kg_enabled),
         },
     ):
         checkpoint_meta = with_stage_durations(dict(db_document.doc_metadata or {}))
         checkpoint_meta["indexed_total_characters"] = int(total_chars)
+        checkpoint_pipeline_hash = checkpoint_meta.get("pipeline_hash")
+        if checkpoint_pipeline_hash is not None:
+            checkpoint_pipeline_hash = checkpoint_pipeline_hash.strip()
         checkpoint_meta = upsert_ingest_checkpoint(
             checkpoint_meta,
             stage="indexed",
@@ -3199,17 +3163,15 @@ async def _finalize_indexed_document(
             extra={
                 "chunk_count": len(chunks),
                 "total_characters": int(total_chars),
-                "doc_pipeline_key": (
-                    f"{document_id}:{str(checkpoint_meta.get('pipeline_hash') or '').strip()}"
-                    if str(checkpoint_meta.get("pipeline_hash") or "").strip()
-                    else None
-                ),
+                "doc_pipeline_key": (f"{document_id}:{checkpoint_pipeline_hash}" if checkpoint_pipeline_hash else None),
             },
         )
         _commit_document_metadata(db, db_document, checkpoint_meta)
         await raise_if_cancelled(force=True)
         meta_patch = dict(db_document.doc_metadata or {})
-        completed_pipeline_hash = str(meta_patch.get("pipeline_hash") or "").strip()
+        completed_pipeline_hash = meta_patch.get("pipeline_hash")
+        if completed_pipeline_hash is not None:
+            completed_pipeline_hash = completed_pipeline_hash.strip()
         if completed_pipeline_hash:
             meta_patch["active_pipeline_hash"] = completed_pipeline_hash
             meta_patch["active_pipeline_ready"] = True
@@ -3230,7 +3192,7 @@ async def _finalize_indexed_document(
         if table_sidecar_routing_audit:
             meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
         meta_patch = with_stage_durations(meta_patch)
-        await service._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -3277,7 +3239,6 @@ async def _finalize_indexed_document(
 
 
 async def continue_process_document_flow(
-    service: Any,
     *,
     db: Session,
     db_document: DBDocument,
@@ -3285,27 +3246,18 @@ async def continue_process_document_flow(
     document_id: UUID,
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
-    inline_asset_stage: Any,
-    normalize_stage: Any,
-    governance_stage: Any,
-    chunking_stage: Any,
-    chunk_dedup_stage: Any,
-    chunk_asset_stage: Any,
-    index_stage: Any,
     add_stage_duration: Any,
     with_stage_durations: Any,
     raise_if_cancelled: Any,
 ) -> dict[str, Any]:
     pipeline_effective = prepared_state.pipeline_effective
     parsed_documents, table_sidecar_tables_imported = await _prepare_parsed_documents_for_continuation(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
         document_id=document_id,
         prepared_state=prepared_state,
         parse_state=parse_state,
-        inline_asset_stage=inline_asset_stage,
         add_stage_duration=add_stage_duration,
         raise_if_cancelled=raise_if_cancelled,
     )
@@ -3319,15 +3271,12 @@ async def continue_process_document_flow(
 
     if parse_state.parsed.chunks is not None:
         chunk_flow = await _run_chunk_governance_flow(
-            service,
             db=db,
             db_document=db_document,
             tenant_id=tenant_id,
             document_id=document_id,
             prepared_state=prepared_state,
             parse_state=parse_state,
-            normalize_stage=normalize_stage,
-            governance_stage=governance_stage,
             add_stage_duration=add_stage_duration,
             with_stage_durations=with_stage_durations,
         )
@@ -3339,7 +3288,6 @@ async def continue_process_document_flow(
         governance_audit_patch = chunk_flow["governance_audit_patch"]
     else:
         document_flow = await _run_document_governance_flow(
-            service,
             db=db,
             db_document=db_document,
             tenant_id=tenant_id,
@@ -3347,8 +3295,6 @@ async def continue_process_document_flow(
             prepared_state=prepared_state,
             parse_state=parse_state,
             parsed_documents=parsed_documents,
-            normalize_stage=normalize_stage,
-            governance_stage=governance_stage,
             add_stage_duration=add_stage_duration,
             with_stage_durations=with_stage_durations,
         )
@@ -3360,14 +3306,12 @@ async def continue_process_document_flow(
         governance_audit_patch = document_flow["governance_audit_patch"]
         await raise_if_cancelled()
         chunking_flow = await _chunk_governed_documents(
-            service,
             db=db,
             tenant_id=tenant_id,
             document_id=document_id,
             prepared_state=prepared_state,
             resolved_chunk_strategy=parse_state.resolved_chunk_strategy,
             parsed_documents=parsed_documents,
-            chunking_stage=chunking_stage,
             add_stage_duration=add_stage_duration,
         )
         chunks = chunking_flow["chunks"]
@@ -3378,7 +3322,6 @@ async def continue_process_document_flow(
 
     await raise_if_cancelled()
     postprocess = _apply_common_chunk_postprocess(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -3386,7 +3329,6 @@ async def continue_process_document_flow(
         prepared_state=prepared_state,
         chunks=chunks,
         pipeline_effective=pipeline_effective,
-        chunk_dedup_stage=chunk_dedup_stage,
         add_stage_duration=add_stage_duration,
         table_sidecar_tables_imported=table_sidecar_tables_imported,
         table_sidecar_routing_audit=table_sidecar_routing_audit,
@@ -3398,7 +3340,6 @@ async def continue_process_document_flow(
     chunks = postprocess["chunks"]
     table_sidecar_routing_audit = postprocess["table_sidecar_routing_audit"]
     _maybe_record_governance_metadata(
-        service,
         db=db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -3417,8 +3358,7 @@ async def continue_process_document_flow(
 
     await raise_if_cancelled()
     if not chunks:
-        empty_result = await _maybe_return_no_chunks_result(
-            service,
+        return await _maybe_return_no_chunks_result(
             db=db,
             db_document=db_document,
             tenant_id=tenant_id,
@@ -3428,11 +3368,8 @@ async def continue_process_document_flow(
             resolved_backend=parse_state.resolved_backend,
             resolved_chunk_strategy=parse_state.resolved_chunk_strategy,
         )
-        if empty_result is not None:
-            return empty_result
 
     _record_chunking_stats_metadata_with_guard(
-        service,
         db=db,
         tenant_id=tenant_id,
         document_id=document_id,
@@ -3441,7 +3378,6 @@ async def continue_process_document_flow(
     )
     await raise_if_cancelled()
     chunks = _apply_chunk_asset_stage_and_metadata(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -3449,18 +3385,16 @@ async def continue_process_document_flow(
         prepared_state=prepared_state,
         chunks=chunks,
         pipeline_effective=pipeline_effective,
-        chunk_asset_stage=chunk_asset_stage,
         add_stage_duration=add_stage_duration,
         governance_stats=governance_stats,
         resolved_backend=parse_state.resolved_backend,
         resolved_chunk_strategy=parse_state.resolved_chunk_strategy,
     )
     await raise_if_cancelled()
-    await service._update_status(db, tenant_id, document_id, "processing", 66, "embedding")
+    await update_document_status(db, tenant_id, document_id, "processing", 66, "embedding")
     await raise_if_cancelled()
-    await service._update_status(db, tenant_id, document_id, "processing", 80, "vector_write")
+    await update_document_status(db, tenant_id, document_id, "processing", 80, "vector_write")
     indexed = _run_index_stage(
-        index_stage,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,
@@ -3470,7 +3404,6 @@ async def continue_process_document_flow(
         add_stage_duration=add_stage_duration,
     )
     return await _finalize_indexed_document(
-        service,
         db=db,
         db_document=db_document,
         tenant_id=tenant_id,

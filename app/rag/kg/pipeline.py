@@ -209,7 +209,7 @@ def _merge_ranked_item(
         items_by_key[key] = enriched
         return merge_order + 1
     if _kg_item_score(enriched) > _kg_item_score(current):
-        enriched["_merge_order"] = current.get("_merge_order", merge_order)
+        enriched["_merge_order"] = current["_merge_order"]
         items_by_key[key] = enriched
     return merge_order
 
@@ -263,7 +263,7 @@ def _finalize_ranked_items(
 ) -> list[dict[str, Any]]:
     items = sorted(
         items_by_key.values(),
-        key=lambda item: (-_kg_item_score(item), int(item.get("_merge_order", 0) or 0)),
+        key=lambda item: (-_kg_item_score(item), item["_merge_order"]),
     )[:limit]
     for item in items:
         item.pop("_merge_order", None)
@@ -327,7 +327,7 @@ def _merge_kg_dataset_shard_results(
         reports = data.get("community_reports")
         if isinstance(reports, list):
             community_reports.extend(reports)
-        summary = str(data.get("global_summary") or "").strip()
+        summary = data["global_summary"].strip()
         if summary:
             global_summaries.append(summary)
 
@@ -363,7 +363,7 @@ def _resolve_dataset_scope(
     dataset_ids: list[UUID] | None,
 ) -> tuple[UUID | None, list[UUID]]:
     scoped_dataset_ids = _dedupe_uuid_list(dataset_ids)
-    if document_ids or dataset_id is not None:
+    if document_ids is not None or dataset_id is not None:
         return dataset_id, []
     if len(scoped_dataset_ids) == 1:
         return scoped_dataset_ids[0], []
@@ -403,7 +403,7 @@ async def _search_multi_dataset_scope(
     account_id: str | None,
     query_mode: str | None,
 ) -> dict[str, Any]:
-    max_concurrency = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY", 4) or 4))
+    max_concurrency = max(1, int(settings.KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY))
     semaphore = asyncio.Semaphore(max_concurrency)
     shards = await asyncio.gather(
         *[
@@ -428,12 +428,12 @@ def _resolve_query_mode_diag(
     dataset_id: UUID | None,
     query_mode: str | None,
 ) -> tuple[str, str, dict[str, Any]]:
-    default_mode = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto")
+    default_mode = str(settings.KG_SEARCH_QUERY_MODE_DEFAULT)
     requested_mode = normalize_kg_query_mode(query_mode, default=default_mode)
-    classifier_enabled = bool(getattr(settings, "KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED", True))
+    classifier_enabled = bool(settings.KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED)
     if requested_mode == "auto" and classifier_enabled:
         mode_diag = classify_kg_query_mode(
-            query=str(query or ""),
+            query=query,
             document_ids=list(document_ids or []),
             dataset_id=dataset_id,
             default_mode="auto",
@@ -454,9 +454,9 @@ def _resolve_query_mode_diag(
 
 def _kg_search_cache_settings() -> tuple[bool, int, int]:
     return (
-        bool(getattr(settings, "KG_SEARCH_CACHE_ENABLED", False)),
-        int(getattr(settings, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0),
-        int(getattr(settings, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0),
+        bool(settings.KG_SEARCH_CACHE_ENABLED),
+        int(settings.KG_SEARCH_CACHE_TTL_SEC),
+        int(settings.KG_SEARCH_CACHE_MAX_ENTRIES),
     )
 
 
@@ -464,46 +464,40 @@ def _kg_search_cache_config(*, resolved_mode: str) -> dict[str, Any]:
     return {
         # Include settings that can change KG search behavior so runtime toggles do not
         # serve stale cached results.
-        "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)),
-        "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+        "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(settings.KG_SEARCH_RELATION_EXPANSION_ENABLED),
+        "KG_RELATION_ENABLED": bool(settings.KG_RELATION_ENABLED),
         # GraphRAG-like global search (community summaries) is optional and must be part
         # of the cache key to avoid mixing results across feature toggles.
-        "KG_COMMUNITY_ENABLED": bool(getattr(settings, "KG_COMMUNITY_ENABLED", False)),
-        "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(getattr(settings, "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN", True)),
-        "KG_COMMUNITY_MAX_EVENTS": int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS", 0) or 0),
-        "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT", 0) or 0),
-        "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(getattr(settings, "KG_COMMUNITY_MIN_EDGE_WEIGHT", 0.0) or 0.0),
-        "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0),
-        "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
-        "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0),
-        "KG_SEARCH_MAX_RERANK_CANDIDATES": int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0),
-        "KG_SEARCH_EXPAND_BUDGET_SEC": float(getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0),
+        "KG_COMMUNITY_ENABLED": bool(settings.KG_COMMUNITY_ENABLED),
+        "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(settings.KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN),
+        "KG_COMMUNITY_MAX_EVENTS": int(settings.KG_COMMUNITY_MAX_EVENTS),
+        "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_EVENT),
+        "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(settings.KG_COMMUNITY_MIN_EDGE_WEIGHT),
+        "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE),
+        "KG_SEARCH_RELATION_MAX_EDGES": int(settings.KG_SEARCH_RELATION_MAX_EDGES),
+        "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS),
+        "KG_SEARCH_MAX_RERANK_CANDIDATES": int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES),
+        "KG_SEARCH_EXPAND_BUDGET_SEC": float(settings.KG_SEARCH_EXPAND_BUDGET_SEC),
         "KG_SEARCH_QUERY_MODE": str(resolved_mode),
         "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
-            getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0
+            settings.KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS
         ),
-        "KG_SEARCH_SERVING_LAYER_ENABLED": bool(getattr(settings, "KG_SEARCH_SERVING_LAYER_ENABLED", True)),
-        "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(
-            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0
-        ),
-        "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(
-            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0
-        ),
-        "KG_SEARCH_SERVING_MIN_SCORE": float(getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0),
-        "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(
-            getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0
-        ),
+        "KG_SEARCH_SERVING_LAYER_ENABLED": bool(settings.KG_SEARCH_SERVING_LAYER_ENABLED),
+        "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK),
+        "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT),
+        "KG_SEARCH_SERVING_MIN_SCORE": float(settings.KG_SEARCH_SERVING_MIN_SCORE),
+        "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(settings.KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER),
     }
 
 
 def _resolve_search_pipeline_fingerprint(
     *,
     tenant_id: UUID,
-    document_ids: list[str],
+    document_ids: list[str] | None,
     dataset_id: UUID | None,
 ) -> str | None:
     try:
-        if document_ids:
+        if document_ids is not None:
             return _resolve_doc_pipeline_fingerprint(tenant_id=tenant_id, document_ids=document_ids)
         if dataset_id is not None:
             return _resolve_dataset_pipeline_fingerprint(tenant_id=tenant_id, dataset_ids=[dataset_id])
@@ -527,7 +521,7 @@ def _build_kg_search_cache_key_if_enabled(
     if not cache_enabled or ttl_sec <= 0 or max_entries <= 0:
         return None
     eff_tenant_id = tenant_id or settings.DEFAULT_TENANT_ID
-    eff_doc_ids = [str(doc_id) for doc_id in (document_ids or []) if doc_id is not None]
+    eff_doc_ids = None if document_ids is None else [str(doc_id) for doc_id in document_ids]
     pipeline_fp = _resolve_search_pipeline_fingerprint(
         tenant_id=eff_tenant_id,
         document_ids=eff_doc_ids,
@@ -537,11 +531,11 @@ def _build_kg_search_cache_key_if_enabled(
         return None
     return build_kg_search_cache_key(
         tenant_id=str(eff_tenant_id),
-        account_id=str(account_id or ""),
+        account_id=account_id,
         dataset_id=(str(dataset_id) if dataset_id is not None else None),
         document_ids=eff_doc_ids,
         pipeline_fingerprint=pipeline_fp,
-        query=str(query or ""),
+        query=query,
         search_config=_kg_search_cache_config(resolved_mode=resolved_mode),
     )
 
@@ -557,7 +551,7 @@ def _annotate_kg_search_result(
     resolved_mode: str,
     mode_diag: dict[str, Any],
 ) -> dict[str, Any]:
-    confidence = str(mode_diag.get("confidence") or "")
+    confidence = mode_diag["confidence"]
     reason_codes = _mode_reason_codes(mode_diag)
     result["query_mode"] = {
         "requested": str(requested_mode),
@@ -667,7 +661,7 @@ async def kg_search(
         account_id=account_id,
         query_mode=resolved_mode,
         query_mode_reason_codes=list(mode_diag.get("reason_codes") or []),
-        query_mode_confidence=str(mode_diag.get("confidence") or ""),
+        query_mode_confidence=mode_diag["confidence"],
     )
     if isinstance(result, dict):
         result = _annotate_kg_search_result(

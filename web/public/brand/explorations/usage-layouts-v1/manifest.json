@@ -1,0 +1,16 @@
+{
+  "schemaVersion":1,
+  "lang":"zh",
+  "project":"Ragvia · 用量与配额布局对比",
+  "round":"用量 01",
+  "nativeViewport":"1600x1000",
+  "brief":"固定雾灰／墨色、Manrope 与 Noto Sans SC。五版共用排版数据，比较累计用量、数据集归因与独立配额的组织方式；接口没有货币金额、每日趋势或配额编辑能力。本轮为静态首屏，选定后应用正式页。当前真实页面为零用量、配额未启用，另作参照。",
+  "candidates":[
+    {"id":"a-overview","name":"A · 用量总览","source":"a-overview.html","concept":"总量、配额和数据集归因连续排列，先看整体再看消耗来源。","typography":"Manrope / Noto Sans SC；20px 标题，14px 正文，13px 操作，12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["连续总量条","独立配额带","数据集宽表"]},
+    {"id":"b-ledger","name":"B · 资源账本","source":"b-ledger.html","concept":"逐项核对资源数量、单位、统计口径与对应限制。","typography":"Manrope / Noto Sans SC；20px 标题，14px 正文，13px 操作，12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["资源条目账本","单位与口径对照","相关配额侧栏"]},
+    {"id":"c-quota","name":"C · 配额优先","source":"c-quota.html","concept":"先确认当前资源限制与剩余额度，再查看累计用量和归因。","typography":"Manrope / Noto Sans SC；20px 标题，14px 正文，13px 操作，12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["24小时额度仪表","连续资源限制","独立7天统计"]},
+    {"id":"d-attribution","name":"D · 归因工作台","source":"d-attribution.html","concept":"从数据集目录定位消耗，核对当前数据集的模型、向量和耗时构成。","typography":"Manrope / Noto Sans SC；20px 标题，14px 正文，13px 操作，12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["数据集对象目录","单个数据集归因","租户配额共享"]},
+    {"id":"e-sections","name":"E · 分区工作区","source":"e-sections.html","concept":"按用量、归因和配额分类，一次专注一个查看任务。","typography":"Manrope / Noto Sans SC；20px 标题，14px 正文，13px 操作，12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["功能分区目录","宽主工作区","按任务查看"]},
+    {"id":"current","name":"当前页面 · 参照","source":"current.png","kind":"image","baseline":true,"nativeViewport":"1280x720","concept":"真实运行页面的零用量及未启用配额状态，仅比较结构与信息层级。","traits":["真实页面","原有卡片结构","1280×720 基线"]}
+  ]
+}

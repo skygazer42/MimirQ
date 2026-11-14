@@ -21,22 +21,14 @@ from app.rag.chunking.utils.heading_parsing import (
     parse_markdown_hash_heading,
     strip_numbered_heading_prefix,
 )
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
 class _Heading:
     start: int
-    end: int
     title: str
     key: str
-    level: int
 
 
 @dataclass(frozen=True)
@@ -74,31 +66,18 @@ for k, vals in _SECTION_SYNONYMS.items():
         _TITLE_TO_KEY[normalize_spaces_lower(v)] = k
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
-
-
-def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
-    s = (plain or "").strip()
+def _parse_heading_line(plain: str) -> tuple[str, str] | None:
+    s = (plain).strip()
     if not s:
         return None
 
     parsed = parse_markdown_hash_heading(s)
     if parsed is not None:
-        level, title = parsed
-        title = str(title).rstrip(":：").strip()
+        _level, title = parsed
+        title = title.rstrip(":：").strip()
         key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
-            return title, key, int(level)
+            return title, key
         return None
 
     s2 = strip_numbered_heading_prefix(s).strip()
@@ -107,7 +86,7 @@ def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
         return None
     key = _TITLE_TO_KEY.get(normalize_spaces_lower(s2))
     if key:
-        return s2, key, 2
+        return s2, key
     return None
 
 
@@ -117,17 +96,10 @@ def _iter_headings(text: str) -> list[_Heading]:
         parsed = _parse_heading_line(ln.plain)
         if not parsed:
             continue
-        title, key, level = parsed
-        headings.append(_Heading(start=ln.start, end=ln.end, title=title, key=key, level=level))
+        title, key = parsed
+        headings.append(_Heading(start=ln.start, title=title, key=key))
 
-    deduped: list[_Heading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[_Heading]) -> list[_Section]:
@@ -151,14 +123,14 @@ def looks_like_postmortem_report(text: str) -> bool:
     keys = {h.key for h in headings}
     if len(keys) >= 5:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(keys) >= 3 and any(k in lowered for k in ("postmortem", "root cause", "rca", "incident", "根因", "复盘")):
         return True
     return False
 
 
 class PostmortemReportChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -174,43 +146,41 @@ class PostmortemReportChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current: _Heading | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():
                     continue
 
-                if section.heading is not None:
-                    current = section.heading
+                heading = section.heading
 
                 split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
                 for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
+                    local_start = sd.metadata.pop("start_index")
+                    abs_start = section.start + local_start
                     abs_end = abs_start + len(sd.page_content)
 
                     meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
+                    meta.update(sd.metadata)
                     meta["chunk_strategy"] = "postmortem_report"
                     meta["start_char"] = abs_start
                     meta["end_char"] = abs_end
                     meta.setdefault("doc_type_kwd", "postmortem")
-                    if current is not None:
-                        meta["postmortem_section"] = current.key
-                        meta["postmortem_section_title"] = current.title
+                    if heading is not None:
+                        meta["postmortem_section"] = heading.key
+                        meta["postmortem_section_title"] = heading.title
 
                     out.append(Document(page_content=sd.page_content, metadata=meta))
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

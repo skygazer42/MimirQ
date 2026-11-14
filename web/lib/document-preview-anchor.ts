@@ -142,7 +142,7 @@ function findSearchTextRange(rawText: string, searchText: string | undefined): T
 
 function findHighlightRangeInChunk(
   chunk: PositionTaggedChunkLike | null | undefined,
-  range: HighlightRangeLike | null | undefined
+  range: HighlightRangeLike | null | undefined,
 ): TextRange | null {
   const start = sanitizeFiniteNumber(range?.start)
   const end = sanitizeFiniteNumber(range?.end)
@@ -161,7 +161,9 @@ function rangeDistance(a: TextRange, b: TextRange): number {
   return a.start - b.end
 }
 
-function positionToBbox(position: ParsingPosition | undefined): { bbox: DocumentPreviewBbox; pageNumber: number } | null {
+function positionToBbox(
+  position: ParsingPosition | undefined,
+): { bbox: DocumentPreviewBbox; pageNumber: number } | null {
   if (!position) return null
   const pageIndex = position.pages.find((page) => Number.isFinite(page) && page >= 0)
   if (pageIndex == null) return null
@@ -249,7 +251,7 @@ function collectPositionTaggedTexts(chunk: PositionTaggedChunkLike | null | unde
 }
 
 export function sanitizeDocumentPreviewAnchor(
-  anchor: Partial<DocumentPreviewAnchor> | null | undefined
+  anchor: Partial<DocumentPreviewAnchor> | null | undefined,
 ): DocumentPreviewAnchor | null {
   if (!anchor) return null
 
@@ -268,7 +270,7 @@ export function sanitizeDocumentPreviewAnchor(
 }
 
 export function getDocumentPreviewAnchorFromCitation<T extends CitationLikePreviewAnchor>(
-  citation: T | null | undefined
+  citation: T | null | undefined,
 ): DocumentPreviewAnchor | null {
   if (!citation) return null
 
@@ -287,7 +289,7 @@ export function getDocumentPreviewAnchorFromCitation<T extends CitationLikePrevi
 export function recoverDocumentPreviewAnchorFromChunkPositions(
   anchor: Partial<DocumentPreviewAnchor> | null | undefined,
   chunk: PositionTaggedChunkLike | null | undefined,
-  range?: HighlightRangeLike | null
+  range?: HighlightRangeLike | null,
 ): DocumentPreviewAnchor | null {
   const sanitizedAnchor = sanitizeDocumentPreviewAnchor(anchor)
   if (sanitizedAnchor?.bbox) return sanitizedAnchor
@@ -311,7 +313,7 @@ export function recoverDocumentPreviewAnchorFromChunkPositions(
 }
 
 export function buildDocumentPreviewBboxOverlay(
-  anchor: Partial<DocumentPreviewAnchor> | null | undefined
+  anchor: Partial<DocumentPreviewAnchor> | null | undefined,
 ): DocumentPreviewBboxOverlay | null {
   const sanitizedAnchor = sanitizeDocumentPreviewAnchor(anchor)
   const bbox = sanitizedAnchor?.bbox

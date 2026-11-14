@@ -30,11 +30,11 @@ _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 def _stable_markdown_node_key(*, level: str, start: int, end: int, text: str, parent_key: str | None = None) -> str:
     seed = "|".join(
         [
-            str(level or ""),
+            level,
             str(parent_key or ""),
             str(int(start)),
             str(int(end)),
-            stable_hash(str(text or ""), length=None),
+            stable_hash(text, length=None),
         ]
     )
     return f"md:{stable_hash(seed, length=32)}"
@@ -49,13 +49,13 @@ def apply_sibling_hierarchy_links(
     next_field: str = "hierarchy_next_sibling_key",
     overwrite: bool = False,
 ) -> None:
-    keys = [str(item.get(key_field) or "").strip() or None for item in items]
+    keys = [item.get(key_field) for item in items]
     total = len(items)
     for idx, item in enumerate(items):
         prev_key = keys[idx - 1] if idx > 0 else None
         next_key = keys[idx + 1] if idx < (total - 1) else None
         if overwrite or item.get(index_field) is None:
-            item[index_field] = int(idx)
+            item[index_field] = idx
         if overwrite or item.get(prev_field) is None:
             item[prev_field] = prev_key
         if overwrite or item.get(next_field) is None:
@@ -77,14 +77,14 @@ def apply_sequence_hierarchy_metadata(
             continue
         chunk_index = meta.get("chunk_index")
         try:
-            chunk_index_int = int(chunk_index) if chunk_index is not None else int(idx)
+            chunk_index_int = int(chunk_index) if chunk_index is not None else idx
         except Exception:
-            chunk_index_int = int(idx)
+            chunk_index_int = idx
 
         node_key = str(
             meta.get("hierarchy_node_key") or meta.get("chunk_key") or f"{document_id}:{chunk_index_int}"
         ).strip()
-        parent_key = str(meta.get("hierarchy_parent_key") or meta.get("parent_id") or "").strip() or None
+        parent_key = meta.get("hierarchy_parent_key", meta.get("parent_id"))
 
         meta.setdefault("hierarchy_basis", str(basis or "chunk_sequence"))
         meta.setdefault("hierarchy_level", str(level or "chunk"))
@@ -212,7 +212,7 @@ def _split_sentences(paragraph: str, base_offset: int) -> list[tuple[str, int, i
     return sentences
 
 
-def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict]]:
+def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict[str, Any]]]:
     """
     Perform hierarchical chunking on markdown text.
 
@@ -230,11 +230,11 @@ def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict]]:
         - tokens_est: Estimated token count
         - parent_id: (sentences only) Reference to parent paragraph
     """
-    text = markdown or ""
+    text = markdown
     paragraphs = _split_paragraphs(text)
 
-    paragraph_chunks: list[dict] = []
-    sentence_chunks: list[dict] = []
+    paragraph_chunks: list[dict[str, Any]] = []
+    sentence_chunks: list[dict[str, Any]] = []
 
     for p_idx, (p_text, start, end) in enumerate(paragraphs):
         if not p_text.strip():

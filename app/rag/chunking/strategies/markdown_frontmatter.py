@@ -6,33 +6,24 @@ The chunker keeps the frontmatter as its own chunk(s), then chunks the body
 using markdown-friendly separators while preserving character offsets.
 """
 
-
-from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
-
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 _FRONTMATTER_DELIM = "---"
 
 
 def _is_frontmatter_end_delim(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     return s in {"---", "..."}
 
 
 def _looks_like_yaml_kv_line(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or s.startswith("#") or ":" not in s:
         return False
     key, rest = s.split(":", 1)
@@ -44,39 +35,23 @@ def _looks_like_yaml_kv_line(line: str) -> bool:
     return bool(rest.strip())
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
-
-
 def _find_frontmatter(text: str) -> tuple[int, int] | None:
     if not text:
         return None
     lines = _iter_lines(text)
-    if not lines:
-        return None
 
     first_plain = lines[0].plain.lstrip("\ufeff").strip()
     if first_plain != _FRONTMATTER_DELIM:
         return None
 
     for i in range(1, len(lines)):
-        plain = lines[i].plain.strip()
-        if _is_frontmatter_end_delim(plain):
+        if _is_frontmatter_end_delim(lines[i].plain):
             return 0, lines[i].end
     return None
 
 
 def _extract_title(frontmatter: str) -> str | None:
-    for ln in (frontmatter or "").splitlines():
+    for ln in (frontmatter).splitlines():
         s = ln.strip()
         if not s or ":" not in s:
             continue
@@ -93,7 +68,7 @@ def looks_like_markdown_frontmatter(text: str) -> bool:
     if not fm:
         return False
     start, end = fm
-    block = (text or "")[start:end]
+    block = (text)[start:end]
     if len(block) > 30000:
         return False
     # Require at least one key-value line inside the block.
@@ -104,7 +79,7 @@ def looks_like_markdown_frontmatter(text: str) -> bool:
 
 
 class MarkdownFrontmatterChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -159,7 +134,7 @@ class MarkdownFrontmatterChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -182,7 +157,7 @@ class MarkdownFrontmatterChunker(BaseChunker):
             title = _extract_title(fm_text)
             frontmatter_meta: dict[str, Any] = {
                 "markdown_frontmatter": True,
-                "frontmatter_end_char": int(fm_end),
+                "frontmatter_end_char": fm_end,
             }
             if title:
                 frontmatter_meta["frontmatter_title"] = title
@@ -200,7 +175,7 @@ class MarkdownFrontmatterChunker(BaseChunker):
             if body_text.strip():
                 body_meta: dict[str, Any] = {
                     "frontmatter_present": True,
-                    "frontmatter_end_char": int(fm_end),
+                    "frontmatter_end_char": fm_end,
                 }
                 if title:
                     body_meta["frontmatter_title"] = title

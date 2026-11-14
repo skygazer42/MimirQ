@@ -4,19 +4,50 @@ Audit log service.
 Best-effort, fail-open: logging must never break product flows.
 """
 
-
 import hashlib
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.models.audit_log import AuditLog
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+def apply_audit_log_filters(
+    q: Query,
+    *,
+    actor_id: str | None = None,
+    action: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    request_id: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> Query:
+    if actor_id:
+        q = q.filter(AuditLog.actor_id == actor_id)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    if resource_type:
+        q = q.filter(AuditLog.resource_type == resource_type)
+    if resource_id:
+        q = q.filter(AuditLog.resource_id == resource_id)
+    if request_id:
+        q = q.filter(AuditLog.request_id == request_id)
+    if since is not None:
+        q = q.filter(AuditLog.created_at >= since)
+    if until is not None:
+        q = q.filter(AuditLog.created_at <= until)
+    return q
 
 
 def _hash_text(text: str) -> str:
     """Stable short hash for potentially sensitive strings (PII-minimal)."""
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = text.encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -44,18 +75,23 @@ def audit_log_event(
         item = AuditLog(
             tenant_id=tenant_id,
             actor_id=str(actor_id) if actor_id is not None else None,
-            action=str(action or "")[:128],
-            resource_type=str(resource_type)[:64] if resource_type else None,
-            resource_id=str(resource_id)[:255] if resource_id else None,
-            request_id=str(request_id)[:128] if request_id else None,
-            ip=str(ip)[:64] if ip else None,
-            user_agent=str(user_agent)[:512] if user_agent else None,
-            details=dict(details or {}),
+            action=action[:128],
+            resource_type=str(resource_type)[:64] if resource_type is not None else None,
+            resource_id=str(resource_id)[:255] if resource_id is not None else None,
+            request_id=str(request_id)[:128] if request_id is not None else None,
+            ip=str(ip)[:64] if ip is not None else None,
+            user_agent=str(user_agent)[:512] if user_agent is not None else None,
+            details=dict(details) if details is not None else {},
         )
         db.add(item)
     except Exception:
         # Never block product flows due to audit logging.
-        return
+        logger.warning(
+            "Audit event could not be queued: action=%s tenant_id=%s",
+            action,
+            tenant_id,
+            exc_info=True,
+        )
 
 
 def build_chat_audit_details(
@@ -66,12 +102,13 @@ def build_chat_audit_details(
     cache_hit: bool | None = None,
 ) -> dict[str, Any]:
     """Small, PII-minimal chat detail payload."""
+    question = question.strip()
     out: dict[str, Any] = {
-        "question_hash": _hash_text((question or "").strip()),
-        "question_chars": len((question or "").strip()),
-        "document_count": int(document_count or 0),
+        "question_hash": _hash_text(question),
+        "question_chars": len(question),
+        "document_count": document_count,
         "dataset_id": str(dataset_id) if dataset_id else None,
     }
     if cache_hit is not None:
-        out["cache_hit"] = bool(cache_hit)
+        out["cache_hit"] = cache_hit
     return out

@@ -2,21 +2,11 @@ import type { ChunkPreviewResponse } from '@/types'
 
 import { fnv1a32 } from './review-signals'
 import { toChunkPreviewExport } from './export'
+import { percentile } from './stats'
 
 function safeNum(value: unknown): number | null {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.trunc(value)))
-}
-
-function percentile(sorted: number[], p: number) {
-  if (sorted.length === 0) return 0
-  const pp = Math.min(100, Math.max(0, p))
-  const idx = Math.floor((pp / 100) * (sorted.length - 1))
-  return sorted[clampInt(idx, 0, sorted.length - 1)] ?? 0
 }
 
 function buildMultiset(chunks: Array<{ index: number; content?: string }>) {
@@ -115,7 +105,10 @@ function scoreEvidenceSimilarity(a: string, b: string): number {
   return (2 * overlap) / (aGrams.size + bGrams.size)
 }
 
-function buildEvidenceSegments(sourceExample: string, referenceExample: string | null): SemanticEvidenceHighlightSegment[] {
+function buildEvidenceSegments(
+  sourceExample: string,
+  referenceExample: string | null,
+): SemanticEvidenceHighlightSegment[] {
   const source = normalizeEvidenceText(sourceExample)
   const reference = normalizeEvidenceText(referenceExample)
 
@@ -159,7 +152,7 @@ function buildEvidenceSegments(sourceExample: string, referenceExample: string |
 
 function buildSemanticEvidenceItems(
   source: ChunkPreviewDiffSummary['examplesAdded'],
-  opposite: ChunkPreviewDiffSummary['examplesRemoved']
+  opposite: ChunkPreviewDiffSummary['examplesRemoved'],
 ): SemanticEvidenceHighlightItem[] {
   return source.map((item) => {
     let bestReference: string | null = null
@@ -287,7 +280,7 @@ export function computeChunkPreviewDiff(a: ChunkPreviewResponse, b: ChunkPreview
 }
 
 export function buildSemanticEvidenceHighlights(
-  summary: Pick<ChunkPreviewDiffSummary, 'examplesAdded' | 'examplesRemoved'>
+  summary: Pick<ChunkPreviewDiffSummary, 'examplesAdded' | 'examplesRemoved'>,
 ): SemanticEvidenceHighlights {
   return {
     added: buildSemanticEvidenceItems(summary.examplesAdded || [], summary.examplesRemoved || []),
@@ -298,7 +291,7 @@ export function buildSemanticEvidenceHighlights(
 export function chunkPreviewDiffToExport(
   baseline: ChunkPreviewResponse,
   current: ChunkPreviewResponse,
-  options?: { baseline_cache_key?: string; current_cache_key?: string }
+  options?: { baseline_cache_key?: string; current_cache_key?: string },
 ) {
   return {
     schema: 'mimirq.chunk_preview_diff.v1',

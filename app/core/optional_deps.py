@@ -7,7 +7,6 @@ Enterprise baseline:
 - When a feature is enabled/selected, use require_dependency() to fail-fast with a clear hint.
 """
 
-
 import importlib
 import logging
 from types import ModuleType
@@ -16,7 +15,7 @@ logger = logging.getLogger("mimirq.optional_deps")
 
 
 def _remediation_hint(module: str, *, pip_name: str | None = None, extra: str | None = None) -> str:
-    pkg = (pip_name or module).strip() or module
+    pkg = module if pip_name is None else pip_name
     if extra:
         return f"pip install '{pkg}[{extra}]'"
     return f"pip install {pkg}"
@@ -42,8 +41,8 @@ def optional_import(
         remediation = _remediation_hint(module, pip_name=pip_name, extra=extra)
         logger.warning(
             "Optional dependency missing; feature degraded: feature=%s dependency=%s reason=%s remediation=%s",
-            str(feature or "unknown"),
-            str(module or "unknown"),
+            feature,
+            module,
             "dependency_missing",
             remediation,
         )

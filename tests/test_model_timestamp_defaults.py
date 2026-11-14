@@ -49,9 +49,7 @@ def test_tenant_membership_is_unique_per_tenant_and_user() -> None:
 def test_tenant_membership_migration_prefers_non_null_active_current_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migration = runpy.run_path(
-        str(Path(__file__).parents[1] / "alembic/versions/0020_unique_tenant_membership.py")
-    )
+    migration = runpy.run_path(str(Path(__file__).parents[1] / "alembic/versions/0020_unique_tenant_membership.py"))
     executed_sql: list[str] = []
 
     class Operations:

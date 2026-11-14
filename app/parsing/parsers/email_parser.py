@@ -10,14 +10,13 @@ Notes:
 - Attachments are not extracted in Phase 1 (future work).
 """
 
-
 import re
 from email import policy
 from email.message import Message
 from email.parser import BytesParser
 from html import unescape
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from langchain_core.documents import Document
 
@@ -34,8 +33,22 @@ _MIME_TEXT_PLAIN = "text/plain"
 _MIME_TEXT_HTML = "text/html"
 
 
+class _EmailBodyMetadata(TypedDict):
+    body_content_type: str
+    warnings: list[str]
+
+
+class _ParsedEmail(_EmailBodyMetadata):
+    subject: str
+    sender: str
+    to: str
+    cc: str
+    date: str
+    body: str
+
+
 def _collapse_ws(text: str) -> str:
-    return _RE_WS.sub(" ", (text or "").strip())
+    return _RE_WS.sub(" ", (text).strip())
 
 
 def _strip_html(html_text: str) -> str:
@@ -43,7 +56,7 @@ def _strip_html(html_text: str) -> str:
     Best-effort HTML -> text without optional deps.
     Keeps this intentionally conservative to avoid mangling content.
     """
-    raw = str(html_text or "")
+    raw = html_text
     if not raw.strip():
         return ""
     raw = _RE_SCRIPT_STYLE.sub(" ", raw)
@@ -81,7 +94,7 @@ def _is_multipart_part(part: Message) -> bool:
 
 def _part_content_type(part: Message) -> str:
     try:
-        return str(part.get_content_type() or "").lower()
+        return part.get_content_type().lower()
     except Exception:
         return ""
 
@@ -134,7 +147,7 @@ def _select_body_content(plain_parts: list[str], html_parts: list[str]) -> tuple
     return "", "none"
 
 
-def _parse_eml_message(file_path: Path) -> tuple[Message, dict[str, Any]]:
+def _parse_eml_message(file_path: Path) -> _ParsedEmail:
     raw = file_path.read_bytes()
     try:
         msg = BytesParser(policy=policy.default).parsebytes(raw)
@@ -142,15 +155,15 @@ def _parse_eml_message(file_path: Path) -> tuple[Message, dict[str, Any]]:
         raise RuntimeError(f"Failed to parse .eml: {exc.__class__.__name__}: {str(exc)[:200]}") from exc
 
     body, body_meta = _extract_body(msg)
-    return msg, {
+    return {
         "subject": _safe_header(msg, "Subject") or "Email",
         "sender": _safe_header(msg, "From"),
         "to": _safe_header(msg, "To"),
         "cc": _safe_header(msg, "Cc"),
         "date": _safe_header(msg, "Date"),
         "body": body,
-        "body_content_type": str(body_meta.get("body_content_type") or "none"),
-        "warnings": list(body_meta.get("warnings") or []),
+        "body_content_type": body_meta["body_content_type"],
+        "warnings": list(body_meta["warnings"]),
     }
 
 
@@ -165,7 +178,7 @@ def _extract_msg_body(msg: Any) -> tuple[str, str]:
     return "", "none"
 
 
-def _parse_msg_message(file_path: Path) -> dict[str, Any]:
+def _parse_msg_message(file_path: Path) -> _ParsedEmail:
     extract_msg = require_dependency(
         "extract_msg",
         feature="email_msg_parser",
@@ -216,7 +229,7 @@ def _build_email_markdown(*, subject: str, sender: str, to: str, cc: str, date: 
     if body.strip():
         md_parts.append("---")
         md_parts.append(body.strip())
-    return "\n\n".join([part for part in md_parts if part.strip()]).strip() + "\n"
+    return "\n\n".join(md_parts).strip() + "\n"
 
 
 def _build_email_metadata(
@@ -233,11 +246,11 @@ def _build_email_metadata(
         "parser_backend": "email",
         "email_subject": subject[:200],
         "email_body_content_type": body_content_type,
-        "email_warnings": list(warnings or []),
+        "email_warnings": list(warnings),
     }
 
 
-def _extract_body(msg: Message) -> tuple[str, dict[str, Any]]:
+def _extract_body(msg: Message) -> tuple[str, _EmailBodyMetadata]:
     """
     Extract (body_text, meta).
 
@@ -247,13 +260,12 @@ def _extract_body(msg: Message) -> tuple[str, dict[str, Any]]:
     """
     plain_parts, html_parts, warnings = _collect_body_parts(msg)
     body, used = _select_body_content(plain_parts, html_parts)
-    meta = {"body_content_type": used, "warnings": warnings[:20]}
+    meta: _EmailBodyMetadata = {"body_content_type": used, "warnings": warnings[:20]}
     return body, meta
 
 
 class EmailParser:
     def parse(self, file_path: Path, **kwargs: Any) -> list[Document]:
-        _ = kwargs
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -262,36 +274,30 @@ class EmailParser:
             raise ValueError(f"EmailParser supports only .eml/.msg, got: {ext}")
 
         if ext == ".eml":
-            _, parsed = _parse_eml_message(file_path)
+            parsed = _parse_eml_message(file_path)
         else:
             parsed = _parse_msg_message(file_path)
 
-        subject = str(parsed["subject"])
-        sender = str(parsed["sender"])
-        to = str(parsed["to"])
-        cc = str(parsed["cc"])
-        date = str(parsed["date"])
-        body = str(parsed["body"])
-        body_content_type = str(parsed["body_content_type"])
-        warnings = list(parsed["warnings"])
+        subject = parsed["subject"]
+        body = parsed["body"]
 
         if not body.strip():
             logger.info("[email] parsed %s but body is empty", file_path.name)
 
         markdown = _build_email_markdown(
             subject=subject,
-            sender=sender,
-            to=to,
-            cc=cc,
-            date=date,
+            sender=parsed["sender"],
+            to=parsed["to"],
+            cc=parsed["cc"],
+            date=parsed["date"],
             body=body,
         )
         metadata = _build_email_metadata(
             file_path=file_path,
             ext=ext,
             subject=subject,
-            body_content_type=body_content_type,
-            warnings=warnings,
+            body_content_type=parsed["body_content_type"],
+            warnings=parsed["warnings"],
         )
 
         return [Document(page_content=markdown, metadata=metadata)]

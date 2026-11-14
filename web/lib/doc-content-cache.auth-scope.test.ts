@@ -267,7 +267,7 @@ describe('document content cache auth scope writes', () => {
         id: 'shared-document-id',
         markdownContent: 'tenant-a-secret',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     await vi.waitFor(() => expect(requests).toHaveLength(1))
 
@@ -298,7 +298,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-a-secret',
         originalMarkdownContent: 'tenant-a-secret',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     authMock.scope = 'tenant-b:user-b'
     await saveDocContentToCache(
@@ -307,7 +307,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-b-safe',
         originalMarkdownContent: 'tenant-b-safe',
       },
-      'tenant-b:user-b'
+      'tenant-b:user-b',
     )
     authMock.scope = 'tenant-a:user-a'
     await saveDocSourceToCache(
@@ -315,7 +315,7 @@ describe('document content cache auth scope writes', () => {
         id: 'shared-document-id',
         file: new File(['a'], 'tenant-a.md', { type: 'text/markdown' }),
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     authMock.scope = 'tenant-b:user-b'
     await saveDocSourceToCache(
@@ -323,7 +323,7 @@ describe('document content cache auth scope writes', () => {
         id: 'shared-document-id',
         file: new File(['b'], 'tenant-b.md', { type: 'text/markdown' }),
       },
-      'tenant-b:user-b'
+      'tenant-b:user-b',
     )
 
     await expect(clearDocCachesForScope('tenant-a:user-a')).resolves.toMatchObject({
@@ -347,12 +347,8 @@ describe('document content cache auth scope writes', () => {
     const harness = createIndexedDbHarness()
     vi.stubGlobal('indexedDB', harness.indexedDB)
 
-    const {
-      clearDocCachesForScope,
-      getDocContentFromCache,
-      invalidateDocCacheScopeWrites,
-      saveDocContentToCache,
-    } = await import('./doc-content-cache')
+    const { clearDocCachesForScope, getDocContentFromCache, invalidateDocCacheScopeWrites, saveDocContentToCache } =
+      await import('./doc-content-cache')
 
     authMock.scope = 'tenant-a:user-a'
     harness.deferNextOpen()
@@ -362,7 +358,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-a-secret',
         originalMarkdownContent: 'tenant-a-secret',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     await Promise.resolve()
     await Promise.resolve()
@@ -377,7 +373,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-b-safe',
         originalMarkdownContent: 'tenant-b-safe',
       },
-      'tenant-b:user-b'
+      'tenant-b:user-b',
     )
 
     harness.flushPendingOpens()
@@ -395,11 +391,8 @@ describe('document content cache auth scope writes', () => {
     const harness = createIndexedDbHarness()
     vi.stubGlobal('indexedDB', harness.indexedDB)
 
-    const {
-      getDocContentFromCache,
-      invalidateDocCacheScopeWrites,
-      saveDocContentToCache,
-    } = await import('./doc-content-cache')
+    const { getDocContentFromCache, invalidateDocCacheScopeWrites, saveDocContentToCache } =
+      await import('./doc-content-cache')
 
     authMock.scope = 'tenant-a:user-a'
     harness.deferNextWrite()
@@ -409,7 +402,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-a-secret',
         originalMarkdownContent: 'tenant-a-secret',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     await Promise.resolve()
     await Promise.resolve()
@@ -426,11 +419,8 @@ describe('document content cache auth scope writes', () => {
     const harness = createIndexedDbHarness()
     vi.stubGlobal('indexedDB', harness.indexedDB)
 
-    const {
-      getDocContentFromCache,
-      invalidateDocCacheScopeWrites,
-      saveDocContentToCache,
-    } = await import('./doc-content-cache')
+    const { getDocContentFromCache, invalidateDocCacheScopeWrites, saveDocContentToCache } =
+      await import('./doc-content-cache')
 
     authMock.scope = 'tenant-a:user-a'
     harness.deferNextWriteCompletion()
@@ -440,7 +430,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-a-secret',
         originalMarkdownContent: 'tenant-a-secret',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     await Promise.resolve()
     await Promise.resolve()
@@ -466,7 +456,7 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-a-secret',
         originalMarkdownContent: 'tenant-a-secret',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
     await Promise.resolve()
     await Promise.resolve()
@@ -478,9 +468,7 @@ describe('document content cache auth scope writes', () => {
     harness.flushPendingWrites()
     await staleWrite
 
-    await expect(
-      reloadedModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')
-    ).resolves.toBeNull()
+    await expect(reloadedModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')).resolves.toBeNull()
     expect(harness.listStoreKeys('doc_contents')).toEqual([])
   })
 
@@ -498,12 +486,10 @@ describe('document content cache auth scope writes', () => {
         markdownContent: 'tenant-a-safe',
         originalMarkdownContent: 'tenant-a-safe',
       },
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
 
-    await expect(
-      initialModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')
-    ).resolves.toMatchObject({
+    await expect(initialModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')).resolves.toMatchObject({
       markdownContent: 'tenant-a-safe',
       originalMarkdownContent: 'tenant-a-safe',
     })
@@ -511,11 +497,11 @@ describe('document content cache auth scope writes', () => {
     vi.resetModules()
     const reloadedModule = await import('./doc-content-cache')
 
-    await expect(
-      reloadedModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')
-    ).resolves.toMatchObject({
-      markdownContent: 'tenant-a-safe',
-      originalMarkdownContent: 'tenant-a-safe',
-    })
+    await expect(reloadedModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')).resolves.toMatchObject(
+      {
+        markdownContent: 'tenant-a-safe',
+        originalMarkdownContent: 'tenant-a-safe',
+      },
+    )
   })
 })

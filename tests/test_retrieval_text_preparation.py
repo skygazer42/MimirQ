@@ -1,4 +1,3 @@
-
 from langchain_core.documents import Document
 
 from app.rag.retrieval.hybrid.text_preparation import (
@@ -27,9 +26,7 @@ def test_prepare_retrieval_document_appends_unique_questions_and_preserves_displ
     )
 
     assert prepared.page_content == (
-        "[title] guide original body\n\nQuestions:\n"
-        "- How do I install MimirQ?\n"
-        "- Where is the config file?"
+        "[title] guide original body\n\nQuestions:\n- How do I install MimirQ?\n- Where is the config file?"
     )
     assert prepared.metadata["_retrieval_display_content"] == "Original Body"
     assert prepared.metadata["_retrieval_questions_channel_applied"] is True
@@ -52,13 +49,7 @@ def test_rerank_text_from_result_adds_deduped_metadata_header_lines() -> None:
         }
     )
 
-    assert text == (
-        "Metadata:\n"
-        "- tags: setup, linux, setup\n"
-        "- title: Install Guide\n"
-        "- locale: en-US\n\n"
-        "Chunk body"
-    )
+    assert text == ("Metadata:\n- tags: setup, linux, setup\n- title: Install Guide\n- locale: en-US\n\nChunk body")
 
 
 def test_question_channel_overlap_score_uses_normalized_unique_questions() -> None:

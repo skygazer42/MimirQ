@@ -9,8 +9,9 @@ pipelines.
 import json
 import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 from langchain_core.documents import Document
 
@@ -31,7 +32,7 @@ _CITATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical citation fallback failur
 
 
 def _collapse_ws(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip())
+    return re.sub(r"\s+", " ", (text).strip())
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -44,18 +45,18 @@ def _coerce_int(value: Any) -> int | None:
 
 
 def _coerce_bbox(value: Any) -> dict[str, int] | None:
+    values: Iterable[Any]
     if isinstance(value, dict):
-        x0 = _coerce_int(value.get("x0"))
-        y0 = _coerce_int(value.get("y0"))
-        x1 = _coerce_int(value.get("x1"))
-        y1 = _coerce_int(value.get("y1"))
-        if None not in {x0, y0, x1, y1} and int(x1) > int(x0) and int(y1) > int(y0):
-            return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
+        values = (value.get(key) for key in ("x0", "y0", "x1", "y1"))
+    elif isinstance(value, (list, tuple)) and len(value) == 4:
+        values = value
+    else:
         return None
-    if isinstance(value, (list, tuple)) and len(value) == 4:
-        x0, y0, x1, y1 = (_coerce_int(part) for part in value)
-        if None not in {x0, y0, x1, y1} and int(x1) > int(x0) and int(y1) > int(y0):
-            return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
+    x0, y0, x1, y1 = (_coerce_int(part) for part in values)
+    if x0 is None or y0 is None or x1 is None or y1 is None:
+        return None
+    if x1 > x0 and y1 > y0:
+        return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
     return None
 
 
@@ -76,7 +77,7 @@ def _extract_citation_bbox(meta: dict[str, Any]) -> dict[str, int] | None:
 
 
 def _parse_position_tag_pages(raw_pages: str) -> int | None:
-    first = str(raw_pages or "").split("-", 1)[0].strip()
+    first = raw_pages.split("-", 1)[0].strip()
     page = _coerce_int(first)
     return page if page is not None and page > 0 else None
 
@@ -138,7 +139,7 @@ def _extract_position_tag_bbox(
     evidence_start: int | None = None,
     evidence_end: int | None = None,
 ) -> tuple[dict[str, int], int] | None:
-    raw = str(text or "")
+    raw = text
     if not raw:
         return None
 
@@ -175,7 +176,7 @@ def _iter_position_tag_strings(meta: dict[str, Any]) -> list[str]:
             continue
         raw_tags = attrs.get("position_tags")
         if isinstance(raw_tags, list):
-            values.extend(str(item or "") for item in raw_tags)
+            values.extend(item for item in raw_tags if isinstance(item, str))
         raw_tag = attrs.get("position_tag")
         if isinstance(raw_tag, str) and raw_tag.strip():
             values.append(raw_tag)
@@ -192,7 +193,11 @@ def _extract_citation_bbox_with_page(
 ) -> tuple[dict[str, int] | None, int | None, bool]:
     bbox = _extract_citation_bbox(meta)
     if bbox is not None:
-        return bbox, _extract_bbox_page_number(meta, page_number), False
+        return (
+            bbox,
+            _extract_page_number(meta, page_keys=("element_page", "page", "page_number"), fallback=page_number),
+            False,
+        )
 
     found = _extract_position_tag_bbox(text, evidence_start=evidence_start, evidence_end=evidence_end)
     if found is not None:
@@ -208,35 +213,29 @@ def _extract_citation_bbox_with_page(
     return None, None, False
 
 
-def _extract_page_number(meta: dict[str, Any]) -> int | None:
-    for key in ("page", "page_number", "element_page"):
+def _extract_page_number(
+    meta: dict[str, Any],
+    *,
+    page_keys: tuple[str, ...] = ("page", "page_number", "element_page"),
+    fallback: int | None = None,
+) -> int | None:
+    for key in page_keys:
         value = _coerce_int(meta.get(key))
         if value is not None and value > 0:
-            return int(value)
+            return value
     page_index = _coerce_int(meta.get("page_index"))
     if page_index is not None and page_index >= 0:
-        return int(page_index) + 1
-    return None
-
-
-def _extract_bbox_page_number(meta: dict[str, Any], fallback: int | None) -> int | None:
-    for key in ("element_page", "page", "page_number"):
-        value = _coerce_int(meta.get(key))
-        if value is not None and value > 0:
-            return int(value)
-    page_index = _coerce_int(meta.get("page_index"))
-    if page_index is not None and page_index >= 0:
-        return int(page_index) + 1
+        return page_index + 1
     return fallback
 
 
 def _extract_query_terms(query: str, *, max_terms: int = 8) -> list[str]:
-    raw = (query or "").strip()
+    raw = (query).strip()
     if not raw:
         return []
     terms: list[str] = []
     for m in _QUERY_TOKEN_RE.finditer(raw):
-        t = (m.group(0) or "").strip()
+        t = (m.group(0)).strip()
         if not t:
             continue
         t_norm = t.casefold() if t.isascii() else t
@@ -260,6 +259,10 @@ def _find_first_match(text: str, terms: list[str]) -> tuple[int, str] | None:
         idx = folded.find(t.casefold()) if str(t).isascii() else text.find(str(t))
         if idx < 0:
             continue
+        if str(t).isascii() and len(folded) != len(text):
+            from app.rag.core.text import _raw_index_from_casefold_index
+
+            idx = _raw_index_from_casefold_index(text, idx)
         if best is None or idx < best[0]:
             best = (idx, str(t))
     return best
@@ -356,17 +359,17 @@ def _build_snippet_and_span(
     Offsets are only returned when we find a query-term hit; otherwise offsets are None.
     """
     max_chars = _snippet_max_chars(max_chars)
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return "", [], None, None
 
-    terms = _extract_query_terms(query or "", max_terms=10) if query else []
+    terms = _extract_query_terms(query, max_terms=10) if query else []
     hit = _find_first_match(raw, terms) if terms else None
     if hit is None:
         # Fallback: still return a bounded span window so the UI can deep-link/highlight
         # even when we don't find an explicit query-term match (best-effort).
         snippet, start, end = _fallback_snippet_span(raw, max_chars=max_chars)
-        return snippet, [], int(start), int(end)
+        return snippet, [], start, end
 
     idx, _ = hit
     base_start, base_end = _hit_window(raw, index=idx, max_chars=max_chars)
@@ -375,7 +378,7 @@ def _build_snippet_and_span(
     snippet = _snippet_text(raw, start=start, end=end, fallback_start=base_start, fallback_end=base_end)
     matched = _matched_terms_in_window(snippet_raw, terms)
 
-    return snippet, matched, int(start), int(end)
+    return snippet, matched, start, end
 
 
 def _build_snippet_from_span(
@@ -393,7 +396,7 @@ def _build_snippet_from_span(
     same evidence span as their anchor child (instead of the first query-term match).
     """
     max_chars = _snippet_max_chars(max_chars)
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return "", []
 
@@ -408,7 +411,7 @@ def _build_snippet_from_span(
     if e <= s:
         return "", []
 
-    terms = _extract_query_terms(query or "", max_terms=10) if query else []
+    terms = _extract_query_terms(query, max_terms=10) if query else []
     desired_len = min(len(raw), max_chars)
 
     # Keep the requested span inside the base window.
@@ -437,16 +440,16 @@ def _is_uuid_like(v: Any) -> bool:
         return False
 
 
-def _stable_tag_chunk_id(table_id: str | None) -> str:
+def _stable_tag_chunk_id(table_id: str) -> str:
     """
     Deterministic UUID for TAG-injected "docs" so ChatResponse citations remain schema-compatible.
     """
-    tid = str(table_id or "").strip()
+    tid = table_id.strip()
     return str(uuid.uuid5(_NIL_UUID, f"mimirq:tag:{tid}"))
 
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:
-    s = str(text or "").strip()
+    s = text.strip()
     if not s:
         return None
     try:
@@ -508,16 +511,16 @@ def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> s
     """
     Convert a TAG table_store JSON payload into a human-readable summary for citations/UI.
     """
-    payload = _parse_json_object(doc.page_content or "")
+    payload = _parse_json_object(doc.page_content)
     if not payload:
         return None
-    if str(payload.get("kind") or "") != "tag_table_store":
+    if payload.get("kind") != "tag_table_store":
         return None
 
     doc_name = str(payload.get("document") or meta.get("source") or "table").strip() or "table"
-    table_id = str(payload.get("table_id") or meta.get("table_id") or "").strip()
+    table_id = payload["table_id"].strip()
 
-    sql = str(payload.get("sql") or "").strip()
+    sql = payload["sql"].strip()
     truncated = bool(payload.get("truncated"))
 
     parts: list[str] = ["[TAG] Table Query Result"]
@@ -533,7 +536,7 @@ def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> s
     if truncated:
         parts.append("(truncated)")
 
-    return "\n".join(parts).strip() or None
+    return "\n".join(parts).strip()
 
 
 def _bounded_str(value: Any, *, limit: int) -> str | None:
@@ -555,7 +558,7 @@ def _safe_kg_path_item(raw: Any, *, keys: tuple[str, ...]) -> dict[str, Any] | N
         value = _bounded_str(raw.get(key), limit=200)
         if value:
             item[key] = value
-    return item or None
+    return item
 
 
 def _safe_kg_path_items(raw: Any, *, keys: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -615,7 +618,7 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     if edges:
         out["edges"] = edges
 
-    return out or None
+    return out
 
 
 @dataclass
@@ -646,7 +649,26 @@ class _CitationContext:
     hierarchy_family_key: str | None
     family_collapse_key: str | None
     family_hit: bool
-    scores: dict[str, Any]
+    scores: "_CitationScores"
+
+
+class _CitationScores(TypedDict):
+    vector_score: float
+    bm25_score: float
+    lexical_score: float
+    sparse_score: float
+    colbert_score: float
+    rerank_score: Any
+    retrieval_score: Any
+    rerank_score_calibrated: Any
+    rerank_score_final: Any
+    exact_phrase_score: Any
+    exact_phrase_boost: Any
+    metadata_exact_match_score: Any
+    metadata_exact_match_primary_score: Any
+    metadata_exact_match_boost: Any
+    metadata_exact_match_fields: Any
+    metadata_exact_match_promoted_score: Any
 
 
 def _float_meta(meta: dict[str, Any], key: str) -> float:
@@ -673,7 +695,7 @@ def _optional_clean_str(value: Any) -> str | None:
     return text or None
 
 
-def _citation_scores(meta: dict[str, Any]) -> dict[str, Any]:
+def _citation_scores(meta: dict[str, Any]) -> _CitationScores:
     return {
         "vector_score": _float_meta(meta, "vector_score"),
         "bm25_score": _float_meta(meta, "bm25_score"),
@@ -709,7 +731,7 @@ def _citation_plugin_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _hit_type(*, scores: dict[str, Any], retrieval_mode: str, retrieval_role: str | None, is_image: bool) -> str:
+def _hit_type(*, scores: _CitationScores, retrieval_mode: str, retrieval_role: str | None, is_image: bool) -> str:
     if str(retrieval_role or "").strip().lower() == "tag":
         hit_type = "tag"
     elif is_image:
@@ -717,10 +739,10 @@ def _hit_type(*, scores: dict[str, Any], retrieval_mode: str, retrieval_role: st
     elif retrieval_mode == "mmr":
         hit_type = "mmr"
     else:
-        vector_score = float(scores["vector_score"])
-        bm25_score = float(scores["bm25_score"])
-        colbert_score = float(scores["colbert_score"])
-        max_dense = max(vector_score, bm25_score, float(scores["lexical_score"]), float(scores["sparse_score"]))
+        vector_score = scores["vector_score"]
+        bm25_score = scores["bm25_score"]
+        colbert_score = scores["colbert_score"]
+        max_dense = max(vector_score, bm25_score, scores["lexical_score"], scores["sparse_score"])
         if colbert_score > max_dense:
             hit_type = "colbert_ann"
         elif vector_score > bm25_score:
@@ -758,14 +780,14 @@ def _resolve_chunk_id(doc: Document, meta: dict[str, Any], *, is_tag: bool, tag_
     if not is_tag or _is_uuid_like(chunk_id):
         return chunk_id
 
-    tag_table_id = str(meta.get("table_id") or "").strip()
-    if not tag_table_id and tag_payload:
-        tag_table_id = str(tag_payload.get("table_id") or "").strip()
+    tag_table_id = meta.get("table_id")
+    if tag_table_id is None and tag_payload:
+        tag_table_id = tag_payload["table_id"]
     return _stable_tag_chunk_id(tag_table_id)
 
 
 def _effective_citation_text(doc: Document, meta: dict[str, Any], *, is_tag: bool) -> str:
-    effective_text = doc.page_content or ""
+    effective_text = doc.page_content
     if is_tag:
         formatted = _format_tag_table_store_summary(doc, meta=meta)
         if formatted:
@@ -801,12 +823,12 @@ def _citation_context(
     meta = doc.metadata or {}
     retrieval_role = _optional_clean_str(meta.get("retrieval_role"))
     neighbor_of = _optional_clean_str(meta.get("neighbor_of"))
-    is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
+    is_tag = str(retrieval_role or "").strip().lower() == "tag" or meta.get("chunk_role") == "tag_sql_result"
     is_image = (
         str(retrieval_role or "").strip().lower() == "image"
         or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
     )
-    tag_payload = _parse_json_object(doc.page_content or "") if is_tag else None
+    tag_payload = _parse_json_object(doc.page_content) if is_tag else None
     scores = _citation_scores(meta)
     chunk_id = _resolve_chunk_id(doc, meta, is_tag=is_tag, tag_payload=tag_payload)
     effective_text = _effective_citation_text(doc, meta, is_tag=is_tag)
@@ -859,7 +881,7 @@ def _citation_context(
 def _absolute_evidence(start_char: int | None, local_offset: int | None) -> int | None:
     if start_char is None or local_offset is None:
         return None
-    return int(start_char) + int(local_offset)
+    return start_char + local_offset
 
 
 def _base_citation(
@@ -875,7 +897,7 @@ def _base_citation(
         "dataset_id": meta.get("dataset_id"),
         "document_id": meta.get("document_id"),
         "document_name": meta.get("source", "Unknown"),
-        "chunk_content": ctx.snippet or ((ctx.effective_text or "")[:200] + "..."),
+        "chunk_content": ctx.snippet or ((ctx.effective_text)[:200] + "..."),
         "metadata": _citation_plugin_metadata(meta),
         "matched_terms": ctx.matched_terms,
         "page_number": ctx.page_number,
@@ -902,11 +924,11 @@ def _base_citation(
         "doc_pipeline_key": meta.get("doc_pipeline_key"),
         "pipeline_hash": meta.get("pipeline_hash"),
         "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
-        "vector_score": round(float(scores["vector_score"]), 3),
-        "bm25_score": round(float(scores["bm25_score"]), 3),
-        "lexical_score": round(float(scores["lexical_score"]), 3),
-        "sparse_score": round(float(scores["sparse_score"]), 3),
-        "colbert_score": round(float(scores["colbert_score"]), 3),
+        "vector_score": round(scores["vector_score"], 3),
+        "bm25_score": round(scores["bm25_score"], 3),
+        "lexical_score": round(scores["lexical_score"], 3),
+        "sparse_score": round(scores["sparse_score"], 3),
+        "colbert_score": round(scores["colbert_score"], 3),
         "keyword_score": round(_float_meta(meta, "keyword_score"), 3),
         "field_aware_signal": str(meta.get("field_aware_signal")).strip().lower()
         if meta.get("field_aware_signal") is not None
@@ -946,7 +968,7 @@ def _base_citation(
         "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
         "rerank_model_used": meta.get("rerank_model_used"),
         "retrieval_mode": retrieval_mode,
-        "vector_backend": getattr(settings, "VECTOR_BACKEND", "unknown"),
+        "vector_backend": settings.VECTOR_BACKEND,
         "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
         "hit_type": ctx.hit_type,
     }
@@ -993,7 +1015,9 @@ def _limited_unique_strings(raw: Any, *, limit: int) -> list[str]:
         return []
     values: list[str] = []
     for item in raw:
-        value = str(item or "").strip()
+        if item is None:
+            continue
+        value = str(item).strip()
         if value and value not in values:
             values.append(value)
         if len(values) >= limit:
@@ -1140,23 +1164,16 @@ def _apply_hashes(citation: dict[str, Any]) -> None:
     citation["citation_hash"] = stable_json_hash(citation, length=16)
 
 
-def _to_int(value: Any) -> int | None:
-    try:
-        return int(value) if value is not None else None
-    except Exception:
-        return None
-
-
 def _hierarchy_anchor_span(parent: dict[str, Any], anchor: dict[str, Any]) -> tuple[int, int, int] | None:
-    doc_a = str(anchor.get("document_id") or "").strip()
-    doc_b = str(parent.get("document_id") or "").strip()
+    doc_a = anchor.get("document_id").strip()
+    doc_b = parent.get("document_id").strip()
     if doc_a and doc_b and doc_a != doc_b:
         return None
 
-    parent_start = _to_int(parent.get("start_char"))
-    parent_end = _to_int(parent.get("end_char"))
-    anchor_start = _to_int(anchor.get("evidence_start_char"))
-    anchor_end = _to_int(anchor.get("evidence_end_char"))
+    parent_start = _optional_int(parent.get("start_char"))
+    parent_end = _optional_int(parent.get("end_char"))
+    anchor_start = _optional_int(anchor.get("evidence_start_char"))
+    anchor_end = _optional_int(anchor.get("evidence_end_char"))
     if parent_start is None or anchor_start is None or anchor_end is None or anchor_end <= anchor_start:
         return None
     if anchor_start < parent_start or (parent_end is not None and anchor_end > parent_end):
@@ -1183,16 +1200,16 @@ def _merge_hierarchy_parent_spans(
         if span is None:
             continue
         parent_start, anchor_start, anchor_end = span
-        citation["evidence_start_char"] = int(anchor_start)
-        citation["evidence_end_char"] = int(anchor_end)
+        citation["evidence_start_char"] = anchor_start
+        citation["evidence_end_char"] = anchor_end
         text = raw_text_by_chunk_id.get(str(citation.get("chunk_id") or "").strip())
         if not text:
             continue
         snippet, matched = _build_snippet_from_span(
             text,
             query,
-            span_start=int(anchor_start) - int(parent_start),
-            span_end=int(anchor_end) - int(parent_start),
+            span_start=anchor_start - parent_start,
+            span_end=anchor_end - parent_start,
             max_chars=220,
         )
         if snippet:
@@ -1216,7 +1233,7 @@ def build_citations_from_docs(
         ctx = _citation_context(doc, retrieval_mode=retrieval_mode, query=query)
         chunk_id_s = str(ctx.chunk_id).strip() if ctx.chunk_id is not None else ""
         if chunk_id_s:
-            raw_text_by_chunk_id.setdefault(chunk_id_s, str(ctx.effective_text or ""))
+            raw_text_by_chunk_id.setdefault(chunk_id_s, ctx.effective_text)
 
         citation = _base_citation(ctx, retrieval_elapsed_sec=retrieval_elapsed_sec, retrieval_mode=retrieval_mode)
         if ctx.bbox is not None:

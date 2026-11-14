@@ -1,9 +1,6 @@
-
 from collections.abc import Iterable, Sequence
 
-FORMAL_PLAN_SOURCES: tuple[str, ...] = (
-    "docs/prompts/mimirq-prompt-library-2026-q2.md",
-)
+FORMAL_PLAN_SOURCES: tuple[str, ...] = ("docs/prompts/mimirq-prompt-library-2026-q2.md",)
 
 FORMAL_PROMPT_TAGS: tuple[str, ...] = (
     "formal",
@@ -47,7 +44,7 @@ FORMAL_JSON_OUTPUT_RULES_ZH = """<json_output_policy>
 
 
 def _join_lines(lines: Iterable[str]) -> str:
-    return "\n".join(line.rstrip() for line in lines if str(line).strip())
+    return "\n".join(line.rstrip() for line in lines if line.strip())
 
 
 def _escape_f_string_literals(value: str) -> str:
@@ -65,10 +62,7 @@ def render_formal_xml_prompt(
 ) -> str:
     """Render a shared XML-style prompt scaffold from the documented prompt policy."""
 
-    rendered_task_sections = "\n\n".join(
-        f"<{name}>\n{body}\n</{name}>"
-        for name, body in task_sections
-    )
+    rendered_task_sections = "\n\n".join(f"<{name}>\n{body}\n</{name}>" for name, body in task_sections)
     extra = "\n\n".join(section.strip() for section in extra_policies if section.strip())
     return _join_lines(
         [
@@ -95,7 +89,7 @@ def render_formal_xml_prompt(
             "",
             "<documents>",
             documents_slot,
-            "<!-- 每个可引用片段应映射为 <source idx=\"N\" file=\"...\" page=\"...\"/> 或等价运行时 citation。 -->",
+            '<!-- 每个可引用片段应映射为 <source idx="N" file="..." page="..."/> 或等价运行时 citation。 -->',
             "</documents>",
             "",
             rendered_task_sections,

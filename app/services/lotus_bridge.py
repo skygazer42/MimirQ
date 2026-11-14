@@ -5,7 +5,7 @@ Background
 ----------
 The upstream LOTUS project provides DataFrame semantic operators (sem_filter/sem_join/...)
 but pulls in a dependency set (e.g. litellm, pydantic constraints) that may not match
-this project's runtime. For MimirQ we only need a small subset for TAG UX:
+this project's runtime. Ragvia only needs a small subset for TAG UX:
 
 - semantic filtering of rows based on a natural-language instruction
 
@@ -26,8 +26,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
-from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.code_fence import extract_first_code_fence
+from app.services.table_tag_service import create_table_chat_model
 
 
 @dataclass(frozen=True)
@@ -36,38 +36,19 @@ class LotusAvailability:
     reason: str | None = None
 
 
-def lotus_available() -> LotusAvailability:
-    """
-    Backwards-compatible guard used by the tables API.
-
-    This returns whether semantic ops are *runnable* in the current environment.
-    """
-    if not bool(getattr(settings, "TABLE_LOTUS_ENABLED", False)):
+def get_lotus_availability() -> LotusAvailability:
+    """Return semantic-operation configuration eligibility and its reason without a provider probe."""
+    if not settings.TABLE_LOTUS_ENABLED:
         return LotusAvailability(ok=False, reason="TABLE_LOTUS_ENABLED=false")
-    if not str(getattr(settings, "LLM_API_KEY", "") or "").strip():
+    if not settings.LLM_API_KEY.strip():
         return LotusAvailability(ok=False, reason="LLM_API_KEY is not configured")
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
+    if not settings.TABLE_LLM_ALLOW_ROW_EGRESS:
         return LotusAvailability(ok=False, reason="TABLE_LLM_ALLOW_ROW_EGRESS=false")
     return LotusAvailability(ok=True)
 
 
-def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
-    model_name = (getattr(settings, "LLM_MODEL_FAST", None) or getattr(settings, "LLM_MODEL", None) or "").strip()
-    if not model_name:
-        model_name = "gpt-5.4-mini"
-    return ChatOpenAI(
-        model=model_name,
-        api_key=getattr(settings, "LLM_API_KEY", None),
-        base_url=normalize_openai_compatible_base_url(getattr(settings, "LLM_API_BASE", None)),
-        temperature=float(temperature),
-        timeout=float(getattr(settings, "LLM_TIMEOUT", 60) or 60),
-        max_retries=int(getattr(settings, "LLM_MAX_RETRIES", 2) or 2),
-        streaming=False,
-    )
-
-
 def _extract_json_array(text: str) -> list[Any] | None:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return None
 
@@ -111,8 +92,8 @@ def _jsonify_value(v: Any, *, max_chars: int) -> Any:
         return v
     # Keep strings bounded.
     s = str(v)
-    if max_chars > 0 and len(s) > int(max_chars):
-        return s[: int(max_chars)] + "..."
+    if max_chars > 0 and len(s) > max_chars:
+        return s[:max_chars] + "..."
     return s
 
 
@@ -123,31 +104,31 @@ def _build_row_payload(
     max_cols: int,
     max_cell_chars: int,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    cols = [str(c) for c in (getattr(df, "columns", []) or [])]
-    if max_cols > 0 and len(cols) > int(max_cols):
-        cols = cols[: int(max_cols)]
+    cols = [str(c) for c in df.columns]
+    if max_cols > 0 and len(cols) > max_cols:
+        cols = cols[:max_cols]
     df2 = df.loc[:, cols] if cols else df
 
     rows: list[dict[str, Any]] = []
     for i, row in enumerate(df2.itertuples(index=False, name=None)):  # type: ignore[attr-defined]
-        if max_rows > 0 and i >= int(max_rows):
+        if max_rows > 0 and i >= max_rows:
             break
         rec: dict[str, Any] = {}
         for k, v in zip(cols, row, strict=False):
-            rec[str(k)] = _jsonify_value(v, max_chars=max_cell_chars)
+            rec[k] = _jsonify_value(v, max_chars=max_cell_chars)
         rows.append(rec)
     return cols, rows
 
 
 def _normalized_sem_filter_instruction(user_instruction: str) -> str:
-    return " ".join(str(user_instruction or "").strip().split())
+    return " ".join(user_instruction.strip().split())
 
 
 def _sem_filter_limits() -> tuple[int, int, int, int]:
-    max_in_rows = int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000)
-    max_cols = int(getattr(settings, "TABLE_SEM_FILTER_MAX_COLS", 30) or 30)
-    max_cell_chars = int(getattr(settings, "TABLE_SEM_FILTER_MAX_CELL_CHARS", 200) or 200)
-    batch_size = int(getattr(settings, "TABLE_SEM_FILTER_BATCH_SIZE", 25) or 25)
+    max_in_rows = settings.TABLE_SEM_FILTER_MAX_IN_ROWS
+    max_cols = settings.TABLE_SEM_FILTER_MAX_COLS
+    max_cell_chars = settings.TABLE_SEM_FILTER_MAX_CELL_CHARS or 200
+    batch_size = settings.TABLE_SEM_FILTER_BATCH_SIZE or 25
     return max_in_rows, max_cols, max_cell_chars, batch_size
 
 
@@ -155,9 +136,9 @@ def _coerce_bool_list(obj: list[Any], *, expected: int) -> list[bool]:
     out: list[bool] = []
     for x in obj:
         if isinstance(x, bool):
-            out.append(bool(x))
+            out.append(x)
         elif isinstance(x, (int, float)) and x in (0, 1):
-            out.append(bool(int(x)))
+            out.append(bool(x))
         elif isinstance(x, str):
             s = x.strip().lower()
             if s in {"true", "t", "yes", "y", "1"}:
@@ -206,7 +187,7 @@ def _invoke_sem_filter_batch(
 ) -> list[bool]:
     user = _sem_filter_batch_prompt(instr=instr, cols=cols, chunk=chunk)
     resp = llm.invoke([system, user])
-    raw = str(getattr(resp, "content", "") or "").strip()
+    raw = resp.text.strip()
     arr = _extract_json_array(raw)
     if arr is None:
         return [False] * len(chunk)
@@ -217,7 +198,6 @@ def sem_filter(
     df: "pd.DataFrame",
     *,
     user_instruction: str,
-    strategy: str = "cot",
 ) -> "pd.DataFrame":
     """
     Semantic filter over a DataFrame (row-wise).
@@ -226,13 +206,11 @@ def sem_filter(
 
     Notes:
     - This is an LLM-backed operator; keep it behind feature flags and row caps.
-    - `strategy` is accepted for API compatibility; currently it only toggles prompting style.
     """
-    _ = strategy
     instr = _normalized_sem_filter_instruction(user_instruction)
     if not instr:
         raise ValueError("user_instruction is required")
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
+    if not settings.TABLE_LLM_ALLOW_ROW_EGRESS:
         raise RuntimeError("TABLE_LLM_ALLOW_ROW_EGRESS=false")
 
     max_in_rows, max_cols, max_cell_chars, batch_size = _sem_filter_limits()
@@ -243,7 +221,7 @@ def sem_filter(
     if not rows:
         return df.head(0)
 
-    llm = _build_llm(temperature=0.0)
+    llm = create_table_chat_model(temperature=0.0)
 
     system = SystemMessage(
         content=(
@@ -270,20 +248,7 @@ def sem_filter(
             )
         )
 
-    if not flags:
-        return df.head(0)
-    # Align length just in case.
-    if len(flags) < len(df):
-        flags.extend([False] * (len(df) - len(flags)))
-    flags = flags[: len(df)]
-
-    try:
-        mask = pd.Series(flags, index=df.index)
-        return df[mask]
-    except Exception:
-        # Best-effort fallback: manual filtering.
-        keep_idx = [idx for idx, ok in zip(list(df.index), flags, strict=False) if ok]
-        return df.loc[keep_idx]
+    return df[pd.Series(flags, index=df.index)]
 
 
-__all__ = ["LotusAvailability", "lotus_available", "sem_filter"]
+__all__ = ["LotusAvailability", "get_lotus_availability", "sem_filter"]

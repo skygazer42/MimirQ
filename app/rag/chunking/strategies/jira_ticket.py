@@ -10,7 +10,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -19,19 +18,17 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.heading_parsing import (
+    normalize_spaces_lower,
+    parse_markdown_hash_heading,
+    strip_numbered_heading_prefix,
+)
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
 class _Heading:
     start: int
-    end: int
     title: str
     key: str
 
@@ -47,52 +44,8 @@ _ISSUE_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 _FIELD_KEY_ALLOWED = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _/-")
 
 
-def _norm(s: str) -> str:
-    # Faster and avoids regex backtracking hotspots.
-    return " ".join((s or "").strip().split()).lower()
-
-
-def _strip_numbered_prefix(s: str) -> str:
-    """
-    Strip a numbered outline prefix such as:
-      1. Title
-      1) Title
-      1.2.3) Title
-    """
-    raw = (s or "").lstrip()
-    if not raw:
-        return ""
-
-    i = 0
-    n = len(raw)
-    if i >= n or not raw[i].isdigit():
-        return raw
-
-    # First segment digits.
-    while i < n and raw[i].isdigit():
-        i += 1
-
-    segs = 1
-    while segs < 4 and i + 1 < n and raw[i] == "." and raw[i + 1].isdigit():
-        i += 1
-        while i < n and raw[i].isdigit():
-            i += 1
-        segs += 1
-
-    # Require at least one delimiter character ('.', ')', or whitespace).
-    j = i
-    while j < n and (raw[j].isspace() or raw[j] in (".", ")")):
-        j += 1
-    if j == i:
-        return raw
-
-    return raw[j:].strip()
-
-
 def _strip_trailing_colon(s: str) -> str:
-    out = (s or "").rstrip()
-    while out and out[-1].isspace():
-        out = out[:-1]
+    out = (s).rstrip()
     if out.endswith((":", "：")):
         out = out[:-1].rstrip()
     return out
@@ -102,7 +55,7 @@ def _parse_confluence_heading(s: str) -> str | None:
     """
     Parse 'h1. Title' style headings.
     """
-    line = (s or "").strip()
+    line = (s).strip()
     if len(line) < 4:
         return None
     if line[0].lower() != "h":
@@ -117,28 +70,11 @@ def _parse_confluence_heading(s: str) -> str | None:
     return title or None
 
 
-def _parse_md_heading(s: str) -> str | None:
-    """
-    Parse Markdown ATX headings (1-6 '#') and return the title.
-    """
-    line = (s or "").strip()
-    if not line:
-        return None
-    i = 0
-    n = len(line)
-    while i < n and i < 6 and line[i] == "#":
-        i += 1
-    if i == 0 or i >= n or not line[i].isspace():
-        return None
-    title = line[i:].strip()
-    return title or None
-
-
 def _parse_field_heading(s: str) -> str | None:
     """
     Parse 'Key: Value' style headings and return the key.
     """
-    line = (s or "").strip()
+    line = (s).strip()
     if not line:
         return None
     pos = line.find(":")
@@ -174,43 +110,32 @@ _SECTION_SYNONYMS: dict[str, list[str]] = {
 _TITLE_TO_KEY: dict[str, str] = {}
 for k, vals in _SECTION_SYNONYMS.items():
     for v in vals:
-        _TITLE_TO_KEY[_norm(v)] = k
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
+        _TITLE_TO_KEY[normalize_spaces_lower(v)] = k
 
 
 def _parse_heading_line(plain: str) -> tuple[str, str] | None:
-    s = (plain or "").strip()
+    s = (plain).strip()
     if not s:
         return None
-    s = _strip_numbered_prefix(s)
+    s = strip_numbered_heading_prefix(s)
 
     if (title := _parse_confluence_heading(s)) is not None:
-        key = _TITLE_TO_KEY.get(_norm(title))
+        key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
             return title, key
         return None
 
-    if (title := _parse_md_heading(s)) is not None:
+    parsed = parse_markdown_hash_heading(s)
+    if parsed is not None:
+        _level, title = parsed
         title = _strip_trailing_colon(title)
-        key = _TITLE_TO_KEY.get(_norm(title))
+        key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
             return title, key
         return None
 
     if (title := _parse_field_heading(s)) is not None:
-        key = _TITLE_TO_KEY.get(_norm(title))
+        key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
             return title, key
         return None
@@ -218,7 +143,7 @@ def _parse_heading_line(plain: str) -> tuple[str, str] | None:
     # Standalone heading with trailing colon.
     if s.endswith((":", "：")) and len(s) <= 80:
         title = _strip_trailing_colon(s)
-        key = _TITLE_TO_KEY.get(_norm(title))
+        key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
             return title, key
 
@@ -232,16 +157,9 @@ def _iter_headings(text: str) -> list[_Heading]:
         if not parsed:
             continue
         title, key = parsed
-        headings.append(_Heading(start=ln.start, end=ln.end, title=title, key=key))
+        headings.append(_Heading(start=ln.start, title=title, key=key))
 
-    deduped: list[_Heading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[_Heading]) -> list[_Section]:
@@ -264,7 +182,7 @@ def _extract_issue_key(text: str) -> str | None:
     m = _ISSUE_KEY_RE.search(text[:4000])
     if not m:
         return None
-    return (m.group(0) or "").strip() or None
+    return m.group(0).strip()
 
 
 def looks_like_jira_ticket(text: str) -> bool:
@@ -277,14 +195,14 @@ def looks_like_jira_ticket(text: str) -> bool:
     # Require multiple distinct ticket sections.
     if len(keys) >= 4:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(keys) >= 3 and any(k in lowered for k in ("issue type", "assignee", "reporter", "priority", "component")):
         return True
     return False
 
 
 class JiraTicketChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -300,8 +218,8 @@ class JiraTicketChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -309,37 +227,35 @@ class JiraTicketChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current: _Heading | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():
                     continue
 
-                if section.heading is not None:
-                    current = section.heading
+                heading = section.heading
 
                 split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
                 for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
+                    local_start = sd.metadata.pop("start_index")
+                    abs_start = section.start + local_start
                     abs_end = abs_start + len(sd.page_content)
 
                     meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
+                    meta.update(sd.metadata)
                     meta["chunk_strategy"] = "jira_ticket"
                     meta["start_char"] = abs_start
                     meta["end_char"] = abs_end
                     meta.setdefault("doc_type_kwd", "ticket")
                     if issue_key:
                         meta["ticket_key"] = issue_key
-                    if current is not None:
-                        meta["ticket_section"] = current.key
-                        meta["ticket_section_title"] = current.title
+                    if heading is not None:
+                        meta["ticket_section"] = heading.key
+                        meta["ticket_section_title"] = heading.title
 
                     out.append(Document(page_content=sd.page_content, metadata=meta))
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

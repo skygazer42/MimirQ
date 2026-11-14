@@ -19,7 +19,7 @@ def _default_tenant() -> uuid.UUID:
     NOTE: `settings.DEFAULT_TENANT_ID` is stored as a string, but SQLAlchemy's
     PG UUID columns expect an actual uuid.UUID object when `as_uuid=True`.
     """
-    raw = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+    raw = str(settings.DEFAULT_TENANT_ID).strip()
     try:
         return uuid.UUID(raw)
     except Exception:

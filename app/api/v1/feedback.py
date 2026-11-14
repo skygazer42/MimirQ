@@ -10,20 +10,25 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.evidence import EvidenceItemOut
-from app.api.schemas.feedback import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import (
+    FeedbackLoopCandidatesQuery,
+    FeedbackLoopCandidatesResponse,
+    FeedbackLoopExportQuery,
+    FeedbackLoopExportResponse,
+    FeedbackToEvidenceItemRequest,
+    FeedbackToRegressionCaseRequest,
     MessageFeedbackCreateRequest,
     MessageFeedbackEnrichedList,
     MessageFeedbackList,
+    MessageFeedbackListQuery,
     MessageFeedbackOut,
     MessageFeedbackPatchRequest,
 )
-from app.api.schemas.regression import RagasRegressionCaseOut
+from app.api.schemas.evaluation import EvidenceItemOut, RagasRegressionCaseOut
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
 from app.models.evaluation import RagasRegressionCase
@@ -32,74 +37,55 @@ from app.models.feedback import MessageFeedback
 from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.industry_rules.loaders.yaml_loader import load_ruleset, ruleset_exists
+from app.services import dataset_service, feedback_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
-from app.services.feedback_service import FeedbackService
 from app.services.rag_trace_service import list_rag_traces
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 router = APIRouter(tags=["Feedback"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
 _FEEDBACK_FALLBACK_LOG_MESSAGE = "Ignoring non-critical feedback fallback failure: %s"
-
-
-class FeedbackToRegressionCaseRequest(BaseModel):
-    include_document_scope: bool = True
-    tags: list[str] = []
-    extra: dict = {}
-
-
-class FeedbackToEvidenceItemRequest(BaseModel):
-    suite_id: UUID
-    tags: list[str] = []
-    extra: dict = {}
+_REGRESSION_CASE_PROTECTED_EXTRA_KEYS = frozenset(
+    {
+        "source",
+        "feedback_id",
+        "message_id",
+        "rating",
+        "feedback_category",
+        "feedback_category_source",
+        "dataset_id",
+        "query_hash",
+        "retrieval_trace_ref",
+        "profile",
+        "judge_score_ref",
+        "retrieval_trace",
+        "retrieval_trace_request_id",
+    }
+)
 
 
 def _coerce_uuid(value: Any) -> UUID | None:
     if value is None:
         return None
+    text = str(value).strip()
+    if not text:
+        return None
     try:
-        text = str(value).strip()
-        if not text:
-            return None
         return UUID(text)
-    except Exception:
+    except ValueError:
         return None
 
 
 def _coerce_int(value: Any, *, min_value: int | None = None) -> int | None:
+    if value is None:
+        return None
     try:
-        if value is None:
-            return None
         out = int(value)
-    except Exception:
+    except (ValueError, TypeError, OverflowError):
         return None
     if min_value is not None and out < min_value:
         return None
     return out
-
-
-def _copy_citation_text_field(
-    payload: dict[str, Any],
-    item: dict[str, Any],
-    *,
-    key_name: str,
-    max_length: int,
-) -> None:
-    raw = item.get(key_name)
-    if raw is None:
-        return
-    text = str(raw).strip()
-    if text:
-        payload[key_name] = text[:max_length]
 
 
 def _build_reference_source_payload(item: dict[str, Any], *, doc_id: UUID, chunk_id: UUID) -> dict[str, Any]:
@@ -123,14 +109,19 @@ def _build_reference_source_payload(item: dict[str, Any], *, doc_id: UUID, chunk
         ("quote", 2000),
         ("label", 128),
     ):
-        _copy_citation_text_field(payload, item, key_name=key_name, max_length=max_length)
+        raw = item.get(key_name)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            payload[key_name] = text[:max_length]
     return payload
 
 
-def _extract_reference_sources(citations: Any) -> list[dict]:
+def _extract_reference_sources(citations: Any) -> list[dict[str, Any]]:
     if not isinstance(citations, list):
         return []
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for item in citations:
         if not isinstance(item, dict):
@@ -149,9 +140,13 @@ def _extract_reference_sources(citations: Any) -> list[dict]:
     return out
 
 
-def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request_id: str) -> dict | None:
-    rid = str(request_id or "").strip()
-    if not rid:
+def _find_trace_by_request_id(
+    *, tenant_id: UUID, conversation_id: UUID, request_id: str | None
+) -> dict[str, Any] | None:
+    if request_id is None:
+        return None
+    normalized_request_id = request_id.strip()
+    if not normalized_request_id:
         return None
     try:
         traces = list_rag_traces(
@@ -161,25 +156,14 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
             window_minutes=7 * 24 * 60,
             max_bytes=10_000_000,
         )
-    except Exception:
+    except Exception as exc:
+        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc, exc_info=True)
         return None
-    for item in getattr(traces, "items", []) or []:
-        if str(getattr(item, "request_id", "") or "") != rid:
+    for item in traces.items:
+        if item.request_id != normalized_request_id:
             continue
-        if hasattr(item, "model_dump"):
-            return item.model_dump(mode="json")
-        if isinstance(item, dict):
-            return dict(item)
-        return None
-
-
-def _extract_rag_config_snapshot(trace_payload: dict[str, Any] | None) -> dict[str, Any]:
-    if not isinstance(trace_payload, dict):
-        return {}
-    retrieval = trace_payload.get("retrieval")
-    if not isinstance(retrieval, dict):
-        return {}
-    return dict(retrieval)
+        return item.model_dump(mode="json")
+    return None
 
 
 def _normalize_feedback_tags(*tag_groups: Any) -> list[str]:
@@ -192,7 +176,7 @@ def _normalize_feedback_tags(*tag_groups: Any) -> list[str]:
     seen: set[str] = set()
     cleaned: list[str] = []
     for tag in tags:
-        value = str(tag or "").strip()
+        value = tag.strip()
         if not value:
             continue
         key = value.lower()
@@ -206,31 +190,31 @@ def _normalize_feedback_tags(*tag_groups: Any) -> list[str]:
 
 
 def _get_feedback_for_promotion(db: Session, *, tenant_id: UUID, feedback_id: UUID) -> MessageFeedback:
-    fb = (
+    feedback = (
         db.query(MessageFeedback)
         .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
         .with_for_update()
         .first()
     )
-    if not fb:
+    if feedback is None:
         raise HTTPException(status_code=404, detail="Feedback not found")
-    return fb
+    return feedback
 
 
 def _get_feedback_assistant_message(db: Session, *, tenant_id: UUID, message_id: UUID) -> Message:
     assistant = db.query(Message).filter(Message.id == message_id, Message.tenant_id == tenant_id).first()
-    if not assistant:
+    if assistant is None:
         raise HTTPException(status_code=404, detail="Assistant message not found")
     return assistant
 
 
 def _get_feedback_conversation(db: Session, *, tenant_id: UUID, conversation_id: UUID) -> Conversation:
-    conv = (
+    conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
-    if not conv:
+    if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return conv
+    return conversation
 
 
 def _infer_feedback_question(
@@ -240,7 +224,7 @@ def _infer_feedback_question(
     conversation_id: UUID,
     assistant_created_at: datetime,
 ) -> str:
-    q_msg = (
+    user_message = (
         db.query(Message)
         .filter(
             Message.tenant_id == tenant_id,
@@ -251,114 +235,69 @@ def _infer_feedback_question(
         .order_by(Message.created_at.desc())
         .first()
     )
-    question = (q_msg.content if q_msg else "").strip()
+    if user_message is None:
+        return "(missing user question)"
+    question = user_message.content.strip()
     return question or "(missing user question)"
 
 
 def _resolve_feedback_dataset_id(
     assistant: Message,
-    conv: Conversation,
-) -> tuple[UUID | None, dict[str, Any], str]:
-    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
+    conversation: Conversation,
+) -> tuple[UUID | None, str | None]:
+    meta = assistant.message_metadata if isinstance(assistant.message_metadata, dict) else {}
     dataset_id: UUID | None = None
-    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
-    if isinstance(raw_ds, str) and raw_ds.strip():
+    metadata_dataset_id = meta.get("dataset_id")
+    if isinstance(metadata_dataset_id, str) and metadata_dataset_id.strip():
         try:
-            dataset_id = UUID(raw_ds.strip())
-        except Exception:
+            dataset_id = UUID(metadata_dataset_id.strip())
+        except ValueError:
             dataset_id = None
     if dataset_id is None:
-        dataset_id = getattr(conv, "dataset_id", None)
-    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
-    return dataset_id, meta, request_id
+        dataset_id = conversation.dataset_id
+    request_id = meta.get("request_id")
+    if request_id is not None:
+        request_id = request_id.strip()
+    return dataset_id, request_id
 
 
 def _hydrate_feedback_trace_payload(
     *,
     tenant_id: UUID,
     conversation_id: UUID,
-    request_id: str,
+    request_id: str | None,
     citations: Any,
-) -> tuple[list[dict], dict[str, Any] | None]:
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     reference_sources = _extract_reference_sources(citations)
     trace_payload = _find_trace_by_request_id(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         request_id=request_id,
     )
-    if trace_payload and isinstance(trace_payload, dict) and not reference_sources:
-        reference_sources = _extract_reference_sources(trace_payload.get("citations"))
-    return reference_sources, trace_payload if isinstance(trace_payload, dict) else None
-
-
-def _regression_case_extra_keys() -> set[str]:
-    return {
-        "source",
-        "feedback_id",
-        "message_id",
-        "rating",
-        "feedback_category",
-        "feedback_category_source",
-        "dataset_id",
-        "query_hash",
-        "retrieval_trace_ref",
-        "profile",
-        "judge_score_ref",
-        "retrieval_trace",
-        "retrieval_trace_request_id",
-    }
+    if trace_payload is not None and not reference_sources:
+        reference_sources = _extract_reference_sources(trace_payload["citations"])
+    return reference_sources, trace_payload
 
 
 def _build_regression_case_extra(
     *,
-    fb: MessageFeedback,
-    body_extra: Any,
+    feedback: MessageFeedback,
+    body_extra: dict[str, Any],
     dataset_id: UUID | None,
 ) -> dict[str, Any]:
     extra: dict[str, Any] = {}
-    if isinstance(fb.extra, dict):
-        extra.update(fb.extra)
-    if isinstance(body_extra, dict):
-        protected = _regression_case_extra_keys()
-        extra.update({key: value for key, value in body_extra.items() if key not in protected})
+    if isinstance(feedback.extra, dict):
+        extra.update(feedback.extra)
+    extra.update({key: value for key, value in body_extra.items() if key not in _REGRESSION_CASE_PROTECTED_EXTRA_KEYS})
     extra["source"] = "feedback"
-    extra["feedback_id"] = str(fb.id)
-    extra["message_id"] = str(fb.message_id)
-    extra["rating"] = int(fb.rating)
+    extra["feedback_id"] = str(feedback.id)
+    extra["message_id"] = str(feedback.message_id)
+    extra["rating"] = feedback.rating
     if dataset_id is not None:
         extra["dataset_id"] = str(dataset_id)
-    if getattr(fb, "category", None):
-        extra["feedback_category"] = str(fb.category)
-        extra["feedback_category_source"] = str(getattr(fb, "category_source", "") or "") or None
-    return extra
-
-
-def _merge_trace_payload_into_extra(
-    *,
-    extra: dict[str, Any],
-    trace_payload: dict[str, Any] | None,
-    request_id: str,
-) -> None:
-    if not isinstance(trace_payload, dict):
-        return
-    extra["retrieval_trace"] = trace_payload
-    extra["retrieval_trace_request_id"] = request_id
-
-
-def _build_evidence_item_extra(
-    *,
-    fb: MessageFeedback,
-    body_extra: Any,
-) -> dict[str, Any]:
-    extra: dict[str, Any] = {}
-    if isinstance(fb.extra, dict):
-        extra.update(fb.extra)
-    if isinstance(body_extra, dict):
-        extra.update(body_extra)
-    extra.setdefault("source", "feedback")
-    extra.setdefault("feedback_id", str(fb.id))
-    extra.setdefault("message_id", str(fb.message_id))
-    extra.setdefault("rating", int(fb.rating))
+    if feedback.category:
+        extra["feedback_category"] = feedback.category
+        extra["feedback_category_source"] = feedback.category_source
     return extra
 
 
@@ -367,43 +306,26 @@ def _finalize_feedback_reference_sources_or_keep_original(
     *,
     tenant_id: UUID,
     account_id: str,
-    dataset_id: UUID | None,
-    reference_sources: list[dict],
-) -> list[dict]:
+    dataset_id: UUID,
+    reference_sources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not reference_sources:
+        return reference_sources
     try:
-        if dataset_id is not None and reference_sources:
-            from app.api.v1.evaluations import _finalize_reference_sources
+        from app.services.evaluation_reference_sources import finalize_reference_sources
 
-            return _finalize_reference_sources(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=dataset_id,
-                reference_sources=reference_sources,
-            )
+        return finalize_reference_sources(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            reference_sources=reference_sources,
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
+        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc, exc_info=True)
     return reference_sources
-
-
-def _augment_feedback_extra_with_snapshots(
-    *,
-    extra: dict[str, Any] | None,
-    trace_payload: dict[str, Any] | None,
-    request_id: str,
-    dataset_id: UUID | None,
-) -> dict[str, Any]:
-    payload = dict(extra or {})
-    if dataset_id is not None:
-        payload["dataset_id"] = str(dataset_id)
-    if request_id:
-        payload["retrieval_trace_request_id"] = str(request_id)
-    if isinstance(trace_payload, dict) and trace_payload:
-        payload["retrieval_trace"] = dict(trace_payload)
-        rag_config_snapshot = _extract_rag_config_snapshot(trace_payload)
-        if rag_config_snapshot:
-            payload["rag_config_snapshot"] = rag_config_snapshot
-    return payload
 
 
 @router.post(
@@ -418,9 +340,9 @@ def upsert_message_feedback(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> MessageFeedback:
     """Submit feedback for an assistant message (idempotent: resubmit will update)."""
-    return FeedbackService.upsert_message_feedback(
+    return feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -430,37 +352,26 @@ def upsert_message_feedback(
         tags=request.tags,
         expected_answer=request.expected_answer,
         category=request.category,
-        extra=request.extra if isinstance(request.extra, dict) else {},
-        ensure_member_fn=DatasetService.ensure_member,
-        list_rag_traces_fn=list_rag_traces,
+        extra=request.extra,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
 @router.get("/messages", response_model=MessageFeedbackList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_message_feedback(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    conversation_id: UUID | None = None,
-    message_id: UUID | None = None,
-    min_rating: int | None = None,
-    max_rating: int | None = None,
+    query: Annotated[MessageFeedbackListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """Query feedback list (returns all items in current tenant by default)."""
-    return FeedbackService.list_message_feedback(
+    return feedback_service.list_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        min_rating=min_rating,
-        max_rating=max_rating,
-        skip=skip,
-        limit=limit,
-        ensure_member_fn=DatasetService.ensure_member,
+        **query.model_dump(),
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -468,29 +379,19 @@ def list_message_feedback(
     "/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
 )
 def list_message_feedback_enriched(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    conversation_id: UUID | None = None,
-    message_id: UUID | None = None,
-    min_rating: int | None = None,
-    max_rating: int | None = None,
+    query: Annotated[MessageFeedbackListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """Feedback list with joined message content + conversation title (for triage dashboards)."""
-    return FeedbackService.list_message_feedback_enriched(
+    return feedback_service.list_message_feedback_enriched(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        min_rating=min_rating,
-        max_rating=max_rating,
-        skip=skip,
-        limit=limit,
-        ensure_member_fn=DatasetService.ensure_member,
+        **query.model_dump(),
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -502,7 +403,7 @@ def patch_message_feedback(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> MessageFeedback:
     """Patch mutable feedback triage fields."""
     ensure_tenant_permission(
         db,
@@ -511,27 +412,27 @@ def patch_message_feedback(
         TenantPermissions.FEEDBACK_TRIAGE_WRITE,
         detail="No permission to triage feedback",
     )
-    return FeedbackService.patch_message_feedback(
+    return feedback_service.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
         feedback_id=feedback_id,
         archived=request.archived,
         category=request.category,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
-@router.get("/loop/candidates", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/loop/candidates", response_model=FeedbackLoopCandidatesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def preview_feedback_loop_candidates(
-    max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
-    ruleset: str | None = None,
+    query: Annotated[FeedbackLoopCandidatesQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     Preview feedback-loop candidates from real negative feedback.
 
@@ -546,34 +447,34 @@ def preview_feedback_loop_candidates(
         detail="No permission to review feedback candidates",
     )
     ruleset_obj = None
-    ruleset_name = str(ruleset or "").strip()
+    ruleset_name = query.ruleset.strip() if query.ruleset is not None else None
     if ruleset_name:
         if not ruleset_exists(ruleset_name):
             raise HTTPException(status_code=404, detail="Industry ruleset not found")
         ruleset_obj = load_ruleset(ruleset_name)
-    return FeedbackService.build_feedback_loop_candidates(
+    return feedback_service.build_feedback_loop_candidates(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        max_rating=int(max_rating),
-        limit=int(limit),
+        max_rating=query.max_rating,
+        limit=query.limit,
         ruleset=ruleset_obj,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
-@router.post("/loop/hard-negatives/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/loop/hard-negatives/export",
+    response_model=FeedbackLoopExportResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def export_feedback_loop_hard_negatives(
-    max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
-    dry_run: Annotated[bool, Query()] = True,
-    append: Annotated[bool, Query()] = True,
-    ruleset: str | None = None,
+    query: Annotated[FeedbackLoopExportQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     Batch-export feedback-derived hard negatives.
 
@@ -590,7 +491,7 @@ def export_feedback_loop_hard_negatives(
         detail="No permission to export feedback candidates",
     )
     ruleset_obj = None
-    ruleset_name = str(ruleset or "").strip()
+    ruleset_name = query.ruleset.strip() if query.ruleset is not None else None
     if ruleset_name:
         if not ruleset_exists(ruleset_name):
             raise HTTPException(status_code=404, detail="Industry ruleset not found")
@@ -599,13 +500,13 @@ def export_feedback_loop_hard_negatives(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        max_rating=int(max_rating),
-        limit=int(limit),
-        dry_run=bool(dry_run),
-        append=bool(append),
+        max_rating=query.max_rating,
+        limit=query.limit,
+        dry_run=query.dry_run,
+        append=query.append,
         trigger="manual",
         ruleset=ruleset_obj,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -622,7 +523,7 @@ def create_regression_case_from_feedback(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> RagasRegressionCase:
     """
     Convert a feedback entry into a RAGAS regression case.
 
@@ -639,64 +540,64 @@ def create_regression_case_from_feedback(
         detail="No permission to promote feedback",
     )
 
-    fb = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
-    feedback_extra = dict(fb.extra or {}) if isinstance(fb.extra, dict) else {}
-    if str(feedback_extra.get("eval_case_status") or "").strip().lower() == "promoted":
+    feedback = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
+    feedback_extra = dict(feedback.extra) if isinstance(feedback.extra, dict) else {}
+    eval_case_status = feedback_extra.get("eval_case_status")
+    if eval_case_status is not None and eval_case_status.strip().lower() == "promoted":
         raise HTTPException(status_code=409, detail="Feedback already promoted to a regression case")
 
-    assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=fb.message_id)
-    conv = _get_feedback_conversation(db, tenant_id=tenant_id, conversation_id=fb.conversation_id)
+    assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=feedback.message_id)
+    conversation = _get_feedback_conversation(db, tenant_id=tenant_id, conversation_id=feedback.conversation_id)
     question = _infer_feedback_question(
         db,
         tenant_id=tenant_id,
-        conversation_id=conv.id,
+        conversation_id=conversation.id,
         assistant_created_at=assistant.created_at,
     )
-    dataset_id, _meta, request_id = _resolve_feedback_dataset_id(assistant, conv)
+    dataset_id, request_id = _resolve_feedback_dataset_id(assistant, conversation)
     if dataset_id is not None:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    doc_ids: list[str] = []
-    if bool(getattr(body, "include_document_scope", True)):
-        doc_ids = [str(x) for x in (conv.document_ids or [])]
+    document_ids: list[str] = []
+    if body.include_document_scope:
+        document_ids = [str(document_id) for document_id in (conversation.document_ids or [])]
 
-    category_tags = [str(fb.category)] if getattr(fb, "category", None) else []
-    cleaned = _normalize_feedback_tags(fb.tags, category_tags, getattr(body, "tags", None))
+    category_tags = [feedback.category] if feedback.category else []
+    tags = _normalize_feedback_tags(feedback.tags, category_tags, body.tags)
     extra = _build_regression_case_extra(
-        fb=fb,
-        body_extra=getattr(body, "extra", None),
+        feedback=feedback,
+        body_extra=body.extra,
         dataset_id=dataset_id,
     )
     reference_sources, trace_payload = _hydrate_feedback_trace_payload(
         tenant_id=tenant_id,
-        conversation_id=conv.id,
+        conversation_id=conversation.id,
         request_id=request_id,
-        citations=getattr(assistant, "citations", None),
+        citations=assistant.citations,
     )
-    _merge_trace_payload_into_extra(extra=extra, trace_payload=trace_payload, request_id=request_id)
+    if trace_payload is not None:
+        extra["retrieval_trace"] = trace_payload
+        extra["retrieval_trace_request_id"] = request_id
 
-    row = RagasRegressionCase(
+    regression_case = RagasRegressionCase(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        document_ids=doc_ids,
+        document_ids=document_ids,
         question=question,
-        expected_answer=fb.expected_answer,
+        expected_answer=feedback.expected_answer,
         reference_sources=reference_sources,
-        tags=cleaned,
+        tags=tags,
         extra=extra,
         created_by=account_id,
     )
-    db.add(row)
-    try:
-        db.flush()
-    except Exception as exc:
-        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
+    db.add(regression_case)
+    db.flush()
 
     feedback_extra["eval_case_status"] = "promoted"
-    feedback_extra["eval_case_id"] = str(getattr(row, "id", "") or "")
-    feedback_extra["eval_case_promoted_by"] = str(account_id or "")
-    fb.extra = feedback_extra
+    feedback_extra["eval_case_id"] = str(regression_case.id)
+    feedback_extra["eval_case_promoted_by"] = account_id
+    feedback.extra = feedback_extra
 
     # Best-effort audit log (commit in the same transaction).
     audit_log_event(
@@ -705,18 +606,18 @@ def create_regression_case_from_feedback(
         actor_id=account_id,
         action="regression.case.create_from_feedback",
         resource_type="regression_case",
-        resource_id=str(getattr(row, "id", "") or ""),
+        resource_id=str(regression_case.id),
         details={
-            "feedback_id": str(fb.id),
-            "message_id": str(fb.message_id),
-            "rating": int(fb.rating),
-            "dataset_id": str(dataset_id) if dataset_id else None,
-            "document_count": len(doc_ids),
+            "feedback_id": str(feedback.id),
+            "message_id": str(feedback.message_id),
+            "rating": feedback.rating,
+            "dataset_id": str(dataset_id) if dataset_id is not None else None,
+            "document_count": len(document_ids),
         },
     )
     db.commit()
-    db.refresh(row)
-    return row
+    db.refresh(regression_case)
+    return regression_case
 
 
 @router.post(
@@ -732,88 +633,88 @@ def create_evidence_item_from_feedback(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> EvidenceItem:
     """
     Convert a feedback entry into an EvidenceSuite item.
 
     Intended workflow:
     feedback -> draft EvidenceItem -> review/approve -> sync into regression cases.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    suite_id = getattr(body, "suite_id", None)
+    suite_id = body.suite_id
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
-    if not suite:
+    if suite is None:
         raise HTTPException(status_code=404, detail="Evidence suite not found")
-    if getattr(suite, "archived_at", None) is not None:
+    if suite.archived_at is not None:
         raise HTTPException(status_code=400, detail="Evidence suite is archived")
 
     # Ensure user can at least read the suite's dataset.
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    fb = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
-    assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=fb.message_id)
-    conv = _get_feedback_conversation(db, tenant_id=tenant_id, conversation_id=fb.conversation_id)
+    feedback = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
+    assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=feedback.message_id)
+    conversation = _get_feedback_conversation(db, tenant_id=tenant_id, conversation_id=feedback.conversation_id)
     question = _infer_feedback_question(
         db,
         tenant_id=tenant_id,
-        conversation_id=conv.id,
+        conversation_id=conversation.id,
         assistant_created_at=assistant.created_at,
     )
-    dataset_id, _meta, request_id = _resolve_feedback_dataset_id(assistant, conv)
+    dataset_id, request_id = _resolve_feedback_dataset_id(assistant, conversation)
     if dataset_id is not None and dataset_id != suite.dataset_id:
         raise HTTPException(status_code=400, detail="Feedback dataset_id does not match evidence suite dataset_id")
-    cleaned = _normalize_feedback_tags(fb.tags, getattr(body, "tags", None))
-    extra = _build_evidence_item_extra(fb=fb, body_extra=getattr(body, "extra", None))
+    tags = _normalize_feedback_tags(feedback.tags, body.tags)
+    extra = dict(feedback.extra) if isinstance(feedback.extra, dict) else {}
+    extra.update(body.extra)
+    extra.setdefault("source", "feedback")
+    extra.setdefault("feedback_id", str(feedback.id))
+    extra.setdefault("message_id", str(feedback.message_id))
+    extra.setdefault("rating", feedback.rating)
     reference_sources, trace_payload = _hydrate_feedback_trace_payload(
         tenant_id=tenant_id,
-        conversation_id=conv.id,
+        conversation_id=conversation.id,
         request_id=request_id,
-        citations=getattr(assistant, "citations", None),
+        citations=assistant.citations,
     )
-    _merge_trace_payload_into_extra(extra=extra, trace_payload=trace_payload, request_id=request_id)
+    if trace_payload is not None:
+        extra["retrieval_trace"] = trace_payload
+        extra["retrieval_trace_request_id"] = request_id
     reference_sources = _finalize_feedback_reference_sources_or_keep_original(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
-        dataset_id=dataset_id,
+        dataset_id=suite.dataset_id,
         reference_sources=reference_sources,
     )
 
-    retrieval_snapshot: dict[str, Any] = trace_payload if isinstance(trace_payload, dict) else {}
-    rag_config_snapshot: dict[str, Any] = {}
-    if isinstance(trace_payload, dict):
-        retrieval = trace_payload.get("retrieval")
-        if isinstance(retrieval, dict):
-            rag_config_snapshot.update(retrieval)
+    retrieval_snapshot = trace_payload if trace_payload is not None else {}
+    rag_config_snapshot = dict(trace_payload["retrieval"]) if trace_payload is not None else {}
 
     source_metadata: dict[str, Any] = {
         **extra,
-        "conversation_id": str(conv.id),
-        "request_id": request_id or None,
+        "conversation_id": str(conversation.id),
+        "request_id": request_id,
     }
 
-    row = EvidenceItem(
+    evidence_item = EvidenceItem(
         tenant_id=tenant_id,
-        dataset_id=(dataset_id or suite.dataset_id),
+        dataset_id=suite.dataset_id,
         suite_id=suite.id,
         status="draft",
         query=question,
-        expected_answer=fb.expected_answer,
-        tags=cleaned,
+        expected_answer=feedback.expected_answer,
+        tags=tags,
         source_metadata=source_metadata,
         reference_sources=reference_sources,
         retrieval_snapshot=retrieval_snapshot,
         rag_config_snapshot=rag_config_snapshot,
-        notes=(str(fb.reason or "").strip()[:2000] if fb.reason else None),
+        notes=(feedback.reason.strip()[:2000] if feedback.reason else None),
         created_by=account_id,
     )
-    db.add(row)
-    try:
-        db.flush()
-    except Exception as exc:
-        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
+    db.add(evidence_item)
+    db.flush()
 
     audit_log_event(
         db,
@@ -821,16 +722,16 @@ def create_evidence_item_from_feedback(
         actor_id=account_id,
         action="evidence.item.create_from_feedback",
         resource_type="evidence_item",
-        resource_id=str(getattr(row, "id", "") or ""),
+        resource_id=str(evidence_item.id),
         details={
-            "feedback_id": str(fb.id),
-            "message_id": str(fb.message_id),
+            "feedback_id": str(feedback.id),
+            "message_id": str(feedback.message_id),
             "suite_id": str(suite.id),
             "dataset_id": str(suite.dataset_id),
-            "rating": int(fb.rating),
-            "reference_sources": len(reference_sources or []),
+            "rating": feedback.rating,
+            "reference_sources": len(reference_sources),
         },
     )
     db.commit()
-    db.refresh(row)
-    return row
+    db.refresh(evidence_item)
+    return evidence_item

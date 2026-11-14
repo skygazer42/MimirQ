@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.rag.engine_support.standard_stream_evidence import EVIDENCE_OPERATIONS
 from app.rag.engine_support.standard_stream_finalization import (
@@ -14,6 +14,9 @@ from app.rag.engine_support.standard_stream_query import QUERY_OPERATIONS
 from app.rag.engine_support.standard_stream_retrieval import RETRIEVAL_OPERATIONS
 from app.rag.engine_support.standard_stream_setup import SETUP_OPERATIONS
 from app.rag.engine_support.standard_stream_state import StandardStreamState
+
+if TYPE_CHECKING:
+    from app.rag.engine import RAGEngine
 
 
 @dataclass(frozen=True)
@@ -42,18 +45,15 @@ class StandardStreamExecutor:
     def __init__(
         self,
         *,
-        engine: Any,
-        module: Any,
+        engine: "RAGEngine",
         inputs: StandardStreamInputs,
     ) -> None:
         self.engine = engine
-        self.module = module
         self.inputs = inputs
 
     async def stream(self) -> AsyncGenerator[dict[str, Any], None]:
         runtime = StandardStreamState(
             engine=self.engine,
-            module=self.module,
             payload=self.inputs.as_state(),
         )
         for operation in _STANDARD_OPERATIONS:

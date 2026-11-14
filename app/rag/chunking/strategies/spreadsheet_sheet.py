@@ -8,7 +8,6 @@ The chunker splits by sheets first, then applies a fallback splitter inside
 each sheet while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,7 +32,7 @@ def _parse_sheet_header(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s.startswith("##"):
         return None
     rest = s[2:].strip()
@@ -44,7 +43,7 @@ def _parse_sheet_header(line: str) -> str | None:
 
 
 def _iter_sheets(text: str) -> list[_Sheet]:
-    raw = text or ""
+    raw = text
     if not raw:
         return []
 
@@ -57,7 +56,7 @@ def _iter_sheets(text: str) -> list[_Sheet]:
         name = _parse_sheet_header(raw_line.rstrip("\r\n"))
         if name is None:
             continue
-        starts.append(int(line_start))
+        starts.append(line_start)
         names.append(name)
 
     if not starts:
@@ -65,22 +64,19 @@ def _iter_sheets(text: str) -> list[_Sheet]:
     sheets: list[_Sheet] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
-        name = names[idx] or ""
-        if not name:
-            name = f"sheet_{idx+1}"
-        sheets.append(_Sheet(start=int(start), end=int(end), index=idx, name=name))
+        sheets.append(_Sheet(start=start, end=end, index=idx, name=names[idx]))
     return sheets
 
 
 def looks_like_spreadsheet(text: str) -> bool:
     if not text:
         return False
-    head = (text or "")[:20000]
+    head = (text)[:20000]
     return any(_parse_sheet_header(ln) is not None for ln in head.splitlines())
 
 
 class SpreadsheetSheetChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -103,11 +99,11 @@ class SpreadsheetSheetChunker(BaseChunker):
     ) -> None:
         split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
         for sd in split_docs:
-            local_start = sd.metadata.pop("start_index", None) or 0
-            abs_start = offset + int(local_start)
+            local_start = sd.metadata.pop("start_index")
+            abs_start = offset + local_start
             abs_end = abs_start + len(sd.page_content)
             meta: dict[str, Any] = dict(base_meta)
-            meta.update(sd.metadata or {})
+            meta.update(sd.metadata)
             meta["chunk_strategy"] = "spreadsheet_sheet"
             meta["start_char"] = abs_start
             meta["end_char"] = abs_end
@@ -118,8 +114,8 @@ class SpreadsheetSheetChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -136,7 +132,7 @@ class SpreadsheetSheetChunker(BaseChunker):
 
             # Include any prefix before the first sheet as a separate chunk.
             first = sheets[0]
-            if first.start > 0 and (text[: first.start] or "").strip():
+            if first.start > 0 and (text[: first.start]).strip():
                 prefix = text[: first.start]
                 self._append_chunks(
                     out,
@@ -148,18 +144,16 @@ class SpreadsheetSheetChunker(BaseChunker):
 
             for sheet in sheets:
                 sheet_text = text[sheet.start : sheet.end]
-                if not sheet_text.strip():
-                    continue
                 self._append_chunks(
                     out,
                     text=sheet_text,
                     base_meta=base_meta,
                     offset=sheet.start,
-                    extra_meta={"sheet_index": int(sheet.index), "sheet_name": sheet.name},
+                    extra_meta={"sheet_index": sheet.index, "sheet_name": sheet.name},
                 )
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

@@ -19,16 +19,14 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     script = _read("scripts/prepare_self_hosted_ci.sh")
 
     assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
-    assert "--include-torch-wheel-dir" in script
+    assert "--include-torch-wheel-dir" not in script
     assert 'PY_BIN="$(command -v python3.11 || true)"' in script
     assert 'CACHE_ROOT="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/mimirq"' in script
     assert 'VENV_DIR="${SELF_HOSTED_VENV_DIR:-$CACHE_ROOT/python-3.11}"' in script
     assert 'PIP_CACHE_DIR_VALUE="${PIP_CACHE_DIR:-$CACHE_ROOT/pip}"' in script
-    assert 'TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$CACHE_ROOT/torch-wheels}"' in script
     assert 'echo "$VENV_DIR/bin" >> "$GITHUB_PATH"' in script
     assert 'echo "PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.org/simple}"' in script
     assert 'echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"' in script
-    assert 'echo "TORCH_WHEEL_DIR=$TORCH_WHEEL_DIR_VALUE"' in script
     assert 'echo "NO_PROXY=$NO_PROXY_VALUE"' in script
     assert 'HTTP_PROXY_VALUE="${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-${http_proxy:-}}}"' in script
     assert 'HTTPS_PROXY_VALUE="${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}"' in script
@@ -125,7 +123,7 @@ def test_public_pr_live_core_gate_launcher_contract() -> None:
     assert 'PRIMARY_LOG="artifacts/live-core-primary.log"' in script
     assert 'SECONDARY_LOG="artifacts/live-core-secondary.log"' in script
     assert 'export AUTH_MODE="${AUTH_MODE:-header}"' in script
-    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-faiss}"' in script
+    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-memory}"' in script
     assert 'export MINIO_ENABLED="${MINIO_ENABLED:-false}"' in script
     assert 'export UPLOAD_DEDUP_ENABLED="${UPLOAD_DEDUP_ENABLED:-true}"' in script
     assert 'export DIFY_EXTERNAL_KNOWLEDGE_ENABLED="false"' in script
@@ -174,38 +172,14 @@ def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> 
     assert "PIP_DEFAULT_TIMEOUT=60" in python_audit
     assert "--timeout 60" in python_audit
     assert "--index-url https://pypi.org/simple" in python_audit
-    assert "--extra-index-url https://download.pytorch.org/whl/cpu" in python_audit
+    assert "--extra-index-url https://download.pytorch.org/whl/cpu" not in python_audit
     for advisory in (
         "PYSEC-2026-311",
         "PYSEC-2026-3046",
         "PYSEC-2026-2447",
-        "CVE-2026-45830",
-        "CVE-2026-45831",
-        "CVE-2026-45833",
         "PYSEC-2026-1325",
     ):
         assert f"--ignore-vuln {advisory}" in python_audit
-
-
-def test_python_audit_chroma_exception_stays_bound_to_the_embedded_local_backend() -> None:
-    makefile = _read("Makefile")
-    vector_factory = _read("app/storage/vector/factory.py")
-    helm_validation = _read("deploy/helm/mimirq/templates/validate-runtime.yaml")
-    chroma_backend = vector_factory.split("class ChromaVectorStore(BaseVectorStore):", 1)[1].split(
-        "\n\n_VECTOR_STORE_SINGLETONS:", 1
-    )[0]
-
-    assert "embedded local LangChain Chroma path" in makefile
-    assert "Chroma HTTP or RBAC APIs" in makefile
-    assert '"collection_name": key' in chroma_backend
-    assert 'kwargs["persist_directory"] = self.persist_path' in chroma_backend
-    assert "HttpClient" not in chroma_backend
-    assert "host=" not in chroma_backend
-    assert "port=" not in chroma_backend
-    assert "headers=" not in chroma_backend
-    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in (
-        helm_validation
-    )
 
 
 def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
@@ -364,13 +338,12 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
     assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
     assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
-    assert "TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}" in workflow
     assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
     _assert_uses_self_hosted_bootstrap(
         workflow,
-        "bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir",
+        "bash scripts/prepare_self_hosted_ci.sh",
         count=4,
     )
     assert "runner.name == 'mimirq-main-01'" not in workflow
@@ -378,7 +351,7 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "/data/actions-runner" not in workflow
     assert "127.0.0.1:35983" not in workflow
     assert "docker build --network host" in workflow
-    assert workflow.count("docker build --network host") == 2
+    assert workflow.count("docker build --network host") == 3
     assert "docker/setup-buildx-action" not in workflow
     assert "docker/build-push-action" not in workflow
     assert "Prepare Docker build proxy" in workflow
@@ -394,7 +367,6 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "redis:\n        image: redis:7-alpine" in public_pr_job
     # Hosted PR job caching: stable cache paths + pip/pnpm/torch-wheel/Playwright caches.
     assert "PIP_CACHE_DIR: /home/runner/.cache/pip" in public_pr_job
-    assert "TORCH_WHEEL_DIR: /home/runner/.cache/torch-wheels" in public_pr_job
     assert "${{ runner.temp }}/pip-cache" not in workflow
     assert "${{ runner.temp }}/torch-wheels" not in workflow
     assert "corepack enable" not in public_pr_job
@@ -404,14 +376,10 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "cache-dependency-path: |\n            requirements.txt\n            requirements-dev.txt" in public_pr_job
     assert "cache: pnpm" in public_pr_job
     assert "cache-dependency-path: web/pnpm-lock.yaml" in public_pr_job
-    assert public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0") == 2
-    assert "path: /home/runner/.cache/torch-wheels" in public_pr_job
-    assert (
-        "key: torch-wheels-${{ runner.os }}-py311-${{ hashFiles('ci/download_verified_wheels.py') }}" in public_pr_job
-    )
+    assert public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0") == 1
     assert "path: /home/runner/.cache/ms-playwright" in public_pr_job
     assert "key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}" in public_pr_job
-    assert 'python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"' in workflow
+    assert "download_verified_wheels.py" not in workflow
     assert "command -v rg" in workflow
     assert "rg --version | head -n 1" in workflow
     assert "make openapi-check" in workflow
@@ -475,8 +443,7 @@ def test_ci_backend_full_suite_runs_pytest_xdist_in_parallel() -> None:
     # parallelized with pytest-xdist (`-n auto`).
     assert "$(PY) -m pytest -q -n auto $(PYTEST_ARGS)" in makefile
     assert "pytest-xdist==3.8.0" in requirements_dev
-    # Both jobs install the complete dev set; xgboost-cpu keeps the dependency
-    # graph CPU-only without filtering requirements or bypassing pip metadata.
+    # Both jobs install development tools and the runtime without bypassing pip metadata.
     assert workflow.count("python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt") == 2
     assert "filter_cpu_ci_requirements.py" not in workflow
     assert "--no-deps xgboost" not in workflow
@@ -494,7 +461,7 @@ def test_host_setup_uses_project_venv_and_complete_cpu_dependencies() -> None:
     assert "ifneq ($(wildcard $(VENV_PY)),)" in makefile
     assert "$(VENV_PY) -m pip check" in makefile
     assert "cd web && pnpm install" in makefile
-    assert 'xgboost-cpu==3.2.0; platform_system == "Linux"' in requirements
+    assert "xgboost" not in requirements
     assert "filter_cpu_ci_requirements.py" not in dockerfile
     assert "--no-deps" not in dockerfile
     assert "${MILVUS_IMAGE:-milvusdb/milvus:v2.6.11}" in compose
@@ -554,13 +521,12 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
     assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
     assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
-    assert "TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}" in workflow
     assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
     _assert_uses_self_hosted_bootstrap(
         workflow,
-        "bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir",
+        "bash scripts/prepare_self_hosted_ci.sh",
         count=1,
     )
     assert "runner.name == 'mimirq-main-01'" not in workflow
@@ -570,7 +536,8 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "\n  build:\n" in workflow
     assert "runs-on: ubuntu-latest" in workflow
     assert workflow.count("make api-docs-build") == 2
-    assert workflow.count("python ci/download_verified_wheels.py") == 2
+    assert "download_verified_wheels.py" not in workflow
+    assert "TORCH_WHEEL_DIR" not in workflow
     assert "make api-docs-build-static" not in workflow
     assert "Upload API site artifact" in workflow
     assert "actions/upload-artifact@" in workflow
@@ -626,17 +593,14 @@ def test_backend_dockerfile_uses_bundled_buildkit_frontend() -> None:
     assert not dockerfile.lstrip().startswith("# syntax=docker/dockerfile:")
 
 
-def test_cpu_torch_wheels_match_linux_runtime_requirements() -> None:
-    requirements = _read("requirements.txt")
-    torch_version = re.search(r'^torch==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
-    torchvision_version = re.search(r'^torchvision==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
-
-    assert torch_version is not None
-    assert torchvision_version is not None
-    for install_surface in ("docker/Dockerfile", ".github/workflows/ci.yml"):
-        content = _read(install_surface)
-        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {torch_version.group(1)}
-        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {torchvision_version.group(1)}
+def test_api_profiles_do_not_install_retired_local_models() -> None:
+    dockerfile = _read("docker/Dockerfile")
+    workflow = _read(".github/workflows/ci.yml")
+    assert "ARG REQUIREMENTS_FILE=requirements.txt" in dockerfile
+    assert "torch-" not in dockerfile
+    assert "torchvision-" not in dockerfile
+    assert "download_verified_wheels.py" not in workflow
+    assert "requirements-local-models.txt" not in _read("requirements-dev.txt")
 
 
 def test_docker_ci_supports_cold_web_builds() -> None:
@@ -661,6 +625,8 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
     assert "Set up Docker Buildx" not in docker_job
     assert docker_job.count("docker build --network host") == 2
+    assert "requirements-chroma.txt" not in docker_job
+    assert docker_job.count("MIMIRQ_BACKEND_IMAGE: mimirq-backend") == 5
     assert "--build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
@@ -755,7 +721,7 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     assert "MIMIRQ_SMOKE_PASSWORD=%s" in script
 
     assert "PLAYWRIGHT_EXTERNAL_SERVER" in playwright_config
-    assert "webServer: useExternalServer ? undefined" in playwright_config
+    assert re.search(r"webServer:\s*useExternalServer\s*\?\s*undefined", playwright_config)
     assert "Install JWT browser smoke dependencies" in docker_job
     assert "Prepare self-hosted Node" in docker_job
     assert "node -v" in docker_job

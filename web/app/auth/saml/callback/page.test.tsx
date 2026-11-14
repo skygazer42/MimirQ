@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act } from 'react'
+import { act, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,23 +13,21 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ replace: mocks.replace }),
 }))
-vi.mock('@/lib/saml-session', () => ({
+vi.mock('@/lib/saml-session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/saml-session')>()),
   consumeSamlBridgeState: mocks.consume,
-  getSamlCallbackErrorMessage: (code: string) =>
-    code === 'saml_invalid_response'
-      ? 'The identity provider returned an invalid SAML response.'
-      : 'SAML sign-in failed. Please try again.',
 }))
-vi.mock('@/lib/auth-storage', () => ({
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   setAuthSession: mocks.setAuthSession,
 }))
 vi.mock('@/components/full-screen-frame', () => ({
-  FullScreenFrame: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  FullScreenFrame: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   ),
 }))
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
 }))
 
 import SamlCallbackPage from './page'
@@ -67,7 +65,7 @@ describe('SAML callback page', () => {
     expect(mocks.setAuthSession).toHaveBeenCalledWith(
       expect.objectContaining({
         token: expect.objectContaining({ access_token: 'jwt-token' }),
-      })
+      }),
     )
     expect(mocks.replace).toHaveBeenCalledWith('/datasets/123')
 
@@ -108,5 +106,23 @@ describe('SAML callback page', () => {
     expect(container.textContent).toContain('SAML sign-in failed. Please try again.')
     expect(container.textContent).not.toContain('debug stack trace')
     act(() => root.unmount())
+  })
+
+  it.each(['toString', 'constructor', '__proto__'])('renders a safe error for the routed code %s', async (code) => {
+    window.history.replaceState({}, '', `/auth/saml/callback?error=${code}`)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => root.render(<SamlCallbackPage />))
+
+      expect(container.textContent).toContain('SAML sign-in failed. Please try again.')
+      expect(mocks.consume).not.toHaveBeenCalled()
+      expect(mocks.setAuthSession).not.toHaveBeenCalled()
+      expect(mocks.replace).not.toHaveBeenCalled()
+    } finally {
+      act(() => root.unmount())
+    }
   })
 })

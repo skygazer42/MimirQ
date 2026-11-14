@@ -52,10 +52,10 @@ class ParentChildReranker(DocumentReranker):
         for items in groups.values():
             children = [d for d in items if (d.metadata or {}).get("chunk_role") == "child"]
             if children:
-                rep = max(children, key=lambda d: scores.get(id(d), 0.0))
+                rep = max(children, key=lambda d: scores[id(d)])
             else:
-                rep = max(items, key=lambda d: scores.get(id(d), 0.0))
-            ranked.append((rep, scores.get(id(rep), 0.0)))
+                rep = max(items, key=lambda d: scores[id(d)])
+            ranked.append((rep, scores[id(rep)]))
 
         # Sort by score descending.
         ranked.sort(key=lambda x: x[1], reverse=True)

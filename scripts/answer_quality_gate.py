@@ -3,9 +3,28 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 _THRESHOLDS_SCHEMA_V1 = "mimirq.answer_quality_thresholds.v1"
+
+
+class _MetricCheck(TypedDict):
+    metric: str
+    value: float | None
+    required: bool
+    min: float | None
+    max: float | None
+    passed: bool
+    reason: str | None
+
+
+class _GateReport(TypedDict):
+    schema: str
+    passed: bool
+    checks: list[_MetricCheck]
+    failures: list[str]
+    input: NotRequired[str]
+    thresholds: NotRequired[str]
 
 
 def _load_json(path: Path) -> Any:
@@ -55,7 +74,7 @@ def _normalize_threshold_rule(cfg_raw: Any) -> dict[str, Any] | None:
     _coerce_rule_bound(row, cfg_raw, "min")
     _coerce_rule_bound(row, cfg_raw, "max")
     row["required"] = bool(cfg_raw.get("required", True))
-    return row if row else None
+    return row
 
 
 def normalize_thresholds(payload: Any) -> dict[str, dict[str, Any]]:
@@ -79,8 +98,8 @@ def evaluate_answer_quality(
     *,
     summary: dict[str, Any],
     thresholds: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    checks: list[dict[str, Any]] = []
+) -> _GateReport:
+    checks: list[_MetricCheck] = []
     failures: list[str] = []
 
     for metric, rule in (thresholds or {}).items():
@@ -93,7 +112,7 @@ def evaluate_answer_quality(
             except Exception:
                 value = None
 
-        row = {
+        row: _MetricCheck = {
             "metric": metric,
             "value": value,
             "required": required,
@@ -113,11 +132,11 @@ def evaluate_answer_quality(
 
         low = row["min"]
         high = row["max"]
-        if low is not None and float(value) < float(low):
+        if low is not None and value < low:
             row["passed"] = False
             row["reason"] = "lt_min"
             failures.append(f"{metric}: {value:.6f} < min {float(low):.6f}")
-        if high is not None and float(value) > float(high):
+        if high is not None and value > high:
             row["passed"] = False
             row["reason"] = "gt_max"
             failures.append(f"{metric}: {value:.6f} > max {float(high):.6f}")
@@ -125,7 +144,7 @@ def evaluate_answer_quality(
 
     return {
         "schema": "mimirq.answer_quality_gate_report.v1",
-        "passed": bool(len(failures) == 0),
+        "passed": len(failures) == 0,
         "checks": checks,
         "failures": failures,
     }
@@ -157,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[answer-quality-gate] wrote {out_path}")
-    if not bool(report.get("passed")):
+    if not report["passed"]:
         print("[answer-quality-gate] FAIL")
         return 2
     print("[answer-quality-gate] PASS")

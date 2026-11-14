@@ -1,9 +1,8 @@
-
 from typing import Any
 
 from pydantic import ValidationError
 
-from app.api.schemas.document import DocumentPipelineOptions
+from app.api.schemas.documents import DocumentPipelineOptions
 
 
 def normalize_document_pipeline_patch(
@@ -26,14 +25,13 @@ def normalize_document_pipeline_patch(
     if max_keys is not None and len(raw) > max_keys:
         raise ValueError(f"{field_label} too many keys")
 
-    allowed = set(DocumentPipelineOptions.model_fields.keys())
-    unknown = [key for key in raw.keys() if key not in allowed]
+    unknown = [key for key in raw if key not in DocumentPipelineOptions.model_fields]
     if unknown:
         unknown_sorted = ", ".join(sorted(map(str, unknown))[:20])
         raise ValueError(f"{field_label} contains unknown keys: {unknown_sorted}")
 
     try:
-        validated = DocumentPipelineOptions(**raw)
+        validated = DocumentPipelineOptions.model_validate(raw)
     except ValidationError as exc:
         raise ValueError(invalid_message or f"invalid {field_label}") from exc
 

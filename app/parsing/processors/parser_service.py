@@ -8,6 +8,7 @@ import base64
 import hashlib
 import re
 import uuid
+from contextlib import ExitStack
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
@@ -47,22 +48,15 @@ def _rewrite_preview_image_refs(
     html_pat: re.Pattern[str],
     replacements: dict[str, str],
 ) -> str:
-    def _md_repl(match: re.Match[str]) -> str:
-        raw = match.group(1) or ""
+    def _replace_ref(match: re.Match[str]) -> str:
+        raw = match.group(1)
         new = replacements.get(raw.strip())
         if not new:
             return match.group(0)
         return match.group(0).replace(raw, new, 1)
 
-    def _html_repl(match: re.Match[str]) -> str:
-        raw = match.group(1) or ""
-        new = replacements.get(raw.strip())
-        if not new:
-            return match.group(0)
-        return match.group(0).replace(raw, new, 1)
-
-    rewritten = md_pat.sub(_md_repl, content)
-    return html_pat.sub(_html_repl, rewritten or "")
+    rewritten = md_pat.sub(_replace_ref, content)
+    return html_pat.sub(_replace_ref, rewritten)
 
 
 def _preview_images_dir(tenant_id: UUID) -> Path:
@@ -86,10 +80,7 @@ def _preview_ref_candidates(ref: str) -> list[str]:
     if not ref_path:
         return []
 
-    try:
-        ref_path_decoded = unquote(ref_path)
-    except Exception:
-        ref_path_decoded = ref_path
+    ref_path_decoded = unquote(ref_path)
 
     candidates = [ref_path_decoded]
     if ref_path_decoded.startswith("/") and not ref_path_decoded.startswith("/api/"):
@@ -129,7 +120,8 @@ def _read_preview_local_image(path: Path, *, max_image_bytes: int) -> tuple[byte
         return None
 
     try:
-        raw_bytes = path.read_bytes()
+        with path.open("rb") as stream:
+            raw_bytes = stream.read(max_image_bytes + 1)
     except Exception:
         get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
         return None
@@ -144,25 +136,27 @@ def _convert_preview_local_image(
     *,
     ext: str,
     pil_image: object | None,
-    pillow_ok: bool,
 ) -> tuple[bytes, str] | None:
     supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
     out_ext = ext if ext in supported_exts else ".jpg"
     if out_ext != ".jpg" or ext in supported_exts:
         return raw_bytes, out_ext
-    if not pillow_ok or pil_image is None:
+    if pil_image is None:
         return None
 
     try:
-        img = pil_image.open(BytesIO(raw_bytes))  # type: ignore[attr-defined]
-        try:
-            if getattr(img, "mode", None) != "RGB":
-                img = img.convert("RGB")
-        except Exception as exc:
-            logger.debug("Ignoring preview image mode normalization failure: %s", exc)
-        out = BytesIO()
-        img.save(out, format="JPEG", quality=85, optimize=True)
-        return out.getvalue(), out_ext
+        with ExitStack() as cleanup:
+            img = pil_image.open(BytesIO(raw_bytes))  # type: ignore[attr-defined]
+            cleanup.callback(img.close)
+            try:
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                    cleanup.callback(img.close)
+            except Exception as exc:
+                logger.debug("Ignoring preview image mode normalization failure: %s", exc)
+            out = BytesIO()
+            img.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue(), out_ext
     except Exception:
         get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
         return None
@@ -198,17 +192,8 @@ def _persist_preview_local_image(
     return preview_id, out_ext
 
 
-def _saved_preview_image_payload(*, preview_id: str, out_ext: str, images_dir: Path) -> dict[str, str]:
-    return {
-        "id": preview_id,
-        "filename": f"{preview_id}{out_ext}",
-        "path": str(images_dir / f"{preview_id}{out_ext}"),
-        "url": f"/api/v1/documents/image/{preview_id}",
-    }
-
-
 def _preview_doc_content_and_base_dir(doc: Document) -> tuple[str, Path] | None:
-    content = doc.page_content or ""
+    content = doc.page_content
     if not isinstance(content, str) or not content:
         return None
 
@@ -229,11 +214,10 @@ def _preview_materialized_ref(
     base_dir_resolved: Path,
     max_image_bytes: int,
     pil_image: object | None,
-    pillow_ok: bool,
     images_dir: Path,
     owner_binding: dict[str, str] | None,
     digest_cache: dict[str, tuple[str, str]],
-) -> tuple[str, tuple[str, str] | None] | None:
+) -> tuple[str, tuple[str, str]] | None:
     resolved_path = _resolve_preview_local_image_path(ref, base_dir_resolved=base_dir_resolved)
     if resolved_path is None:
         return None
@@ -246,7 +230,6 @@ def _preview_materialized_ref(
         image_payload[0],
         ext=image_payload[1],
         pil_image=pil_image,
-        pillow_ok=pillow_ok,
     )
     if converted is None:
         return None
@@ -272,7 +255,6 @@ def _materialize_preview_doc_local_images(
     max_inline_images: int,
     max_image_bytes: int,
     pil_image: object | None,
-    pillow_ok: bool,
     digest_cache: dict[str, tuple[str, str]],
     seen_saved_ids: set[str],
 ) -> list[dict[str, str]]:
@@ -296,7 +278,6 @@ def _materialize_preview_doc_local_images(
             base_dir_resolved=base_dir_resolved,
             max_image_bytes=max_image_bytes,
             pil_image=pil_image,
-            pillow_ok=pillow_ok,
             images_dir=images_dir,
             owner_binding=owner_binding,
             digest_cache=digest_cache,
@@ -309,11 +290,12 @@ def _materialize_preview_doc_local_images(
         if preview_id not in seen_saved_ids:
             seen_saved_ids.add(preview_id)
             saved_images.append(
-                _saved_preview_image_payload(
-                    preview_id=preview_id,
-                    out_ext=out_ext,
-                    images_dir=images_dir,
-                )
+                {
+                    "id": preview_id,
+                    "filename": f"{preview_id}{out_ext}",
+                    "path": str(images_dir / f"{preview_id}{out_ext}"),
+                    "url": f"/api/v1/documents/image/{preview_id}",
+                }
             )
         replacements[ref] = url
 
@@ -328,201 +310,195 @@ def _materialize_preview_doc_local_images(
     return saved_images
 
 
-class DocumentParserService:
-    def _materialize_local_images_for_preview(
-        self,
-        documents: list[Document],
-        tenant_id: UUID,
-        *,
-        owner_binding: dict[str, str] | None,
-    ) -> list[dict]:
-        """
-        Rewrite local/relative image references in Markdown/HTML into preview-time
-        `/api/v1/documents/image/{uuid}` URLs.
+def _materialize_local_images_for_preview(
+    documents: list[Document],
+    tenant_id: UUID,
+    *,
+    owner_binding: dict[str, str] | None,
+) -> list[dict]:
+    """
+    Rewrite local/relative image references in Markdown/HTML into preview-time
+    `/api/v1/documents/image/{uuid}` URLs.
 
-        This covers parsers that output markdown such as:
-        - ![](images/xxx.png)
-        - <img src="images/xxx.png">
+    This covers parsers that output markdown such as:
+    - ![](images/xxx.png)
+    - <img src="images/xxx.png">
 
-        The referenced files must live under metadata["asset_base_dir"] for the doc.
-        """
-        if not documents:
-            return []
+    The referenced files must live under metadata["asset_base_dir"] for the doc.
+    """
+    if not documents:
+        return []
 
-        images_dir = _preview_images_dir(tenant_id)
-        max_inline_images, max_image_bytes = _preview_local_image_limits()
-        digest_cache: dict[str, tuple[str, str]] = {}
-        saved_images: list[dict] = []
-        seen_saved_ids: set[str] = set()
+    images_dir = _preview_images_dir(tenant_id)
+    max_inline_images, max_image_bytes = _preview_local_image_limits()
+    digest_cache: dict[str, tuple[str, str]] = {}
+    saved_images: list[dict] = []
+    seen_saved_ids: set[str] = set()
 
-        pil_image = _get_pil_image()
-        pillow_ok = pil_image is not None
+    pil_image = _get_pil_image()
 
-        for doc in documents:
-            saved_images.extend(
-                _materialize_preview_doc_local_images(
-                    doc,
-                    images_dir=images_dir,
-                    owner_binding=owner_binding,
-                    max_inline_images=max_inline_images,
-                    max_image_bytes=max_image_bytes,
-                    pil_image=pil_image,
-                    pillow_ok=pillow_ok,
-                    digest_cache=digest_cache,
-                    seen_saved_ids=seen_saved_ids,
-                )
+    for doc in documents:
+        saved_images.extend(
+            _materialize_preview_doc_local_images(
+                doc,
+                images_dir=images_dir,
+                owner_binding=owner_binding,
+                max_inline_images=max_inline_images,
+                max_image_bytes=max_image_bytes,
+                pil_image=pil_image,
+                digest_cache=digest_cache,
+                seen_saved_ids=seen_saved_ids,
             )
+        )
 
-        return saved_images
+    return saved_images
 
-    def parse_for_preview(
-        self,
-        file_path: Path,
-        tenant_id: UUID,
-        account_id: str | None = None,
-        parser_backend: str | None = None,
-    ) -> dict:
-        """
-        Parse file and return Markdown plus image list (no persistence).
-        """
-        file_ext = file_path.suffix.lower()
-        is_pdf = file_ext == ".pdf"
-        pdf_quality = None
-        requested_backend = normalize_parser_backend(parser_backend)
-        explicit_pdf_backend = bool(is_pdf and requested_backend and requested_backend != "auto")
 
-        # Score PDF and choose parser.
-        if is_pdf:
-            parser_backend, pdf_quality = route_pdf_backend(
-                file_path,
-                parser_backend,
-                sample_pages=3,
-                use_ocr_validation=settings.RAPIDOCR_ENABLED,
-            )
-        else:
-            # Non-PDF: route by backend (auto prefers Pandoc/Excel when enabled).
-            parser_backend = parser_backend or "auto"
+def parse_for_preview(
+    file_path: Path,
+    tenant_id: UUID,
+    account_id: str | None = None,
+    parser_backend: str | None = None,
+) -> dict:
+    """
+    Parse file and return Markdown plus image list (no persistence).
+    """
+    file_ext = file_path.suffix.lower()
+    is_pdf = file_ext == ".pdf"
+    pdf_quality = None
+    requested_backend = normalize_parser_backend(parser_backend)
+    explicit_pdf_backend = bool(is_pdf and requested_backend and requested_backend != "auto")
 
-        documents, resolved_backend = parser_factory.parse(
+    # Score PDF and choose parser.
+    if is_pdf:
+        parser_backend, pdf_quality = route_pdf_backend(
             file_path,
-            parser_backend=parser_backend,
-            tenant_id=str(tenant_id),
-            account_id=str(account_id or "").strip() or None,
-            pdf_quality=pdf_quality,
-            allow_fallback=not explicit_pdf_backend,
+            parser_backend,
+            sample_pages=3,
+            use_ocr_validation=settings.RAPIDOCR_ENABLED,
         )
-        owner_account_id = str(account_id or "").strip()
-        owner_binding = {"tenant_id": str(tenant_id), "account_id": owner_account_id} if owner_account_id else None
-        local_images = self._materialize_local_images_for_preview(
-            documents,
-            tenant_id,
-            owner_binding=owner_binding,
-        )
-        markdown_text = self._merge_documents(documents)
 
-        images = self._extract_and_save_inline_images(
-            markdown_text,
-            tenant_id,
-            owner_binding=owner_binding,
-        )
-        if images:
-            # Replace data URIs with local references.
-            for img in images:
-                markdown_text = markdown_text.replace(img["original"], img["markdown_ref"])
+    owner_account_id = str(account_id if account_id is not None else "").strip()
+    parser_account_id = owner_account_id if owner_account_id else None
+    documents, resolved_backend = parser_factory.parse(
+        file_path,
+        parser_backend=parser_backend,
+        tenant_id=str(tenant_id),
+        account_id=parser_account_id,
+        pdf_quality=pdf_quality,
+        allow_fallback=not explicit_pdf_backend,
+    )
+    owner_binding = {"tenant_id": str(tenant_id), "account_id": owner_account_id} if owner_account_id else None
+    local_images = _materialize_local_images_for_preview(
+        documents,
+        tenant_id,
+        owner_binding=owner_binding,
+    )
+    markdown_text = _merge_documents(documents)
 
-        return {
-            "backend": resolved_backend,
-            "pdf_quality": pdf_quality,
-            "markdown": markdown_text,
-            "images": [
-                {
-                    "id": img["id"],
-                    "url": img["url"],
-                    "filename": img["filename"],
-                }
-                for img in [*local_images, *images]
-            ],
-        }
+    images = _extract_and_save_inline_images(
+        markdown_text,
+        tenant_id,
+        owner_binding=owner_binding,
+    )
+    if images:
+        # Replace data URIs with local references.
+        for img in images:
+            markdown_text = markdown_text.replace(img["original"], img["markdown_ref"])
 
-    def _merge_documents(self, documents: list[Document]) -> str:
-        parts = []
-        for doc in documents:
-            text = doc.page_content or ""
-            parts.append(text.strip())
-        return "\n\n".join(p for p in parts if p)
+    return {
+        "backend": resolved_backend,
+        "pdf_quality": pdf_quality,
+        "markdown": markdown_text,
+        "images": [
+            {
+                "id": img["id"],
+                "url": img["url"],
+                "filename": img["filename"],
+            }
+            for img in [*local_images, *images]
+        ],
+    }
 
-    def _extract_and_save_inline_images(
-        self,
-        markdown_text: str,
-        tenant_id: UUID,
-        *,
-        owner_binding: dict[str, str] | None,
-    ) -> list[dict]:
-        """
-        Find data URI images, save to uploads/{tenant_id}/images, and return mapping info.
-        """
-        images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
-        images_dir.mkdir(parents=True, exist_ok=True)
 
-        pattern = re.compile(r"!\[[^\]]*\]\((data:image\/[a-zA-Z0-9+\/;=,:.-]+)\)")
-        matches = list(pattern.finditer(markdown_text))
+def _merge_documents(documents: list[Document]) -> str:
+    parts = []
+    for doc in documents:
+        text = doc.page_content
+        parts.append(text.strip())
+    return "\n\n".join(p for p in parts if p)
 
-        max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
-        if max_inline_images and len(matches) > max_inline_images:
-            matches = matches[:max_inline_images]
-        max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
-        max_image_bytes = max(1_000_000, max_image_bytes)
 
-        saved = []
-        for m in matches:
-            data_uri = m.group(1)
-            img_id = uuid.uuid4().hex
+def _extract_and_save_inline_images(
+    markdown_text: str,
+    tenant_id: UUID,
+    *,
+    owner_binding: dict[str, str] | None,
+) -> list[dict]:
+    """
+    Find data URI images, save to uploads/{tenant_id}/images, and return mapping info.
+    """
+    images_dir = _preview_images_dir(tenant_id)
+
+    pattern = re.compile(r"!\[[^\]]*\]\((data:image\/[a-zA-Z0-9+\/;=,:.-]+)\)")
+    matches = list(pattern.finditer(markdown_text))
+
+    max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
+    if max_inline_images and len(matches) > max_inline_images:
+        matches = matches[:max_inline_images]
+    max_image_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
+    max_image_bytes = max(1_000_000, max_image_bytes)
+
+    saved = []
+    for m in matches:
+        data_uri = m.group(1)
+        img_id = uuid.uuid4().hex
+        ext = "png"
+        try:
+            mm = re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,", data_uri)
+            if mm:
+                fmt = (mm.group(1)).strip().lower()
+                if fmt in {"jpg", "jpeg"}:
+                    ext = "jpg"
+                elif fmt in {"png", "webp", "gif", "bmp"}:
+                    ext = fmt
+        except Exception:
             ext = "png"
-            try:
-                mm = re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,", data_uri)
-                if mm:
-                    fmt = (mm.group(1) or "").strip().lower()
-                    if fmt in {"jpg", "jpeg"}:
-                        ext = "jpg"
-                    elif fmt in {"png", "webp", "gif", "bmp"}:
-                        ext = fmt
-            except Exception:
-                ext = "png"
 
-            filename = f"{img_id}.{ext}"
-            file_path = images_dir / filename
+        filename = f"{img_id}.{ext}"
+        file_path = images_dir / filename
 
-            try:
-                b64_part = data_uri.split("base64,")[-1]
-                if len(b64_part) > int(max_image_bytes * 4 / 3) + 32:
-                    continue
-                binary = base64.b64decode(b64_part)
-                if len(binary) > max_image_bytes:
-                    continue
-                file_path.write_bytes(binary)
-                _write_preview_owner_binding(
-                    images_dir=images_dir,
-                    preview_id=img_id,
-                    binding=owner_binding,
-                )
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+        try:
+            b64_part = data_uri.split("base64,")[-1]
+            if len(b64_part) > int(max_image_bytes * 4 / 3) + 32:
                 continue
-
-            url = f"/api/v1/documents/image/{img_id}"
-            markdown_ref = f"![image]({url})"
-            saved.append(
-                {
-                    "id": img_id,
-                    "filename": filename,
-                    "path": str(file_path),
-                    "url": url,
-                    "original": data_uri,
-                    "markdown_ref": markdown_ref,
-                }
+            binary = base64.b64decode(b64_part)
+            if len(binary) > max_image_bytes:
+                continue
+            file_path.write_bytes(binary)
+            _write_preview_owner_binding(
+                images_dir=images_dir,
+                preview_id=img_id,
+                binding=owner_binding,
             )
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            continue
 
-        return saved
+        url = f"/api/v1/documents/image/{img_id}"
+        markdown_ref = f"![image]({url})"
+        saved.append(
+            {
+                "id": img_id,
+                "filename": filename,
+                "path": str(file_path),
+                "url": url,
+                "original": data_uri,
+                "markdown_ref": markdown_ref,
+            }
+        )
+
+    return saved
 
 
-document_parser_service = DocumentParserService()
+__all__ = ["parse_for_preview"]

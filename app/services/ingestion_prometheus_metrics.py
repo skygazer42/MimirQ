@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -34,39 +33,27 @@ INGESTION_PROCESSING_STAGE_TOTAL = Gauge(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return settings.PROMETHEUS_ENABLED
 
 
-def _norm_kind(value: str | None) -> str:
-    s = str(value or "").strip().lower()
-    s = re.sub(r"[^a-z0-9._:-]+", "_", s)
-    return (s[:80] or "unknown").strip("_") or "unknown"
-
-
-def _norm_status(value: str | None) -> str:
-    s = str(value or "").strip().lower()
-    s = re.sub(r"[^a-z0-9._-]+", "_", s)
-    return (s[:32] or "unknown").strip("_") or "unknown"
-
-
-def _norm_stage(value: str | None) -> str:
-    s = str(value or "").strip().lower()
-    s = re.sub(r"[^a-z0-9._-]+", "_", s)
-    return (s[:64] or "unknown").strip("_") or "unknown"
+def _norm_label(value: str | None, *, pattern: str, max_len: int) -> str:
+    s = str((value if value is not None else "")).strip().lower()
+    s = re.sub(pattern, "_", s)
+    return (s[:max_len] or "unknown").strip("_") or "unknown"
 
 
 def observe_ingestion_run_created(*, kind: str | None) -> None:
     if not _enabled():
         return
-    INGESTION_RUNS_TOTAL.labels(status="created", kind=_norm_kind(kind)).inc()
+    INGESTION_RUNS_TOTAL.labels(status="created", kind=_norm_label(kind, pattern=r"[^a-z0-9._:-]+", max_len=80)).inc()
 
 
 def observe_ingestion_run_finished(*, kind: str | None, status: str | None, duration_sec: float | None) -> None:
     if not _enabled():
         return
 
-    k = _norm_kind(kind)
-    st = _norm_status(status)
+    k = _norm_label(kind, pattern=r"[^a-z0-9._:-]+", max_len=80)
+    st = _norm_label(status, pattern=r"[^a-z0-9._-]+", max_len=32)
     INGESTION_RUNS_TOTAL.labels(status=st, kind=k).inc()
 
     if duration_sec is None:
@@ -95,10 +82,10 @@ def adjust_processing_stage_gauge(
     if not _enabled():
         return
 
-    p_status = _norm_status(prev_status)
-    n_status = _norm_status(new_status)
-    p_stage = _norm_stage(prev_stage)
-    n_stage = _norm_stage(new_stage)
+    p_status = _norm_label(prev_status, pattern=r"[^a-z0-9._-]+", max_len=32)
+    n_status = _norm_label(new_status, pattern=r"[^a-z0-9._-]+", max_len=32)
+    p_stage = _norm_label(prev_stage, pattern=r"[^a-z0-9._-]+", max_len=64)
+    n_stage = _norm_label(new_stage, pattern=r"[^a-z0-9._-]+", max_len=64)
 
     was_processing = p_status == "processing"
     is_processing = n_status == "processing"
@@ -125,4 +112,3 @@ __all__ = [
     "observe_ingestion_run_finished",
     "adjust_processing_stage_gauge",
 ]
-

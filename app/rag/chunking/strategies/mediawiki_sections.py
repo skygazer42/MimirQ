@@ -9,7 +9,6 @@ The chunker splits the document into heading sections while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -18,13 +17,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -53,7 +47,7 @@ def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").rstrip("\r\n")
+    raw = line.rstrip("\r\n")
     if not raw:
         return None
     s = raw.strip()
@@ -72,27 +66,14 @@ def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
     title = s[i:j].strip()
     if not title:
         return None
-    level = max(1, min(6, int(i) - 1))
+    level = max(1, min(6, i - 1))
     return level, title
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
 
 
 def _iter_headings(text: str) -> list[WikiHeading]:
     headings: list[WikiHeading] = []
     for ln in _iter_lines(text):
-        parsed = _parse_wiki_heading(ln.text)
+        parsed = _parse_wiki_heading(ln.plain)
         if not parsed:
             continue
         level, title = parsed
@@ -100,18 +81,11 @@ def _iter_headings(text: str) -> list[WikiHeading]:
             WikiHeading(
                 start=ln.start,
                 end=ln.end,
-                level=int(level),
+                level=level,
                 title=title,
             )
         )
-    deduped: list[WikiHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[WikiHeading]) -> list[_Section]:
@@ -129,13 +103,6 @@ def _build_sections(text: str, headings: list[WikiHeading]) -> list[_Section]:
     return sections
 
 
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
-
-
 def looks_like_mediawiki(text: str) -> bool:
     if not text or len(text) < 40:
         return False
@@ -148,7 +115,7 @@ def looks_like_mediawiki(text: str) -> bool:
 
 
 class MediaWikiSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -185,7 +152,7 @@ class MediaWikiSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["wiki_heading"] = section.heading.title
-                meta["wiki_level"] = int(section.heading.level)
+                meta["wiki_level"] = section.heading.level
             if path:
                 meta["wiki_path"] = path
             if path_str:
@@ -197,7 +164,7 @@ class MediaWikiSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

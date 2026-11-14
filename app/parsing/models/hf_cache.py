@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,7 +30,7 @@ def download_hf_snapshot(
     if local_dir is not None:
         kwargs["local_dir"] = str(local_dir)
     path = hub.snapshot_download(**kwargs)  # type: ignore[attr-defined]
-    return HfSnapshotResult(repo_id=repo_id, revision=revision, path=Path(str(path)).resolve())
+    return HfSnapshotResult(repo_id=repo_id, revision=revision, path=Path(path).resolve())
 
 
 __all__ = ["HfSnapshotResult", "download_hf_snapshot"]

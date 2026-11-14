@@ -7,7 +7,6 @@ Provides a reference implementation of `@wrap_tool_call`:
 - Optionally emits JSONL metrics via `log_metrics` (guarded by settings)
 """
 
-
 import asyncio
 import time
 from collections.abc import Callable
@@ -16,22 +15,16 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
-from app.rag.core.logging import get_logger
 from app.rag.middleware.base import wrap_tool_call
 from app.services.metrics_logger import log_metrics
 
-logger = get_logger("rag.middleware.tool_logging")
-
-
-def _truncate_text(value: Any, max_chars: int) -> str:
-    text = str(value) if value is not None else ""
-    if max_chars > 0 and len(text) > max_chars:
-        return text[:max_chars] + "..."
-    return text
-
 
 def _preview_value(value: Any, *, max_preview_chars: int, pii_on: bool) -> str | None:
-    preview = _truncate_text(value, max_preview_chars) if value is not None else None
+    if value is None:
+        return None
+    preview = str(value)
+    if max_preview_chars > 0 and len(preview) > max_preview_chars:
+        preview = preview[:max_preview_chars] + "..."
     if pii_on and preview:
         return redact_text(preview)
     return preview
@@ -81,9 +74,9 @@ def _emit_tool_call_metrics(
             "event": "tool_call",
             "tool": tool_name,
             "elapsed_ms": elapsed_ms,
-            "success": tool_call_meta.get("success"),
+            "success": tool_call_meta["success"],
             "arguments_keys": arg_keys,
-            "error": tool_call_meta.get("error_preview"),
+            "error": tool_call_meta["error_preview"],
         }
     )
 
@@ -130,8 +123,8 @@ class ToolCallLoggingMiddleware:
 
         if asyncio.iscoroutinefunction(func):
 
-            async def async_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
-                tool_name = str(state.get("tool_name") or "")
+            async def async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+                tool_name = state["tool_name"]
                 arg_keys = sorted((state.get("arguments") or {}).keys())
                 t0 = time.time()
                 try:
@@ -166,8 +159,8 @@ class ToolCallLoggingMiddleware:
 
             return async_wrapper
 
-        def sync_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
-            tool_name = str(state.get("tool_name") or "")
+        def sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+            tool_name = state["tool_name"]
             arg_keys = sorted((state.get("arguments") or {}).keys())
             t0 = time.time()
             out = func(state, *args, **kwargs)
@@ -195,9 +188,9 @@ class ToolCallLoggingMiddleware:
 
 @wrap_tool_call(priority=50, name="tool_call_logging")
 def _tool_call_logging_wrapper(func: Callable) -> Callable:
-    enabled = bool(getattr(settings, "TOOL_CALL_LOG_ENABLED", False))
-    include_preview = bool(getattr(settings, "TOOL_CALL_LOG_INCLUDE_PREVIEW", False))
-    max_chars = int(getattr(settings, "TOOL_CALL_LOG_MAX_PREVIEW_CHARS", 500) or 500)
+    enabled = settings.TOOL_CALL_LOG_ENABLED
+    include_preview = settings.TOOL_CALL_LOG_INCLUDE_PREVIEW
+    max_chars = settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS
     if not enabled:
         return func
     return ToolCallLoggingMiddleware(

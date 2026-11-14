@@ -7,33 +7,50 @@ For debugging and validating:
 """
 
 import time
-from typing import Annotated, Any
+from collections.abc import Callable
+from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
-from app.core.config import settings
-from app.core.database import get_db
-from app.rag.core.logging import get_logger
-from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
-from app.services.dataset_service import DatasetService
-from app.services.document_access import (
-    filter_allowed_document_ids,
-    get_readable_datasets_map,
-    list_accessible_document_ids,
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import (
+    ChatRAGConfig,
+    DocumentStructureRequest,
+    EvidenceRetrieveRequest,
+    EvidenceRetrieveResponse,
+    PromptPreviewRequest,
+    PromptPreviewResponse,
+    RetrievePreviewRequest,
+    RetrievePreviewResponse,
+    TreeSearchPreviewRequest,
+    TreeSearchPreviewResponse,
 )
+from app.core.async_bridge import run_blocking_in_thread
+from app.core.config import settings
+from app.core.database import SessionLocal, get_db
+from app.services import dataset_service
 from app.services.rag_config_template_apply import apply_rag_config_patch
 from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
-from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
-from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+from app.services.rag_config_template_resolver import (
+    build_rag_config_patch_hash,
+    record_rag_config_template_usage,
+    resolve_rag_config_template,
+)
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
+from app.services.retrieval_requests import (
+    _attach_document_structure_trace,
+    _build_document_structure_trace,
+    _merge_dataset_ids_metadata_filter,
+    _resolve_dataset_defaults_rag_config,
+    _resolve_multimodal_query_meta,
+    _resolve_structure_dataset_id,
+)
+from app.services.retrieval_requests import retrieve_evidence as retrieve_evidence_impl
+from app.services.retrieval_scope import _resolve_retrieval_scope
 
-logger = get_logger(__name__)
+_T = TypeVar("_T")
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -46,290 +63,68 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
-DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when document_ids is empty"
-NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval"
-DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL = "dataset_id and dataset_ids are mutually exclusive"
-RETRIEVAL_SCOPE_MAX_DATASET_IDS = 80
-RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS = 200
+
+async def _run_preview_db_call(operation: Callable[[Session], _T]) -> _T:
+    """Keep metadata work and session cleanup together through request cancellation."""
+
+    def run() -> _T:
+        with SessionLocal() as worker_db:
+            return operation(worker_db)
+
+    return await run_blocking_in_thread(run)
 
 
-def _unique_dataset_ids(dataset_ids: list[UUID] | None) -> list[UUID]:
-    seen: set[UUID] = set()
-    out: list[UUID] = []
-    for dataset_id in dataset_ids or []:
-        if dataset_id in seen:
-            continue
-        seen.add(dataset_id)
-        out.append(dataset_id)
-    return out
-
-
-def _assert_dataset_ids_readable(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_ids: list[UUID],
-) -> None:
-    get_readable_datasets_map(db, tenant_id, account_id, dataset_ids, check_member=False)
-
-
-def _merge_dataset_ids_metadata_filter(
-    metadata_filter: dict[str, Any] | None,
-    *,
-    dataset_ids: list[UUID],
-) -> dict[str, Any] | None:
-    if not dataset_ids:
-        return metadata_filter
-
-    dataset_filter: dict[str, Any] = {
-        "dataset_id": {"$in": [str(dataset_id) for dataset_id in dataset_ids]},
+def _preview_retrieval_options(config: ChatRAGConfig) -> dict[str, Any]:
+    """Map the retrieval options shared by retrieval and prompt previews."""
+    return {
+        "top_k": config.top_k,
+        "score_threshold": config.score_threshold,
+        "retrieval_mode": config.retrieval_mode,
+        "retrieval_profile": config.retrieval_profile,
+        "retrieval_contract_mode": config.retrieval_contract_mode,
+        "must_recall": config.must_recall,
+        "must_recall_expected_source_keys": config.must_recall_expected_source_keys,
+        "must_recall_required_anchor_fields": config.must_recall_required_anchor_fields,
+        "intent_router": config.intent_router,
+        "intent_router_policy": config.intent_router_policy,
+        "enable_query_alias_expansion": config.enable_query_alias_expansion,
+        "query_aliases": config.query_aliases,
+        "query_alias_max_queries": config.query_alias_max_queries,
+        "enable_multi_query": config.enable_multi_query,
+        "multi_query_count": config.multi_query_count,
+        "multi_query_temperature": config.multi_query_temperature,
+        "multi_query_max_chars": config.multi_query_max_chars,
+        "enable_hyde": config.enable_hyde,
+        "enable_query_decomposition": config.enable_query_decomposition,
+        "enable_hierarchy_recall": config.enable_hierarchy_recall,
+        "hierarchy_family_collapse": config.hierarchy_family_collapse,
+        "hierarchy_family_aggregation": config.hierarchy_family_aggregation,
+        "hierarchy_tree_dedup": config.hierarchy_tree_dedup,
+        "hierarchy_parent_depth": config.hierarchy_parent_depth,
+        "hierarchy_sibling_window": config.hierarchy_sibling_window,
+        "hierarchy_overfetch_factor": config.hierarchy_overfetch_factor,
+        "enable_kg_query_expansion": config.enable_kg_query_expansion,
+        "enable_kg_chunk_injection": config.enable_kg_chunk_injection,
+        "kg_chunk_injection_max_chunks": config.kg_chunk_injection_max_chunks,
+        "enable_kg_chunk_boost": config.enable_kg_chunk_boost,
+        "kg_chunk_boost_weight": config.kg_chunk_boost_weight,
+        "kg_chunk_boost_max_promoted": config.kg_chunk_boost_max_promoted,
+        "alpha": config.alpha,
+        "fusion_strategy": config.fusion_strategy,
+        "fusion_budgets": config.fusion_budgets,
+        "fusion_min_scores": config.fusion_min_scores,
+        "fusion_weights": config.fusion_weights,
+        "retrieval_overfetch_multiplier": config.retrieval_overfetch_multiplier,
+        "retrieval_overfetch_max_k": config.retrieval_overfetch_max_k,
+        "enable_weight_rerank": config.enable_weight_rerank,
+        "vector_weight": config.vector_weight,
+        "keyword_weight": config.keyword_weight,
+        "mmr_lambda": config.mmr_lambda,
+        "enable_reranker": config.enable_reranker,
+        "reranker_provider": config.reranker_provider,
+        "reranker_top_n": config.reranker_top_n,
+        "visible_evidence_only": config.visible_evidence_only,
     }
-    if not metadata_filter:
-        return dataset_filter
-    if not isinstance(metadata_filter, dict):
-        return dataset_filter
-
-    existing = dict(metadata_filter)
-    if "dataset_id" not in existing:
-        existing["dataset_id"] = dataset_filter["dataset_id"]
-        return existing
-    return {"$and": [existing, dataset_filter]}
-
-
-def _enforce_non_empty_retrieval_scope(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    scope_document_ids: list[UUID],
-    scope_dataset_id: UUID | None,
-    scope_dataset_ids: list[UUID] | None = None,
-    allow_empty_scope: bool = False,
-) -> None:
-    dataset_ids = _unique_dataset_ids(scope_dataset_ids)
-    if allow_empty_scope and bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
-        return
-    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None and not dataset_ids:
-        return
-    if scope_document_ids:
-        return
-
-    if scope_dataset_id is not None:
-        from app.models.document import Document as DBDocument
-        from app.services.dataset_profile_service import build_dataset_documents_query
-
-        _ds, q = build_dataset_documents_query(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=scope_dataset_id,
-        )
-        q = q.filter(DBDocument.publication_status == "published")
-        q = q.filter(
-            (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-        )
-        exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
-        if not exists:
-            raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
-        return
-
-    if dataset_ids:
-        from app.models.document import Document as DBDocument
-        from app.services.dataset_profile_service import build_dataset_documents_query
-
-        for dataset_id in dataset_ids:
-            _ds, q = build_dataset_documents_query(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=dataset_id,
-            )
-            q = q.filter(DBDocument.publication_status == "published")
-            q = q.filter(
-                (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-            )
-            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
-            if exists:
-                return
-        raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
-
-    exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
-    if not exists:
-        raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
-
-
-def _inject_query_image_context(
-    *,
-    state: dict[str, Any],
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    scope_dataset_id: UUID | None,
-    scope_document_ids: list[UUID],
-    text_query: str,
-    query_image: str | None,
-    enable_auto_detect: bool,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
-    image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-
-    query_source: str | None = None
-    image_query = str(query_image or "").strip()
-    if image_query:
-        multimodal_meta["modality"] = "image"
-        multimodal_meta["reasons"] = ["explicit_query_image"]
-        query_source = "query_image"
-    elif enable_auto_detect:
-        try:
-            from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
-
-            modality, reasons = classify_query_modality(text_query)
-            multimodal_meta["modality"] = modality
-            multimodal_meta["reasons"] = reasons
-            if str(modality or "text").lower().strip() == "image":
-                image_query = str(text_query or "").strip()
-                query_source = "query"
-        except Exception as exc:  # noqa: BLE001
-            return (
-                {"enabled": False, "modality": "text", "reasons": [f"router_exception:{str(exc)[:80]}"]},
-                image_meta,
-            )
-
-    if not image_query or not query_source:
-        return multimodal_meta, image_meta
-
-    try:
-        from app.services.chat_image_service import build_chat_image_context_docs  # noqa: WPS433
-
-        ds_for_images = scope_dataset_id
-        if ds_for_images is None and scope_document_ids:
-            ds_for_images = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=scope_document_ids,
-            )
-        if ds_for_images is None:
-            return multimodal_meta, {
-                "enabled": False,
-                "used": False,
-                "reason": "missing_dataset_id",
-                "query_source": query_source,
-            }
-
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=ds_for_images,
-            question=image_query,
-            top_k=6,
-        )
-        image_meta = dict(image_meta or {})
-        image_meta["query_source"] = query_source
-        if image_docs:
-            state["tag_docs"] = image_docs
-        return multimodal_meta, image_meta
-    except Exception as exc:  # noqa: BLE001
-        return (
-            {"enabled": False, "modality": "text", "reasons": [f"image_exception:{str(exc)[:80]}"]},
-            {
-                "enabled": False,
-                "used": False,
-                "reason": f"image_exception:{str(exc)[:120]}",
-                "query_source": query_source,
-            },
-        )
-
-
-def _resolve_retrieval_scope(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    document_ids: list[UUID],
-    dataset_id: UUID | None,
-    dataset_ids: list[UUID] | None = None,
-    allow_multi_dataset: bool = False,
-    query_image: str | None = None,
-) -> tuple[UUID | None, list[UUID], list[UUID]]:
-    requested_dataset_ids = _unique_dataset_ids(dataset_ids)
-    if allow_multi_dataset and dataset_id is not None and requested_dataset_ids:
-        raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
-
-    scope_dataset_id: UUID | None = None
-    scope_dataset_ids: list[UUID] = []
-    scope_document_ids: list[UUID] = []
-    if document_ids:
-        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
-    elif allow_multi_dataset and requested_dataset_ids:
-        _assert_dataset_ids_readable(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_ids=requested_dataset_ids,
-        )
-        scope_dataset_ids = requested_dataset_ids
-    elif dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        scope_dataset_id = dataset_id
-    elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
-        raise HTTPException(
-            status_code=400,
-            detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
-        )
-
-    _enforce_non_empty_retrieval_scope(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        scope_document_ids=scope_document_ids,
-        scope_dataset_id=scope_dataset_id,
-        scope_dataset_ids=scope_dataset_ids,
-        allow_empty_scope=bool(str(query_image or "").strip()),
-    )
-    return scope_dataset_id, scope_dataset_ids, scope_document_ids
-
-
-def _resolve_dataset_defaults_rag_config(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    scope_dataset_id: UUID | None,
-    scope_document_ids: list[UUID],
-    rag_config: ChatRAGConfig,
-    request_fields_set: set[str],
-    default_profile: str | None = None,
-) -> tuple[ChatRAGConfig, list[str], dict[str, Any] | None, set[str]]:
-    rag_config_provided = "rag_config" in request_fields_set
-    effective_rag_config = rag_config
-    rag_fields_set = set(getattr(rag_config, "model_fields_set", set()) or set())
-    if default_profile and not rag_config_provided:
-        effective_rag_config = ChatRAGConfig(retrieval_profile=default_profile)
-        rag_fields_set = set()
-    elif not rag_config_provided:
-        rag_fields_set = set()
-
-    dataset_rag_defaults_applied_fields: list[str] = []
-    dataset_defaults_meta: dict[str, Any] | None = None
-    try:
-        ds_id = scope_dataset_id
-        if ds_id is None and scope_document_ids:
-            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
-        if ds_id is not None:
-            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
-            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
-            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
-            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-                rag_config=effective_rag_config,
-                request_fields_set=rag_fields_set,
-                raw_dataset_defaults=raw_defaults,
-            )
-    except Exception:
-        dataset_rag_defaults_applied_fields = []
-        dataset_defaults_meta = None
-    return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, rag_fields_set
 
 
 def _resolve_preview_rag_template_meta(
@@ -337,12 +132,12 @@ def _resolve_preview_rag_template_meta(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    body: Any,
+    body: RetrievePreviewRequest,
     request_fields_set: set[str],
     dataset_defaults_meta: dict[str, Any] | None,
     effective_rag_config: ChatRAGConfig,
     rag_fields_set: set[str],
-) -> tuple[ChatRAGConfig, dict[str, Any] | None, list[str], list[str]]:
+) -> tuple[ChatRAGConfig, dict[str, Any] | None, list[str]]:
     (
         effective_rag_config_template_id,
         effective_rag_config_template_key,
@@ -357,543 +152,57 @@ def _resolve_preview_rag_template_meta(
     )
 
     rag_config_template_meta: dict[str, Any] | None = None
-    rag_config_template_patch_applied_fields: list[str] = []
-    try:
-        if (
-            effective_rag_config_template_id
-            or (effective_rag_config_template_key or "").strip()
-            or (effective_rag_config_ab_experiment_key or "").strip()
-        ):
-            chosen, resolver_debug = resolve_rag_config_template(
-                db=db,
-                tenant_id=tenant_id,
-                rag_config_template_id=effective_rag_config_template_id,
-                template_key=effective_rag_config_template_key,
-                ab_experiment_key=effective_rag_config_ab_experiment_key,
-                ab_user_key=account_id,
-                return_debug_metadata=True,
+    if (
+        effective_rag_config_template_id
+        or (effective_rag_config_template_key is not None and effective_rag_config_template_key.strip())
+        or (effective_rag_config_ab_experiment_key is not None and effective_rag_config_ab_experiment_key.strip())
+    ):
+        chosen, resolver_debug = resolve_rag_config_template(
+            db=db,
+            tenant_id=tenant_id,
+            rag_config_template_id=effective_rag_config_template_id,
+            template_key=effective_rag_config_template_key,
+            ab_experiment_key=effective_rag_config_ab_experiment_key,
+            ab_user_key=account_id,
+            return_debug_metadata=True,
+        )
+        if chosen is not None:
+            effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+                rag_config=effective_rag_config,
+                patch=chosen.config_patch,
+                request_fields_set=rag_fields_set,
             )
-            if chosen:
-                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
-                    rag_config=effective_rag_config,
-                    patch=getattr(chosen, "config_patch", None),
-                    request_fields_set=rag_fields_set,
-                )
-                rag_config_template_meta = {
-                    "template_id": str(chosen.id),
-                    "template_key": getattr(chosen, "template_key", None),
-                    "version": int(getattr(chosen, "version", 0) or 0),
-                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
-                    "ab_variant": getattr(chosen, "ab_variant", None),
-                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
-                    "patch_applied_fields": rag_config_template_patch_applied_fields,
-                }
-                if resolver_debug:
-                    rag_config_template_meta["resolver_debug"] = resolver_debug
-                try:
-                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
-                    db.commit()
-                except Exception:
-                    db.rollback()
-    except Exception:
-        rag_config_template_meta = None
-        rag_config_template_patch_applied_fields = []
+            rag_config_template_meta = {
+                "template_id": str(chosen.id),
+                "template_key": chosen.template_key,
+                "version": chosen.version or 0,
+                "ab_experiment_key": chosen.ab_experiment_key,
+                "ab_variant": chosen.ab_variant,
+                "patch_hash": build_rag_config_patch_hash(chosen.config_patch),
+                "patch_applied_fields": rag_config_template_patch_applied_fields,
+            }
+            if resolver_debug:
+                rag_config_template_meta["resolver_debug"] = resolver_debug
+            record_rag_config_template_usage(db, chosen)
     return (
         effective_rag_config,
         rag_config_template_meta,
-        rag_config_template_patch_applied_fields,
         dataset_rag_config_template_defaults_applied_fields,
     )
 
 
-def _resolve_structure_dataset_id(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    scope_dataset_id: UUID | None,
-    scope_document_ids: list[UUID],
-) -> UUID | None:
-    if scope_dataset_id is not None or not scope_document_ids:
-        return scope_dataset_id
-    try:
-        return resolve_single_dataset_id_for_documents(
-            db,
-            tenant_id=tenant_id,
-            document_ids=scope_document_ids,
-        )
-    except Exception:
-        return None
-
-
-def _top_relevance_score(metrics: dict[str, Any]) -> float:
-    raw = metrics.get("top_relevance_score")
-    try:
-        return float(raw) if raw is not None else 0.0
-    except Exception:
-        return 0.0
-
-
-def _build_iterative_fallback_state(
-    *,
-    state: dict[str, Any],
-    fallback_profile: str,
-    fallback_mode: str,
-) -> dict[str, Any]:
-    try:
-        base_k = int(state.get("top_k") or 0)
-    except Exception:
-        base_k = 0
-    if fallback_profile == "recall20":
-        fallback_k = max(base_k, 20)
-    elif fallback_profile == "recall50":
-        fallback_k = max(base_k, 50)
-    else:
-        fallback_k = max(base_k, 80)
-
-    fallback_state = dict(state)
-    fallback_state["retrieval_profile"] = fallback_profile
-    fallback_state["retrieval_mode"] = fallback_mode
-    fallback_state["top_k"] = fallback_k
-    fallback_state["score_threshold"] = 0.0
-    return fallback_state
-
-
-async def _maybe_apply_iterative_retrieval_fallback(
-    *,
-    db: Session,
-    state: dict[str, Any],
-    citations: list[dict[str, Any]],
-    metrics: dict[str, Any],
-    query_for_retrieval: str,
-    query_debug: dict[str, Any] | None,
-    abstain_triggered: bool,
-    has_evidence: bool,
-) -> dict[str, Any]:
-    try:
-        iterative_enabled = bool(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_ENABLED", False))
-        max_passes = max(1, int(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES", 2) or 2))
-    except Exception:
-        iterative_enabled = False
-        max_passes = 1
-
-    result = {
-        "citations": citations,
-        "metrics": metrics,
-        "query_for_retrieval": query_for_retrieval,
-        "query_debug": query_debug,
-        "abstain_triggered": abstain_triggered,
-        "abstain_reason": metrics.get("abstain_reason"),
-        "has_evidence": has_evidence,
-        "selected_pass": "primary",
-        "fallback": None,
-        "iterative_summary": None,
-    }
-    if not iterative_enabled or max_passes < 2 or has_evidence:
-        return result
-
-    from app.rag.core.text import normalize_retrieval_mode
-    from app.rag.retrieval.orchestrator import run_retrieval
-
-    fallback_profile = (
-        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80")
-        .strip()
-        .lower()
-    )
-    if fallback_profile not in {"recall20", "recall50", "coverage80"}:
-        fallback_profile = "coverage80"
-
-    fallback_mode = (
-        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
-    )
-    fallback_mode = normalize_retrieval_mode(fallback_mode)
-    if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
-        fallback_mode = "keyword"
-
-    fallback_state = _build_iterative_fallback_state(
-        state=state,
-        fallback_profile=fallback_profile,
-        fallback_mode=fallback_mode,
-    )
-    fallback_offload_metrics: dict[str, Any] = {}
-    fallback = (
-        await run_blocking_retrieval_call_with_managed_session(
-            lambda worker_db: run_retrieval({**fallback_state, "db": worker_db}),
-            request_db=db,
-            runtime_metrics=fallback_offload_metrics,
-        )
-        or {}
-    )
-    f_citations = fallback.get("citations") or []
-    f_metrics = dict(fallback.get("metrics") or {})
-    f_metrics.update(fallback_offload_metrics)
-    f_abstain = bool(fallback.get("abstain_triggered") or f_metrics.get("abstain_triggered") or False)
-    f_has_evidence = bool(f_citations) and not f_abstain
-
-    p_top = _top_relevance_score(metrics)
-    f_top = _top_relevance_score(f_metrics)
-    p_n = len(citations) if isinstance(citations, list) else 0
-    f_n = len(f_citations) if isinstance(f_citations, list) else 0
-
-    use_fallback = False
-    if f_has_evidence and not has_evidence:
-        use_fallback = True
-    elif f_has_evidence and has_evidence:
-        use_fallback = f_top > p_top
-    elif (not f_has_evidence) and (not has_evidence):
-        use_fallback = (f_top > p_top) or (f_top == p_top and f_n > p_n)
-
-    iterative_summary = {
-        "enabled": True,
-        "max_passes": int(max_passes),
-        "selected_pass": "fallback" if use_fallback else "primary",
-        "passes": [
-            {
-                "pass": "primary",
-                "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
-                "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
-                "empty_retrieval": metrics.get("empty_retrieval")
-                if isinstance(metrics.get("empty_retrieval"), dict)
-                else None,
-                "citations": int(p_n),
-                "top_relevance_score": round(float(p_top), 3),
-                "abstain_triggered": bool(abstain_triggered),
-                "has_evidence": bool(has_evidence),
-                "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
-            },
-            {
-                "pass": "fallback",
-                "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
-                "retrieval_profile": str(fallback_profile),
-                "empty_retrieval": f_metrics.get("empty_retrieval")
-                if isinstance(f_metrics.get("empty_retrieval"), dict)
-                else None,
-                "citations": int(f_n),
-                "top_relevance_score": round(float(f_top), 3),
-                "abstain_triggered": bool(f_abstain),
-                "has_evidence": bool(f_has_evidence),
-                "retrieval_elapsed_sec": float(f_metrics.get("retrieval_elapsed_sec") or 0.0),
-            },
-        ],
-    }
-    result["fallback"] = fallback
-    result["iterative_summary"] = iterative_summary
-    if not use_fallback:
-        return result
-
-    result["citations"] = f_citations
-    result["metrics"] = f_metrics
-    result["query_for_retrieval"] = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
-    qd = fallback.get("query_debug")
-    result["query_debug"] = qd if isinstance(qd, dict) else query_debug
-    result["abstain_triggered"] = bool(f_abstain)
-    result["abstain_reason"] = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
-    result["has_evidence"] = bool(f_has_evidence)
-    result["selected_pass"] = "fallback"
-    return result
-
-
-def _apply_min_top_relevance_gate(
-    *,
-    citations: list[dict[str, Any]],
-    metrics: dict[str, Any],
-    has_evidence: bool,
-) -> bool:
-    min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
-    if not has_evidence or min_top_rel <= 0.0:
-        return has_evidence
-
-    top_rel_raw = metrics.get("top_relevance_score")
-    try:
-        top_rel = float(top_rel_raw) if top_rel_raw is not None else None
-    except Exception:
-        top_rel = None
-    if top_rel is None and isinstance(citations, list) and citations:
-        try:
-            top_rel = max(
-                float(
-                    (
-                        (c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score"))
-                        or 0.0
-                    )
-                )
-                for c in citations
-                if isinstance(c, dict)
-            )
-        except Exception:
-            top_rel = None
-    if top_rel is not None and top_rel < min_top_rel:
-        return False
-    return has_evidence
-
-
-def _build_retrieval_trace_payload(
-    *,
-    primary: dict[str, Any],
-    fallback: dict[str, Any] | None,
-    selected_pass: str,
-) -> dict[str, Any] | None:
-    try:
-        passes: list[dict[str, Any]] = []
-        primary_trace = primary.get("retrieval_trace")
-        if isinstance(primary_trace, dict):
-            passes.append({"pass": "primary", "trace": primary_trace})
-        fallback_trace = (fallback or {}).get("retrieval_trace") if isinstance(fallback, dict) else None
-        if isinstance(fallback_trace, dict):
-            passes.append({"pass": "fallback", "trace": fallback_trace})
-        if passes:
-            return {
-                "schema": "mimirq.retrieval_trace.v1",
-                "selected_pass": str(selected_pass),
-                "passes": passes,
-            }
-    except Exception:
-        return None
-    return None
-
-
-def _build_evidence_capsule_payload(
-    *,
-    query_for_retrieval: str,
-    citations: list[dict[str, Any]],
-    metrics: dict[str, Any],
-    retrieval_trace_payload: dict[str, Any] | None,
-    query_debug: dict[str, Any] | None,
-    tenant_id: UUID,
-    scope_dataset_id: UUID | None,
-    scope_dataset_ids: list[UUID],
-    scope_document_ids: list[UUID],
-    selected_pass: str,
-) -> dict[str, Any] | None:
-    try:
-        if not bool(getattr(settings, "RAG_EVIDENCE_CAPSULE_ENABLED", True)):
-            return None
-        from app.rag.core.evidence_capsule_builder import build_evidence_capsule
-
-        return build_evidence_capsule(
-            query_for_retrieval=query_for_retrieval,
-            citations=[c for c in citations if isinstance(c, dict)],
-            metrics=metrics,
-            retrieval_trace=retrieval_trace_payload,
-            query_debug=query_debug if isinstance(query_debug, dict) else None,
-            request_context={
-                "tenant_id": str(tenant_id),
-                "dataset_id": str(scope_dataset_id) if scope_dataset_id else None,
-                "dataset_ids": [str(dataset_id) for dataset_id in scope_dataset_ids],
-                "document_ids": [str(d) for d in scope_document_ids[:200]],
-                "selected_pass": str(selected_pass),
-            },
-        )
-    except Exception:
-        return None
-
-
-def _observe_evidence_retrieve_metrics(
-    *,
-    t_api_start: float,
-    metrics: dict[str, Any],
-    effective_rag_config: ChatRAGConfig,
-    selected_pass: str,
-    citations: list[dict[str, Any]],
-    has_evidence: bool,
-    abstain_triggered: bool,
-) -> None:
-    try:
-        from app.rag.retrieval.metrics import observe_evidence_retrieve
-
-        observe_evidence_retrieve(
-            duration_sec=(time.monotonic() - t_api_start),
-            has_evidence=bool(has_evidence),
-            abstain_triggered=bool(abstain_triggered),
-            retrieval_mode=str(metrics.get("retrieval_mode") or effective_rag_config.retrieval_mode or ""),
-            selected_pass=str(selected_pass),
-            citations_count=(len(citations) if isinstance(citations, list) else 0),
-            top_relevance_score=float(_top_relevance_score(metrics) or 0.0),
-        )
-    except Exception as exc:
-        logger.debug("Failed to record retrieval preview metrics: %s", exc)
-
-
-class RetrievePreviewRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    query_image: str | None = Field(
-        default=None,
-        max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
-        description="Optional explicit image query routed to CLIP image retrieval",
-    )
-    history: list[HistoryMessage] = Field(default_factory=list)
-    dataset_id: UUID | None = None
-    dataset_ids: list[UUID] = Field(
-        default_factory=list,
-        max_length=RETRIEVAL_SCOPE_MAX_DATASET_IDS,
-        description="Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.",
-    )
-    document_ids: list[UUID] = Field(default_factory=list, max_length=RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS)
-    rag_config_template_id: UUID | None = None  # Optional: explicit RAG config template selection.
-    rag_config_template_key: str | None = None  # Optional: select latest active template by key.
-    rag_config_ab_experiment_key: str | None = None  # Optional: stable A/B split for templates.
-    rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
-    include_structure_trace: bool = Field(
-        default=False,
-        description=(
-            "Attach bounded document-structure trace for visual tree debugging. Disabled by default "
-            "to keep retrieval preview latency predictable."
-        ),
-    )
-
-
-class RetrievePreviewResponse(BaseModel):
-    query_for_retrieval: str
-    citations: list[dict[str, Any]]
-    metrics: dict[str, Any] = Field(default_factory=dict)
-
-
-class DocumentStructureRequest(BaseModel):
-    dataset_id: UUID
-    document_id: UUID
-    max_nodes: int = Field(default=200, ge=1, le=1000)
-
-
-class TreeSearchPreviewRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    dataset_id: UUID | None = None
-    document_ids: list[UUID] = Field(default_factory=list)
-    rag_config: ChatRAGConfig = Field(default_factory=lambda: ChatRAGConfig(retrieval_profile="recall20"))
-    max_structure_docs: int = Field(default=5, ge=1, le=20)
-    max_nodes_per_doc: int = Field(default=120, ge=1, le=500)
-
-
-class TreeSearchPreviewResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    schema_: str = Field(
-        default="mimirq.tree_search_preview.v1",
-        alias="schema",
-        serialization_alias="schema",
-    )
-    query: str
-    query_for_retrieval: str
-    citations: list[dict[str, Any]]
-    document_structures: list[dict[str, Any]] = Field(default_factory=list)
-    selected_sections: list[dict[str, Any]] = Field(default_factory=list)
-    metrics: dict[str, Any] = Field(default_factory=dict)
-
-    @property
-    def schema(self) -> str:
-        return str(self.schema_)
-
-
-def _build_document_structure_trace(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID | None,
-    citations: list[dict[str, Any]],
-    max_documents: int = 5,
-    max_nodes: int = 120,
-) -> dict[str, Any] | None:
-    if dataset_id is None or not citations:
-        return None
-    try:
-        from app.rag.retrieval.document_structure import (
-            explain_citations_with_structure,
-            load_structures_for_citations,
-        )
-
-        structures = load_structures_for_citations(
-            db=db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_id,
-            citations=citations,
-            max_documents=max_documents,
-            max_nodes=max_nodes,
-        )
-        if not structures:
-            return None
-        selected_sections = explain_citations_with_structure(
-            citations=citations,
-            structures_by_document=structures,
-        )
-        return {
-            "schema": "mimirq.document_structure_trace.v1",
-            "document_count": int(len(structures)),
-            "documents": list(structures.values()),
-            "selected_sections": selected_sections,
-        }
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "schema": "mimirq.document_structure_trace.v1",
-            "document_count": 0,
-            "documents": [],
-            "selected_sections": [],
-            "error": str(exc)[:160],
-        }
-
-
-def _attach_document_structure_trace(
-    *,
-    metrics: dict[str, Any],
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID | None,
-    citations: list[dict[str, Any]],
-    max_documents: int = 5,
-    max_nodes: int = 120,
-) -> dict[str, Any] | None:
-    trace = _build_document_structure_trace(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-        citations=citations,
-        max_documents=max_documents,
-        max_nodes=max_nodes,
-    )
-    if trace:
-        metrics.setdefault("document_structure_trace", trace)
-    return trace
-
-
-class ImageIndexRequest(BaseModel):
-    dataset_id: UUID
-    max_chunks: int = Field(default=3000, ge=1, le=20_000)
-    upsert: bool = Field(default=True, description="Upsert into the image embedding index (overwrite existing vectors)")
-
-
-class ImageIndexResponse(BaseModel):
-    indexed: int = 0
-    skipped: int = 0
-    failed: int = 0
-    dim: int = 0
-    errors: list[str] = Field(default_factory=list)
-
-
-class ImageSearchRequest(BaseModel):
-    dataset_id: UUID
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    top_k: int = Field(default=8, ge=1, le=50)
-    auto_index: bool = Field(default=False, description="Best-effort: index images for the dataset before searching")
-
-
-class ImageSearchResponse(BaseModel):
-    citations: list[dict[str, Any]] = Field(default_factory=list)
-    metrics: dict[str, Any] = Field(default_factory=dict)
-
-
-@router.post("/document-structure", response_model=dict[str, Any], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/document-structure", response_model=dict[str, Any])
 def document_structure_preview(
     body: DocumentStructureRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """Return document structure derived from existing chunk hierarchy metadata."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     from app.rag.retrieval.document_structure import load_document_structure
 
@@ -905,7 +214,7 @@ def document_structure_preview(
         document_id=body.document_id,
         max_nodes=body.max_nodes,
     )
-    error = str(structure.get("error") or "")
+    error = structure.get("error")
     if error == "No document access":
         raise HTTPException(status_code=403, detail=error)
     if error == "Document not found":
@@ -913,172 +222,122 @@ def document_structure_preview(
     return structure
 
 
-@router.post("/retrieve-preview", response_model=RetrievePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/retrieve-preview", response_model=RetrievePreviewResponse)
 async def retrieve_preview(
     body: RetrievePreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> RetrievePreviewResponse:
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    await _run_preview_db_call(lambda worker_db: dataset_service.ensure_member(worker_db, tenant_id, account_id))
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
-    scope_dataset_id, scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document_ids=body.document_ids,
-        dataset_id=body.dataset_id,
-        dataset_ids=body.dataset_ids,
-        allow_multi_dataset=True,
-        query_image=body.query_image,
-    )
-
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    #
-    # For this debug endpoint, we default to a recall-first profile when the caller omits rag_config,
-    # so retrieval tuning starts from a "must-recall" baseline.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
-    (
-        effective_rag_config,
-        dataset_rag_defaults_applied_fields,
-        dataset_defaults_meta,
-        rag_fields_set,
-    ) = _resolve_dataset_defaults_rag_config(
-        db=db,
-        tenant_id=tenant_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        rag_config=body.rag_config,
-        request_fields_set=request_fields_set,
-        default_profile="recall20",
-    )
+    def prepare_request(db: Session):
+        scope_dataset_id, scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            document_ids=body.document_ids,
+            dataset_id=body.dataset_id,
+            dataset_ids=body.dataset_ids,
+            allow_multi_dataset=True,
+        )
+        request_fields_set = body.model_fields_set
+        effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, rag_fields_set = (
+            _resolve_dataset_defaults_rag_config(
+                db=db,
+                tenant_id=tenant_id,
+                scope_dataset_id=scope_dataset_id,
+                scope_document_ids=scope_document_ids,
+                rag_config=body.rag_config,
+                request_fields_set=request_fields_set,
+                default_profile="recall20",
+            )
+        )
+        (
+            effective_rag_config,
+            rag_config_template_meta,
+            dataset_rag_config_template_defaults_applied_fields,
+        ) = _resolve_preview_rag_template_meta(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            body=body,
+            request_fields_set=request_fields_set,
+            dataset_defaults_meta=dataset_defaults_meta,
+            effective_rag_config=effective_rag_config,
+            rag_fields_set=rag_fields_set,
+        )
+        metadata_filter = _merge_dataset_ids_metadata_filter(
+            effective_rag_config.metadata_filter, dataset_ids=scope_dataset_ids
+        )
+        state = build_rag_state(
+            question=body.query,
+            history=[m.model_dump() for m in body.history],
+            document_ids=scope_document_ids,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=scope_dataset_id,
+            dataset_ids=scope_dataset_ids,
+            **_preview_retrieval_options(effective_rag_config),
+            lexical_db_hybrid_fallback_only=effective_rag_config.lexical_db_hybrid_fallback_only,
+            lexical_db_hybrid_metadata_exact_fallback_enabled=effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled,
+            metadata_exact_db_fallback_enabled=effective_rag_config.metadata_exact_db_fallback_enabled,
+            metadata_filter=metadata_filter,
+            ab_user_key=account_id,
+            db=db,
+        )
+        if rag_config_template_meta:
+            state["rag_config_template"] = rag_config_template_meta
+        multimodal_meta, image_meta = _resolve_multimodal_query_meta(text_query=body.query, enable_auto_detect=False)
+        state["multimodal_router"] = multimodal_meta
+        state["image_meta"] = image_meta
+        return (
+            dataset_rag_config_template_defaults_applied_fields,
+            dataset_rag_defaults_applied_fields,
+            effective_rag_config,
+            image_meta,
+            multimodal_meta,
+            rag_config_template_meta,
+            scope_dataset_id,
+            scope_dataset_ids,
+            scope_document_ids,
+            state,
+        )
 
     (
-        effective_rag_config,
-        rag_config_template_meta,
-        _rag_config_template_patch_applied_fields,
         dataset_rag_config_template_defaults_applied_fields,
-    ) = _resolve_preview_rag_template_meta(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        body=body,
-        request_fields_set=request_fields_set,
-        dataset_defaults_meta=dataset_defaults_meta,
-        effective_rag_config=effective_rag_config,
-        rag_fields_set=rag_fields_set,
-    )
-
-    metadata_filter = _merge_dataset_ids_metadata_filter(
-        effective_rag_config.metadata_filter,
-        dataset_ids=scope_dataset_ids,
-    )
-
-    state = build_rag_state(
-        question=body.query,
-        history=[m.model_dump() for m in body.history],
-        document_ids=scope_document_ids or None,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=scope_dataset_id,
-        dataset_ids=scope_dataset_ids or None,
-        top_k=effective_rag_config.top_k,
-        score_threshold=effective_rag_config.score_threshold,
-        retrieval_mode=effective_rag_config.retrieval_mode,
-        retrieval_profile=effective_rag_config.retrieval_profile,
-        retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
-        must_recall=effective_rag_config.must_recall,
-        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
-        must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
-        intent_router=effective_rag_config.intent_router,
-        intent_router_policy=effective_rag_config.intent_router_policy,
-        enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
-        query_aliases=effective_rag_config.query_aliases,
-        query_alias_max_queries=effective_rag_config.query_alias_max_queries,
-        enable_multi_query=effective_rag_config.enable_multi_query,
-        multi_query_count=effective_rag_config.multi_query_count,
-        multi_query_temperature=effective_rag_config.multi_query_temperature,
-        multi_query_max_chars=effective_rag_config.multi_query_max_chars,
-        enable_hyde=effective_rag_config.enable_hyde,
-        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
-        enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
-        hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
-        hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
-        hierarchy_tree_dedup=effective_rag_config.hierarchy_tree_dedup,
-        hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
-        hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
-        hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
-        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
-        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
-        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
-        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
-        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
-        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
-        lexical_db_hybrid_fallback_only=effective_rag_config.lexical_db_hybrid_fallback_only,
-        lexical_db_hybrid_metadata_exact_fallback_enabled=(
-            effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
-        ),
-        metadata_exact_db_fallback_enabled=effective_rag_config.metadata_exact_db_fallback_enabled,
-        alpha=effective_rag_config.alpha,
-        fusion_strategy=effective_rag_config.fusion_strategy,
-        fusion_budgets=effective_rag_config.fusion_budgets,
-        fusion_min_scores=effective_rag_config.fusion_min_scores,
-        fusion_weights=effective_rag_config.fusion_weights,
-        retrieval_overfetch_multiplier=effective_rag_config.retrieval_overfetch_multiplier,
-        retrieval_overfetch_max_k=effective_rag_config.retrieval_overfetch_max_k,
-        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
-        vector_weight=effective_rag_config.vector_weight,
-        keyword_weight=effective_rag_config.keyword_weight,
-        mmr_lambda=effective_rag_config.mmr_lambda,
-        enable_reranker=effective_rag_config.enable_reranker,
-        reranker_provider=effective_rag_config.reranker_provider,
-        reranker_top_n=effective_rag_config.reranker_top_n,
-        metadata_filter=metadata_filter,
-        visible_evidence_only=effective_rag_config.visible_evidence_only,
-        ab_user_key=account_id,
-        db=db,
-    )
-    if rag_config_template_meta:
-        state["rag_config_template"] = rag_config_template_meta
-    multimodal_meta, image_meta = _inject_query_image_context(
-        state=state,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        text_query=body.query,
-        query_image=body.query_image,
-        enable_auto_detect=False,
-    )
-    state["multimodal_router"] = multimodal_meta
-    state["image_meta"] = image_meta
+        dataset_rag_defaults_applied_fields,
+        effective_rag_config,
+        image_meta,
+        multimodal_meta,
+        rag_config_template_meta,
+        scope_dataset_id,
+        scope_dataset_ids,
+        scope_document_ids,
+        state,
+    ) = await _run_preview_db_call(prepare_request)
 
     offload_metrics: dict[str, Any] = {}
-    result = (
-        await run_blocking_retrieval_call_with_managed_session(
-            lambda worker_db: run_retrieval({**state, "db": worker_db}),
-            request_db=db,
-            runtime_metrics=offload_metrics,
-        )
-        or {}
+    result = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**state, "db": worker_db}),
+        request_db=db,
+        runtime_metrics=offload_metrics,
     )
-    citations = result.get("citations") or []
-    metrics = result.get("metrics") or {}
-    query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
+    citations = result["citations"]
+    metrics = dict(result["metrics"])
+    query_for_retrieval = result["query_for_retrieval"].strip()
 
     # Ensure minimum fields exist for UI debugging.
-    metrics = dict(metrics)
     metrics.update(offload_metrics)
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
     metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
@@ -1099,23 +358,23 @@ async def retrieve_preview(
     if scope_dataset_ids:
         metrics.setdefault("scope_dataset_ids", [str(dataset_id) for dataset_id in scope_dataset_ids])
 
-    structure_dataset_id = _resolve_structure_dataset_id(
-        db=db,
-        tenant_id=tenant_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-    )
-    if bool(body.include_structure_trace):
-        _attach_document_structure_trace(
-            metrics=metrics,
-            db=db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=structure_dataset_id,
-            citations=[c for c in citations if isinstance(c, dict)],
-            max_documents=3,
-            max_nodes=40,
+    def attach_structure(db: Session):
+        structure_dataset_id = _resolve_structure_dataset_id(
+            db=db, tenant_id=tenant_id, scope_dataset_id=scope_dataset_id, scope_document_ids=scope_document_ids
         )
+        if body.include_structure_trace:
+            _attach_document_structure_trace(
+                metrics=metrics,
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=structure_dataset_id,
+                citations=citations,
+                max_documents=3,
+                max_nodes=40,
+            )
+
+    await _run_preview_db_call(attach_structure)
 
     return RetrievePreviewResponse(
         query_for_retrieval=query_for_retrieval,
@@ -1124,16 +383,14 @@ async def retrieve_preview(
     )
 
 
-@router.post(
-    "/tree-search-preview", response_model=TreeSearchPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.post("/tree-search-preview", response_model=TreeSearchPreviewResponse)
 async def tree_search_preview(
     body: TreeSearchPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TreeSearchPreviewResponse:
     """
     Experimental structure-first preview.
 
@@ -1153,538 +410,88 @@ async def tree_search_preview(
         db=db,
     )
 
-    structure_dataset_id = body.dataset_id
-    if structure_dataset_id is None and body.document_ids:
-        try:
-            structure_dataset_id = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=body.document_ids,
-            )
-        except Exception:
-            structure_dataset_id = None
-
-    metrics = dict(preview.metrics or {})
-    trace = _build_document_structure_trace(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=structure_dataset_id,
-        citations=[c for c in preview.citations if isinstance(c, dict)],
-        max_documents=body.max_structure_docs,
-        max_nodes=body.max_nodes_per_doc,
-    )
-    if trace:
-        metrics["document_structure_trace"] = trace
-    else:
-        _attach_document_structure_trace(
-            metrics=metrics,
+    def build_tree_response(db: Session):
+        structure_dataset_id = _resolve_structure_dataset_id(
+            db=db,
+            tenant_id=tenant_id,
+            scope_dataset_id=body.dataset_id,
+            scope_document_ids=body.document_ids,
+        )
+        metrics = dict(preview.metrics)
+        trace = _build_document_structure_trace(
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,
             dataset_id=structure_dataset_id,
-            citations=[c for c in preview.citations if isinstance(c, dict)],
+            citations=preview.citations,
             max_documents=body.max_structure_docs,
             max_nodes=body.max_nodes_per_doc,
         )
-    metrics.setdefault("experimental_mode", "tree_search_preview")
-    metrics.setdefault("tree_search_preview_note", "structure overlay only; default retrieval mode is unchanged")
-
-    return TreeSearchPreviewResponse(
-        query=body.query,
-        query_for_retrieval=preview.query_for_retrieval,
-        citations=preview.citations,
-        document_structures=list((trace or {}).get("documents") or []),
-        selected_sections=list((trace or {}).get("selected_sections") or []),
-        metrics=metrics,
-    )
-
-
-@router.post("/image-index", response_model=ImageIndexResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def index_image_embeddings(
-    body: ImageIndexRequest,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Build/update the CLIP image embedding index for a dataset (best-effort).
-
-    Security:
-    - Requires dataset write permission (indexing is a compute-heavy admin action).
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
-
-    from app.services.image_embedding_index import index_clip_image_embeddings_for_dataset
-
-    stats = index_clip_image_embeddings_for_dataset(
-        db=db,
-        tenant_id=tenant_id,
-        dataset_id=body.dataset_id,
-        max_chunks=int(body.max_chunks or 0),
-        upsert=bool(body.upsert),
-    )
-    return ImageIndexResponse(
-        indexed=int(stats.indexed),
-        skipped=int(stats.skipped),
-        failed=int(stats.failed),
-        dim=int(stats.dim),
-        errors=list(stats.errors or []),
-    )
-
-
-@router.post("/image-search-preview", response_model=ImageSearchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def image_search_preview(
-    body: ImageSearchRequest,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Search the image embedding index using CLIP (text -> image space).
-
-    Notes:
-    - Dataset-scoped only.
-    - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
-
-    # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
-
-    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
-
-    from app.services.image_embedding_index import (
-        build_image_citations,
-        index_clip_image_embeddings_for_dataset,
-        search_clip_images,
-    )
-
-    indexed: int | None = None
-    if bool(body.auto_index):
-        # Best-effort; do not fail the search if indexing fails.
-        try:
-            stats = index_clip_image_embeddings_for_dataset(
+        if trace:
+            metrics["document_structure_trace"] = trace
+        else:
+            _attach_document_structure_trace(
+                metrics=metrics,
                 db=db,
                 tenant_id=tenant_id,
-                dataset_id=body.dataset_id,
-                max_chunks=3000,
-                upsert=True,
+                account_id=account_id,
+                dataset_id=structure_dataset_id,
+                citations=preview.citations,
+                max_documents=body.max_structure_docs,
+                max_nodes=body.max_nodes_per_doc,
             )
-            indexed = int(stats.indexed)
-        except Exception:
-            indexed = None
+        metrics.setdefault("experimental_mode", "tree_search_preview")
+        metrics.setdefault("tree_search_preview_note", "structure overlay only; default retrieval mode is unchanged")
+        return TreeSearchPreviewResponse(
+            query=body.query,
+            query_for_retrieval=preview.query_for_retrieval,
+            citations=preview.citations,
+            document_structures=trace["documents"] if trace else [],
+            selected_sections=trace["selected_sections"] if trace else [],
+            metrics=metrics,
+        )
 
-    hits = search_clip_images(
-        db=db,
-        tenant_id=tenant_id,
-        dataset_id=body.dataset_id,
-        query=body.query,
-        top_k=int(body.top_k or 0),
-    )
-    citations = build_image_citations(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=body.dataset_id,
-        hits=hits,
-        max_items=int(body.top_k or 0),
-    )
-    metrics: dict[str, Any] = {"hits": int(len(citations)), "indexed": indexed, "tenant_qps_quota": tenant_qps_meta}
-    return ImageSearchResponse(citations=citations, metrics=metrics)
+    return await _run_preview_db_call(build_tree_response)
 
 
-class EvidenceRetrieveRequest(BaseModel):
-    """
-    Production retrieval-only endpoint request.
-
-    This is intentionally a small, stable contract for downstream systems that want to
-    answer the question: "Do we have evidence for this query in the corpus?"
-    """
-
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    query_image: str | None = Field(
-        default=None,
-        max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
-        description="Optional explicit image query routed to CLIP image retrieval",
-    )
-    history: list[HistoryMessage] = Field(default_factory=list)
-    dataset_id: UUID | None = None
-    dataset_ids: list[UUID] = Field(
-        default_factory=list,
-        max_length=RETRIEVAL_SCOPE_MAX_DATASET_IDS,
-        description="Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.",
-    )
-    document_ids: list[UUID] = Field(default_factory=list, max_length=RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS)
-    rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
-    # Optional deterministic seed for offline replay/regression.
-    # PII-safe by construction (numeric only) and ignored by default.
-    seed: int | None = None
-
-
-class EvidenceRetrieveResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    schema_: str = Field(
-        default="mimirq.evidence.v1",
-        alias="schema",
-        serialization_alias="schema",
-        description="Response schema identifier",
-    )
-    query_for_retrieval: str
-    citations: list[dict[str, Any]]
-    metrics: dict[str, Any] = Field(default_factory=dict)
-    has_evidence: bool = False
-    abstain_triggered: bool = False
-    abstain_reason: str | None = None
-    # Stable, versioned trace for downstream provenance parsing (separate from metrics/query_debug).
-    retrieval_trace: dict[str, Any] | None = None
-    # Immutable replay capsule (best-effort, optional).
-    evidence_capsule: dict[str, Any] | None = None
-    # Optional: debug payload for query normalization/expansion (best-effort).
-    query_debug: dict[str, Any] | None = None
-
-    @property
-    def schema(self) -> str:
-        return str(self.schema_)
-
-
-@router.post("/retrieve", response_model=EvidenceRetrieveResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def retrieve_evidence(
-    body: EvidenceRetrieveRequest,
+@router.post("/image-index", include_in_schema=False)
+def index_image_embeddings(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Execute retrieval only (no answer generation) and return evidence chunks.
-
-    Defaults to a recall-first profile when the caller omits rag_config.
-    """
-    t_api_start = time.monotonic()
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
-
-    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
-
-    scope_dataset_id, scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document_ids=body.document_ids,
-        dataset_id=body.dataset_id,
-        dataset_ids=body.dataset_ids,
-        allow_multi_dataset=True,
-        query_image=body.query_image,
-    )
-
-    from app.rag.pipelines.langgraph import build_rag_state
-    from app.rag.retrieval.orchestrator import run_retrieval
-
-    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
-    (
-        effective_rag_config,
-        dataset_rag_defaults_applied_fields,
-        _dataset_defaults_meta,
-        _rag_fields_set,
-    ) = _resolve_dataset_defaults_rag_config(
-        db=db,
-        tenant_id=tenant_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        rag_config=body.rag_config,
-        request_fields_set=request_fields_set,
-        default_profile="recall50",
-    )
-
-    metadata_filter = _merge_dataset_ids_metadata_filter(
-        effective_rag_config.metadata_filter,
-        dataset_ids=scope_dataset_ids,
-    )
-
-    state = build_rag_state(
-        question=body.query,
-        history=[m.model_dump() for m in body.history],
-        document_ids=scope_document_ids or None,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=scope_dataset_id,
-        dataset_ids=scope_dataset_ids or None,
-        top_k=effective_rag_config.top_k,
-        score_threshold=effective_rag_config.score_threshold,
-        retrieval_mode=effective_rag_config.retrieval_mode,
-        retrieval_profile=effective_rag_config.retrieval_profile,
-        retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
-        must_recall=effective_rag_config.must_recall,
-        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
-        must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
-        intent_router=effective_rag_config.intent_router,
-        intent_router_policy=effective_rag_config.intent_router_policy,
-        enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
-        query_aliases=effective_rag_config.query_aliases,
-        query_alias_max_queries=effective_rag_config.query_alias_max_queries,
-        enable_multi_query=effective_rag_config.enable_multi_query,
-        multi_query_count=effective_rag_config.multi_query_count,
-        multi_query_temperature=effective_rag_config.multi_query_temperature,
-        multi_query_max_chars=effective_rag_config.multi_query_max_chars,
-        enable_hyde=effective_rag_config.enable_hyde,
-        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
-        enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
-        hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
-        hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
-        hierarchy_tree_dedup=effective_rag_config.hierarchy_tree_dedup,
-        hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
-        hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
-        hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
-        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
-        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
-        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
-        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
-        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
-        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
-        lexical_db_hybrid_fallback_only=effective_rag_config.lexical_db_hybrid_fallback_only,
-        lexical_db_hybrid_metadata_exact_fallback_enabled=(
-            effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
-        ),
-        metadata_exact_db_fallback_enabled=effective_rag_config.metadata_exact_db_fallback_enabled,
-        alpha=effective_rag_config.alpha,
-        fusion_strategy=effective_rag_config.fusion_strategy,
-        fusion_budgets=effective_rag_config.fusion_budgets,
-        fusion_min_scores=effective_rag_config.fusion_min_scores,
-        fusion_weights=effective_rag_config.fusion_weights,
-        retrieval_overfetch_multiplier=effective_rag_config.retrieval_overfetch_multiplier,
-        retrieval_overfetch_max_k=effective_rag_config.retrieval_overfetch_max_k,
-        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
-        vector_weight=effective_rag_config.vector_weight,
-        keyword_weight=effective_rag_config.keyword_weight,
-        mmr_lambda=effective_rag_config.mmr_lambda,
-        enable_reranker=effective_rag_config.enable_reranker,
-        reranker_provider=effective_rag_config.reranker_provider,
-        reranker_top_n=effective_rag_config.reranker_top_n,
-        metadata_filter=metadata_filter,
-        visible_evidence_only=effective_rag_config.visible_evidence_only,
-        ab_user_key=account_id,
-        db=db,
-    )
-    if body.seed is not None:
-        try:
-            state["seed"] = int(body.seed)
-        except Exception as exc:
-            # Best-effort only: seed must never break requests.
-            logger.debug("Ignoring invalid retrieval preview seed %r: %s", body.seed, exc)
-    # Optional: multi-modal routing (image/table/text).
-    #
-    # This endpoint is "retrieval-only" (no answer generation), so we keep routing deterministic:
-    # - Explicit `query_image` takes precedence and routes to CLIP.
-    # - Otherwise image intent can still be inferred from the text query.
-    # - Table routing (TAG/NL2SQL) is intentionally *not* applied here by default.
-    multimodal_meta, image_meta = _inject_query_image_context(
-        state=state,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        text_query=body.query,
-        query_image=body.query_image,
-        enable_auto_detect=True,
-    )
-
-    state["multimodal_router"] = multimodal_meta
-    state["image_meta"] = image_meta
-
-    primary_offload_metrics: dict[str, Any] = {}
-    primary = (
-        await run_blocking_retrieval_call_with_managed_session(
-            lambda worker_db: run_retrieval({**state, "db": worker_db}),
-            request_db=db,
-            runtime_metrics=primary_offload_metrics,
-        )
-        or {}
-    )
-    citations = primary.get("citations") or []
-    metrics = dict(primary.get("metrics") or {})
-    metrics.update(primary_offload_metrics)
-    query_for_retrieval = (primary.get("query_for_retrieval") or body.query or "").strip()
-    query_debug = primary.get("query_debug")
-    if not isinstance(query_debug, dict):
-        query_debug = None
-
-    # Ensure minimum fields exist for downstream debugging.
-    metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
-    metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
-    metrics.setdefault("multimodal_router", multimodal_meta)
-    metrics.setdefault("image", image_meta)
-    if dataset_rag_defaults_applied_fields:
-        metrics.setdefault("dataset_rag_defaults_applied", True)
-        metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
-    if scope_dataset_ids:
-        metrics.setdefault("scope_dataset_ids", [str(dataset_id) for dataset_id in scope_dataset_ids])
-
-    abstain_triggered = bool(primary.get("abstain_triggered") or metrics.get("abstain_triggered") or False)
-    has_evidence = bool(citations) and not abstain_triggered
-    iterative_result = await _maybe_apply_iterative_retrieval_fallback(
-        db=db,
-        state=state,
-        citations=citations,
-        metrics=metrics,
-        query_for_retrieval=query_for_retrieval,
-        query_debug=query_debug,
-        abstain_triggered=abstain_triggered,
-        has_evidence=has_evidence,
-    )
-    citations = iterative_result["citations"]
-    metrics = iterative_result["metrics"]
-    query_for_retrieval = iterative_result["query_for_retrieval"]
-    query_debug = iterative_result["query_debug"]
-    abstain_triggered = bool(iterative_result["abstain_triggered"])
-    abstain_reason = iterative_result["abstain_reason"]
-    has_evidence = _apply_min_top_relevance_gate(
-        citations=[c for c in citations if isinstance(c, dict)],
-        metrics=metrics,
-        has_evidence=bool(iterative_result["has_evidence"]),
-    )
-    selected_pass = str(iterative_result["selected_pass"])
-    fallback = iterative_result["fallback"]
-    iterative_summary = iterative_result["iterative_summary"]
-    if iterative_summary and isinstance(iterative_summary, dict):
-        metrics.setdefault("iterative_retrieve", iterative_summary)
-        if isinstance(query_debug, dict):
-            query_debug.setdefault("iterative_retrieve", iterative_summary)
-
-    metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
-
-    structure_dataset_id = _resolve_structure_dataset_id(
-        db=db,
-        tenant_id=tenant_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-    )
-    _attach_document_structure_trace(
-        metrics=metrics,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=structure_dataset_id,
-        citations=[c for c in citations if isinstance(c, dict)],
-    )
-
-    _observe_evidence_retrieve_metrics(
-        t_api_start=t_api_start,
-        metrics=metrics,
-        effective_rag_config=effective_rag_config,
-        selected_pass=selected_pass,
-        citations=[c for c in citations if isinstance(c, dict)],
-        has_evidence=bool(has_evidence),
-        abstain_triggered=bool(abstain_triggered),
-    )
-    retrieval_trace_payload = _build_retrieval_trace_payload(
-        primary=primary,
-        fallback=fallback if isinstance(fallback, dict) else None,
-        selected_pass=selected_pass,
-    )
-    evidence_capsule = _build_evidence_capsule_payload(
-        query_for_retrieval=query_for_retrieval,
-        citations=[c for c in citations if isinstance(c, dict)],
-        metrics=metrics,
-        retrieval_trace_payload=retrieval_trace_payload,
-        query_debug=query_debug if isinstance(query_debug, dict) else None,
-        tenant_id=tenant_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_dataset_ids=scope_dataset_ids,
-        scope_document_ids=scope_document_ids,
-        selected_pass=selected_pass,
-    )
-
-    return EvidenceRetrieveResponse(
-        query_for_retrieval=query_for_retrieval,
-        citations=citations,
-        metrics=metrics,
-        has_evidence=has_evidence,
-        abstain_triggered=abstain_triggered,
-        abstain_reason=abstain_reason,
-        retrieval_trace=retrieval_trace_payload,
-        evidence_capsule=evidence_capsule,
-        query_debug=query_debug,
+) -> None:
+    raise HTTPException(
+        status_code=410, detail={"code": "feature_retired", "message": "Local image-vector indexing has been retired"}
     )
 
 
-class PromptPreviewRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    history: list[HistoryMessage] = Field(default_factory=list)
-    dataset_id: UUID | None = None
-    document_ids: list[UUID] = Field(default_factory=list)
-    rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
-    structured_output: bool = False
-    structured_preset: str | None = None
-    prompt_template_id: UUID | None = None
-    prompt_template_key: str | None = None
-    prompt_ab_experiment_key: str | None = None
+@router.post("/image-search-preview", include_in_schema=False)
+async def image_search_preview(
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+) -> None:
+    raise HTTPException(
+        status_code=410, detail={"code": "feature_retired", "message": "Local image-vector search has been retired"}
+    )
 
 
-class PromptPreviewResponse(BaseModel):
-    query_for_retrieval: str
-    prompt_messages: list[dict[str, Any]]
-    prompt_text: str
-    variables: dict[str, Any]
-    citations: list[dict[str, Any]] = Field(default_factory=list)
-    metrics: dict[str, Any] = Field(default_factory=dict)
-    prompt_template_id: str | None = None
-    prompt_template_key: str | None = None
-    prompt_ab_experiment_key: str | None = None
-    prompt_ab_variant: str | None = None
-
-
-@router.post("/prompt-preview", response_model=PromptPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/prompt-preview", response_model=PromptPreviewResponse)
 async def prompt_preview(
     body: PromptPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> PromptPreviewResponse:
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
     t0 = time.time()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    await _run_preview_db_call(lambda worker_db: dataset_service.ensure_member(worker_db, tenant_id, account_id))
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
-
-    scope_dataset_id, _scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document_ids=body.document_ids,
-        dataset_id=body.dataset_id,
-    )
-
-    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
-    (
-        effective_rag_config,
-        dataset_rag_defaults_applied_fields,
-        _dataset_defaults_meta,
-        _rag_fields_set,
-    ) = _resolve_dataset_defaults_rag_config(
-        db=db,
-        tenant_id=tenant_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        rag_config=body.rag_config,
-        request_fields_set=request_fields_set,
-    )
 
     from langchain_core.prompts import ChatPromptTemplate
 
@@ -1692,149 +499,120 @@ async def prompt_preview(
     from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    state = build_rag_state(
-        question=body.query,
-        history=[m.model_dump() for m in body.history],
-        document_ids=scope_document_ids or None,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=scope_dataset_id,
-        top_k=effective_rag_config.top_k,
-        score_threshold=effective_rag_config.score_threshold,
-        retrieval_mode=effective_rag_config.retrieval_mode,
-        retrieval_profile=effective_rag_config.retrieval_profile,
-        retrieval_contract_mode=effective_rag_config.retrieval_contract_mode,
-        must_recall=effective_rag_config.must_recall,
-        must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
-        must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
-        intent_router=effective_rag_config.intent_router,
-        intent_router_policy=effective_rag_config.intent_router_policy,
-        enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
-        query_aliases=effective_rag_config.query_aliases,
-        query_alias_max_queries=effective_rag_config.query_alias_max_queries,
-        enable_multi_query=effective_rag_config.enable_multi_query,
-        multi_query_count=effective_rag_config.multi_query_count,
-        multi_query_temperature=effective_rag_config.multi_query_temperature,
-        multi_query_max_chars=effective_rag_config.multi_query_max_chars,
-        enable_hyde=effective_rag_config.enable_hyde,
-        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
-        enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
-        hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
-        hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
-        hierarchy_tree_dedup=effective_rag_config.hierarchy_tree_dedup,
-        hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
-        hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
-        hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
-        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
-        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
-        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
-        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
-        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
-        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
-        alpha=effective_rag_config.alpha,
-        fusion_strategy=effective_rag_config.fusion_strategy,
-        fusion_budgets=effective_rag_config.fusion_budgets,
-        fusion_min_scores=effective_rag_config.fusion_min_scores,
-        fusion_weights=effective_rag_config.fusion_weights,
-        retrieval_overfetch_multiplier=effective_rag_config.retrieval_overfetch_multiplier,
-        retrieval_overfetch_max_k=effective_rag_config.retrieval_overfetch_max_k,
-        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
-        vector_weight=effective_rag_config.vector_weight,
-        keyword_weight=effective_rag_config.keyword_weight,
-        mmr_lambda=effective_rag_config.mmr_lambda,
-        enable_reranker=effective_rag_config.enable_reranker,
-        reranker_provider=effective_rag_config.reranker_provider,
-        reranker_top_n=effective_rag_config.reranker_top_n,
-        visible_evidence_only=effective_rag_config.visible_evidence_only,
-        structured_output=body.structured_output,
-        structured_preset=body.structured_preset,
-        prompt_template_id=body.prompt_template_id,
-        prompt_template_key=body.prompt_template_key,
-        prompt_ab_experiment_key=body.prompt_ab_experiment_key,
-        ab_user_key=account_id,
-        db=db,
-    )
-    offload_metrics: dict[str, Any] = {}
-    retrieved = (
-        await run_blocking_retrieval_call_with_managed_session(
-            lambda worker_db: run_retrieval({**state, "db": worker_db}),
-            request_db=db,
-            runtime_metrics=offload_metrics,
+    def prepare_request(db: Session):
+        scope_dataset_id, _scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            document_ids=body.document_ids,
+            dataset_id=body.dataset_id,
         )
-        or {}
-    )
-    citations = retrieved.get("citations") or []
-    docs = retrieved.get("docs") or []
-    metrics = dict(retrieved.get("metrics") or {})
-    metrics.update(offload_metrics)
-    query_for_retrieval = (retrieved.get("query_for_retrieval") or body.query or "").strip()
-
-    ctx_t0 = time.time()
-    ctx = _build_context(docs, query=query_for_retrieval or body.query)
-    hist_text = _build_history_text(state.get("history"))
-    ctx_elapsed = time.time() - ctx_t0
-    format_instructions = state.get("format_instructions") or ""
-
-    engine = get_rag_engine()
-    prompt_obj = engine.prompt_template
-    prompt_content = state.get("prompt_template_content")
-    if prompt_content:
-        try:
-            prompt_obj = ChatPromptTemplate.from_template(str(prompt_content))
-        except Exception:
-            prompt_obj = engine.prompt_template
-
-    variables: dict[str, Any] = {
-        "context": ctx,
-        "history": hist_text,
-        "question": body.query,
-        "format_instructions": format_instructions,
-    }
-
-    try:
-        render_t0 = time.time()
-        prompt_value = prompt_obj.format_prompt(**variables)
-        prompt_messages = []
-        for msg in prompt_value.to_messages():
-            prompt_messages.append(
-                {
-                    "type": getattr(msg, "type", msg.__class__.__name__),
-                    "content": getattr(msg, "content", None),
-                }
+        request_fields_set = body.model_fields_set
+        effective_rag_config, dataset_rag_defaults_applied_fields, _dataset_defaults_meta, _rag_fields_set = (
+            _resolve_dataset_defaults_rag_config(
+                db=db,
+                tenant_id=tenant_id,
+                scope_dataset_id=scope_dataset_id,
+                scope_document_ids=scope_document_ids,
+                rag_config=body.rag_config,
+                request_fields_set=request_fields_set,
             )
-        prompt_text = prompt_value.to_string()
-        render_elapsed = time.time() - render_t0
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Prompt render failed: {exc}") from exc
+        )
+        state = build_rag_state(
+            question=body.query,
+            history=[m.model_dump() for m in body.history],
+            document_ids=scope_document_ids,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=scope_dataset_id,
+            **_preview_retrieval_options(effective_rag_config),
+            structured_output=body.structured_output,
+            structured_preset=body.structured_preset,
+            prompt_template_id=body.prompt_template_id,
+            prompt_template_key=body.prompt_template_key,
+            prompt_ab_experiment_key=body.prompt_ab_experiment_key,
+            ab_user_key=account_id,
+            db=db,
+        )
+        return dataset_rag_defaults_applied_fields, effective_rag_config, state
 
-    metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
-    metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
-    metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
-    if dataset_rag_defaults_applied_fields:
-        metrics.setdefault("dataset_rag_defaults_applied", True)
-        metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
-
-    from app.rag.core.prompt_preview_metrics import compute_prompt_preview_metrics
-
-    metrics = compute_prompt_preview_metrics(
-        prompt_text=prompt_text,
-        context=ctx,
-        history=hist_text,
-        base_metrics=metrics,
-        elapsed_sec=(time.time() - t0),
-        context_build_elapsed_sec=ctx_elapsed,
-        prompt_render_elapsed_sec=render_elapsed,
+    dataset_rag_defaults_applied_fields, effective_rag_config, state = await _run_preview_db_call(prepare_request)
+    offload_metrics: dict[str, Any] = {}
+    retrieved = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**state, "db": worker_db}),
+        request_db=db,
+        runtime_metrics=offload_metrics,
     )
+    citations = retrieved["citations"]
+    docs = retrieved["docs"]
+    metrics = dict(retrieved["metrics"])
+    metrics.update(offload_metrics)
+    query_for_retrieval = retrieved["query_for_retrieval"].strip()
 
-    return PromptPreviewResponse(
-        query_for_retrieval=query_for_retrieval,
-        prompt_messages=prompt_messages,
-        prompt_text=prompt_text,
-        variables=variables,
-        citations=citations,
-        metrics=metrics,
-        prompt_template_id=state.get("prompt_template_id"),
-        prompt_template_key=state.get("prompt_template_key"),
-        prompt_ab_experiment_key=state.get("prompt_ab_experiment_key"),
-        prompt_ab_variant=state.get("prompt_ab_variant"),
-    )
+    def render_response(metrics: dict[str, Any]):
+        ctx_t0 = time.time()
+        ctx = _build_context(docs, query=query_for_retrieval or body.query)
+        hist_text = _build_history_text(state["history"])
+        ctx_elapsed = time.time() - ctx_t0
+        format_instructions = state["format_instructions"]
+        engine = get_rag_engine()
+        prompt_obj = engine.prompt_template
+        prompt_content = state["prompt_template_content"]
+        variables: dict[str, Any] = {
+            "context": ctx,
+            "history": hist_text,
+            "question": body.query,
+            "format_instructions": format_instructions,
+        }
+        try:
+            if prompt_content is not None:
+                prompt_obj = ChatPromptTemplate.from_template(prompt_content)
+            render_t0 = time.time()
+            prompt_value = prompt_obj.format_prompt(**variables)
+            prompt_messages = [{"type": msg.type, "content": msg.content} for msg in prompt_value.to_messages()]
+            prompt_text = prompt_value.to_string()
+            render_elapsed = time.time() - render_t0
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Prompt render failed: {exc}") from exc
+        metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
+        metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+        metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
+        if dataset_rag_defaults_applied_fields:
+            metrics.setdefault("dataset_rag_defaults_applied", True)
+            metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+        from app.rag.core.prompt_preview_metrics import compute_prompt_preview_metrics
+
+        metrics = compute_prompt_preview_metrics(
+            prompt_text=prompt_text,
+            context=ctx,
+            history=hist_text,
+            base_metrics=metrics,
+            elapsed_sec=time.time() - t0,
+            context_build_elapsed_sec=ctx_elapsed,
+            prompt_render_elapsed_sec=render_elapsed,
+        )
+        return PromptPreviewResponse(
+            query_for_retrieval=query_for_retrieval,
+            prompt_messages=prompt_messages,
+            prompt_text=prompt_text,
+            variables=variables,
+            citations=citations,
+            metrics=metrics,
+            prompt_template_id=state["prompt_template_id"],
+            prompt_template_key=state["prompt_template_key"],
+            prompt_ab_experiment_key=state["prompt_ab_experiment_key"],
+            prompt_ab_variant=state["prompt_ab_variant"],
+        )
+
+    return await run_blocking_in_thread(render_response, metrics)
+
+
+@router.post("/retrieve", response_model=EvidenceRetrieveResponse)
+async def retrieve_evidence(
+    body: EvidenceRetrieveRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> EvidenceRetrieveResponse:
+    return await retrieve_evidence_impl(body=body, tenant_id=tenant_id, account_id=account_id, db=db)

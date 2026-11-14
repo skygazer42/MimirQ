@@ -73,7 +73,7 @@ function main() {
 
   console.log('[api-types-drift] frontend API type drift report')
   console.log(
-    `[api-types-drift] modules=${modules.length} hand-written-type modules=${withHandwritten.length} hand-written types=${totalHandwritten}`
+    `[api-types-drift] modules=${modules.length} hand-written-type modules=${withHandwritten.length} hand-written types=${totalHandwritten}`,
   )
 
   if (withHandwritten.length > 0) {
@@ -81,7 +81,7 @@ function main() {
     for (const m of withHandwritten) {
       console.log(
         `  - ${m.file}: ${m.handwritten.length} type(s) [${m.handwritten.join(', ')}] ` +
-          `(apiClient=${m.apiClientCalls}, openapiRequest=${m.openapiRequestCalls})`
+          `(apiClient=${m.apiClientCalls}, openapiRequest=${m.openapiRequestCalls})`,
       )
     }
   } else {
@@ -101,7 +101,7 @@ function main() {
     const failures = []
     if (withHandwritten.length > baseline.handwrittenModules) {
       failures.push(
-        `hand-written-type modules=${withHandwritten.length} exceed baseline ${baseline.handwrittenModules}`
+        `hand-written-type modules=${withHandwritten.length} exceed baseline ${baseline.handwrittenModules}`,
       )
     }
     if (totalHandwritten > baseline.handwrittenTypes) {
@@ -112,12 +112,9 @@ function main() {
       process.exitCode = 1
       return
     }
-    if (
-      withHandwritten.length < baseline.handwrittenModules ||
-      totalHandwritten < baseline.handwrittenTypes
-    ) {
+    if (withHandwritten.length < baseline.handwrittenModules || totalHandwritten < baseline.handwrittenTypes) {
       console.log(
-        `[api-types-drift] baseline can be lowered to modules=${withHandwritten.length}, types=${totalHandwritten}`
+        `[api-types-drift] baseline can be lowered to modules=${withHandwritten.length}, types=${totalHandwritten}`,
       )
     }
     console.log(`[api-types-drift] strict baseline passed (${baseline.baselinePath})`)

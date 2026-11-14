@@ -1,0 +1,39 @@
+{
+  "pageTitle": "反馈质检",
+  "range": "最近 7 天",
+  "rangeLabel": "10.16 — 10.22",
+  "selectedId": "FB-0128",
+  "feedback": [
+    {"id":"FB-0128","question":"如何配置知识库的分段策略以提升召回效果？","reason":"回答不完整，没有具体的配置示例，引用也没有覆盖参数说明。","rating":2,"issue":"答案不完整","category":"other","source":"Web 控制台","account":"user_9847","time":"今天 10:24","archived":false,"tags":["配置示例","引用不足"]},
+    {"id":"FB-0127","question":"上传 PDF 后为什么只有部分页面被解析？","reason":"扫描件没有识别出来，回答却让我重复上传，没有说明 OCR 的适用范围。","rating":1,"issue":"回答错误","category":"wrong_answer","source":"移动端 APP","account":"user_7632","time":"今天 09:48","archived":false,"tags":["扫描文档","解析问题"]},
+    {"id":"FB-0126","question":"多知识库的访问权限应该怎么隔离？","reason":"提到了权限隔离，但没有说清成员角色和数据集授权之间的区别。","rating":2,"issue":"答案不完整","category":"other","source":"API 接口","account":"user_4102","time":"今天 09:16","archived":false,"tags":["成员权限","数据集"]},
+    {"id":"FB-0125","question":"客户报价的有效期和审批流程是什么？","reason":"知识库里有报价流程文件，回答没有找到对应的版本。","rating":1,"issue":"未命中知识库","category":"retrieval_miss","source":"企业微信","account":"user_6021","time":"昨天 16:35","archived":false,"tags":["检索遗漏","版本"]},
+    {"id":"FB-0124","question":"系统是否支持跨地区的数据合规要求？","reason":"资料没有覆盖这个地区，希望能说明回答的适用范围。","rating":3,"issue":"超出知识范围","category":"out_of_scope","source":"Web 控制台","account":"user_7310","time":"昨天 14:02","archived":false,"tags":["适用范围"]},
+    {"id":"FB-0123","question":"API 达到限流阈值后应该如何重试？","reason":"没有引用接口文档，也没有说明重试间隔和错误码。","rating":2,"issue":"引用不足","category":"other","source":"API 接口","account":"user_3308","time":"10.20 11:26","archived":false,"tags":["接口文档","错误码"]},
+    {"id":"FB-0122","question":"RAG 与微调有什么区别，分别适合什么场景？","reason":"比较很清楚，结合内部文档的例子也容易理解。","rating":5,"issue":"有帮助","category":null,"source":"企业微信","account":"user_5521","time":"10.20 10:08","archived":false,"tags":["表达清晰"]},
+    {"id":"FB-0121","question":"为什么检索结果里会出现重复的文档片段？","reason":"可能是分段重叠造成的，但还需要核对文档版本。","rating":3,"issue":"待确认","category":"other","source":"Web 控制台","account":"user_1980","time":"10.19 15:50","archived":false,"tags":["重复片段","文档版本"]},
+    {"id":"FB-0120","question":"如何查看文档解析失败的具体原因？","reason":"给出的排查顺序和页面入口都能对应上。","rating":4,"issue":"有帮助","category":null,"source":"移动端 APP","account":"user_2048","time":"10.19 09:42","archived":false,"tags":["排查路径"]},
+    {"id":"FB-0119","question":"设备报修记录的保存年限是多少？","reason":"实际引用的是旧版制度，已经按新版本重新检查。","rating":1,"issue":"引用不足","category":"other","source":"Web 控制台","account":"user_3602","time":"10.18 14:18","archived":true,"tags":["旧版制度"]},
+    {"id":"FB-0118","question":"如何批量导入 Markdown 文档？","reason":"操作步骤清楚，文件格式和限制也说明了。","rating":5,"issue":"有帮助","category":null,"source":"Web 控制台","account":"user_8520","time":"10.17 10:30","archived":true,"tags":["操作说明"]},
+    {"id":"FB-0117","question":"归档后的数据集还能继续检索吗？","reason":"已补充归档和访问权限的区别，回答口径已核对。","rating":2,"issue":"表达模糊","category":"other","source":"API 接口","account":"user_4390","time":"10.16 16:05","archived":true,"tags":["归档规则"]}
+  ],
+  "detail": {
+    "dataset": "产品使用文档",
+    "answer": [
+      "分段策略会影响检索结果。可以结合文档结构、内容长度和实际问题选择适合的分段方式。",
+      "对于说明文档，建议优先保留标题和段落的完整性；对较长段落，可以设置适当的重叠，减少上下文在边界处被截断的情况。",
+      "完成配置后，可以通过检索测试比较结果，再根据命中片段调整策略。"
+    ],
+    "expected": [
+      "说明应在哪个设置入口调整策略，以及哪些设置作用于整个知识库、哪些作用于单次入库。",
+      "给出一份可核对的分段配置示例，解释长度、重叠及计量单位，并注明适用的文档类型。",
+      "提供对照检索的步骤：使用相同问题比较命中片段，检查引用覆盖，再决定是否重新入库。"
+    ],
+    "citations": [
+      {"name":"知识库配置指南.md","kind":"md","location":"3.2 分段策略","excerpt":"按标题与段落组织正文，避免将配置项及其说明拆到不同片段。"},
+      {"name":"文档处理说明.pdf","kind":"pdf","location":"第 12 页 · 检索验证","excerpt":"调整分段配置后，使用固定的问题集合进行对照检索，检查命中内容与来源引用。"}
+    ]
+  },
+  "trend": {"labels":["10.16","10.17","10.18","10.19","10.20","10.21","10.22"],"total":[1,1,1,2,2,2,3],"negative":[1,0,1,0,1,1,3]},
+  "loopCandidates": {"hardNegatives":5,"triplets":4,"rules":2}
+}

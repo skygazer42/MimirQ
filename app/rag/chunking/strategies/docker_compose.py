@@ -14,13 +14,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -31,38 +26,25 @@ class _ServiceBlock:
     index: int
 
 
-_SERVICES_RE = re.compile(r"(?m)^(?P<indent>\s*)services\s*:\s*(?:#.*)?$")
+_SERVICES_RE = re.compile(r"(?m)^(?P<indent>[ \t]*)services\s*:\s*(?:#.*)?$")
 _KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
 _IMAGE_HINT_RE = re.compile(r"(?m)^\s*(image|build|container_name|ports|depends_on)\s*:\s*")
 _VERSION_RE = re.compile(r"(?m)^\s*version\s*:\s*(?P<val>[^\s#]+)")
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
-
-
 def _find_services_anchor(text: str) -> tuple[int, int] | None:
-    m = _SERVICES_RE.search(text or "")
+    m = _SERVICES_RE.search(text)
     if not m:
         return None
-    return m.start(), len(m.group("indent") or "")
+    return m.start(), len(m.group("indent"))
 
 
 def _extract_version(text: str) -> str | None:
-    head = (text or "")[:8000]
+    head = (text)[:8000]
     m = _VERSION_RE.search(head)
     if not m:
         return None
-    return (m.group("val") or "").strip()[:40] or None
+    return m.group("val").strip()[:40]
 
 
 def _build_service_blocks(text: str) -> list[_ServiceBlock]:
@@ -85,15 +67,13 @@ def _build_service_blocks(text: str) -> list[_ServiceBlock]:
         return []
 
     service_keys = _service_keys_from_candidates(candidates)
-    if not service_keys:
-        return []
 
     blocks: list[_ServiceBlock] = []
     for idx, (i, key) in enumerate(service_keys):
         start = lines[i].start
         end = lines[service_keys[idx + 1][0]].start if idx + 1 < len(service_keys) else services_end
         end = max(start, min(end, len(text)))
-        blocks.append(_ServiceBlock(start=start, end=end, name=key, index=int(idx)))
+        blocks.append(_ServiceBlock(start=start, end=end, name=key, index=idx))
 
     return blocks
 
@@ -127,8 +107,7 @@ def _service_candidate_for_line(line: _Line, *, base_indent: int) -> tuple[int, 
     match = _KEY_RE.match(plain)
     if not match:
         return None
-    key = (match.group("key") or "").strip()
-    return (indent, key) if key else None
+    return indent, match.group("key")
 
 
 def _service_keys_from_candidates(candidates: list[tuple[int, int, str]]) -> list[tuple[int, str]]:
@@ -215,14 +194,14 @@ def _split_service_chunk_docs(
         )
         meta.update(split_meta)
         meta["compose_service"] = block.name
-        meta["compose_service_index"] = int(block.index)
-        meta["compose_service_count"] = int(service_count)
+        meta["compose_service_index"] = block.index
+        meta["compose_service_count"] = service_count
         chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
     return chunks
 
 
 class DockerComposeChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -248,11 +227,11 @@ class DockerComposeChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         version = _extract_version(text)
         blocks = _build_service_blocks(text)
         if not blocks:

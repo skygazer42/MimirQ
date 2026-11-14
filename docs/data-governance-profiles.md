@@ -1,6 +1,6 @@
 # Data Governance Profiles (治理预设 / 脚本)
 
-MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策略（尤其适用于 HTML->MD、PDF->MD 的常见问题）。
+Ragvia 支持用“治理预设（Profiles）”来统一管理数据治理策略（尤其适用于 HTML->MD、PDF->MD 的常见问题）。
 
 本质上，Profile 是一个 **声明式 JSON 脚本**，用于：
 

@@ -18,7 +18,7 @@ import type {
   RagTraceBundleResponse,
   SloSnapshotResponse,
   TaskQueueObservabilitySnapshotResponse,
-} from '@/types'
+} from '@/types/observability'
 
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
@@ -57,7 +57,7 @@ export type FrontendTraceReportRequest = {
 export const observabilityApi = {
   async reportFrontendVital(
     payload: FrontendWebVitalReportRequest,
-    options: FrontendWebVitalReportOptions = {}
+    options: FrontendWebVitalReportOptions = {},
   ): Promise<void> {
     const requestId = generateRequestId()
     const response = await authenticatedFetch(`${API_V1_BASE_URL}/observability/frontend-vitals`, {
@@ -80,7 +80,7 @@ export const observabilityApi = {
 
   async reportFrontendTrace(
     payload: FrontendTraceReportRequest,
-    options: FrontendWebVitalReportOptions = {}
+    options: FrontendWebVitalReportOptions = {},
   ): Promise<void> {
     const requestId = generateRequestId()
     const response = await authenticatedFetch(`${API_V1_BASE_URL}/observability/frontend-traces`, {
@@ -101,7 +101,10 @@ export const observabilityApi = {
     }
   },
 
-  async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
+  async getRagMetricsSummary(params: {
+    window_minutes?: number
+    max_bytes?: number
+  }): Promise<RagMetricsSummaryResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/summary', { params })
     return data
   },
@@ -115,7 +118,9 @@ export const observabilityApi = {
     return data
   },
 
-  async getQuerysetHealthRuns(params: { limit?: number; profile_hash?: string } = {}): Promise<QuerysetHealthRunsResponse> {
+  async getQuerysetHealthRuns(
+    params: { limit?: number; profile_hash?: string } = {},
+  ): Promise<QuerysetHealthRunsResponse> {
     const { data } = await apiClient.get('/observability/queryset-health/runs', { params })
     return data
   },
@@ -139,7 +144,10 @@ export const observabilityApi = {
     return data
   },
 
-  async getRagCostAttribution(params: { window_minutes?: number; max_bytes?: number }): Promise<RagCostAttributionResponse> {
+  async getRagCostAttribution(params: {
+    window_minutes?: number
+    max_bytes?: number
+  }): Promise<RagCostAttributionResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/cost-attribution', { params })
     return data
   },
@@ -154,7 +162,11 @@ export const observabilityApi = {
     return data
   },
 
-  async getRagTraceBundle(params: { request_id: string; window_minutes?: number; max_bytes?: number }): Promise<RagTraceBundleResponse> {
+  async getRagTraceBundle(params: {
+    request_id: string
+    window_minutes?: number
+    max_bytes?: number
+  }): Promise<RagTraceBundleResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/trace-bundle', { params })
     return data
   },
@@ -179,7 +191,9 @@ export const observabilityApi = {
     return data
   },
 
-  async getTaskQueueSnapshot(params: { force_refresh?: boolean } = {}): Promise<TaskQueueObservabilitySnapshotResponse> {
+  async getTaskQueueSnapshot(
+    params: { force_refresh?: boolean } = {},
+  ): Promise<TaskQueueObservabilitySnapshotResponse> {
     const { data } = await apiClient.get('/observability/task-queue/snapshot', { params })
     return data
   },
@@ -189,11 +203,13 @@ export const observabilityApi = {
     return data
   },
 
-  async getIngestionDashboardSummary(params: {
-    window_hours?: number
-    bucket_minutes?: number
-    dataset_id?: string
-  } = {}): Promise<IngestionDashboardSummaryResponse> {
+  async getIngestionDashboardSummary(
+    params: {
+      window_hours?: number
+      bucket_minutes?: number
+      dataset_id?: string
+    } = {},
+  ): Promise<IngestionDashboardSummaryResponse> {
     const { data } = await apiClient.get('/observability/ingestion/summary', { params })
     return data
   },
@@ -212,40 +228,36 @@ export const observabilityApi = {
     dataset_id: string
     document_id?: string | null
   }): Promise<IndexAuditReconcileResponse> {
-    const { data } = await apiClient.post(
-      '/observability/index-audit/reconcile',
-      payload
-    )
+    const { data } = await apiClient.post('/observability/index-audit/reconcile', payload)
     return data
   },
 
   async getIndexAuditReconcileStatus(
     params: { dataset_id: string; document_id: string },
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {},
   ): Promise<IndexAuditReconcileStatusResponse> {
-    const { data } = await apiClient.get(
-      '/observability/index-audit/reconcile-status',
-      { params, signal: options.signal }
-    )
+    const { data } = await apiClient.get('/observability/index-audit/reconcile-status', {
+      params,
+      signal: options.signal,
+    })
     return data
   },
 
   async enqueueIndexAuditReconcileJob(
-    payload: IndexAuditReconcileEnqueueRequest
+    payload: IndexAuditReconcileEnqueueRequest,
   ): Promise<IndexAuditReconcileEnqueueResponse> {
-    const { data } = await apiClient.post(
-      '/observability/index-audit/reconcile-jobs',
-      payload
-    )
+    const { data } = await apiClient.post('/observability/index-audit/reconcile-jobs', payload)
     return data
   },
 
-  async getEmbeddingDriftSnapshot(params: {
-    dataset_id?: string
-    document_id?: string
-    sample_n?: number
-    drift_threshold?: number
-  } = {}): Promise<Record<string, unknown>> {
+  async getEmbeddingDriftSnapshot(
+    params: {
+      dataset_id?: string
+      document_id?: string
+      sample_n?: number
+      drift_threshold?: number
+    } = {},
+  ): Promise<Record<string, unknown>> {
     const { data } = await apiClient.get('/observability/embedding-drift/snapshot', { params })
     return data
   },
@@ -263,12 +275,17 @@ export const observabilityApi = {
     return data
   },
 
-  async listIndexDrift(params: { dataset_id?: string; status?: string; limit?: number } = {}): Promise<Record<string, unknown>> {
+  async listIndexDrift(
+    params: { dataset_id?: string; status?: string; limit?: number } = {},
+  ): Promise<Record<string, unknown>> {
     const { data } = await apiClient.get('/observability/index-drift', { params })
     return data
   },
 
-  async resolveIndexDrift(itemId: string, payload: { resolution_note?: string } = {}): Promise<Record<string, unknown>> {
+  async resolveIndexDrift(
+    itemId: string,
+    payload: { resolution_note?: string } = {},
+  ): Promise<Record<string, unknown>> {
     const { data } = await apiClient.post(`/observability/index-drift/${encodeURIComponent(itemId)}/resolve`, {
       resolution_note: payload.resolution_note ?? '',
     })

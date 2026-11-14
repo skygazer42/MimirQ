@@ -24,17 +24,19 @@ async def _run_input_guard_baseline(*, text: str) -> tuple[bool, list[str]]:
 
 async def _run_output_guard_baseline(*, text: str) -> tuple[bool, list[str]]:
     safety_result = await RegexSafetyGuard().guard_agent_response(text)
-    blocked = str(getattr(safety_result, "action", "allow") or "allow").strip().lower() == "block"
+    blocked = str(safety_result.action or "allow").strip().lower() == "block"
     return blocked, (["regex_safety_guard"] if blocked else [])
 
 
 async def _run_case(case: dict[str, Any]) -> dict[str, Any]:
     payload = dict(case or {})
-    kind = str(payload.get("kind") or "").strip() or "unknown"
-    case_id = str(payload.get("case_id") or "").strip()
+    kind = payload.get("kind")
+    if isinstance(kind, str):
+        kind = kind.strip() or "unknown"
+    case_id = payload["case_id"].strip()
 
     if kind == "input_guard":
-        text = str(payload.get("input_text") or "")
+        text = payload["input_text"]
         regex_blocked, regex_reason_codes = await _run_input_guard_baseline(text=text)
         pipeline_result = await LLMGuard().guard_input(text)
         pipeline_action = str(pipeline_result.action or "allow").strip().lower()
@@ -50,15 +52,15 @@ async def _run_case(case: dict[str, Any]) -> dict[str, Any]:
             "pipeline_attack_succeeded": not pipeline_blocked,
             "regex_baseline_blocked": regex_blocked,
             "regex_baseline_attack_succeeded": not regex_blocked,
-            "pipeline_reason_codes": list(getattr(pipeline_result, "triggered_guards", None) or []),
+            "pipeline_reason_codes": list(pipeline_result.triggered_guards or []),
             "regex_baseline_reason_codes": regex_reason_codes,
         }
 
     if kind == "output_guard":
-        text = str(payload.get("output_text") or "")
+        text = payload["output_text"]
         regex_blocked, regex_reason_codes = await _run_output_guard_baseline(text=text)
         pipeline_result = await get_output_guard().check(text)
-        pipeline_action = str(getattr(pipeline_result, "action", "allow") or "allow").strip().lower()
+        pipeline_action = str(pipeline_result.action or "allow").strip().lower()
         pipeline_blocked = pipeline_action == "block"
         return {
             "case_id": case_id,
@@ -71,7 +73,7 @@ async def _run_case(case: dict[str, Any]) -> dict[str, Any]:
             "pipeline_attack_succeeded": not pipeline_blocked,
             "regex_baseline_blocked": regex_blocked,
             "regex_baseline_attack_succeeded": not regex_blocked,
-            "pipeline_reason_codes": list(getattr(pipeline_result, "matched_rules", None) or []),
+            "pipeline_reason_codes": list(pipeline_result.matched_rules or []),
             "regex_baseline_reason_codes": regex_reason_codes,
         }
 
@@ -79,7 +81,7 @@ async def _run_case(case: dict[str, Any]) -> dict[str, Any]:
         result = evaluate_agent_redteam_case(payload)
         attack_succeeded = not bool(result.get("passed"))
         return {
-            "case_id": case_id or str(result.get("case_id") or ""),
+            "case_id": case_id,
             "kind": kind,
             "status": "evaluated",
             "counted_in_asr_pipeline": True,
@@ -112,7 +114,7 @@ async def _run_case(case: dict[str, Any]) -> dict[str, Any]:
 async def run_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
     results = [await _run_case(case) for case in cases or []]
     total = len(results)
-    invalid_cases = sum(1 for result in results if str(result.get("status") or "") == "invalid")
+    invalid_cases = sum(1 for result in results if result["status"] == "invalid")
     pipeline_total = sum(1 for result in results if bool(result.get("counted_in_asr_pipeline")))
     pipeline_succeeded = sum(
         1
@@ -139,7 +141,7 @@ async def run_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
     for result in results:
         kind = str(result.get("kind") or "unknown")
         by_kind[kind]["total"] += 1
-        if str(result.get("status") or "") == "invalid":
+        if result["status"] == "invalid":
             by_kind[kind]["invalid"] += 1
         if bool(result.get("counted_in_asr_pipeline")):
             by_kind[kind]["pipeline_evaluated"] += 1
@@ -156,15 +158,15 @@ async def run_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "regex_baseline_backend": _REGEX_BASELINE_BACKEND,
         "results": results,
         "summary": {
-            "total_cases": int(total),
-            "invalid_cases": int(invalid_cases),
-            "pipeline_attack_cases": int(pipeline_total),
-            "pipeline_attacks_succeeded": int(pipeline_succeeded),
-            "pipeline_attacks_blocked": int(max(0, pipeline_total - pipeline_succeeded)),
+            "total_cases": total,
+            "invalid_cases": invalid_cases,
+            "pipeline_attack_cases": pipeline_total,
+            "pipeline_attacks_succeeded": pipeline_succeeded,
+            "pipeline_attacks_blocked": max(0, pipeline_total - pipeline_succeeded),
             "asr_pipeline": round(float(pipeline_succeeded) / float(pipeline_total), 4) if pipeline_total else None,
-            "regex_baseline_attack_cases": int(baseline_total),
-            "regex_baseline_attacks_succeeded": int(baseline_succeeded),
-            "regex_baseline_attacks_blocked": int(max(0, baseline_total - baseline_succeeded)),
+            "regex_baseline_attack_cases": baseline_total,
+            "regex_baseline_attacks_succeeded": baseline_succeeded,
+            "regex_baseline_attacks_blocked": max(0, baseline_total - baseline_succeeded),
             "asr_regex_baseline": round(float(baseline_succeeded) / float(baseline_total), 4)
             if baseline_total
             else None,

@@ -12,6 +12,7 @@ const chatApiMock = vi.hoisted(() => ({
   getMessages: vi.fn(),
   streamChat: vi.fn(),
 }))
+vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
 
 const recoveryMock = vi.hoisted(() => ({
   recoverStreamedAssistantMessage: vi.fn(),
@@ -20,6 +21,7 @@ const recoveryMock = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({
   chatApi: chatApiMock,
 }))
+vi.mock('@/lib/api/chat', () => ({ chatApi: chatApiMock }))
 
 vi.mock('@/lib/client-logging', () => ({
   reportClientError: vi.fn(),
@@ -107,15 +109,21 @@ describe('useChatStream accepted-stream recovery', () => {
     const onError = vi.fn()
     let rejectStream: ((reason?: unknown) => void) | null = null
 
-    chatApiMock.streamChat.mockImplementation(async (_request: unknown, _onJson: unknown, options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void }) => {
-      options?.onOpen?.({ requestId: 'req-accepted', conversationId: 'conv-accepted' })
-      return await new Promise<never>((_resolve, reject) => {
-        rejectStream = reject
-        options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
-      })
-    })
+    chatApiMock.streamChat.mockImplementation(
+      async (
+        _request: unknown,
+        _onJson: unknown,
+        options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void },
+      ) => {
+        options?.onOpen?.({ requestId: 'req-accepted', conversationId: 'conv-accepted' })
+        return await new Promise<never>((_resolve, reject) => {
+          rejectStream = reject
+          options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
+        })
+      },
+    )
     recoveryMock.recoverStreamedAssistantMessage.mockResolvedValue(
-      createAssistantMessage('assistant-recovered', 'req-accepted', 'recovered answer')
+      createAssistantMessage('assistant-recovered', 'req-accepted', 'recovered answer'),
     )
 
     const hook = renderChatStreamHook(onError)
@@ -149,7 +157,7 @@ describe('useChatStream accepted-stream recovery', () => {
         expect.objectContaining({
           conversationId: 'conv-accepted',
           requestId: 'req-accepted',
-        })
+        }),
       )
       expect(hook.result.current.messages.at(-1)).toMatchObject({
         id: 'assistant-recovered',
@@ -167,12 +175,18 @@ describe('useChatStream accepted-stream recovery', () => {
     vi.useFakeTimers()
     const onError = vi.fn()
 
-    chatApiMock.streamChat.mockImplementation(async (_request: unknown, _onJson: unknown, options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void }) => {
-      options?.onOpen?.({ requestId: 'req-silent', conversationId: 'conv-silent' })
-      return await new Promise<never>((_resolve, reject) => {
-        options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
-      })
-    })
+    chatApiMock.streamChat.mockImplementation(
+      async (
+        _request: unknown,
+        _onJson: unknown,
+        options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void },
+      ) => {
+        options?.onOpen?.({ requestId: 'req-silent', conversationId: 'conv-silent' })
+        return await new Promise<never>((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
+        })
+      },
+    )
     recoveryMock.recoverStreamedAssistantMessage.mockResolvedValue(null)
 
     const hook = renderChatStreamHook(onError)
@@ -197,13 +211,19 @@ describe('useChatStream accepted-stream recovery', () => {
     const onError = vi.fn()
     let rejectStream: ((reason?: unknown) => void) | null = null
 
-    chatApiMock.streamChat.mockImplementation(async (_request: unknown, _onJson: unknown, options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void }) => {
-      options?.onOpen?.({ requestId: 'req-stream', conversationId: 'conv-stream' })
-      return await new Promise<never>((_resolve, reject) => {
-        rejectStream = reject
-        options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
-      })
-    })
+    chatApiMock.streamChat.mockImplementation(
+      async (
+        _request: unknown,
+        _onJson: unknown,
+        options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void },
+      ) => {
+        options?.onOpen?.({ requestId: 'req-stream', conversationId: 'conv-stream' })
+        return await new Promise<never>((_resolve, reject) => {
+          rejectStream = reject
+          options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
+        })
+      },
+    )
     recoveryMock.recoverStreamedAssistantMessage.mockResolvedValue(null)
 
     const hook = renderChatStreamHook(onError)
@@ -222,11 +242,9 @@ describe('useChatStream accepted-stream recovery', () => {
         expect.objectContaining({
           conversationId: 'conv-stream',
           requestId: 'req-stream',
-        })
+        }),
       )
-      expect(onError).toHaveBeenCalledWith(
-        'Chat stream interrupted before completion and could not be recovered'
-      )
+      expect(onError).toHaveBeenCalledWith('Chat stream interrupted before completion and could not be recovered')
     })
 
     expect(chatApiMock.chat).not.toHaveBeenCalled()
@@ -234,11 +252,13 @@ describe('useChatStream accepted-stream recovery', () => {
   })
 
   it('ignores a second send before the loading state rerenders', async () => {
-    chatApiMock.streamChat.mockImplementation(async (_request: unknown, _onJson: unknown, options?: { signal?: AbortSignal }) => {
-      return await new Promise<never>((_resolve, reject) => {
-        options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
-      })
-    })
+    chatApiMock.streamChat.mockImplementation(
+      async (_request: unknown, _onJson: unknown, options?: { signal?: AbortSignal }) => {
+        return await new Promise<never>((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
+        })
+      },
+    )
 
     const hook = renderChatStreamHook()
 
@@ -262,13 +282,19 @@ describe('useChatStream accepted-stream recovery', () => {
   it('preserves user-stop semantics for partial streamed content', async () => {
     const onError = vi.fn()
 
-    chatApiMock.streamChat.mockImplementation(async (_request: unknown, onJson: (json: string) => void, options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void }) => {
-      options?.onOpen?.({ requestId: 'req-stop', conversationId: 'conv-stop' })
-      onJson(JSON.stringify({ type: 'token', data: { content: 'partial answer' } }))
-      return await new Promise<never>((_resolve, reject) => {
-        options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
-      })
-    })
+    chatApiMock.streamChat.mockImplementation(
+      async (
+        _request: unknown,
+        onJson: (json: string) => void,
+        options?: { signal?: AbortSignal; onOpen?: (meta: { requestId: string; conversationId?: string }) => void },
+      ) => {
+        options?.onOpen?.({ requestId: 'req-stop', conversationId: 'conv-stop' })
+        onJson(JSON.stringify({ type: 'token', data: { content: 'partial answer' } }))
+        return await new Promise<never>((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(createAbortError()), { once: true })
+        })
+      },
+    )
 
     const hook = renderChatStreamHook(onError)
 

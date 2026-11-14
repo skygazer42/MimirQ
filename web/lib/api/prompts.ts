@@ -9,13 +9,7 @@ type PromptTemplateNewVersionSchema = OpenApiSchema<'PromptTemplateNewVersion'>
 
 export type PromptTemplateCreate = Omit<
   PromptTemplateCreateSchema,
-  | 'template_key'
-  | 'description'
-  | 'category'
-  | 'version'
-  | 'ab_experiment_key'
-  | 'ab_variant'
-  | 'ab_weight'
+  'template_key' | 'description' | 'category' | 'version' | 'ab_experiment_key' | 'ab_variant' | 'ab_weight'
 > & {
   template_key?: string
   description?: string

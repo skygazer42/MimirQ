@@ -14,7 +14,6 @@ EXPECTED_PARSER_EXPORTS = [
     "BaseAdvancedParser",
     "MinerUParser",
     "DoclingParser",
-    "TCADPParser",
     "Etl4LlmParser",
 ]
 
@@ -123,12 +122,6 @@ EXPECTED_EXPORT_CAPABILITIES = [
         "backend_name": "docling",
     },
     {
-        "export_name": "TCADPParser",
-        "module_name": "app.parsing.parsers.tcadp_parser",
-        "class_name": "TCADPParser",
-        "backend_name": "tcadp",
-    },
-    {
         "export_name": "Etl4LlmParser",
         "module_name": "app.parsing.parsers.etl4llm_parser",
         "class_name": "Etl4LlmParser",
@@ -232,16 +225,9 @@ def test_parser_capability_lookup_returns_expected_item() -> None:
 def test_parser_backend_capability_discovery_covers_factory_supported_backends() -> None:
     import app.parsing.parsers as parsers
 
-    families = {
-        item["resolved_backend"]: item
-        for item in parsers.list_parser_backend_capabilities()
-    }
+    families = {item["resolved_backend"]: item for item in parsers.list_parser_backend_capabilities()}
 
-    assert set(families) == (
-        EXPECTED_DEFAULT_BACKENDS
-        | EXPECTED_OPTIONAL_BACKENDS
-        | EXPECTED_EXPERIMENTAL_BACKENDS
-    )
+    assert set(families) == (EXPECTED_DEFAULT_BACKENDS | EXPECTED_OPTIONAL_BACKENDS | EXPECTED_EXPERIMENTAL_BACKENDS)
 
     supported_pdf = {
         name
@@ -253,16 +239,8 @@ def test_parser_backend_capability_discovery_covers_factory_supported_backends()
         for name, item in families.items()
         if item["supports_non_pdf"] and item["user_selectable"] and not item["implicit_only"]
     }
-    pdf_fallback = {
-        name
-        for name in EXPECTED_PDF_FALLBACK_BACKENDS
-        if name in families
-    }
-    docx_fallback = {
-        name
-        for name in EXPECTED_DOCX_FALLBACK_BACKENDS
-        if name in families
-    }
+    pdf_fallback = {name for name in EXPECTED_PDF_FALLBACK_BACKENDS if name in families}
+    docx_fallback = {name for name in EXPECTED_DOCX_FALLBACK_BACKENDS if name in families}
 
     assert supported_pdf == set(ParserFactory.SUPPORTED_PDF_BACKENDS)
     assert supported_non_pdf == set(ParserFactory.SUPPORTED_NON_PDF_BACKENDS)
@@ -376,8 +354,7 @@ def test_parser_factory_rejects_unsupported_pdf_backend_with_current_message() -
         factory.resolve_backend(".pdf", "unknown-backend")
 
     assert str(exc_info.value) == (
-        "Unsupported parser backend 'unknown-backend'. "
-        f"Supported backends: {EXPECTED_PDF_BACKENDS}"
+        f"Unsupported parser backend 'unknown-backend'. Supported backends: {EXPECTED_PDF_BACKENDS}"
     )
 
 
@@ -656,7 +633,6 @@ def test_parser_factory_and_backend_capability_discovery_do_not_import_implement
             "app.parsing.parsers.image_parser",
             "app.parsing.parsers.audio_parser",
             "app.parsing.parsers.video_parser",
-            "app.parsing.parsers.tcadp_parser",
         ]
         for name in parser_modules:
             sys.modules.pop(name, None)
@@ -680,7 +656,7 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
         before = set(sys.modules)
         import app.parsing.parsers as parsers
         after_import = set(sys.modules)
-        parser_cls = parsers.TCADPParser
+        parser_cls = parsers.Etl4LlmParser
         after_attr = set(sys.modules)
         print(
             json.dumps(
@@ -704,8 +680,8 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
             "app.parsing.parsers.base_parser",
         ],
         "after_attr": [
+            "app.parsing.parsers.etl4llm_parser",
             "app.parsing.parsers.registry",
-            "app.parsing.parsers.tcadp_parser",
         ],
-        "class_name": "TCADPParser",
+        "class_name": "Etl4LlmParser",
     }

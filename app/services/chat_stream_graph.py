@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 import threading
@@ -6,18 +5,17 @@ from dataclasses import dataclass, field, replace
 from typing import Any, AsyncIterator, Callable, cast
 
 from app.core.config import settings
-from app.services.chat_execution_runtime import ChatExecutionContext
-from app.services.chat_runtime import (
-    ChatStreamPersistInput,
+from app.services.chat_cache_runtime import (
     annotate_chat_cache_metrics,
-    apply_chat_runtime_metrics_context,
     store_chat_response_cache_if_needed,
 )
+from app.services.chat_execution_runtime import ChatExecutionContext
+from app.services.chat_runtime import apply_chat_runtime_metrics_context
 from app.services.chat_stream_common import (
     build_chat_stream_done_event,
     log_chat_stream_completion_metrics,
 )
-from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+from app.services.chat_stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 
 _SYNC_STREAM_END = object()
 
@@ -253,7 +251,7 @@ def _build_graph_stream_state(
 
 def _build_graph_stream_config(*, conversation_id: Any, request_id: str) -> dict[str, Any]:
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
 
 
@@ -266,20 +264,16 @@ def _maybe_attach_tag_context(
     question: str,
     effective_rag_config: Any,
 ) -> str | None:
-    import inspect
-
     from app.services.chat_tag_service import build_chat_tag_context_docs
 
-    tag_kwargs: dict[str, Any] = {
-        "tenant_id": tenant_id,
-        "document_ids": doc_ids_to_use,
-        "question": question,
-    }
-    if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
-        tag_kwargs["must_recall_expected_source_keys"] = effective_rag_config.must_recall_expected_source_keys
-
     try:
-        tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
+        tag_docs, tag_meta = build_chat_tag_context_docs(
+            db,
+            tenant_id=tenant_id,
+            document_ids=doc_ids_to_use,
+            question=question,
+            must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        )
         state["tag_docs"] = tag_docs
         state["tag_meta"] = tag_meta
         if bool(tag_meta.get("enabled")):
@@ -311,8 +305,8 @@ def _consume_graph_value_chunk(
         citations_data = chunk.get("citations") or []
         citations_sent = True
         events.append({"type": "citations", "data": citations_data})
-    if not answer_sent and "answer" in chunk:
-        events.extend(_answer_token_events(chunk.get("answer") or "", response_parts))
+    if not answer_sent and chunk.get("answer") is not None:
+        events.extend(_answer_token_events(chunk["answer"], response_parts))
         answer_sent = True
     return events, citations_sent, answer_sent, citations_data
 
@@ -439,7 +433,7 @@ async def stream_graph_chat_events(
         yield {"type": "citations", "data": stream_state.citations_data}
 
     if not stream_state.answer_sent:
-        for event in _answer_token_events(graph_result.get("answer") or "", stream_state.response_parts):
+        for event in _answer_token_events(graph_result["answer"], stream_state.response_parts):
             yield event
 
     full_response = "".join(stream_state.response_parts)
@@ -469,7 +463,6 @@ async def stream_graph_chat_session_events(
     conversation_id = context.conversation_id
     request_id = context.request_id
     dataset_id_used = context.dataset_id_used
-    effective_rag_config = context.effective_rag_config
     rag_config_template_meta = context.rag_config_template_meta
 
     graph_stream_state: dict[str, Any] = {}
@@ -481,7 +474,7 @@ async def stream_graph_chat_session_events(
         yield graph_event
 
     citations_data = list(graph_stream_state.get("citations") or [])
-    full_response = str(graph_stream_state.get("content") or "")
+    full_response = graph_stream_state["content"]
     metrics_data = dict(graph_stream_state.get("metrics") or {})
     structured_data = graph_stream_state.get("structured_data")
 
@@ -509,10 +502,7 @@ async def stream_graph_chat_session_events(
         content=full_response,
         citations=citations_data,
         metrics=metrics_data,
-        retrieval_mode_default=effective_rag_config.retrieval_mode,
-        vector_backend_default=settings.VECTOR_BACKEND,
-        structured=bool(metrics_data.get("structured_parse_ok"))
-        and structured_data is not None,
+        structured=bool(metrics_data.get("structured_parse_ok")) and structured_data is not None,
         structured_data=structured_data,
     )
 
@@ -531,8 +521,6 @@ async def stream_graph_chat_session_events(
         conversation_id=conversation_id,
         tenant_id=tenant_id,
         metrics=metrics_data,
-        retrieval_mode_default=effective_rag_config.retrieval_mode,
-        vector_backend_default=settings.VECTOR_BACKEND,
     )
 
     dispatch_chat_stream_persistence(

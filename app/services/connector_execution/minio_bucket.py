@@ -1,0 +1,564 @@
+from __future__ import annotations
+
+import contextlib
+import hashlib
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.api.schemas.documents import UrlUploadRequest
+from app.core.database import SessionLocal
+from app.core.secrets import decrypt_connector_config_secrets
+from app.models.connector import ConnectorRun, ConnectorRunDocument
+from app.services import document_ingestion as ingestion_service
+from app.services.connector_document_access import (
+    _apply_document_access_from_config,
+    _soft_disable_connector_documents_by_source_ref,
+)
+from app.services.connector_execution.shared.artifacts import (
+    _apply_connector_identity_metadata,
+    _normalize_connector_string_list,
+)
+from app.services.connector_execution.shared.common import (
+    _append_connector_error,
+    _connector_run_completion_status,
+    _finalize_connector_stats,
+    _optional_source_text,
+    build_ingestion_options,
+)
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _minio_bucket_run_cancelled,
+)
+from app.services.connector_execution.shared.runtime import (
+    finalize_cancelled_connector_run as _finalize_cancelled_minio_bucket_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    get_active_connector_run as _get_minio_bucket_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    mark_connector_run_failed as _mark_minio_bucket_run_failed,
+)
+from app.services.connector_execution.shared.runtime import (
+    mark_connector_run_running as _mark_minio_bucket_run_running,
+)
+from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest
+
+if TYPE_CHECKING:
+    from minio import Minio
+    from minio.datatypes import Object
+
+    from app.storage.object.minio import MinIOService
+
+
+def _normalize_minio_include_set(values: object) -> set[str]:
+    include_exts = _normalize_connector_string_list(values)
+    normalized = [("." + ext if not ext.startswith(".") else ext).lower() for ext in include_exts]
+    return set(normalized) if normalized else {".pdf", ".md", ".txt"}
+
+
+def _minio_connector_config_id(run_stats: dict[str, Any]) -> UUID | None:
+    cfg_id = run_stats.get("config_id")
+    try:
+        return UUID(str(cfg_id)) if cfg_id else None
+    except ValueError:
+        return None
+
+
+def _minio_source_scope_hash(*, bucket_name: str, prefix: str | None, include_set: set[str]) -> str:
+    prefix_text = _optional_source_text(prefix)
+    scope_parts = [
+        f"bucket={bucket_name.strip()}",
+        f"prefix={prefix_text if prefix_text is not None else ''}",
+        f"include={','.join(sorted(include_set or set()))}",
+    ]
+    return hashlib.sha256("|".join(scope_parts).encode("utf-8")).hexdigest()[:16]
+
+
+def _minio_object_token(obj: Object) -> str:
+    etag = _optional_source_text(obj.etag)
+
+    last_modified_raw = getattr(obj, "last_modified", None)
+    if isinstance(last_modified_raw, datetime):
+        last_modified = last_modified_raw.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    else:
+        last_modified = _optional_source_text(last_modified_raw)
+
+    parts: list[str] = []
+    if etag:
+        parts.append(f"etag:{etag}")
+    if last_modified:
+        parts.append(f"last_modified:{last_modified}")
+
+    size_raw = getattr(obj, "size", None)
+    with contextlib.suppress(Exception):
+        size = int(size_raw or 0) if size_raw is not None else 0
+        if size:
+            parts.append(f"size:{size}")
+
+    return "|".join(parts) or "unknown"
+
+
+def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinIOService) -> dict[str, Any]:
+    bucket = cfg.get("bucket") if isinstance(cfg.get("bucket"), str) else None
+    prefix = cfg.get("prefix") if isinstance(cfg.get("prefix"), str) else None
+    bucket_name = _optional_source_text(bucket, minio_service._bucket_name)
+    if not bucket_name:
+        raise RuntimeError("minio bucket is required")
+
+    include_set = _normalize_minio_include_set(cfg.get("include_extensions"))
+    return {
+        "bucket_name": bucket_name,
+        "prefix": prefix,
+        "max_objects": int(cfg.get("max_objects") or 50),
+        "expiry": int(cfg.get("presign_expiry_sec") or 3600),
+        "include_set": include_set,
+        **build_ingestion_options(cfg),
+        "access": cfg.get("access") if isinstance(cfg.get("access"), dict) else None,
+        "scope_hash": _minio_source_scope_hash(bucket_name=bucket_name, prefix=prefix, include_set=include_set),
+    }
+
+
+def _list_minio_bucket_objects(client: Minio, *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
+    listed_objects: list[dict[str, str]] = []
+    for obj in client.list_objects(bucket_name=bucket_name, prefix=prefix, recursive=True):
+        name = obj.object_name.strip()
+        if not name:
+            continue
+        listed_objects.append({"name": name, "token": _minio_object_token(obj)})
+    return listed_objects
+
+
+def _minio_object_name_is_included(name: str, include_set: set[str]) -> bool:
+    ext = Path(name).suffix.lower()
+    if ext:
+        return ext in include_set
+    return "" in include_set
+
+
+def _build_minio_bucket_execution_plan(
+    *,
+    run_stats: dict[str, Any],
+    state: dict[str, Any],
+    listed_objects: list[dict[str, str]],
+    include_set: set[str],
+    max_objects: int,
+    scope_hash: str,
+) -> dict[str, Any]:
+    existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+    existing_scope_hash = _optional_source_text(state.get("source_scope_hash"))
+    if existing_scope_hash and existing_scope_hash != scope_hash:
+        existing_manifest = {}
+
+    tracked_keys = set(existing_manifest)
+    resume_cursor_raw = get_resume_cursor(state)
+    is_resume_run = bool((run_stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+    mode = "incremental" if existing_manifest else "full"
+    resume_cursor = resume_cursor_raw if (is_resume_run and mode == "full") else 0
+
+    total_objects = 0
+    delta_objects_total = 0
+    skipped_unchanged = 0
+    max_objects_bound = max(1, min(int(max_objects or 0), 200))
+    observed_tracked_keys: set[str] = set()
+    objects_to_process: list[tuple[str, str]] = []
+
+    for raw in listed_objects:
+        name = raw["name"].strip()
+        if not name:
+            continue
+
+        if name in tracked_keys:
+            observed_tracked_keys.add(name)
+
+        if not _minio_object_name_is_included(name, include_set):
+            continue
+
+        total_objects += 1
+        token = str(raw.get("token") or "unknown")
+        if mode == "incremental" and existing_manifest.get(name) == token:
+            skipped_unchanged += 1
+            continue
+
+        delta_objects_total += 1
+        if mode == "full" and delta_objects_total <= resume_cursor:
+            continue
+
+        if len(objects_to_process) < max_objects_bound:
+            objects_to_process.append((name, token))
+
+    cursor_in = min(max(0, int(resume_cursor or 0)), int(delta_objects_total))
+    removed_paths = sorted(tracked_keys - observed_tracked_keys) if mode == "incremental" else []
+    source_manifest_state = {path: token for path, token in existing_manifest.items() if path not in removed_paths}
+    processed_visible = skipped_unchanged + cursor_in
+
+    return {
+        "existing_manifest": existing_manifest,
+        "mode": mode,
+        "total_objects": int(total_objects),
+        "delta_objects_total": int(delta_objects_total),
+        "skipped_unchanged": int(skipped_unchanged),
+        "objects_to_process": objects_to_process,
+        "cursor_in": int(cursor_in),
+        "removed_paths": removed_paths,
+        "source_manifest_state": source_manifest_state,
+        "processed_visible": int(processed_visible),
+        "resumed_from_state": bool(cursor_in > 0),
+        "scope_hash": str(scope_hash),
+    }
+
+
+def _initialize_minio_bucket_run_stats(*, run: ConnectorRun, plan: dict[str, Any]) -> dict[str, Any]:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "total_objects": int(plan.get("total_objects") or 0),
+            "delta_objects": int(plan.get("delta_objects_total") or 0),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "processed_objects": int(plan.get("processed_visible") or 0),
+            "cursor": int(plan.get("cursor_in") or 0),
+            "created": 0,
+            "failed": 0,
+            "cursor_in": int(plan.get("cursor_in") or 0),
+            "resumed_from_state": bool(plan.get("resumed_from_state")),
+            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths_reconciled": 0,
+            "removed_documents_disabled": 0,
+            "updated_documents_disabled": 0,
+            "source_manifest": dict(plan.get("source_manifest_state") or {}),
+            "source_scope_hash": plan["scope_hash"],
+        }
+    )
+    return stats
+
+
+async def _ingest_minio_bucket_object(
+    client: Minio,
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    object_name: str,
+    settings_map: dict[str, Any],
+    connector_config_id: UUID | None,
+    source_manifest_state: dict[str, str],
+) -> dict[str, Any]:
+    url = client.presigned_get_object(
+        bucket_name=settings_map["bucket_name"],
+        object_name=object_name,
+        expires=timedelta(seconds=int(settings_map.get("expiry") or 3600)),
+    )
+    body = UrlUploadRequest(
+        url=url,
+        dataset_id=run.dataset_id,
+        filename=Path(object_name).name,
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
+        pipeline=settings_map.get("pipeline"),
+    )
+    doc = await ingestion_service.ingest_url(
+        background_tasks=None,
+        body=body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=doc,
+        access=settings_map.get("access"),
+        connector_id="minio_bucket",
+    )
+    _apply_connector_identity_metadata(
+        doc=doc,
+        run=run,
+        connector_id="minio_bucket",
+        source_ref=object_name,
+        source_id=object_name,
+    )
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=doc.id,
+            source_ref=object_name,
+            status="created",
+        )
+    )
+
+    updated_documents_disabled = 0
+    if object_name in source_manifest_state:
+        with contextlib.suppress(Exception):
+            updated_documents_disabled += int(
+                _soft_disable_connector_documents_by_source_ref(
+                    db,
+                    tenant_id=tenant_id,
+                    dataset_id=run.dataset_id,
+                    connector_id="minio_bucket",
+                    source_ref=object_name,
+                    connector_config_id=connector_config_id,
+                    exclude_document_id=doc.id,
+                )
+            )
+
+    return {
+        "doc_id": doc.id,
+        "updated_documents_disabled": int(updated_documents_disabled),
+    }
+
+
+def _persist_minio_bucket_progress(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    plan: dict[str, Any],
+    processed: int,
+    created: int,
+    failed: int,
+    created_doc_ids: list[UUID],
+    removed_paths_reconciled: int,
+    removed_documents_disabled: int,
+    updated_documents_disabled: int,
+    source_manifest_state: dict[str, str],
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "total_objects": int(plan.get("total_objects") or 0),
+            "delta_objects": int(plan.get("delta_objects_total") or 0),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "processed_objects": int(int(plan.get("skipped_unchanged") or 0) + processed),
+            "cursor": int(processed),
+            "created": int(created),
+            "failed": int(failed),
+            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths_reconciled": int(removed_paths_reconciled),
+            "removed_documents_disabled": int(removed_documents_disabled),
+            "updated_documents_disabled": int(updated_documents_disabled),
+            "source_manifest": dict(source_manifest_state),
+            "source_scope_hash": plan["scope_hash"],
+            "document_ids": [str(doc_id) for doc_id in created_doc_ids],
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+async def _process_minio_bucket_objects(
+    client: Minio,
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+    plan: dict[str, Any],
+    connector_config_id: UUID | None,
+) -> dict[str, Any]:
+    created = 0
+    failed = 0
+    created_doc_ids: list[UUID] = []
+    removed_paths_reconciled = 0
+    removed_documents_disabled = 0
+    updated_documents_disabled = 0
+    source_manifest_state = dict(plan.get("source_manifest_state") or {})
+    cursor_in = int(plan.get("cursor_in") or 0)
+    mode = plan["mode"]
+
+    for idx, item in enumerate(plan.get("objects_to_process") or []):
+        object_name, object_token = item
+        if _minio_bucket_run_cancelled(db, run=run):
+            break
+
+        try:
+            result = await _ingest_minio_bucket_object(
+                client,
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                object_name=object_name,
+                settings_map=settings_map,
+                connector_config_id=connector_config_id,
+                source_manifest_state=source_manifest_state if mode == "incremental" else {},
+            )
+            created += 1
+            created_doc_ids.append(result["doc_id"])
+            updated_documents_disabled += int(result.get("updated_documents_disabled") or 0)
+            source_manifest_state[object_name] = object_token
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(dict(run.stats or {}), url=object_name, exc=exc)
+        finally:
+            _persist_minio_bucket_progress(
+                db,
+                run=run,
+                plan=plan,
+                processed=cursor_in + idx + 1,
+                created=created,
+                failed=failed,
+                created_doc_ids=created_doc_ids,
+                removed_paths_reconciled=removed_paths_reconciled,
+                removed_documents_disabled=removed_documents_disabled,
+                updated_documents_disabled=updated_documents_disabled,
+                source_manifest_state=source_manifest_state,
+            )
+
+    return {
+        "created": created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "removed_paths_reconciled": removed_paths_reconciled,
+        "removed_documents_disabled": removed_documents_disabled,
+        "updated_documents_disabled": updated_documents_disabled,
+        "source_manifest_state": source_manifest_state,
+    }
+
+
+def _reconcile_removed_minio_bucket_paths(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    removed_paths: list[str],
+    connector_config_id: UUID | None,
+) -> tuple[int, int]:
+    removed_paths_reconciled = 0
+    removed_documents_disabled = 0
+    for source_ref in removed_paths:
+        try:
+            disabled = _soft_disable_connector_documents_by_source_ref(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                connector_id="minio_bucket",
+                source_ref=source_ref,
+                connector_config_id=connector_config_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            stats = _append_connector_error(dict(run.stats or {}), url=source_ref, exc=exc)
+            run.stats = _finalize_connector_stats(stats)
+            db.commit()
+            continue
+        removed_documents_disabled += int(disabled)
+        if disabled:
+            removed_paths_reconciled += 1
+    return removed_paths_reconciled, removed_documents_disabled
+
+
+def _finalize_minio_bucket_run_success(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    plan: dict[str, Any],
+    progress: dict[str, Any],
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "delta_objects": int(plan.get("delta_objects_total") or 0),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths_reconciled": int(progress.get("removed_paths_reconciled") or 0),
+            "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+            "updated_documents_disabled": int(progress.get("updated_documents_disabled") or 0),
+            "source_manifest": dict(progress.get("source_manifest_state") or {}),
+            "source_scope_hash": plan["scope_hash"],
+            "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    run.finished_at = _now()
+    run.status = _connector_run_completion_status(
+        created=int(progress.get("created") or 0),
+        failed=int(progress.get("failed") or 0),
+    )
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+    """
+    Background execution for minio_bucket connector.
+    """
+    db = SessionLocal()
+    run: ConnectorRun | None = None
+    try:
+        run = _get_minio_bucket_run(db, run_id=run_id, tenant_id=tenant_id)
+        if run is None:
+            return
+
+        _mark_minio_bucket_run_running(db, run=run)
+        cfg = decrypt_connector_config_secrets(dict(run.config or {}))
+
+        from app.storage.object.minio import minio_service
+
+        client = minio_service._get_client()  # noqa: SLF001
+        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+        settings_map = _build_minio_bucket_run_settings(cfg, minio_service=minio_service)
+        connector_config_id = _minio_connector_config_id(dict(run.stats or {}))
+        listed_objects = _list_minio_bucket_objects(
+            client,
+            bucket_name=settings_map["bucket_name"],
+            prefix=(settings_map.get("prefix") if isinstance(settings_map.get("prefix"), str) else None),
+        )
+        plan = _build_minio_bucket_execution_plan(
+            run_stats=dict(run.stats or {}),
+            state=state,
+            listed_objects=listed_objects,
+            include_set=set(settings_map.get("include_set") or set()),
+            max_objects=int(settings_map.get("max_objects") or 50),
+            scope_hash=settings_map["scope_hash"],
+        )
+        run.stats = _initialize_minio_bucket_run_stats(run=run, plan=plan)
+        db.commit()
+
+        progress = await _process_minio_bucket_objects(
+            client,
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+            plan=plan,
+            connector_config_id=connector_config_id,
+        )
+        if _minio_bucket_run_cancelled(db, run=run):
+            _finalize_cancelled_minio_bucket_run(db, run=run)
+            return
+
+        removed_paths = list(plan.get("removed_paths") or [])
+        if plan.get("mode") == "incremental" and removed_paths:
+            removed_paths_reconciled, removed_documents_disabled = _reconcile_removed_minio_bucket_paths(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                removed_paths=removed_paths,
+                connector_config_id=connector_config_id,
+            )
+            progress["removed_paths_reconciled"] = int(removed_paths_reconciled)
+            progress["removed_documents_disabled"] = int(removed_documents_disabled)
+
+        _finalize_minio_bucket_run_success(
+            db,
+            run=run,
+            plan=plan,
+            progress=progress,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _mark_minio_bucket_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
+    finally:
+        db.close()

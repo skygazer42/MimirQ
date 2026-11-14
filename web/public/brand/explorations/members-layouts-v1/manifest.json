@@ -1,0 +1,16 @@
+{
+  "schemaVersion":1,
+  "lang":"zh",
+  "project":"Ragvia · 成员权限布局对比",
+  "round":"成员 01",
+  "nativeViewport":"1600x1000",
+  "brief":"沿用雾灰／墨色、Manrope 与 Noto Sans SC。五版共用12名设计成员及六种真实固定角色，比较成员查找、角色调整与权限说明的布局。SCIM测试与SAML元数据保留按需入口。没有邀请、停用开关、自定义权限或最近登录字段。本轮为静态首屏，选定后应用正式页；真实现状有2名成员，另作参照。",
+  "candidates":[
+    {"id":"a-table","name":"A · 成员宽表","source":"a-table.html","concept":"成员与当前角色横向对照，直接在行内选择需要调整的角色。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["紧凑筛选","连续成员宽表","行内角色入口"]},
+    {"id":"b-directory","name":"B · 成员目录","source":"b-directory.html","concept":"从成员目录定位一个人，在宽阅读面核对身份、当前角色和权限说明。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["成员目录","当前角色阅读面","逐人核对"]},
+    {"id":"c-roles","name":"C · 角色分组","source":"c-roles.html","concept":"按六种固定角色组织开放成员行，先看分工，再定位需要调整的人。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["按角色分组","开放成员行","分工对照"]},
+    {"id":"d-permissions","name":"D · 权限对照","source":"d-permissions.html","concept":"用只读矩阵比较六种角色的租户操作范围，再决定当前成员适用的角色。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["成员索引","固定角色矩阵","只读权限说明"]},
+    {"id":"e-workspace","name":"E · 分类工作区","source":"e-workspace.html","concept":"成员、角色说明与身份接入分开组织，名册占据宽主工作区。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["任务分类目录","宽成员名册","身份工具独立入口"]},
+    {"id":"current","name":"当前页面 · 参照","source":"current.png","kind":"image","baseline":true,"nativeViewport":"1280x720","concept":"真实运行页面有2名成员，保留原有卡片与常驻集成工具作为现状参照。","traits":["真实运行页面","原有卡片布局","1280×720 基线"]}
+  ]
+}

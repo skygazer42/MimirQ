@@ -8,6 +8,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.orchestration.common import _safe_int
 
 
@@ -20,15 +21,17 @@ def _citation_coverage_lists(citations: list[Any]) -> tuple[int, list[str], list
         if not isinstance(citation, dict):
             continue
         total += 1
-        document_id = str(citation.get("document_id") or "").strip()
-        pipeline_key = str(citation.get("doc_pipeline_key") or citation.get("pipeline_hash") or "").strip()
-        role = str(citation.get("retrieval_role") or "").strip().lower()
+        document_id = _stringified_metadata_text(citation, "document_id")
+        pipeline_key = _stringified_metadata_text(citation, "doc_pipeline_key") or _stringified_metadata_text(
+            citation, "pipeline_hash"
+        )
+        role = _stringified_metadata_text(citation, "retrieval_role")
         if document_id:
             doc_ids.append(document_id)
         if pipeline_key:
             pipeline_keys.append(pipeline_key)
         if role:
-            roles.append(role)
+            roles.append(role.lower())
     return total, doc_ids, pipeline_keys, roles
 
 
@@ -38,8 +41,6 @@ def _top_doc_share(doc_ids: list[str]) -> float | None:
     from collections import Counter  # local import: keep module import-light
 
     counts = Counter(doc_ids)
-    if not counts:
-        return None
     return round(float(max(counts.values())) / float(len(doc_ids)), 3)
 
 
@@ -59,13 +60,15 @@ def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
         return None
 
     out: dict[str, Any] = {
-        "citations_total": int(total),
-        "distinct_documents": int(len(set(doc_ids)) if doc_ids else 0),
-        "distinct_pipeline_keys": int(len(set(pipeline_keys)) if pipeline_keys else 0),
-        "distinct_roles": int(len(set(roles)) if roles else 0),
-        "top_doc_share": _top_doc_share(doc_ids),
+        "citations_total": total,
+        "distinct_documents": len(set(doc_ids)),
+        "distinct_pipeline_keys": len(set(pipeline_keys)),
+        "distinct_roles": len(set(roles)),
     }
-    return {k: v for k, v in out.items() if v is not None} or None
+    top_doc_share = _top_doc_share(doc_ids)
+    if top_doc_share is not None:
+        out["top_doc_share"] = top_doc_share
+    return out
 
 
 def _main_retrieval_per_query_item(retrieval_per_query: Any) -> dict[str, Any] | None:
@@ -100,8 +103,8 @@ def _empty_retrieval_reason_counts(enrich: dict[str, Any]) -> tuple[dict[str, in
     ):
         count = _safe_int(enrich.get(key))
         if count > 0:
-            signals[key] = int(count)
-            reason_counts.append((reason, int(count)))
+            signals[key] = count
+            reason_counts.append((reason, count))
     reason_counts.sort(key=lambda item: (-item[1], item[0]))
     return signals, reason_counts
 
@@ -118,7 +121,7 @@ def _build_empty_retrieval_diagnosis(
     for key in ("input_results", "output_results"):
         if enrich.get(key) is not None:
             diag[key] = _safe_int(enrich.get(key))
-    return {key: value for key, value in diag.items() if value is not None} or None
+    return diag
 
 
 def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None:
@@ -164,8 +167,8 @@ def _extract_parse_quality_score(meta: Any) -> float | None:
                 score = 0.0
             if score > 1.0:
                 score = 1.0
-            return float(score)
-        except (TypeError, ValueError, AttributeError):
+            return score
+        except (OverflowError, TypeError, ValueError):
             continue
     return None
 
@@ -183,30 +186,32 @@ def _parse_quality_recommendation(*, low_ratio: float, considered: int) -> str |
 
 
 def _parse_quality_low_sample(doc: Document, *, rank: int, score: float) -> dict[str, Any]:
-    meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+    meta = doc.metadata or {}
     return {
-        "rank": int(rank),
-        "chunk_id": str(getattr(doc, "id", None) or meta.get("chunk_id") or ""),
-        "document_id": str(meta.get("document_id") or ""),
-        "score": round(float(score), 3),
+        "rank": rank,
+        "chunk_id": doc.id if doc.id is not None else _stringified_metadata_text(meta, "chunk_id"),
+        "document_id": _stringified_metadata_text(meta, "document_id"),
+        "score": round(score, 3),
     }
 
 
 def _parse_quality_risk_counters(
-    docs: list[Document] | None, *, low_threshold: float
+    docs: list[Document | None] | None, *, low_threshold: float
 ) -> tuple[int, int, list[float], list[dict[str, Any]]]:
     considered = 0
     low_count = 0
     scores: list[float] = []
     low_samples: list[dict[str, Any]] = []
-    for index, doc in enumerate(list(docs or [])[:50]):
-        meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+    for index, doc in enumerate((docs if docs is not None else [])[:50]):
+        if doc is None:
+            continue
+        meta = doc.metadata or {}
         score = _extract_parse_quality_score(meta)
         if score is None:
             continue
         considered += 1
-        scores.append(float(score))
-        if float(score) < float(low_threshold):
+        scores.append(score)
+        if score < float(low_threshold):
             low_count += 1
             if len(low_samples) < 5:
                 low_samples.append(_parse_quality_low_sample(doc, rank=index + 1, score=score))
@@ -221,19 +226,19 @@ def _summarize_parse_quality_risk(
 ) -> dict[str, Any]:
     considered, low_count, scores, low_samples = _parse_quality_risk_counters(docs, low_threshold=low_threshold)
     low_ratio = (float(low_count) / float(considered)) if considered > 0 else 0.0
-    avg_score = float(sum(scores) / float(len(scores))) if scores else None
-    alert = bool(considered > 0 and low_ratio >= float(alert_ratio))
-    recommendation = _parse_quality_recommendation(low_ratio=float(low_ratio), considered=int(considered))
+    avg_score = sum(scores) / float(len(scores)) if scores else None
+    alert = considered > 0 and low_ratio >= float(alert_ratio)
+    recommendation = _parse_quality_recommendation(low_ratio=low_ratio, considered=considered)
 
     return {
         "enabled": True,
         "low_threshold": round(float(low_threshold), 3),
         "alert_ratio": round(float(alert_ratio), 3),
-        "considered": int(considered),
-        "low_count": int(low_count),
-        "low_ratio": round(float(low_ratio), 3),
-        "avg_score": (round(float(avg_score), 3) if avg_score is not None else None),
-        "alert": bool(alert),
+        "considered": considered,
+        "low_count": low_count,
+        "low_ratio": round(low_ratio, 3),
+        "avg_score": (round(avg_score, 3) if avg_score is not None else None),
+        "alert": alert,
         "recommendation": recommendation,
         "low_samples": low_samples,
     }
@@ -245,18 +250,18 @@ def _classify_parse_risk(
     hardcase_min_low_ratio: float,
     hardcase_min_considered: int,
 ) -> dict[str, Any]:
-    payload = summary if isinstance(summary, dict) else {}
+    payload = summary if summary is not None else {}
     considered = int(payload.get("considered") or 0)
     low_ratio = float(payload.get("low_ratio") or 0.0)
-    recommendation = str(payload.get("recommendation") or "").strip()
+    recommendation = _stringified_metadata_text(payload, "recommendation")
 
     level = _parse_risk_level(considered=considered, low_ratio=low_ratio, recommendation=recommendation)
     return {
         "level": level,
-        "score": round(float(low_ratio), 3),
+        "score": round(low_ratio, 3),
         "reason": recommendation or ("no_parse_quality_metadata" if considered <= 0 else "parse_quality_healthy"),
-        "considered": int(considered),
-        "low_ratio": round(float(low_ratio), 3),
+        "considered": considered,
+        "low_ratio": round(low_ratio, 3),
         "hardcase_eligible": _parse_risk_hardcase_eligible(
             level=level,
             considered=considered,
@@ -267,7 +272,7 @@ def _classify_parse_risk(
     }
 
 
-def _parse_risk_level(*, considered: int, low_ratio: float, recommendation: str) -> str:
+def _parse_risk_level(*, considered: int, low_ratio: float, recommendation: str | None) -> str:
     if considered <= 0:
         return "unknown"
     if recommendation == "high_parse_risk_reparse_documents" or low_ratio >= 0.8:
@@ -315,17 +320,21 @@ def _count_parse_repair_actions(actions: list[Any]) -> tuple[dict[str, int], dic
         action = str(item.get("action") or "reparse_document").strip().lower() or "reparse_document"
         status = str(item.get("status") or "scheduled").strip().lower() or "scheduled"
         priority = str(item.get("priority") or "medium").strip().lower() or "medium"
-        action_counts[action] = int(action_counts.get(action, 0) + 1)
-        status_counts[status] = int(status_counts.get(status, 0) + 1)
-        priority_counts[priority] = int(priority_counts.get(priority, 0) + 1)
-        doc_id = str(item.get("document_id") or "").strip()
+        action_counts[action] = action_counts.get(action, 0) + 1
+        status_counts[status] = status_counts.get(status, 0) + 1
+        priority_counts[priority] = priority_counts.get(priority, 0) + 1
+        doc_id = _stringified_metadata_text(item, "document_id")
         if doc_id:
             docs_seen.add(doc_id)
     return action_counts, status_counts, priority_counts, docs_seen
 
 
-def _parse_repair_run_id(payload: dict[str, Any]) -> str:
-    return str(payload.get("scheduler_run_id") or payload.get("schedule_run_id") or payload.get("run_id") or "").strip()
+def _parse_repair_run_id(payload: dict[str, Any]) -> str | None:
+    return (
+        _stringified_metadata_text(payload, "scheduler_run_id")
+        or _stringified_metadata_text(payload, "schedule_run_id")
+        or _stringified_metadata_text(payload, "run_id")
+    )
 
 
 def _parse_repair_gate_passed(payload: dict[str, Any]) -> Any:
@@ -343,15 +352,15 @@ def _build_parse_repair_actions_summary(
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "enabled": True,
-        "actions_total": int(sum(action_counts.values())),
-        "unique_documents": int(len(docs_seen)),
+        "actions_total": sum(action_counts.values()),
+        "unique_documents": len(docs_seen),
         "action_counts": dict(sorted(action_counts.items(), key=lambda item: item[0])),
         "status_counts": dict(sorted(status_counts.items(), key=lambda item: item[0])),
         "priority_counts": dict(sorted(priority_counts.items(), key=lambda item: item[0])),
-        "high_priority_count": int(priority_counts.get("high", 0)),
+        "high_priority_count": priority_counts.get("high", 0),
     }
     run_id = _parse_repair_run_id(payload)
-    source = str(payload.get("source") or payload.get("schema") or "").strip()
+    source = _stringified_metadata_text(payload, "source") or _stringified_metadata_text(payload, "schema")
     gate_passed = _parse_repair_gate_passed(payload)
     if run_id:
         out["run_id"] = run_id[:120]

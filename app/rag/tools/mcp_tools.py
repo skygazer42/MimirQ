@@ -20,8 +20,8 @@ import math
 import operator
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, datetime, tzinfo
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -32,6 +32,12 @@ from app.rag.tools.mcp_client import (
     ToolParameter,
     get_mcp_registry,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
 
 logger = get_logger("rag.tools.mcp_tools")
 
@@ -45,11 +51,11 @@ _DOCUMENT_ID_UUID_DESCRIPTION = "Document ID (UUID)"
 _ACL_ACCOUNT_ID_DESCRIPTION = "Optional account/user id for ACL trimming"
 
 # Configuration
-MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
+MCP_ENABLED = settings.MCP_ENABLED
 
 
 @contextlib.contextmanager
-def _db_session() -> Iterator[Any]:
+def _db_session() -> Iterator["Session"]:
     # Helper kept at module scope so unit tests can monkeypatch it.
     from app.core.database import SessionLocal
 
@@ -61,7 +67,7 @@ def _db_session() -> Iterator[Any]:
 
 
 def _document_permission_exists(
-    db: Any,
+    db: "Session",
     *,
     tenant_id: UUID,
     document_id: UUID,
@@ -137,7 +143,7 @@ async def search_documents(
 
         results = []
         for doc in documents:
-            content = doc.page_content if hasattr(doc, "page_content") else doc.get("content", "")
+            content = doc.page_content if hasattr(doc, "page_content") else doc["content"]
             metadata = doc.metadata if hasattr(doc, "metadata") else doc.get("metadata", {})
             results.append(
                 {
@@ -186,7 +192,7 @@ def _document_content_ids(
     except Exception:
         return _document_content_error(document_id, page, "document_id must be a UUID")
     try:
-        tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+        tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID).strip())
     except Exception:
         return _document_content_error(document_id, page, "DEFAULT_TENANT_ID is invalid")
     return dataset_uuid, document_uuid, tenant_uuid
@@ -198,13 +204,13 @@ def _document_content_limit(max_chars: int) -> int:
 
 
 def _load_scoped_document(
-    db: Any,
-    document_model: Any,
+    db: "Session",
+    document_model: "type[DBDocument]",
     *,
     document_id: UUID,
     tenant_id: UUID,
     dataset_id: UUID,
-) -> Any | None:
+) -> "DBDocument | None":
     document = (
         db.query(document_model)
         .filter(
@@ -214,24 +220,26 @@ def _load_scoped_document(
         )
         .first()
     )
-    if document is None or getattr(document, "dataset_id", None) != dataset_id:
+    if document is None or document.dataset_id != dataset_id:
         return None
     return document
 
 
 def _can_read_document_content(
-    db: Any,
-    document: Any,
+    db: "Session",
+    document: "DBDocument",
     *,
     tenant_id: UUID,
     document_id: UUID,
     account_id: str | None,
 ) -> bool:
-    if not account_id:
+    if account_id is None:
         return True
-    mode = str(getattr(document, "access_mode", "") or "").strip().lower()
-    owner = str(getattr(document, "owner_id", "") or "").strip()
-    actor = str(account_id or "").strip()
+    actor = account_id.strip()
+    if not actor:
+        return False
+    mode = document.access_mode.strip().lower() if document.access_mode is not None else None
+    owner = document.owner_id.strip() if document.owner_id is not None else None
     if not mode or mode in {"inherit", "all_team_members"} or (owner and owner == actor):
         return True
     if mode == "partial_members":
@@ -245,13 +253,13 @@ def _can_read_document_content(
 
 
 def _load_document_content_chunks(
-    db: Any,
-    chunk_model: Any,
+    db: "Session",
+    chunk_model: "type[DocumentChunk]",
     *,
     tenant_id: UUID,
     document_id: UUID,
     active_key: str | None,
-) -> list[Any]:
+) -> list["DocumentChunk"]:
     query = (
         db.query(chunk_model)
         .filter(
@@ -270,20 +278,20 @@ def _load_document_content_chunks(
 
 
 def _filter_document_chunks_by_page(
-    chunks: list[Any],
+    chunks: list["DocumentChunk"],
     page: int | None,
-) -> list[Any] | None:
+) -> list["DocumentChunk"] | None:
     if page is None:
         return chunks
     try:
         page_number = int(page)
     except Exception:
         return None
-    return [chunk for chunk in chunks if int(getattr(chunk, "page_number", -1) or -1) == page_number]
+    return [chunk for chunk in chunks if (chunk.page_number or -1) == page_number]
 
 
 def _assemble_document_content(
-    chunks: list[Any],
+    chunks: list["DocumentChunk"],
     *,
     max_chars: int,
 ) -> tuple[str, int, list[int], bool]:
@@ -293,7 +301,7 @@ def _assemble_document_content(
     returned_chunks = 0
     pages: list[int] = []
     for chunk in chunks:
-        text = str(getattr(chunk, "content", "") or "")
+        text = chunk.content
         if not text.strip():
             continue
         separator = "\n\n" if parts else ""
@@ -305,12 +313,82 @@ def _assemble_document_content(
         parts.append(separator + (text[:remaining] if clipped else text))
         total += len(separator) + (remaining if clipped else len(text))
         returned_chunks += 1
-        if getattr(chunk, "page_number", None) is not None:
-            pages.append(int(chunk.page_number))
+        if chunk.page_number is not None:
+            pages.append(chunk.page_number)
         if clipped:
             truncated = True
             break
     return "".join(parts), returned_chunks, pages, truncated
+
+
+def _load_scoped_document_content_chunks(
+    db: "Session",
+    *,
+    document_id: str,
+    document_uuid: UUID,
+    dataset_uuid: UUID,
+    tenant_uuid: UUID,
+    page: int | None,
+    account_id: str | None,
+) -> "tuple[DBDocument, list[DocumentChunk]] | dict[str, Any]":
+    from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
+
+    document = _load_scoped_document(
+        db,
+        DBDocument,
+        document_id=document_uuid,
+        tenant_id=tenant_uuid,
+        dataset_id=dataset_uuid,
+    )
+    if document is None:
+        return _document_content_error(document_id, page, _DOCUMENT_NOT_FOUND_ERROR)
+    if not _can_read_document_content(
+        db,
+        document,
+        tenant_id=tenant_uuid,
+        document_id=document_uuid,
+        account_id=account_id,
+    ):
+        return _document_content_error(document_id, page, _NO_DOCUMENT_ACCESS_ERROR)
+    active_hash = get_active_pipeline_hash(document.doc_metadata)
+    active_key = build_doc_pipeline_key(document_uuid, active_hash) if active_hash else None
+    chunks = _load_document_content_chunks(
+        db,
+        DocumentChunk,
+        tenant_id=tenant_uuid,
+        document_id=document_uuid,
+        active_key=active_key,
+    )
+    chunks = _filter_document_chunks_by_page(chunks, page)
+    if chunks is None:
+        return _document_content_error(document_id, page, "page must be an integer")
+    return document, chunks
+
+
+def _build_document_content_result(
+    document: "DBDocument",
+    chunks: list["DocumentChunk"],
+    *,
+    document_id: str,
+    dataset_uuid: UUID,
+    page: int | None,
+    max_chars: int,
+) -> dict[str, Any]:
+    content, returned_chunks, pages, truncated = _assemble_document_content(chunks, max_chars=max_chars)
+    return {
+        "document_id": document_id,
+        "dataset_id": str(dataset_uuid),
+        "filename": document.filename,
+        "file_type": document.file_type,
+        "page": page,
+        "chunk_count": len(chunks),
+        "returned_chunks": returned_chunks,
+        "pages": sorted(set(pages)),
+        "truncated": truncated,
+        "content": content,
+    }
 
 
 def _get_document_content_sync(
@@ -322,10 +400,6 @@ def _get_document_content_sync(
     max_chars: int = 50_000,
 ) -> dict[str, Any]:
     try:
-        from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
-        from app.models.document import Document as DBDocument
-        from app.models.document import DocumentChunk
-
         identifiers = _document_content_ids(
             document_id=document_id,
             dataset_id=dataset_id,
@@ -335,51 +409,26 @@ def _get_document_content_sync(
             return identifiers
         dataset_uuid, document_uuid, tenant_uuid = identifiers
         with _db_session() as db:
-            document = _load_scoped_document(
+            loaded = _load_scoped_document_content_chunks(
                 db,
-                DBDocument,
-                document_id=document_uuid,
-                tenant_id=tenant_uuid,
-                dataset_id=dataset_uuid,
-            )
-            if document is None:
-                return _document_content_error(document_id, page, _DOCUMENT_NOT_FOUND_ERROR)
-            if not _can_read_document_content(
-                db,
-                document,
-                tenant_id=tenant_uuid,
-                document_id=document_uuid,
+                document_id=document_id,
+                document_uuid=document_uuid,
+                tenant_uuid=tenant_uuid,
+                dataset_uuid=dataset_uuid,
+                page=page,
                 account_id=account_id,
-            ):
-                return _document_content_error(document_id, page, _NO_DOCUMENT_ACCESS_ERROR)
-            active_hash = get_active_pipeline_hash(getattr(document, "doc_metadata", None))
-            active_key = build_doc_pipeline_key(document_uuid, active_hash) if active_hash else None
-            chunks = _load_document_content_chunks(
-                db,
-                DocumentChunk,
-                tenant_id=tenant_uuid,
-                document_id=document_uuid,
-                active_key=active_key,
             )
-            chunks = _filter_document_chunks_by_page(chunks, page)
-            if chunks is None:
-                return _document_content_error(document_id, page, "page must be an integer")
-            content, returned_chunks, pages, truncated = _assemble_document_content(
+            if isinstance(loaded, dict):
+                return loaded
+            document, chunks = loaded
+            return _build_document_content_result(
+                document,
                 chunks,
+                document_id=document_id,
+                dataset_uuid=dataset_uuid,
+                page=page,
                 max_chars=_document_content_limit(max_chars),
             )
-        return {
-            "document_id": document_id,
-            "dataset_id": str(dataset_uuid),
-            "filename": str(getattr(document, "filename", "") or ""),
-            "file_type": str(getattr(document, "file_type", "") or ""),
-            "page": page,
-            "chunk_count": int(len(chunks)),
-            "returned_chunks": int(returned_chunks),
-            "pages": sorted(set(pages)),
-            "truncated": bool(truncated),
-            "content": content,
-        }
     except Exception as exc:
         logger.exception("Failed to get document: %s", exc)
         return {"document_id": document_id, "error": str(exc)}
@@ -427,7 +476,7 @@ def _get_document_sync(
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
-            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID).strip())
         except Exception:
             return {"document_id": document_id, "error": "dataset_id/document_id/DEFAULT_TENANT_ID must be UUIDs"}
 
@@ -445,31 +494,20 @@ def _get_document_sync(
             if not document:
                 return {"document_id": document_id, "error": _DOCUMENT_NOT_FOUND_ERROR}
 
-            mode = str(getattr(document, "access_mode", "") or "").strip().lower()
-            owner = str(getattr(document, "owner_id", "") or "").strip()
-            if account_id:
-                actor = str(account_id or "").strip()
-                is_owner = bool(owner and owner == actor)
-                if mode and mode not in {"inherit", "all_team_members"} and not is_owner:
-                    if mode == "only_me":
-                        return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
-                    if mode == "partial_members" and not _document_permission_exists(
-                        db,
-                        tenant_id=tenant_uuid,
-                        document_id=doc_uuid,
-                        account_id=actor,
-                    ):
-                        return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
+            if not _can_read_document_content(
+                db, document, tenant_id=tenant_uuid, document_id=doc_uuid, account_id=account_id
+            ):
+                return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
 
-            meta = getattr(document, "doc_metadata", None)
+            meta = document.doc_metadata
             meta = meta if isinstance(meta, dict) else {}
             return {
                 "document_id": str(document.id),
                 "dataset_id": str(ds_uuid),
-                "filename": str(getattr(document, "filename", "") or ""),
-                "file_type": str(getattr(document, "file_type", "") or ""),
-                "chunk_count": int(getattr(document, "chunk_count", 0) or 0),
-                "total_characters": int(getattr(document, "total_characters", 0) or 0),
+                "filename": document.filename,
+                "file_type": document.file_type,
+                "chunk_count": document.chunk_count or 0,
+                "total_characters": document.total_characters or 0,
                 "page_count": meta.get("page_count"),
                 "description": meta.get("doc_description") or meta.get("description"),
             }
@@ -508,7 +546,7 @@ def _get_document_structure_sync(
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
-            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID).strip())
         except Exception:
             return {
                 "schema": _DOCUMENT_STRUCTURE_SCHEMA,
@@ -521,7 +559,7 @@ def _get_document_structure_sync(
             return load_document_structure(
                 db=db,
                 tenant_id=tenant_uuid,
-                account_id=str(account_id or ""),
+                account_id=account_id,
                 dataset_id=ds_uuid,
                 document_id=doc_uuid,
                 max_nodes=max_nodes,
@@ -581,7 +619,7 @@ def _parse_pages_selector(pages: Any) -> list[int]:
         return []
     if isinstance(pages, int):
         return [pages] if pages > 0 else []
-    raw = str(pages or "").strip()
+    raw = str(pages).strip()
     if not raw:
         return []
     out: list[int] = []
@@ -617,26 +655,47 @@ def _get_page_content_sync(
     remaining = max(1_000, min(int(max_chars or 50_000), 500_000))
     last: dict[str, Any] = {"document_id": document_id, "dataset_id": dataset_id}
     for page in selected_pages:
-        if remaining <= 0:
+        prefix = f"\n\n[page {page}]\n" if parts else f"[page {page}]\n"
+        content_limit = remaining - len(prefix)
+        if content_limit <= 0:
             truncated = True
             break
-        result = _get_document_content_sync(
-            document_id=document_id,
-            page=page,
-            dataset_id=dataset_id,
-            account_id=account_id,
-            max_chars=remaining,
-        )
+        try:
+            identifiers = _document_content_ids(document_id=document_id, dataset_id=dataset_id, page=page)
+            if isinstance(identifiers, dict):
+                return {**identifiers, "pages_requested": selected_pages}
+            dataset_uuid, document_uuid, tenant_uuid = identifiers
+            with _db_session() as db:
+                loaded = _load_scoped_document_content_chunks(
+                    db,
+                    document_id=document_id,
+                    document_uuid=document_uuid,
+                    dataset_uuid=dataset_uuid,
+                    tenant_uuid=tenant_uuid,
+                    page=page,
+                    account_id=account_id,
+                )
+                if isinstance(loaded, dict):
+                    return {**loaded, "pages_requested": selected_pages}
+                document, chunks = loaded
+                result = _build_document_content_result(
+                    document,
+                    chunks,
+                    document_id=document_id,
+                    dataset_uuid=dataset_uuid,
+                    page=page,
+                    max_chars=content_limit,
+                )
+        except Exception as exc:
+            logger.exception("Failed to get document: %s", exc)
+            return {"document_id": document_id, "error": str(exc), "pages_requested": selected_pages}
         last = result
-        if result.get("error"):
-            return {**result, "pages_requested": selected_pages}
-        text = str(result.get("content") or "")
+        text = result["content"]
         if text.strip():
-            prefix = f"\n\n[page {page}]\n" if parts else f"[page {page}]\n"
             parts.append(prefix + text)
             remaining -= len(prefix) + len(text)
-        returned_chunks += int(result.get("returned_chunks") or 0)
-        if result.get("truncated"):
+            returned_chunks += result["returned_chunks"]
+        if result["truncated"]:
             truncated = True
             break
 
@@ -647,8 +706,8 @@ def _get_page_content_sync(
         "file_type": last.get("file_type"),
         "pages_requested": selected_pages,
         "pages": selected_pages,
-        "returned_chunks": int(returned_chunks),
-        "truncated": bool(truncated),
+        "returned_chunks": returned_chunks,
+        "truncated": truncated,
         "content": "".join(parts),
     }
 
@@ -823,7 +882,7 @@ class _SafeMathEvaluator:
 
 
 def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
-    expr = (expression or "").strip().lower()
+    expr = (expression).strip().lower()
     if not expr:
         raise ValueError("Empty expression")
     if len(expr) > _MAX_MATH_EXPRESSION_CHARS:
@@ -832,8 +891,8 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
     return _SafeMathEvaluator(allowed_names).evaluate(tree)
 
 
-def _resolve_timezone(name: str | None):
-    raw = str(name or "").strip()
+def _resolve_timezone(name: str | None) -> tzinfo:
+    raw = name.strip() if name is not None else None
     if not raw:
         return UTC
     with contextlib.suppress(Exception):
@@ -919,7 +978,7 @@ def format_number(
     number: float,
     decimals: int = 2,
     thousands_separator: bool = True,
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     """
     Format a number for display.
 

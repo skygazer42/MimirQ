@@ -5,11 +5,11 @@ sidebar_position: 7
 
 # 评测与反馈
 
-MimirQ 集成 RAGAS 评测框架，支持对 RAG 对话质量进行自动化评估，并提供回归测试门禁能力。
+Ragvia 集成 RAGAS 评测框架，支持对 RAG 对话质量进行自动化评估，并提供回归测试门禁能力。
 
 ## RAGAS 评测框架
 
-[RAGAS](https://docs.ragas.io/) 是业界标准的 RAG 评测框架，MimirQ 基于已存储的对话消息与引用数据执行评测，无需重新发起 RAG 请求。
+[RAGAS](https://docs.ragas.io/) 是业界标准的 RAG 评测框架，Ragvia 基于已存储的对话消息与引用数据执行评测，无需重新发起 RAG 请求。
 
 ```mermaid
 flowchart LR

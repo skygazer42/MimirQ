@@ -1,11 +1,17 @@
-
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.evaluation.metrics.retrieval import evaluate_retrieval_metrics
 
 DEFAULT_ALPHA_VALUES = (0.3, 0.5, 0.7)
 DEFAULT_RRF_K_VALUES = (10, 30, 60, 100)
 DEFAULT_TOP_K_VALUES = (5, 20, 50)
+
+
+class _HybridRunConfig(TypedDict):
+    fusion: str
+    rrf_k: int
+    alpha: float
+    top_k: int
 
 
 def _fmt_value(value: Any) -> str:
@@ -46,24 +52,21 @@ def _coerce_ranked_ids(items: Any) -> list[str]:
             raw = item.get("chunk_id") or item.get("id") or item.get("document_id")
         else:
             raw = item
-        chunk_id = str(raw or "").strip()
+        if raw is None:
+            continue
+        chunk_id = str(raw).strip()
         if chunk_id and chunk_id not in out:
             out.append(chunk_id)
     return out
 
 
 def _coerce_channels(sample: dict[str, Any]) -> dict[str, list[str]]:
-    raw = (
-        sample.get("hybrid_channels")
-        or sample.get("channel_rankings")
-        or sample.get("retrieval_channels")
-        or {}
-    )
+    raw = sample.get("hybrid_channels") or sample.get("channel_rankings") or sample.get("retrieval_channels") or {}
     if not isinstance(raw, dict):
         return {}
     channels: dict[str, list[str]] = {}
     for channel, items in raw.items():
-        key = str(channel or "").strip().lower()
+        key = channel.strip().lower()
         if not key:
             continue
         ranked = _coerce_ranked_ids(items)
@@ -73,9 +76,6 @@ def _coerce_channels(sample: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _weighted_rrf(channels: dict[str, list[str]], *, alpha: float, rrf_k: int, top_k: int) -> list[str]:
-    alpha = max(0.0, min(1.0, float(alpha)))
-    rrf_k = max(1, int(rrf_k or 0))
-    top_k = max(1, int(top_k or 0))
     non_vector = [key for key in channels if key != "vector"]
     non_vector_weight = (1.0 - alpha) / float(max(1, len(non_vector)))
 
@@ -95,11 +95,11 @@ def _weighted_rrf(channels: dict[str, list[str]], *, alpha: float, rrf_k: int, t
 
 
 def _mrr(gold_chunk_ids: list[str], retrieved_chunk_ids: list[str]) -> float:
-    gold = {str(item).strip() for item in gold_chunk_ids or [] if str(item or "").strip()}
+    gold = {str(item).strip() for item in gold_chunk_ids or [] if item.strip()}
     if not gold:
         return 0.0
     for index, chunk_id in enumerate(retrieved_chunk_ids or [], start=1):
-        if str(chunk_id or "").strip() in gold:
+        if chunk_id.strip() in gold:
             return round(1.0 / float(index), 4)
     return 0.0
 
@@ -112,13 +112,11 @@ def run_hybrid_sweep(
     channels = _coerce_channels(sample if isinstance(sample, dict) else {})
     configs = list(configs or build_hybrid_sweep_configs())
     gold_chunk_ids = _coerce_ranked_ids((sample or {}).get("gold_chunk_ids"))
-    cited_chunk_ids = _coerce_ranked_ids(
-        (sample or {}).get("cited_chunk_ids") or (sample or {}).get("citations")
-    )
+    cited_chunk_ids = _coerce_ranked_ids((sample or {}).get("cited_chunk_ids") or (sample or {}).get("citations"))
 
     rows: list[dict[str, Any]] = []
     for cfg in configs:
-        route_config = {
+        route_config: _HybridRunConfig = {
             "fusion": str(cfg.get("fusion") or "rrf"),
             "rrf_k": max(1, int(cfg.get("rrf_k") or 60)),
             "alpha": max(0.0, min(1.0, float(cfg.get("alpha", 0.5)))),
@@ -126,22 +124,22 @@ def run_hybrid_sweep(
         }
         retrieved = _weighted_rrf(
             channels,
-            alpha=float(route_config["alpha"]),
-            rrf_k=int(route_config["rrf_k"]),
-            top_k=int(route_config["top_k"]),
+            alpha=route_config["alpha"],
+            rrf_k=route_config["rrf_k"],
+            top_k=route_config["top_k"],
         )
         retrieval_metrics = evaluate_retrieval_metrics(
             gold_chunk_ids=gold_chunk_ids,
             retrieved_chunk_ids=retrieved,
             cited_chunk_ids=cited_chunk_ids,
-            recall_k=int(route_config["top_k"]),
+            recall_k=route_config["top_k"],
         )
         retrieval_metrics["hit_at_k"] = 1.0 if retrieval_metrics.get("recall_at_k", 0.0) > 0 else 0.0
         retrieval_metrics["mrr"] = _mrr(gold_chunk_ids, retrieved)
         rows.append(
             {
-                "label": str(cfg.get("label") or ""),
-                "sample_id": str((sample or {}).get("sample_id") or ""),
+                "label": cfg["label"],
+                "sample_id": sample["sample_id"],
                 "route_id": "hybrid",
                 "actual_route": "hybrid",
                 "route_config": route_config,
@@ -154,11 +152,11 @@ def run_hybrid_sweep(
     best: dict[str, Any] | None = None
     best_key: tuple[float, float, float, int] | None = None
     for index, row in enumerate(rows):
-        metrics = ((row.get("evaluators") or {}).get("retrieval") or {})
+        metrics = (row.get("evaluators") or {}).get("retrieval") or {}
         key = (
-            float(metrics.get("recall_at_k") or 0.0),
-            float(metrics.get("mrr") or 0.0),
-            float(metrics.get("hit_at_k") or 0.0),
+            metrics.get("recall_at_k") or 0.0,
+            metrics.get("mrr") or 0.0,
+            metrics.get("hit_at_k") or 0.0,
             -index,
         )
         if best_key is None or key > best_key:
@@ -167,7 +165,7 @@ def run_hybrid_sweep(
 
     return {
         "schema": "mimirq.hybrid_sweep.v1",
-        "sample_id": str((sample or {}).get("sample_id") or ""),
+        "sample_id": sample["sample_id"],
         "rows": rows,
         "best": best,
     }
@@ -197,23 +195,24 @@ def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
             "extensions": {
                 "hybrid_sweep": {
                     "schema": sweep.get("schema"),
-                    "best_label": str(best.get("label") or ""),
+                    "best_label": best["label"],
                     "rows": list(sweep.get("rows") or []),
                 }
             },
         }
 
     raise RuntimeError(
-        "Stage1 hybrid evaluation requires actual channel rankings; "
-        "gold labels must never be used as system output"
+        "Stage1 hybrid evaluation requires actual channel rankings; gold labels must never be used as system output"
     )
 
 
 def _actual_answer_text(sample: dict[str, Any]) -> str:
-    raw = sample.get("actual_answer") or sample.get("answer") or ""
+    raw = sample.get("actual_answer")
+    if raw is None:
+        raw = sample.get("answer")
     if isinstance(raw, dict):
-        raw = raw.get("text") or ""
-    return str(raw)
+        raw = raw.get("text")
+    return "" if raw is None else str(raw)
 
 
 __all__ = ["build_hybrid_sweep_configs", "run_hybrid_route", "run_hybrid_sweep"]

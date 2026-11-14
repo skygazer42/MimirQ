@@ -3,7 +3,7 @@
 Offline evaluation: baseline retrieval vs local multi-stage rerank pipeline.
 
 Why:
-- Let teams iterate on deterministic rerank stacks (LTR, ColBERT late-interaction)
+- Let teams iterate on deterministic ColBERT reranking
   without requiring server-side feature flags to be enabled.
 - Produce retrieval-only metrics (Hit/MRR/Recall/NDCG) from regression case bundles.
 
@@ -31,60 +31,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app.core.model_execution import reject_retired_provider  # noqa: E402
 from app.rag.reranker.colbert import ColBERTReranker  # noqa: E402
-from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker  # noqa: E402
 from app.rag.reranker.types import RerankCandidate  # noqa: E402
-
-
-def _load_json(path: Path) -> Any:
-    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
-    return json.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Normalize case bundle payloads into: (dataset_id, items[]).
-
-    Supported shapes:
-    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
-    - Minimal bundle: {"dataset_id":"...","items":[...]}
-    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
-    """
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
+from scripts.retrieval_ablation import _headers, _load_json, coerce_case_bundle  # noqa: E402
 
 
 def _extract_reference_chunk_ids(item: dict[str, Any]) -> set[str]:
@@ -146,7 +96,7 @@ def _hit_mrr_recall_ndcg_at_k(*, ranked_ids: list[str], relevant: set[str], k: i
         idcg += 1.0 / math.log2(float(i) + 1.0)
     ndcg = (dcg / idcg) if idcg > 0.0 else 0.0
 
-    return {"hit": float(hit), "mrr": float(rr), "recall": float(recall), "ndcg": float(ndcg)}
+    return {"hit": hit, "mrr": rr, "recall": recall, "ndcg": ndcg}
 
 
 def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
@@ -179,12 +129,10 @@ def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
 
 
 def build_colbert_reranker(args: argparse.Namespace) -> ColBERTReranker:
+    provider = str(getattr(args, "colbert_provider", "deterministic") or "deterministic")
+    reject_retired_provider(provider, capability="colbert")
     return ColBERTReranker(
-        provider_name=str(getattr(args, "colbert_provider", "deterministic") or "deterministic"),
-        model_name=str(getattr(args, "colbert_model_name", "") or ""),
-        device=str(getattr(args, "colbert_device", "cpu") or "cpu"),
-        batch_size=max(1, int(getattr(args, "colbert_batch_size", 16) or 16)),
-        max_length=max(8, int(getattr(args, "colbert_max_length", 256) or 256)),
+        provider_name=provider,
         deterministic_dim=max(2, int(getattr(args, "colbert_deterministic_dim", 64) or 64)),
     )
 
@@ -203,7 +151,7 @@ def build_pipeline_summary(
     metric_keys = ("hit", "mrr", "recall", "ndcg")
     baseline_out = {key: round(_as_float(baseline.get(key)), 4) for key in metric_keys}
     pipeline_out = {key: round(_as_float(pipeline_metrics.get(key)), 4) for key in metric_keys}
-    delta_metrics = {key: round(pipeline_out.get(key, 0.0) - baseline_out.get(key, 0.0), 4) for key in metric_keys}
+    delta_metrics = {key: round(pipeline_out[key] - baseline_out[key], 4) for key in metric_keys}
 
     delta_counts: dict[str, dict[str, int]] = {}
     for key in metric_keys:
@@ -254,6 +202,7 @@ def _parse_pipeline(raw: str) -> list[dict[str, Any]]:
         if not isinstance(st, dict):
             continue
         provider = str(st.get("provider") or "").strip().lower()
+        reject_retired_provider(provider, capability="reranker")
         if not provider:
             continue
         top_n_raw = st.get("top_n")
@@ -271,12 +220,12 @@ def apply_pipeline(
     candidates: list[RerankCandidate],
     ranked_ids: list[str],
     pipeline: list[dict[str, Any]],
-    ltr: LTRReranker | None,
     colbert: ColBERTReranker | None,
 ) -> list[str]:
     out = list(ranked_ids)
     for st in pipeline or []:
         provider = str(st.get("provider") or "").strip().lower()
+        reject_retired_provider(provider, capability="reranker")
         if provider in {"none", "off", "false", "0"}:
             continue
         top_n = int(st.get("top_n") or 0)
@@ -293,16 +242,13 @@ def apply_pipeline(
         if not prefix_candidates:
             continue
 
-        if provider == "ltr":
-            if ltr is None:
-                raise ValueError("pipeline includes provider=ltr but no --ltr-model was provided")
-            rr = ltr.rerank(query=query, candidates=prefix_candidates, top_n=len(prefix_candidates))
-        elif provider in {"colbert", "late_interaction"}:
+        reject_retired_provider(provider, capability="reranker")
+        if provider in {"colbert", "late_interaction"}:
             if colbert is None:
                 raise ValueError("pipeline includes provider=colbert but ColBERTReranker is unavailable")
             rr = colbert.rerank(query=query, candidates=prefix_candidates, top_n=len(prefix_candidates))
         else:
-            raise ValueError(f"unsupported pipeline provider: {provider} (supported: ltr, colbert)")
+            raise ValueError(f"unsupported pipeline provider: {provider} (supported: colbert)")
 
         ordered_ids = list(rr.ordered_ids or [])
         used = set(ordered_ids)
@@ -321,7 +267,6 @@ class _CliError(RuntimeError):
 class _EvaluationConfig:
     args: argparse.Namespace
     pipeline: list[dict[str, Any]]
-    ltr: LTRReranker | None
     colbert: ColBERTReranker | None
     dataset_id: str
     items: list[dict[str, Any]]
@@ -338,16 +283,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
     p.add_argument("--pipeline", required=True, help="Pipeline JSON string or path to a JSON file")
 
-    p.add_argument("--ltr-model", default="", help="Path to LTR model artifact (required if pipeline includes 'ltr')")
     p.add_argument(
-        "--ltr-feature-spec-version", type=int, default=1, help="LTR feature spec version (default: %(default)s)"
-    )
-    p.add_argument("--colbert-provider", default="deterministic", help="deterministic|hf (default: %(default)s)")
-    p.add_argument("--colbert-model-name", default="", help="HF model name for provider=hf")
-    p.add_argument("--colbert-device", default="cpu", help="cpu|cuda|auto (default: %(default)s)")
-    p.add_argument("--colbert-batch-size", type=int, default=16, help="ColBERT token batch size (default: %(default)s)")
-    p.add_argument(
-        "--colbert-max-length", type=int, default=256, help="Max token length for HF provider (default: %(default)s)"
+        "--colbert-provider",
+        default="deterministic",
+        choices=["deterministic"],
+        help="Retained deterministic ColBERT scaffold",
     )
     p.add_argument(
         "--colbert-deterministic-dim",
@@ -385,16 +325,6 @@ def _pipeline_has_provider(pipeline: list[dict[str, Any]], providers: set[str]) 
     return any(str(stage.get("provider") or "").strip().lower() in providers for stage in pipeline)
 
 
-def _build_ltr_reranker(args: argparse.Namespace, pipeline: list[dict[str, Any]]) -> LTRReranker | None:
-    if not _pipeline_has_provider(pipeline, {"ltr"}):
-        return None
-    model_path = Path(args.ltr_model) if str(args.ltr_model or "").strip() else None
-    if model_path is None or not model_path.exists():
-        raise _CliError("pipeline includes 'ltr' but --ltr-model is missing/not found")
-    spec = LTRFeatureSpec.from_version(int(args.ltr_feature_spec_version or 1))
-    return LTRReranker(model_path=str(model_path), spec=spec)
-
-
 def _build_optional_colbert(
     args: argparse.Namespace,
     pipeline: list[dict[str, Any]],
@@ -416,7 +346,6 @@ def _build_evaluation_config(args: argparse.Namespace) -> _EvaluationConfig:
     if not pipeline:
         raise _CliError("pipeline is empty")
 
-    ltr = _build_ltr_reranker(args, pipeline)
     colbert = _build_optional_colbert(args, pipeline)
 
     try:
@@ -435,7 +364,6 @@ def _build_evaluation_config(args: argparse.Namespace) -> _EvaluationConfig:
     return _EvaluationConfig(
         args=args,
         pipeline=pipeline,
-        ltr=ltr,
         colbert=colbert,
         dataset_id=dataset_id,
         items=items,
@@ -451,12 +379,12 @@ def _build_retrieve_body(config: _EvaluationConfig, question: str) -> dict[str, 
     return {
         "query": question,
         "history": [],
-        "dataset_id": str(config.dataset_id),
+        "dataset_id": config.dataset_id,
         "document_ids": [],
         "rag_config": {
             "retrieval_profile": str(args.retrieval_profile),
             "retrieval_mode": str(args.retrieval_mode),
-            "top_k": int(config.top_k),
+            "top_k": config.top_k,
             "score_threshold": float(args.score_threshold),
             "alpha": float(args.alpha),
             "enable_reranker": False,
@@ -527,7 +455,6 @@ def _evaluate_case(
         candidates=candidates,
         ranked_ids=ranked_ids,
         pipeline=config.pipeline,
-        ltr=config.ltr,
         colbert=config.colbert,
     )
     piped = _hit_mrr_recall_ndcg_at_k(ranked_ids=piped_ids, relevant=relevant, k=config.k)
@@ -543,8 +470,6 @@ def _evaluate_items(
     case_metrics: list[dict[str, Any]] = []
     cases_used = 0
     for item in config.items:
-        if not isinstance(item, dict):
-            continue
         metrics = _evaluate_case(client, config, item)
         if metrics is None:
             continue
@@ -552,8 +477,8 @@ def _evaluate_items(
         cases_used += 1
         case_metrics.append({"baseline": baseline, "pipeline": piped})
         for key in _METRIC_KEYS:
-            baseline_totals[key] += float(baseline.get(key, 0.0) or 0.0)
-            pipeline_totals[key] += float(piped.get(key, 0.0) or 0.0)
+            baseline_totals[key] += baseline[key]
+            pipeline_totals[key] += piped[key]
     return baseline_totals, pipeline_totals, case_metrics, cases_used
 
 
@@ -562,7 +487,7 @@ def _average_metrics(totals: dict[str, float], cases_used: int) -> dict[str, flo
     if cases_used <= 0:
         return averaged
     for key in _METRIC_KEYS:
-        averaged[key] = round(float(totals[key]) / float(cases_used), 4)
+        averaged[key] = round(totals[key] / float(cases_used), 4)
     return averaged
 
 

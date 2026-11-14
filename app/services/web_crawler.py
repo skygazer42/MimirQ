@@ -13,7 +13,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
@@ -21,7 +21,7 @@ import httpx
 from defusedxml import ElementTree as DefusedET
 from fastapi import HTTPException
 
-from app.api.utils.url_ingest import _validated_fetch_target, _ValidatedFetchTarget, validate_url_for_ingest
+from app.api.utils.url_ingest import ValidatedFetchTarget, validate_fetch_target, validate_url_for_ingest
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.http_client import get_http_client_pool
@@ -30,16 +30,29 @@ from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element
+
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
 _SENSITIVE_REQUEST_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
 logger = get_logger("services.web_crawler")
 
 
+class _CrawlDegradation(TypedDict):
+    level: str
+    feature: str
+    dependency: str
+    reason: str
+    remediation: str
+
+
 def _request_origin(url: str) -> tuple[str, str, int | None] | None:
     try:
-        parsed = urlsplit(str(url or ""))
-        scheme = str(parsed.scheme or "").lower()
-        host = str(parsed.hostname or "").lower()
+        parsed = urlsplit(url)
+        scheme = parsed.scheme.lower()
+        host = parsed.hostname
+        if host is not None:
+            host = host.lower()
         if scheme not in {"http", "https"} or not host:
             return None
         port = parsed.port or (443 if scheme == "https" else 80)
@@ -67,14 +80,16 @@ def _build_page_sync_token(*, url: str, text: str | None, content_type: str | No
     """
     Best-effort content fingerprint used by connector incremental manifests.
     """
-    ct = str(content_type or "").split(";", 1)[0].strip().lower()
-    body = str(text or "")
-    if body:
+    ct = content_type
+    if ct is not None:
+        ct = ct.split(";", 1)[0].strip().lower()
+    body = text
+    if body is not None and body != "":
         digest = hashlib.sha256(body.encode("utf-8", "ignore")).hexdigest()
         if ct:
             return f"content_type:{ct}|body_sha256:{digest}"
         return f"body_sha256:{digest}"
-    return f"url_sha256:{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
+    return f"url_sha256:{hashlib.sha256(url.encode('utf-8', 'ignore')).hexdigest()}"
 
 
 def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list[str]:
@@ -84,7 +99,7 @@ def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list
     if not text:
         return []
     out: list[str] = []
-    for raw in (text or "").splitlines():
+    for raw in (text).splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -113,18 +128,18 @@ def _xml_tag_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _first_child_loc_text(node: Any) -> str:
+def _first_child_loc_text(node: "Element") -> str | None:
     for child in node:
-        if _xml_tag_name(str(getattr(child, "tag", "") or "")).lower() != "loc":
+        if _xml_tag_name(child.tag).lower() != "loc":
             continue
-        return (child.text or "").strip()
-    return ""
+        return child.text.strip() if child.text is not None else None
+    return None
 
 
-def _named_children_loc_values(root: Any, *, child_name: str) -> list[str]:
+def _named_children_loc_values(root: "Element", *, child_name: str) -> list[str]:
     values: list[str] = []
     for child in root:
-        if _xml_tag_name(str(getattr(child, "tag", "") or "")).lower() != child_name:
+        if _xml_tag_name(child.tag).lower() != child_name:
             continue
         loc = _first_child_loc_text(child)
         if loc:
@@ -132,12 +147,12 @@ def _named_children_loc_values(root: Any, *, child_name: str) -> list[str]:
     return values
 
 
-def _iter_loc_values(root: Any) -> list[str]:
+def _iter_loc_values(root: "Element") -> list[str]:
     values: list[str] = []
     for child in root.iter():
-        if _xml_tag_name(str(getattr(child, "tag", "") or "")).lower() != "loc":
+        if _xml_tag_name(child.tag).lower() != "loc":
             continue
-        loc = (child.text or "").strip()
+        loc = child.text.strip() if child.text is not None else None
         if loc:
             values.append(loc)
     return values
@@ -149,7 +164,7 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
 
     Supports both <urlset> and <sitemapindex>.
     """
-    raw = (xml_text or "").strip()
+    raw = (xml_text).strip()
     if not raw:
         return [], []
 
@@ -161,7 +176,7 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
     except Exception:
         return [], []
 
-    root_name = _xml_tag_name(str(getattr(root, "tag", "") or "")).lower()
+    root_name = _xml_tag_name(root.tag).lower()
     if root_name.endswith("sitemapindex"):
         return [], _named_children_loc_values(root, child_name="sitemap")
 
@@ -200,7 +215,7 @@ class _RobotsCache:
         except Exception:
             return None
         scheme = parsed.scheme or "https"
-        netloc = (parsed.netloc or "").strip().lower()
+        netloc = (parsed.netloc).strip().lower()
         if not netloc:
             return None
 
@@ -234,10 +249,10 @@ class _RobotsCache:
         rp = RobotFileParser()
         rp.set_url(final_url or robots_url)
         with contextlib.suppress(Exception):
-            rp.parse((text or "").splitlines())
+            rp.parse(text.splitlines())
 
         self._cache[netloc] = rp
-        self._raw[netloc] = text or ""
+        self._raw[netloc] = text
         return rp
 
     async def can_fetch(
@@ -282,13 +297,13 @@ def _normalize_url(raw: str) -> str:
     - Drop fragment (anchors).
     - Keep query (after tracking stripping).
     """
-    return normalize_url_for_dedup(str(raw or "").strip())
+    return normalize_url_for_dedup(raw.strip())
 
 
 def _compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
     compiled: list[re.Pattern[str]] = []
     for raw in patterns or []:
-        pat = str(raw or "").strip()
+        pat = raw.strip()
         if not pat:
             continue
         try:
@@ -303,49 +318,60 @@ def _match_any(url: str, patterns: list[re.Pattern[str]]) -> bool:
 
 
 def _max_redirects() -> int:
-    max_redirects = int(getattr(settings, "URL_INGEST_MAX_REDIRECTS", 5) or 5)
+    max_redirects = int(settings.URL_INGEST_MAX_REDIRECTS or 5)
     return max(0, min(max_redirects, 20))
 
 
 async def _client_for_fetch_target(
     *,
-    target: _ValidatedFetchTarget,
-    pooled_client: httpx.AsyncClient,
-    pinned_https_client: httpx.AsyncClient | None,
-    pinned_https_host: str | None,
-) -> tuple[httpx.AsyncClient, httpx.AsyncClient | None, str | None]:
-    if urlsplit(target.raw).scheme != "https":
-        return pooled_client, pinned_https_client, pinned_https_host
-    if pinned_https_client is not None and pinned_https_host == target.host_header:
-        return pinned_https_client, pinned_https_client, pinned_https_host
-    if pinned_https_client is not None:
-        await pinned_https_client.aclose()
-    pinned_https_client = httpx.AsyncClient(
-        http2=False,
-        follow_redirects=False,
-        trust_env=httpx_trust_env(logger=logger),
-    )
-    return pinned_https_client, pinned_https_client, target.host_header
+    target: ValidatedFetchTarget,
+    owned_client: httpx.AsyncClient | None,
+    owned_origin: tuple[str, str, int | None] | None,
+) -> tuple[httpx.AsyncClient, httpx.AsyncClient, tuple[str, str, int | None] | None]:
+    origin = _request_origin(target.raw)
+    if owned_client is not None and owned_origin == origin:
+        return owned_client, owned_client, owned_origin
+    if owned_client is not None:
+        await owned_client.aclose()
+    if urlsplit(target.raw).scheme == "https":
+        client = httpx.AsyncClient(
+            http2=False,
+            follow_redirects=False,
+            trust_env=httpx_trust_env(logger=logger),
+        )
+    else:
+        pool = get_http_client_pool()
+        client = httpx.AsyncClient(
+            limits=pool._build_limits(),
+            timeout=pool._build_timeout(),
+            http2=pool._build_http2(),
+            trust_env=pool._build_trust_env(),
+            follow_redirects=False,
+            event_hooks={"request": [pool._ainject_external_context_headers]},
+        )
+    return client, client, origin
 
 
 async def _resolve_redirect_hop(
     *,
-    resp: Any,
+    resp: httpx.Response,
     current_url: str,
     current_origin: tuple[str, str, int | None] | None,
     request_headers: dict[str, str],
     hops: int,
     follow_redirects: bool,
     max_redirects: int,
-) -> tuple[_ValidatedFetchTarget, str, tuple[str, str, int | None] | None, dict[str, str], int]:
+) -> tuple[ValidatedFetchTarget, str, tuple[str, str, int | None] | None, dict[str, str], int]:
     if not follow_redirects:
         raise HTTPException(status_code=400, detail="redirects are not allowed")
     if hops >= max_redirects:
         raise HTTPException(status_code=400, detail="too many redirects")
-    loc = (resp.headers.get("location") or "").strip()
+    loc = resp.headers.get("location")
+    if loc is not None:
+        loc = loc.strip()
     if not loc:
         raise HTTPException(status_code=400, detail="redirect location missing")
-    next_target = await _validated_fetch_target(urljoin(current_url, loc))
+    next_target = await validate_fetch_target(urljoin(current_url, loc))
     next_url = next_target.raw
     next_origin = _request_origin(next_url)
     if next_origin != current_origin:
@@ -353,7 +379,7 @@ async def _resolve_redirect_hop(
     return next_target, next_url, next_origin, request_headers, hops + 1
 
 
-async def _read_response_text(resp: Any, *, max_bytes: int) -> str:
+async def _read_response_text(resp: httpx.Response, *, max_bytes: int) -> str:
     chunks: list[bytes] = []
     size = 0
     async for chunk in resp.aiter_bytes():
@@ -379,27 +405,22 @@ async def _fetch_page_text(
 
     Redirect handling is explicit to preserve SSRF checks per hop.
     """
-    pool = get_http_client_pool()
-    # Security/compliance: do not propagate internal tenant/user headers to crawled websites.
-    pooled_client = await pool.get_external_client()
-
-    current_target = await _validated_fetch_target(url)
+    current_target = await validate_fetch_target(url)
     current = current_target.raw
     request_headers = dict(headers)
     current_origin = _request_origin(current)
     hops = 0
     max_redirects = _max_redirects()
-    pinned_https_client: httpx.AsyncClient | None = None
-    pinned_https_host: str | None = None
+    owned_client: httpx.AsyncClient | None = None
+    owned_origin: tuple[str, str, int | None] | None = None
 
     try:
         while True:
             target = current_target
-            client, pinned_https_client, pinned_https_host = await _client_for_fetch_target(
+            client, owned_client, owned_origin = await _client_for_fetch_target(
                 target=target,
-                pooled_client=pooled_client,
-                pinned_https_client=pinned_https_client,
-                pinned_https_host=pinned_https_host,
+                owned_client=owned_client,
+                owned_origin=owned_origin,
             )
             pinned_headers = {**request_headers, "Host": target.host_header}
             async with client.stream(
@@ -425,14 +446,16 @@ async def _fetch_page_text(
                 if resp.status_code >= 400:
                     raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
 
-                content_type = (resp.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+                content_type = resp.headers.get("content-type")
+                if content_type is not None:
+                    content_type = content_type.split(";", 1)[0].strip().lower()
                 return await _read_response_text(resp, max_bytes=max_bytes), current, content_type
     finally:
-        if pinned_https_client is not None:
-            await pinned_https_client.aclose()
+        if owned_client is not None:
+            await owned_client.aclose()
 
 
-def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], dict[str, Any] | None]:
+def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], _CrawlDegradation | None]:
     lxml_html = _get_lxml_html()
     if lxml_html is None:
         return (
@@ -446,7 +469,7 @@ def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str
             },
         )
 
-    raw = (html_text or "").strip()
+    raw = (html_text).strip()
     if not raw:
         return [], None
 
@@ -549,14 +572,17 @@ def _collect_seed_scope(seeds: list[str]) -> tuple[set[str], set[tuple[str, str,
 
 def _build_crawl_headers(headers: dict[str, str] | None, *, user_agent: str | None) -> tuple[dict[str, str], str]:
     merged: dict[str, str] = {"Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"}
-    ua = (user_agent or "").strip() or "MimirQ/1.0 (+web-crawl)"
+    ua = user_agent
+    if ua is not None:
+        ua = ua.strip()
+    ua = ua or "MimirQ/1.0 (+web-crawl)"
     merged["User-Agent"] = ua
     if headers:
         for key, value in headers.items():
-            name = str(key or "").strip()
+            name = key.strip()
             if not name:
                 continue
-            merged[name] = str(value or "")[:20_000]
+            merged[name] = value[:20_000]
     return merged, ua
 
 
@@ -564,12 +590,10 @@ def _resolve_crawl_runtime(*, crawl_options: WebCrawlOptions, seeds: list[str]) 
     allowed_netlocs, credential_origins = _collect_seed_scope(seeds)
     headers, user_agent = _build_crawl_headers(crawl_options.headers, user_agent=crawl_options.user_agent)
     max_bytes_eff = int(
-        crawl_options.max_bytes
-        if crawl_options.max_bytes is not None
-        else getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0
+        crawl_options.max_bytes if crawl_options.max_bytes is not None else settings.URL_INGEST_MAX_BYTES or 0
     )
     if max_bytes_eff <= 0:
-        max_bytes_eff = int(getattr(settings, "MAX_FILE_SIZE", 0) or 50_000_000)
+        max_bytes_eff = int(settings.MAX_FILE_SIZE)
     return _CrawlRuntime(
         max_pages=int(crawl_options.max_pages),
         max_depth=int(crawl_options.max_depth),
@@ -583,13 +607,13 @@ def _resolve_crawl_runtime(*, crawl_options: WebCrawlOptions, seeds: list[str]) 
         timeout_sec=float(
             crawl_options.timeout_sec
             if crawl_options.timeout_sec is not None
-            else getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0
+            else settings.URL_INGEST_TIMEOUT_SEC or 30.0
         ),
         max_bytes=max_bytes_eff,
         follow_redirects=(
             bool(crawl_options.follow_redirects)
             if crawl_options.follow_redirects is not None
-            else bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False))
+            else bool(settings.URL_INGEST_FOLLOW_REDIRECTS)
         ),
         robots_cache=_RobotsCache() if crawl_options.respect_robots else None,
     )
@@ -638,7 +662,7 @@ async def _robots_allow_url(url: str, *, runtime: _CrawlRuntime) -> bool:
 
 
 def _normalized_sitemap_seed_urls(*, seeds: list[str], sitemap_urls: list[str] | None) -> list[str]:
-    sitemap_seed_urls: list[str] = [str(url or "").strip() for url in (sitemap_urls or []) if str(url or "").strip()]
+    sitemap_seed_urls: list[str] = [url.strip() for url in (sitemap_urls or []) if url.strip()]
     for seed in seeds:
         try:
             parsed = urlsplit(seed)
@@ -681,7 +705,7 @@ async def _extend_sitemap_queue_from_robots(
             timeout_sec=runtime.timeout_sec,
             follow_redirects=runtime.follow_redirects,
         )
-        raw_txt = runtime.robots_cache.get_raw((parsed.netloc or "").strip().lower()) or ""
+        raw_txt = runtime.robots_cache.get_raw(parsed.netloc.strip().lower())
         _enqueue_unique_urls(
             sitemap_queue,
             sitemap_seen,
@@ -734,6 +758,7 @@ async def _discover_pages_from_sitemaps(
     )
 
     discovered_pages: list[str] = []
+    discovered_page_keys: set[str] = set()
     errors: list[dict[str, Any]] = []
     sitemap_hops = 0
     while sitemap_queue and len(discovered_pages) < runtime.max_pages:
@@ -753,17 +778,19 @@ async def _discover_pages_from_sitemaps(
             if len(discovered_pages) >= runtime.max_pages:
                 break
             with contextlib.suppress(Exception):
-                candidate = _normalize_url(urljoin(base_url, str(raw_page or "").strip()))
+                candidate = _normalize_url(urljoin(base_url, raw_page.strip()))
                 if (
                     candidate
+                    and candidate not in discovered_page_keys
                     and _url_passes_filters(candidate, runtime=runtime)
                     and await _robots_allow_url(candidate, runtime=runtime)
                 ):
+                    discovered_page_keys.add(candidate)
                     discovered_pages.append(candidate)
         _enqueue_unique_urls(
             sitemap_queue,
             sitemap_seen,
-            [urljoin(base_url, str(child or "").strip()) for child in nested_sitemaps if str(child or "").strip()],
+            [urljoin(base_url, child.strip()) for child in nested_sitemaps if child.strip()],
         )
 
     if not discovered_pages:
@@ -779,7 +806,7 @@ async def _validated_crawl_url(url: str, *, errors: list[dict[str, Any]]) -> str
     try:
         return await validate_url_for_ingest(url)
     except HTTPException as exc:
-        _append_crawl_error(errors, url=url, error=str(getattr(exc, "detail", "") or "invalid_url"))
+        _append_crawl_error(errors, url=url, error=str(exc.detail or "invalid_url"))
     except Exception as exc:
         _append_crawl_error(errors, url=url, error=str(exc))
     return None
@@ -801,30 +828,30 @@ def _record_crawled_url(
     out.append(out_url)
     sync_tokens[out_url] = _build_page_sync_token(
         url=out_url,
-        text=(text or None),
-        content_type=(content_type or None),
+        text=(text),
+        content_type=(content_type),
     )
 
 
 def _record_degraded_crawl(
     *,
-    degraded: dict[str, Any] | None,
+    degraded: _CrawlDegradation | None,
     degraded_seen: set[tuple[str, str]],
     errors: list[dict[str, Any]],
     safe_url: str,
 ) -> None:
     if degraded is None:
         return
-    key = (str(degraded.get("feature") or ""), str(degraded.get("dependency") or ""))
+    key = (degraded["feature"], degraded["dependency"])
     if key in degraded_seen:
         return
     degraded_seen.add(key)
     logger.warning(
         "Web crawl degraded: feature=%s dependency=%s reason=%s remediation=%s",
-        str(degraded.get("feature") or "unknown"),
-        str(degraded.get("dependency") or "unknown"),
-        str(degraded.get("reason") or "unknown"),
-        str(degraded.get("remediation") or ""),
+        degraded["feature"],
+        degraded["dependency"],
+        degraded["reason"],
+        degraded["remediation"],
     )
     if len(errors) < 20:
         errors.append({"url": safe_url, **degraded})
@@ -871,7 +898,7 @@ async def _crawl_page_queue(*, seeds: list[str], runtime: _CrawlRuntime, dedup_c
 
         canonical_url = (
             extract_canonical_url(text, base_url=final_url)
-            if dedup_canonical and text and "html" in (content_type or "")
+            if dedup_canonical and text and content_type is not None and "html" in content_type
             else None
         )
         _record_crawled_url(
@@ -883,7 +910,7 @@ async def _crawl_page_queue(*, seeds: list[str], runtime: _CrawlRuntime, dedup_c
             content_type=content_type,
         )
 
-        if depth >= runtime.max_depth or not text or "html" not in (content_type or ""):
+        if depth >= runtime.max_depth or not text or content_type is None or "html" not in content_type:
             continue
         links, degraded = _extract_links_from_html(text, base_url=final_url)
         _record_degraded_crawl(
@@ -915,7 +942,7 @@ async def crawl_site(
     Returns a list of normalized URLs to ingest (deduped).
     """
     crawl_options = _resolve_web_crawl_options(options=options, legacy_overrides=legacy_overrides)
-    seeds = [str(url or "").strip() for url in (crawl_options.start_urls or []) if str(url or "").strip()]
+    seeds = [url.strip() for url in (crawl_options.start_urls or []) if url.strip()]
     if not seeds:
         return WebCrawlResult(urls=[], visited=0, queued=0, errors=[])
     runtime = _resolve_crawl_runtime(crawl_options=crawl_options, seeds=seeds)

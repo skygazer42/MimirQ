@@ -1,4 +1,3 @@
-
 import uuid
 
 import pytest
@@ -179,9 +178,7 @@ def test_deterministic_contract_hard_fallback_records_query_tokens(monkeypatch: 
     metrics = out.get("metrics") or {}
     assert metrics.get("hard_fallback_attempted") is True
     fallback_queries = [
-        item
-        for item in (metrics.get("retrieval_per_query") or [])
-        if item.get("kind") == "hard_fallback"
+        item for item in (metrics.get("retrieval_per_query") or []) if item.get("kind") == "hard_fallback"
     ]
     assert len(fallback_queries) == 1
     assert fallback_queries[0]["query_tokens"] > 0

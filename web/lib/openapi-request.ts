@@ -46,7 +46,12 @@ function renderPathTemplate(pathTemplate: string, params?: Record<string, unknow
     if (value === undefined || value === null || key === '') {
       throw new Error(`[openapi-request] missing path param: ${key || '(empty)'}`)
     }
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
       output += encodeURIComponent(String(value))
       cursor = close + 1
       continue
@@ -114,10 +119,7 @@ function toFormData(body: Record<string, unknown>): FormData {
   return fd
 }
 
-export type OpenApiAxiosRequestArgs<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = {
+export type OpenApiAxiosRequestArgs<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> = {
   path: P
   method: M
   query?: OpenApiQueryParams<P, M>
@@ -151,7 +153,10 @@ function headerValueToString(value: unknown): string | undefined {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) {
     const joined = value
-      .filter((item): item is string | number | boolean => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')
+      .filter(
+        (item): item is string | number | boolean =>
+          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean',
+      )
       .map(String)
       .join(', ')
       .trim()
@@ -183,10 +188,9 @@ function withRequestId(message: string, requestId?: string): string {
 }
 
 export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
-  return async function openapiRequest<
-    P extends OpenApiPath,
-    M extends OpenApiMethodForPath<P>,
-  >(args: OpenApiAxiosRequestArgs<P, M>): Promise<OpenApiOkResponse<P, M>> {
+  return async function openapiRequest<P extends OpenApiPath, M extends OpenApiMethodForPath<P>>(
+    args: OpenApiAxiosRequestArgs<P, M>,
+  ): Promise<OpenApiOkResponse<P, M>> {
     const method = String(args.method || '').toLowerCase()
     if (!HTTP_METHODS.has(method)) {
       throw new Error(`[openapi-request] unsupported method: ${String(args.method)}`)
@@ -232,7 +236,7 @@ export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
       firstIssue
         ? `[openapi-request] invalid ${schemaLabel} response: ${firstIssue}`
         : `[openapi-request] invalid ${schemaLabel} response`,
-      requestId
+      requestId,
     )
     const error = new Error(message)
     ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).requestId = requestId

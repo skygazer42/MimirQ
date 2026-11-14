@@ -1,4 +1,3 @@
-
 from dataclasses import replace
 from uuid import uuid4
 
@@ -235,7 +234,7 @@ def test_extractive_fallback_cost_attribution_counts_the_main_query_when_breakdo
     question = "fallback retrieval query"
 
     cost = persistence._extractive_fallback_cost_attribution(
-        metrics={"retrieval_elapsed_sec": 0.2, "vector_backend": "faiss"},
+        metrics={"retrieval_elapsed_sec": 0.2, "vector_backend": "memory"},
         citations=[],
         question=question,
     )

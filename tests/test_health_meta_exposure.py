@@ -76,7 +76,7 @@ def test_public_health_endpoints_expose_only_minimal_status_fields(monkeypatch):
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -122,7 +122,7 @@ def test_public_ready_endpoint_preserves_probe_status_without_detail_leak(monkey
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -170,7 +170,7 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -223,7 +223,7 @@ def test_public_ready_endpoint_honors_runtime_warmup_requirement_without_detail_
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -349,12 +349,12 @@ def test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store(
     )
     monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
 
-    def _check_minio(_settings, *, minio_health_check=None, enabled_override=None, **_kwargs):  # noqa: ANN001
+    def _check_object_storage(_settings, *, minio_health_check=None, enabled_override=None, **_kwargs):  # noqa: ANN001
         calls.append((minio_health_check, enabled_override))
         payload = minio_health_check() if callable(minio_health_check) else {"enabled": False, "status": "disabled"}
         return payload, True
 
-    monkeypatch.setattr(health_module, "check_minio", _check_minio, raising=True)
+    monkeypatch.setattr(health_module, "check_object_storage", _check_object_storage, raising=True)
     health_module.invalidate_ready_cache()
 
     response = TestClient(_build_app()[0]).get("/api/v1/health/ready")

@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { consumeSamlBridgeState, getSamlCallbackErrorMessage } from './saml-session'
 
 describe('getSamlCallbackErrorMessage', () => {
-  it('falls back for unknown error values', () => {
-    expect(getSamlCallbackErrorMessage('debug stack trace')).toBe('SAML sign-in failed. Please try again.')
-  })
+  it.each(['debug stack trace', 'toString', 'constructor', '__proto__'])(
+    'falls back for the unknown error %s',
+    (error) => {
+      expect(getSamlCallbackErrorMessage(error)).toBe('SAML sign-in failed. Please try again.')
+    },
+  )
 })
 
 describe('consumeSamlBridgeState', () => {
@@ -14,15 +17,7 @@ describe('consumeSamlBridgeState', () => {
   })
 
   it('does not echo arbitrary backend error detail', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json(
-          { detail: 'backend stack trace' },
-          { status: 500 }
-        )
-      )
-    )
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ detail: 'backend stack trace' }, { status: 500 })))
 
     await expect(consumeSamlBridgeState()).resolves.toEqual({
       kind: 'error',

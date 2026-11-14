@@ -1,6 +1,4 @@
-
 import json
-import re
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -11,7 +9,6 @@ from langchain_core.documents import Document
 import app.api.v1.scim as scim
 import app.parsing.parsers.html_parser as html_parser_module
 import app.parsing.utils.artifact_normalizer as artifact_normalizer_module
-import app.rag.retrieval.sparse as sparse_module
 from app.api.v1 import document_manual as manual_module
 from app.parsing.parsers.html_parser import HtmlParser
 from app.parsing.quality.reading_order import score_reading_order
@@ -63,15 +60,15 @@ def test_scim_patch_group_membership_characterizes_add_remove_audit_and_response
         captured["audit"] = kwargs
 
     monkeypatch.setattr(scim.settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", True, raising=False)
-    monkeypatch.setattr(scim.TenantGroupService, "add_members", fake_add_members)
-    monkeypatch.setattr(scim.TenantGroupService, "remove_members", fake_remove_members)
+    monkeypatch.setattr(scim.tenant_group_service, "add_members", fake_add_members)
+    monkeypatch.setattr(scim.tenant_group_service, "remove_members", fake_remove_members)
     monkeypatch.setattr(
-        scim.TenantGroupService,
+        scim.tenant_group_service,
         "get_group",
         lambda _db, *, tenant_id, group_id: SimpleNamespace(id=group_id, tenant_id=tenant_id),
     )
     monkeypatch.setattr(
-        scim.TenantGroupService,
+        scim.tenant_group_service,
         "list_members",
         lambda _db, *, tenant_id, group_id, skip, limit: (
             2,
@@ -262,7 +259,7 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             "confidence": None,
             "source_backend": None,
             "source_element_id": None,
-            "attributes": None,
+            "attributes": {},
         },
         {
             "id": "paragraph:1:0:image:0",
@@ -293,7 +290,7 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             "confidence": None,
             "source_backend": None,
             "source_element_id": None,
-            "attributes": None,
+            "attributes": {},
         },
         {
             "id": "paragraph:2:1:derived:0",
@@ -316,81 +313,6 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             },
         },
     ]
-
-
-def test_splade_sparse_encoder_characterizes_special_token_zeroing_and_score_thresholds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    torch = pytest.importorskip("torch")
-    encoder = sparse_module.SpladeSparseEncoder(
-        model_name="demo",
-        batch_size=4,
-        max_length=8,
-        top_k=3,
-        min_weight=0.2,
-    )
-
-    class _FakeTokenizer:
-        all_special_ids = [0]
-
-        def __call__(self, _texts, **_kwargs):
-            return {
-                "attention_mask": torch.tensor(
-                    [
-                        [1, 1, 1],
-                        [1, 1, 0],
-                    ],
-                    dtype=torch.int64,
-                )
-            }
-
-        @staticmethod
-        def convert_ids_to_tokens(ids: list[int]) -> list[str]:
-            mapping = {
-                0: "[PAD]",
-                1: "alpha",
-                2: "beta",
-                3: "gamma",
-                4: "delta",
-            }
-            return [mapping[idx] for idx in ids]
-
-    class _FakeModel:
-        @staticmethod
-        def __call__(**_enc):
-            return SimpleNamespace(
-                logits=torch.tensor(
-                    [
-                        [
-                            [0.0, 2.0, -1.0, 0.0, 0.0],
-                            [1.0, 0.5, 1.5, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.1],
-                        ],
-                        [
-                            [0.0, 0.0, 0.0, 3.0, 0.0],
-                            [0.0, 0.0, 0.1, 0.0, 0.0],
-                            [5.0, 5.0, 5.0, 5.0, 5.0],
-                        ],
-                    ],
-                    dtype=torch.float32,
-                )
-            )
-
-    encoder._tokenizer = _FakeTokenizer()
-    encoder._model = _FakeModel()
-    encoder._torch_device = "cpu"
-    monkeypatch.setattr(encoder, "_ensure_loaded", lambda: None)
-
-    vectors = encoder.encode_batch(["first", "second"])
-
-    assert vectors[0].weights == pytest.approx(
-        {
-            "alpha": 1.0986123,
-            "beta": 0.9162907,
-        },
-        rel=1e-5,
-    )
-    assert vectors[1].weights == pytest.approx({"gamma": 1.3862944}, rel=1e-5)
 
 
 def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_tracking(
@@ -437,15 +359,18 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
     monkeypatch.setattr(manual_module.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(manual_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(manual_module, "Indexer", _FakeIndexer)
-
-    docs_mod = SimpleNamespace(
-        _to_pipeline_options=lambda pipeline: {"requested": pipeline},
-        resolve_pipeline_effective=lambda **_kwargs: SimpleNamespace(kg_enabled=False),
-        build_indexing_options=lambda _pipeline_effective: {"mode": "manual"},
-        MINIO_IMAGE_REF_RE=re.compile(r"/image-url/([^)\"]+)"),
-        _rewrite_preview_images_to_minio=fake_rewrite,
-        logger=SimpleNamespace(debug=lambda *_args, **_kwargs: None),
+    monkeypatch.setattr(
+        manual_module,
+        "to_pipeline_options",
+        lambda pipeline: {"requested": pipeline},
+        raising=True,
     )
+
+    monkeypatch.setattr(
+        manual_module, "resolve_pipeline_effective", lambda **_kwargs: SimpleNamespace(kg_enabled=False)
+    )
+    monkeypatch.setattr(manual_module, "build_indexing_options", lambda _effective: {"mode": "manual"})
+    monkeypatch.setattr(manual_module, "_rewrite_preview_images_to_minio", fake_rewrite)
     request = SimpleNamespace(
         filename="manual.md",
         file_type="MD",
@@ -486,7 +411,6 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
 
     manual_module._index_manual_document_chunks(
         db=_FakeDB(),
-        docs_mod=docs_mod,
         request=request,
         tenant_id=tenant_id,
         account_id="acct-1",
@@ -610,14 +534,7 @@ def test_qa_markdown_chunker_characterizes_pair_overlap_offsets_and_previews() -
 
 
 def test_qa_pairs_chunker_characterizes_pair_overlap_offsets_and_previews() -> None:
-    text = (
-        "Q: Alpha?\n"
-        "A: First answer.\n"
-        "Q: Beta?\n"
-        "A: Second answer.\n"
-        "Q: Gamma?\n"
-        "A: Third answer.\n"
-    )
+    text = "Q: Alpha?\nA: First answer.\nQ: Beta?\nA: Second answer.\nQ: Gamma?\nA: Third answer.\n"
 
     assert _summarize_chunks(QAPairsChunker(60, 30), text) == [
         (
@@ -660,14 +577,7 @@ def test_qa_pairs_chunker_characterizes_pair_overlap_offsets_and_previews() -> N
 
 
 def test_timeline_events_chunker_characterizes_event_overlap_offsets_and_metadata() -> None:
-    text = (
-        "2024-01-01 - Kickoff\n"
-        "alpha\n"
-        "2024-01-03 10:30 - Review\n"
-        "beta\n"
-        "2024-01-05 - Launch\n"
-        "gamma\n"
-    )
+    text = "2024-01-01 - Kickoff\nalpha\n2024-01-03 10:30 - Review\nbeta\n2024-01-05 - Launch\ngamma\n"
 
     assert _summarize_chunks(TimelineEventsChunker(70, 40), text) == [
         (

@@ -2,7 +2,6 @@
 Advanced parser base class.
 """
 
-
 import asyncio
 import logging
 import re
@@ -12,8 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
-
-from app.rag.core.logging import get_logger
 
 _POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 _SECTION_KINDS = {"text", "equation", "table", "image"}
@@ -39,7 +36,7 @@ class BaseAdvancedParser(ABC):
     # Subclasses can override; None means no extension check.
     SUPPORTED_EXTENSIONS: set[str] | None = None
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._parser = None
         self._logger = logging.getLogger(f"parsing.{self._get_parser_name()}_parser")
 
@@ -66,7 +63,7 @@ class BaseAdvancedParser(ABC):
         Return parser name (for logs and metadata).
 
         Returns:
-            Parser name, e.g. "mineru", "docling", "tcadp".
+            Parser name, e.g. "mineru", "docling".
         """
         pass
 
@@ -85,12 +82,7 @@ class BaseAdvancedParser(ABC):
 
     @abstractmethod
     def _call_parse_method(
-        self,
-        parser: Any,
-        file_path: Path,
-        binary: bytes | None,
-        callback: Callable[[float, str], None],
-        **kwargs
+        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
     ) -> tuple[list, list]:
         """
         Call the underlying parser's parse method.
@@ -132,24 +124,23 @@ class BaseAdvancedParser(ABC):
 
         if self.SUPPORTED_EXTENSIONS is not None:
             if file_path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
-                raise ValueError(
-                    f"Unsupported file type: {file_path.suffix}. "
-                    f"Supported: {self.SUPPORTED_EXTENSIONS}"
-                )
+                raise ValueError(f"Unsupported file type: {file_path.suffix}. Supported: {self.SUPPORTED_EXTENSIONS}")
 
     def _create_callback(self) -> Callable[[float, str], None]:
         """Create a progress callback."""
         parser_name = self._get_parser_name().upper()
+
         def callback(progress: float, msg: str):
             self._logger.info(f"[{parser_name}] {progress:.0%} - {msg}")
+
         return callback
 
     def _positions_from_tag(self, tag: str) -> list[tuple[int, float, float, float, float]]:
-        match = _POSITION_TAG_RE.search(tag or "")
+        match = _POSITION_TAG_RE.search(tag)
         if not match:
             return []
 
-        page_tokens = [p for p in str(match.group(1) or "").split("-") if p.strip()]
+        page_tokens = [token for token in match.group(1).split("-") if token]
         left = float(match.group(2))
         right = float(match.group(3))
         top = float(match.group(4))
@@ -158,8 +149,8 @@ class BaseAdvancedParser(ABC):
         for token in page_tokens:
             try:
                 positions.append((max(0, int(token) - 1), left, right, top, bottom))
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            except ValueError:
+                self._logger.debug("Skipping invalid page token from parser position tag", exc_info=True)
         return positions
 
     def _normalize_section(self, section: Any) -> tuple[str, str | None, str | None]:
@@ -186,7 +177,7 @@ class BaseAdvancedParser(ABC):
 
         if tag and tag not in text:
             text = f"{text}{tag}"
-        return text, tag or None, section_kind
+        return text, (tag if tag else None), section_kind
 
     def _build_equation_document(self, text: str, tag: str | None, base_metadata: dict) -> Document:
         clean_text = _POSITION_TAG_RE.sub("", text).strip()
@@ -197,11 +188,11 @@ class BaseAdvancedParser(ABC):
             "element_kind": "equation",
             "element_text": clean_text or text,
         }
-        positions = self._positions_from_tag(tag or "")
+        positions = self._positions_from_tag((tag if tag is not None else ""))
         if positions:
             meta["positions"] = positions
             first = positions[0]
-            meta["element_page"] = int(first[0]) + 1
+            meta["element_page"] = first[0] + 1
             meta["element_bbox"] = {
                 "x0": int(first[1]),
                 "x1": int(first[2]),
@@ -253,7 +244,7 @@ class BaseAdvancedParser(ABC):
             if image_obj is None:
                 return
 
-            content = (table_content or "").strip() or "image"
+            content = (table_content).strip() or "image"
             if len(content) > 900:
                 content = content[:900].rstrip() + "..."
             meta = {
@@ -270,11 +261,7 @@ class BaseAdvancedParser(ABC):
             # Best-effort: never fail parsing due to table image handling.
             self._logger.debug("Failed to attach table image metadata; continuing parse: %s", exc)
 
-    def _convert_sections_to_documents(
-        self,
-        sections: list,
-        base_metadata: dict
-    ) -> list[Document]:
+    def _convert_sections_to_documents(self, sections: list, base_metadata: dict) -> list[Document]:
         """
         Convert sections to a list of Documents.
 
@@ -304,11 +291,7 @@ class BaseAdvancedParser(ABC):
             documents.insert(0, text_document)
         return documents
 
-    def _convert_tables_to_documents(
-        self,
-        tables: list,
-        base_metadata: dict
-    ) -> list[Document]:
+    def _convert_tables_to_documents(self, tables: list, base_metadata: dict) -> list[Document]:
         """
         Convert tables to a list of Documents.
 
@@ -327,14 +310,16 @@ class BaseAdvancedParser(ABC):
             table_content = self._extract_table_content(table)
 
             if table_content and table_content.strip():
-                documents.append(Document(
-                    page_content=table_content,
-                    metadata={
-                        **base_metadata,
-                        "content_type": "table",
-                        "table_index": i,
-                    }
-                ))
+                documents.append(
+                    Document(
+                        page_content=table_content,
+                        metadata={
+                            **base_metadata,
+                            "content_type": "table",
+                            "table_index": i,
+                        },
+                    )
+                )
             self._maybe_append_table_image_document(
                 documents=documents,
                 table=table,
@@ -369,44 +354,22 @@ class BaseAdvancedParser(ABC):
                 return table_data
         return str(table)
 
-    def parse(
-        self,
-        file_path: Path,
-        **kwargs
-    ) -> list[Document]:
-        """
-        Parse document.
-
-        Args:
-            file_path: Document file path.
-            **kwargs: Extra args.
-
-        Returns:
-            List of LangChain Documents.
-        """
+    def _prepare_parser(self, file_path: Path) -> tuple[Path, Any]:
         file_path = Path(file_path)
         self._validate_file(file_path)
-
         parser = self._get_parser()
-
-        # Check installation.
         ok, reason = self._check_parser_installation(parser)
         if not ok:
             raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
+        return file_path, parser
 
-        # Call underlying parser.
+    def _parse_with_parser(self, parser: Any, file_path: Path, parse_kwargs: dict[str, Any]) -> list[Document]:
         callback = self._create_callback()
         sections, tables = self._call_parse_method(
-            parser=parser,
-            file_path=file_path,
-            binary=None,
-            callback=callback,
-            **kwargs
+            parser=parser, file_path=file_path, binary=None, callback=callback, **parse_kwargs
         )
-
-        # Convert to LangChain Document format.
         base_metadata = {
-            "source": str(file_path.name),
+            "source": file_path.name,
             "filename": file_path.name,
             "file_type": file_path.suffix.lstrip(".").lower(),
             "parser": self._get_parser_name(),
@@ -415,10 +378,13 @@ class BaseAdvancedParser(ABC):
         documents = []
         documents.extend(self._convert_sections_to_documents(sections, base_metadata))
         documents.extend(self._convert_tables_to_documents(tables, base_metadata))
+        return documents
 
-        self._logger.info(
-            f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents"
-        )
+    def parse(self, file_path: Path, **kwargs) -> list[Document]:
+        """Validate, parse and convert a document in the calling thread."""
+        file_path, parser = self._prepare_parser(file_path)
+        documents = self._parse_with_parser(parser, file_path, kwargs)
+        self._logger.info(f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents")
         return documents
 
     async def aparse(
@@ -436,44 +402,7 @@ class BaseAdvancedParser(ABC):
         Returns:
             List of LangChain Documents.
         """
-        file_path = Path(file_path)
-        self._validate_file(file_path)
-
-        parser = self._get_parser()
-
-        # Check installation.
-        ok, reason = self._check_parser_installation(parser)
-        if not ok:
-            raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
-
-        # Call underlying parser in a thread pool (parser may be sync).
-        def _parse_in_thread():
-            callback = self._create_callback()
-            sections, tables = self._call_parse_method(
-                parser=parser,
-                file_path=file_path,
-                binary=None,
-                callback=callback,
-                **kwargs
-            )
-
-            # Convert to LangChain Document format.
-            base_metadata = {
-                "source": str(file_path.name),
-                "filename": file_path.name,
-                "file_type": file_path.suffix.lstrip(".").lower(),
-                "parser": self._get_parser_name(),
-            }
-
-            documents = []
-            documents.extend(self._convert_sections_to_documents(sections, base_metadata))
-            documents.extend(self._convert_tables_to_documents(tables, base_metadata))
-
-            return documents
-
-        documents = await asyncio.to_thread(_parse_in_thread)
-
-        self._logger.info(
-            f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents"
-        )
+        file_path, parser = self._prepare_parser(file_path)
+        documents = await asyncio.to_thread(self._parse_with_parser, parser, file_path, kwargs)
+        self._logger.info(f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents")
         return documents

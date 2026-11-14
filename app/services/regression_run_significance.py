@@ -1,21 +1,17 @@
 """Case-paired statistics for RAGAS regression run diffs."""
 
-
 import hashlib
 import math
 import statistics
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.models.evaluation import RagasRegressionItem
 
 
-def _get_value(item: Any, key: str) -> Any:
-    if isinstance(item, Mapping):
-        return item.get(key)
-    return getattr(item, key, None)
-
-
-def _scores(item: Any) -> dict[str, Any]:
-    raw = _get_value(item, "scores")
+def _scores(item: "RagasRegressionItem") -> dict[str, Any]:
+    raw = item.scores
     return dict(raw) if isinstance(raw, Mapping) else {}
 
 
@@ -34,11 +30,9 @@ def _deterministic_bootstrap_index(metric_key: str, iteration: int, offset: int,
     return int.from_bytes(digest[:8], "big") % size
 
 
-def _case_id(item: Any) -> str:
-    return str(_get_value(item, "case_id") or "").strip()
-
-
-def _infer_metric_keys(base_items: Iterable[Any], target_items: Iterable[Any]) -> list[str]:
+def _infer_metric_keys(
+    base_items: "Iterable[RagasRegressionItem]", target_items: "Iterable[RagasRegressionItem]"
+) -> list[str]:
     keys: set[str] = set()
     for item in [*base_items, *target_items]:
         for key, value in _scores(item).items():
@@ -48,24 +42,24 @@ def _infer_metric_keys(base_items: Iterable[Any], target_items: Iterable[Any]) -
 
 
 def _mean(values: list[float]) -> float | None:
-    return round(float(sum(values) / len(values)), 6) if values else None
+    return round(sum(values) / len(values), 6) if values else None
 
 
 def _sample_stdev(values: list[float]) -> float | None:
     if len(values) < 2:
         return None
-    return float(statistics.stdev(values))
+    return statistics.stdev(values)
 
 
 def _paired_t_p_value(deltas: list[float]) -> float | None:
     if len(deltas) < 2:
         return None
-    mean_delta = float(sum(deltas) / len(deltas))
+    mean_delta = sum(deltas) / len(deltas)
     stdev = _sample_stdev(deltas)
     if stdev is None or stdev <= 0:
         return 1.0 if abs(mean_delta) <= 1e-12 else 0.0
     z = abs(mean_delta / (stdev / math.sqrt(len(deltas))))
-    return round(float(math.erfc(z / math.sqrt(2.0))), 6)
+    return round(math.erfc(z / math.sqrt(2.0)), 6)
 
 
 def _rank_abs_deltas(deltas: list[float]) -> list[tuple[float, float]]:
@@ -101,21 +95,19 @@ def _wilcoxon_p_value(deltas: list[float]) -> float | None:
             if min(signed, total_rank - signed) <= observed + 1e-12:
                 extreme += 1
             count += 1
-        return round(float(extreme / count), 6)
+        return round(extreme / count, 6)
 
     mean = total_rank / 2.0
     variance = sum(rank * rank for _delta, rank in ranked) / 4.0
     if variance <= 0:
         return None
     z = abs(positive_rank - mean) / math.sqrt(variance)
-    return round(float(math.erfc(z / math.sqrt(2.0))), 6)
+    return round(math.erfc(z / math.sqrt(2.0)), 6)
 
 
 def _mcnemar_p_value(pairs: list[tuple[float, float]]) -> float | None:
     binary_pairs = [
-        (int(base > 0), int(target > 0))
-        for base, target in pairs
-        if base in {0.0, 1.0} and target in {0.0, 1.0}
+        (int(base > 0), int(target > 0)) for base, target in pairs if base in {0.0, 1.0} and target in {0.0, 1.0}
     ]
     if not binary_pairs:
         return None
@@ -125,7 +117,7 @@ def _mcnemar_p_value(pairs: list[tuple[float, float]]) -> float | None:
     if discordant == 0:
         return 1.0
     chi_square = (abs(base_wrong_target_right - base_right_target_wrong) - 1.0) ** 2 / discordant
-    return round(float(math.erfc(math.sqrt(max(0.0, chi_square) / 2.0))), 6)
+    return round(math.erfc(math.sqrt(max(0.0, chi_square) / 2.0)), 6)
 
 
 def _bootstrap_ci(metric_key: str, deltas: list[float], iterations: int) -> tuple[float | None, float | None]:
@@ -143,8 +135,8 @@ def _bootstrap_ci(metric_key: str, deltas: list[float], iterations: int) -> tupl
         ]
         means.append(sum(sample) / len(sample))
     means.sort()
-    low_idx = max(0, min(len(means) - 1, int(math.floor(0.025 * (len(means) - 1)))))
-    high_idx = max(0, min(len(means) - 1, int(math.ceil(0.975 * (len(means) - 1)))))
+    low_idx = max(0, min(len(means) - 1, math.floor(0.025 * (len(means) - 1))))
+    high_idx = max(0, min(len(means) - 1, math.ceil(0.975 * (len(means) - 1))))
     return round(float(means[low_idx]), 6), round(float(means[high_idx]), 6)
 
 
@@ -171,8 +163,8 @@ def _bh_adjust(rows: list[dict[str, Any]]) -> None:
 def _collect_metric_pairs(
     *,
     case_ids: list[str],
-    base_by_case: Mapping[str, Any],
-    target_by_case: Mapping[str, Any],
+    base_by_case: "Mapping[str, RagasRegressionItem]",
+    target_by_case: "Mapping[str, RagasRegressionItem]",
     key: str,
 ) -> list[tuple[float, float]]:
     pairs: list[tuple[float, float]] = []
@@ -194,7 +186,7 @@ def _build_significance_row(
     base_values = [base for base, _target in pairs]
     target_values = [target for _base, target in pairs]
     deltas = [target - base for base, target in pairs]
-    delta_mean = float(sum(deltas) / len(deltas))
+    delta_mean = sum(deltas) / len(deltas)
     stdev = _sample_stdev(deltas)
     ci_low, ci_high = _bootstrap_ci(key, deltas, bootstrap_iterations)
     return {
@@ -218,8 +210,8 @@ def _build_significance_row(
 def _metric_diffs_for_case(
     *,
     keys: list[str],
-    base_item: Any,
-    target_item: Any,
+    base_item: "RagasRegressionItem",
+    target_item: "RagasRegressionItem",
 ) -> tuple[list[dict[str, Any]], list[float]]:
     metric_diffs: list[dict[str, Any]] = []
     deltas: list[float] = []
@@ -228,7 +220,7 @@ def _metric_diffs_for_case(
         target_value = _as_float(_scores(target_item).get(key))
         if base_value is None or target_value is None:
             continue
-        delta = round(float(target_value - base_value), 6)
+        delta = round(target_value - base_value, 6)
         deltas.append(delta)
         metric_diffs.append({"key": key, "before": base_value, "after": target_value, "delta": delta})
     return metric_diffs, deltas
@@ -246,22 +238,21 @@ def _case_diff_label(mean_delta: float | None) -> str:
 
 def compare_regression_items(
     *,
-    base_items: Iterable[Any],
-    target_items: Iterable[Any],
+    base_items: "Iterable[RagasRegressionItem]",
+    target_items: "Iterable[RagasRegressionItem]",
     metric_keys: list[str] | None = None,
     bootstrap_iterations: int = 1000,
     max_case_diffs: int = 500,
 ) -> dict[str, Any]:
     """Compare two run item collections by case_id and return per-metric/per-case diffs."""
-    base_list = list(base_items or [])
-    target_list = list(target_items or [])
-    base_by_case = {_case_id(item): item for item in base_list if _case_id(item)}
-    target_by_case = {_case_id(item): item for item in target_list if _case_id(item)}
+    base_list = list(base_items)
+    target_list = list(target_items)
+    base_by_case = {str(item.case_id): item for item in base_list}
+    target_by_case = {str(item.case_id): item for item in target_list}
     case_ids = sorted(set(base_by_case) & set(target_by_case))
     keys = list(metric_keys or []) or _infer_metric_keys(base_list, target_list)
 
     significance: list[dict[str, Any]] = []
-    metric_pairs: dict[str, list[tuple[float, float]]] = {}
     for key in keys:
         pairs = _collect_metric_pairs(
             case_ids=case_ids,
@@ -272,7 +263,6 @@ def compare_regression_items(
         if not pairs:
             continue
 
-        metric_pairs[key] = pairs
         significance.append(_build_significance_row(key=key, pairs=pairs, bootstrap_iterations=bootstrap_iterations))
     _bh_adjust(significance)
 
@@ -282,10 +272,13 @@ def compare_regression_items(
         target_item = target_by_case[case_id]
         metric_diffs, deltas = _metric_diffs_for_case(keys=keys, base_item=base_item, target_item=target_item)
         mean_delta = _mean(deltas)
+        question = target_item.question
+        if question is None:
+            question = base_item.question
         case_diffs.append(
             {
                 "case_id": case_id,
-                "question": str(_get_value(target_item, "question") or _get_value(base_item, "question") or ""),
+                "question": question,
                 "metric_diffs": metric_diffs,
                 "mean_delta": mean_delta,
                 "label": _case_diff_label(mean_delta),

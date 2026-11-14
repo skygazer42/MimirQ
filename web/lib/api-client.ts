@@ -24,7 +24,6 @@ export { healthApi } from '@/lib/api/health'
 export { industryRulesApi } from '@/lib/api/industry-rules'
 export { integrationApi } from '@/lib/api/integrations'
 export { lineageApi } from '@/lib/api/lineage'
-export { ltrApi } from '@/lib/api/ltr'
 export { metaApi } from '@/lib/api/meta'
 export { observabilityApi } from '@/lib/api/observability'
 export { observabilityApi as observabilityApiLegacy } from '@/lib/api/observability'
@@ -58,12 +57,15 @@ export type {
   DatasetAnalysisRuleSuggestionParams,
   DatasetRetrievalAuditPayload,
 } from '@/lib/api/datasets'
-export type { FrontendTraceReportRequest, FrontendWebVitalReportOptions, FrontendWebVitalReportRequest } from '@/lib/api/observability'
+export type {
+  FrontendTraceReportRequest,
+  FrontendWebVitalReportOptions,
+  FrontendWebVitalReportRequest,
+} from '@/lib/api/observability'
 export type { ParsingContentResponse, ParsingContentUpdateRequest } from '@/lib/api/parsing'
 export type { BackendMeta, BackendMetaDetails } from '@/lib/api/meta'
 export type { TenantMember, TenantMemberListResponse } from '@/lib/api/access'
 export type { TenantAccess, TenantPermission } from '@/lib/tenant-permissions'
-export type { LTRModelActivateResponse, LTRModelInfo, LTRModelListResponse, LTRModelRegisterResponse } from '@/lib/api/ltr'
 export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from '@/lib/api/graph'
 export type {
   IndustryRulesGlossaryUpdateRequest,
@@ -90,10 +92,16 @@ export type {
   KGSearchDiagnosticsResponse,
   KGSearchDiagnosticsRunDetail,
   KGSearchDiagnosticsRunList,
+  KGSearchDiagnosticsRunListParams,
   KGSearchDiagnosticsRunOut,
+  RagasConversationReadinessItem,
+  RagasConversationReadinessRequest,
+  RagasConversationReadinessResponse,
   RagasItem,
   RagasRun,
+  RagasRunCreateRequest,
   RagasRunDetail,
+  RagasRunList,
 } from '@/lib/api/evaluation'
 export type {
   PromptTemplate,
@@ -102,10 +110,6 @@ export type {
   PromptTemplateUpdate,
 } from '@/lib/api/prompts'
 export type {
-  ClipImageIndexRequest,
-  ClipImageIndexResponse,
-  ClipImageSearchRequest,
-  ClipImageSearchResponse,
   RagConfigTemplate,
   RagConfigTemplateCreate,
   RagConfigTemplateNewVersion,
@@ -114,19 +118,34 @@ export type {
 export type {
   CacheConfig,
   ChatConfig,
+  DifyExternalKnowledgeConfig,
+  DoclingConfig,
+  EmbeddingConfig,
   Etl4LlmConfig,
   FeatureFlags,
+  GovernanceConfig,
   KGConfig,
   LangGraphConfig,
+  LLMConfig,
   MagicPDFConfig,
   MarkerConfig,
+  MilvusConfig,
+  MinIOConfig,
+  MinerUConfig,
+  NavigationConfig,
   ObservabilityConfig,
   PaddleVLConfig,
+  ParserBackendStatus,
+  RAGConfig,
   SafetyConfig,
+  SettingsUpdateResponse,
   SystemSettings,
   SystemStatus,
   TestLLMRequest,
   TestLLMResponse,
+  TextInConfig,
+  UpdateSettingsRequest,
+  UrlIngestStatus,
 } from '@/lib/api/settings'
 
 export { default } from '@/lib/api/core'

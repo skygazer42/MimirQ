@@ -5,7 +5,6 @@ The core backend uses external services for model-based deskew to avoid pulling
 heavy ML dependencies in-process.
 """
 
-
 from pathlib import Path
 
 import httpx

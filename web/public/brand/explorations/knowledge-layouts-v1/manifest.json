@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 知识库布局对比",
+  "brief": "固定雾灰／墨色基底、Manrope 与 Noto Sans SC 字体及现有全局导航。五版共用 12 份文档与相同状态，保留文件类型和处理状态的识别色，只比较右侧工作区的构图、层级与操作位置。",
+  "round": "知识库 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 管理宽表",
+      "concept": "在同一张宽表中比较文档状态、所属数据集和内容量，延续已选的数据集布局。",
+      "typography": "Manrope / Noto Sans SC；20px 标题、14px 文档名、12px 元数据；数值对齐",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#247642", "#8B611F", "#B33838", "#705096", "#386591"],
+      "traits": ["顶部数据集与状态筛选", "完整文档宽表", "行内查看与批量选择"],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-directory",
+      "name": "B · 文件目录",
+      "concept": "沿数据集与文件夹定位资料，在旁边的文档清单中比较状态。",
+      "typography": "Manrope / Noto Sans SC；20px 标题、紧凑目录、文档名称与归属路径分层",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#247642", "#8B611F", "#B33838", "#705096", "#386591"],
+      "traits": ["内侧 218px 目录栏", "目录与文档表并排", "进度和异常原因紧邻状态"],
+      "source": "b-directory.html"
+    },
+    {
+      "id": "c-reader",
+      "name": "C · 阅读分栏",
+      "concept": "选择文档后直接阅读正文，减少在列表和详情之间往返。",
+      "typography": "Manrope / Noto Sans SC；紧凑文档清单、22px 正文标题、15px / 26px 阅读文字",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#247642", "#8B611F", "#B33838", "#705096", "#386591"],
+      "traits": ["340px 文档清单", "正文占据主要空间", "文档动作靠近阅读内容"],
+      "source": "c-reader.html"
+    },
+    {
+      "id": "d-gallery",
+      "name": "D · 文档画廊",
+      "concept": "通过正文缩略识别资料，再查看文件信息和处理状态。",
+      "typography": "Manrope / Noto Sans SC；正文缩略与文件名分层，元数据保持紧凑",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#247642", "#8B611F", "#B33838", "#705096", "#386591"],
+      "traits": ["三列两行文档缩略", "文件信息置于缩略下方", "首屏展示 6 份文档"],
+      "source": "d-gallery.html"
+    },
+    {
+      "id": "e-board",
+      "name": "E · 状态看板",
+      "concept": "按处理状态组织文档，优先发现正在处理和需要介入的资料。",
+      "typography": "Manrope / Noto Sans SC；13px 文档标题、12px 状态与原因、等宽数字",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#247642", "#8B611F", "#B33838", "#705096", "#386591"],
+      "traits": ["就绪／处理中／失败／隔离四列", "处理中显示阶段与进度", "异常原因和处理动作就近呈现"],
+      "source": "e-board.html"
+    }
+  ]
+}

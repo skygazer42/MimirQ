@@ -2,13 +2,11 @@ import asyncio
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.api.v1 import (
-    connectors_artifacts,
-    connectors_confluence,
-    connectors_drive_files,
-    connectors_github_repo,
-    connectors_url_batch,
-)
+import app.services.connector_execution.confluence as connectors_confluence
+import app.services.connector_execution.drive_files as connectors_drive_files
+import app.services.connector_execution.github_repo as connectors_github_repo
+import app.services.connector_execution.shared.artifacts as connectors_artifacts
+import app.services.connector_execution.url_batch as connectors_url_batch
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 
@@ -87,23 +85,43 @@ def test_drive_files_acl_paths_use_run_config_id(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         connectors_drive_files,
-        "_leader_module",
-        SimpleNamespace(
-            _drive_direct_download_url=lambda file_id: f"https://download/{file_id}",
-            _delta_sync_connector_documents_acl_by_source_url=lambda *_args, **kwargs: delta_calls.append(kwargs) or 2,
-            UrlUploadRequest=lambda **kwargs: SimpleNamespace(**kwargs),
-            _ingest_url_upload_request=_ingest_url_upload_request,
-            _apply_document_access_from_config=lambda *_args, **_kwargs: None,
-            _apply_connector_identity_metadata=lambda *_args, **_kwargs: None,
-            _connector_config_id_from_run=lambda _run: config_id,
-            _soft_disable_connector_documents_by_source_ref=lambda *_args, **kwargs: (
-                disable_ref_calls.append(kwargs) or 1
-            ),
-            _soft_disable_connector_documents_by_source_url=lambda *_args, **kwargs: (
-                disable_url_calls.append(kwargs) or 1
-            ),
-        ),
-        raising=False,
+        "_drive_direct_download_url",
+        lambda file_id: f"https://download/{file_id}",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors_drive_files,
+        "_delta_sync_connector_documents_acl_by_source_url",
+        lambda *_args, **kwargs: delta_calls.append(kwargs) or 2,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors_drive_files.ingestion_service, "ingest_url", _ingest_url_upload_request, raising=True
+    )
+    monkeypatch.setattr(
+        connectors_drive_files, "_apply_document_access_from_config", lambda *_args, **_kwargs: None, raising=True
+    )
+    monkeypatch.setattr(
+        connectors_drive_files, "_apply_connector_identity_metadata", lambda *_args, **_kwargs: None, raising=True
+    )
+    monkeypatch.setattr(connectors_drive_files, "_connector_config_id_from_run", lambda _run: config_id, raising=True)
+    monkeypatch.setattr(
+        connectors_drive_files,
+        "_soft_disable_connector_documents_by_source_ref",
+        lambda *_args, **kwargs: disable_ref_calls.append(kwargs) or 1,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors_drive_files,
+        "_soft_disable_connector_documents_by_source_url",
+        lambda *_args, **kwargs: disable_url_calls.append(kwargs) or 1,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors_drive_files,
+        "UrlUploadRequest",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+        raising=True,
     )
 
     result = asyncio.run(
@@ -150,21 +168,27 @@ def test_github_repo_acl_paths_use_run_config_id(monkeypatch) -> None:
     delta_calls: list[dict[str, object]] = []
     disable_calls: list[dict[str, object]] = []
 
+    monkeypatch.setattr(connectors_github_repo, "_connector_config_id_from_run", lambda _run: config_id, raising=True)
     monkeypatch.setattr(
         connectors_github_repo,
-        "_leader_module",
-        SimpleNamespace(
-            _connector_config_id_from_run=lambda _run: config_id,
-            _delta_sync_connector_documents_acl_by_source_url=lambda *_args, **kwargs: delta_calls.append(kwargs) or 3,
-            _github_raw_url=lambda **kwargs: (
-                f"https://raw.example/{kwargs['owner']}/{kwargs['repo']}/{kwargs['branch']}/{kwargs['path']}"
-            ),
-            _soft_disable_connector_documents_by_source_url=lambda *_args, **kwargs: disable_calls.append(kwargs) or 1,
-            _append_connector_error=lambda stats, **_kwargs: stats,
-            _finalize_connector_stats=lambda stats: stats,
-        ),
-        raising=False,
+        "_delta_sync_connector_documents_acl_by_source_url",
+        lambda *_args, **kwargs: delta_calls.append(kwargs) or 3,
+        raising=True,
     )
+    monkeypatch.setattr(
+        connectors_github_repo,
+        "_github_raw_url",
+        lambda **kwargs: f"https://raw.example/{kwargs['owner']}/{kwargs['repo']}/{kwargs['branch']}/{kwargs['path']}",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors_github_repo,
+        "_soft_disable_connector_documents_by_source_url",
+        lambda *_args, **kwargs: disable_calls.append(kwargs) or 1,
+        raising=True,
+    )
+    monkeypatch.setattr(connectors_github_repo, "_append_connector_error", lambda stats, **_kwargs: stats, raising=True)
+    monkeypatch.setattr(connectors_github_repo, "_finalize_connector_stats", lambda stats: stats, raising=True)
 
     source_acl_access = {"mode": "partial_members"}
     updated = connectors_github_repo._apply_github_repo_source_acl_delta_sync(
@@ -248,13 +272,11 @@ def test_upsert_db_row_sidecar_document_uses_config_scoped_identity(monkeypatch)
 
     monkeypatch.setattr(
         connectors_artifacts,
-        "_leader_module",
-        SimpleNamespace(
-            _now=lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
-            _connector_config_id_from_run=lambda _run: config_id,
-        ),
+        "_now",
+        lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
         raising=True,
     )
+    monkeypatch.setattr(connectors_artifacts, "_connector_config_id_from_run", lambda _run: config_id, raising=True)
 
     monkeypatch.setattr(
         "app.services.table_store_service.import_db_row_snapshots",
@@ -319,13 +341,11 @@ def test_upsert_db_row_sidecar_document_migrates_matching_legacy_identity(monkey
 
     monkeypatch.setattr(
         connectors_artifacts,
-        "_leader_module",
-        SimpleNamespace(
-            _now=lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
-            _connector_config_id_from_run=lambda _run: config_id,
-        ),
+        "_now",
+        lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
         raising=True,
     )
+    monkeypatch.setattr(connectors_artifacts, "_connector_config_id_from_run", lambda _run: config_id, raising=True)
     monkeypatch.setattr(
         "app.services.table_store_service.import_db_row_snapshots",
         lambda **_kwargs: [],
@@ -351,7 +371,7 @@ def test_upsert_db_row_sidecar_document_migrates_matching_legacy_identity(monkey
 
 
 def test_url_batch_connector_reuses_shared_url_ingest_helper(monkeypatch) -> None:
-    import app.api.v1.connectors as connectors_module
+    import app.services.document_ingestion as ingestion_service
 
     run = _make_run(connector_id="url_batch", config_id=None)
     db = _FakeDB()
@@ -361,9 +381,13 @@ def test_url_batch_connector_reuses_shared_url_ingest_helper(monkeypatch) -> Non
         calls.append(dict(kwargs))
         return SimpleNamespace(id=uuid4(), doc_metadata={})
 
-    monkeypatch.setattr(connectors_module, "_ingest_url_upload_request", _shared_ingest, raising=True)
-    monkeypatch.setattr(connectors_module, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(connectors_module, "_apply_connector_identity_metadata", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_service, "ingest_url", _shared_ingest, raising=True)
+    monkeypatch.setattr(
+        connectors_url_batch, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True
+    )
+    monkeypatch.setattr(
+        connectors_url_batch, "_apply_connector_identity_metadata", lambda *_a, **_k: None, raising=True
+    )
 
     document_id = asyncio.run(
         connectors_url_batch._ingest_url_batch_url(
@@ -403,14 +427,9 @@ def test_confluence_api_view_connector_reuses_shared_local_html_ingest_helper(mo
 
     monkeypatch.setattr(connectors_confluence, "_fetch_confluence_page_view_html", _fetch_html, raising=True)
     monkeypatch.setattr(
-        connectors_confluence,
-        "_leader_module",
-        SimpleNamespace(
-            LocalHtmlIngestRequest=lambda **kwargs: SimpleNamespace(**kwargs),
-            _ingest_local_html_request=_shared_local_html,
-        ),
-        raising=False,
+        connectors_confluence, "LocalHtmlIngestRequest", lambda **kwargs: SimpleNamespace(**kwargs), raising=True
     )
+    monkeypatch.setattr(connectors_confluence.ingestion_service, "ingest_html", _shared_local_html, raising=True)
 
     asyncio.run(
         connectors_confluence._ingest_confluence_page_api_view(

@@ -59,24 +59,20 @@ def _download_object_storage_document_to_temp(
     """
     Download a document stored in object storage to a local temp path.
     """
-    raw_path = str(getattr(document, "file_path", "") or "").strip()
+    raw_path = document.file_path.strip()
     store, ref = resolve_document_object_reference(
         raw_path,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         document_id=document.id,
         file_type=document.file_type,
-        document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+        document_metadata=dict(document.doc_metadata or {}),
     )
 
-    suffix = f".{(document.file_type or '').lower()}" if str(getattr(document, "file_type", "") or "").strip() else ""
+    suffix = f".{(document.file_type).lower()}" if document.file_type.strip() else ""
     temp_dir.mkdir(parents=True, exist_ok=True)
     out = temp_dir / f"{str(document.id)}{suffix}"
-    store.download_object_to_path(
-        object_name=ref.object_name,
-        destination=out,
-        max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
-    )
+    store.download_object_to_path(object_name=ref.object_name, destination=out, max_bytes=int(settings.MAX_FILE_SIZE))
     return out
 
 
@@ -90,14 +86,12 @@ def _ensure_local_path(
     """
     Return (local_path, temp_path_if_downloaded).
     """
-    raw = str(getattr(document, "file_path", "") or "").strip()
+    raw = document.file_path.strip()
     if not raw or raw.startswith("manual://"):
         raise ValueError("document_file_not_available")
 
     if is_object_storage_uri(raw):
-        if not bool(getattr(settings, "MINIO_ENABLED", False)) and not bool(
-            getattr(settings, "OBJECT_STORAGE_ENABLED", False)
-        ):
+        if not bool(settings.MINIO_ENABLED) and not bool(settings.OBJECT_STORAGE_ENABLED):
             raise ValueError("object_storage_disabled")
         temp_dir = (temp_root / str(tenant_id) / ".tmp").resolve(strict=False)
         temp_path = _download_object_storage_document_to_temp(
@@ -204,16 +198,16 @@ class _DeepScanStats:
     def as_result(self) -> dict[str, Any]:
         return {
             "ok": True,
-            "documents": int(self.documents),
-            "updated_docs": int(self.updated_docs),
-            "pdf_backfilled": int(self.pdf_backfilled),
-            "text_backfilled": int(self.text_backfilled),
-            "chunk_stats_backfilled": int(self.chunk_stats_backfilled),
-            "chunk_token_stats_backfilled": int(self.chunk_token_stats_backfilled),
-            "chunk_coverage_backfilled": int(self.chunk_coverage_backfilled),
-            "chunk_quality_gate_backfilled": int(self.chunk_quality_gate_backfilled),
-            "hash_backfilled": int(self.hash_backfilled),
-            "errors": int(self.errors),
+            "documents": self.documents,
+            "updated_docs": self.updated_docs,
+            "pdf_backfilled": self.pdf_backfilled,
+            "text_backfilled": self.text_backfilled,
+            "chunk_stats_backfilled": self.chunk_stats_backfilled,
+            "chunk_token_stats_backfilled": self.chunk_token_stats_backfilled,
+            "chunk_coverage_backfilled": self.chunk_coverage_backfilled,
+            "chunk_quality_gate_backfilled": self.chunk_quality_gate_backfilled,
+            "hash_backfilled": self.hash_backfilled,
+            "errors": self.errors,
         }
 
 
@@ -245,7 +239,7 @@ def _mark_deep_scan_running(db: Session, run: DBDatasetProfileScanRun) -> None:
 
 
 def _build_deep_scan_options(run: DBDatasetProfileScanRun) -> _DeepScanOptions:
-    cfg = dict(getattr(run, "config", None) or {})
+    cfg = dict(run.config or {})
     max_docs_raw = cfg.get("max_documents")
     max_documents = int(max_docs_raw) if isinstance(max_docs_raw, (int, float)) and int(max_docs_raw) > 0 else None
     return _DeepScanOptions(
@@ -368,7 +362,7 @@ def _maybe_backfill_pdf_quality(
 ) -> bool:
     if not options.backfill_pdf_quality:
         return False
-    if str(getattr(document, "file_type", "") or "").strip().lower() != "pdf":
+    if document.file_type.strip().lower() != "pdf":
         return False
     if isinstance(meta.get("pdf_quality"), dict) and meta.get("pdf_quality"):
         return False
@@ -383,7 +377,7 @@ def _maybe_backfill_pdf_quality(
         quality = score_pdf_quality(
             local_path,
             sample_pages=3,
-            use_ocr_validation=bool(getattr(settings, "RAPIDOCR_ENABLED", False)),
+            use_ocr_validation=bool(settings.RAPIDOCR_ENABLED),
         )
         if not isinstance(quality, dict) or not quality:
             return False
@@ -527,7 +521,7 @@ def _maybe_backfill_chunk_coverage(
         return False
     existing = meta.get("chunk_coverage")
     has_coverage = isinstance(existing, dict) and (existing.get("coverage_ratio") is not None)
-    total_characters = int(getattr(document, "total_characters", 0) or 0)
+    total_characters = int(document.total_characters or 0)
     if has_coverage or total_characters <= 0:
         return False
 
@@ -558,10 +552,7 @@ def _maybe_backfill_chunk_coverage(
     from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
 
     coverage = compute_chunk_coverage_metrics_from_ranges(ranges, total_characters=total_characters)
-    if not coverage:
-        return False
-
-    meta["chunk_coverage"] = {**dict(coverage), "ranges_used": int(len(ranges))}
+    meta["chunk_coverage"] = {**coverage, "ranges_used": len(ranges)}
     stats.chunk_coverage_backfilled += 1
     return True
 
@@ -625,8 +616,8 @@ def _maybe_backfill_chunk_quality_gate(
             "overlap_waste_ratio": float(coverage.get("overlap_waste_ratio") or 0.0),
             "gap_count": int(coverage.get("gap_count") or 0),
         },
-        total_chunks=int(getattr(document, "chunk_count", 0) or 0),
-        total_characters=int(getattr(document, "total_characters", 0) or 0),
+        total_chunks=int(document.chunk_count or 0),
+        total_characters=int(document.total_characters or 0),
         chunk_size=_safe_int(effective.get("chunk_size")),
         chunk_overlap=_safe_int(effective.get("chunk_overlap")),
         original_text_included=False,
@@ -664,7 +655,8 @@ def _maybe_backfill_file_hash(
 ) -> bool:
     if not options.compute_file_hash:
         return False
-    if str(meta.get("file_sha256") or "").strip().lower():
+    file_sha256 = meta.get("file_sha256")
+    if file_sha256 is not None and file_sha256.strip():
         return False
 
     local_path, temp_path = _ensure_local_path(
@@ -693,7 +685,7 @@ def _process_deep_scan_document(
     options: _DeepScanOptions,
     stats: _DeepScanStats,
 ) -> bool:
-    meta = dict(getattr(document, "doc_metadata", None) or {})
+    meta = dict(document.doc_metadata or {})
     changed = _maybe_backfill_pdf_quality(
         meta,
         document=document,
@@ -818,7 +810,7 @@ def run_dataset_profile_deep_scan(
         )
 
     stats = _DeepScanStats(documents=len(docs))
-    temp_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+    temp_root = Path(settings.UPLOAD_DIR)
     last_progress_write = time.monotonic()
 
     for idx, doc in enumerate(docs, start=1):
@@ -834,7 +826,7 @@ def run_dataset_profile_deep_scan(
             )
         except Exception as exc:  # noqa: BLE001
             stats.errors += 1
-            logger.warning("Deep scan failed for doc=%s: %s", str(getattr(doc, "id", "")), str(exc)[:200])
+            logger.warning("Deep scan failed for doc=%s: %s", str(doc.id), str(exc)[:200])
         else:
             if changed and stats.updated_docs % 20 == 0:
                 db.commit()

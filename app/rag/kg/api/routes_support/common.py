@@ -1,7 +1,4 @@
-"""Shared constants and logger split out of ``app.rag.kg.api.routes``.
-
-The routes module re-exports these names for backwards compatibility.
-"""
+"""Shared constants and logger for the KG API routes and helpers."""
 
 from app.rag.core.logging import get_logger
 

@@ -560,7 +560,7 @@ def _run_retrieve_only_load_pair(
             base
             for base in (
                 config.api_base,
-                str(config.secondary_api_base or "").strip() or None,
+                (config.secondary_api_base),
             )
             if base
         )
@@ -596,12 +596,12 @@ def _build_gate_headers(
 ) -> tuple[dict[str, str], dict[str, str]]:
     primary_headers = build_headers(
         tenant_id=config.primary_tenant_id,
-        user_id=(config.user_id or None),
+        user_id=config.user_id,
         token=None,
     )
     secondary_headers = build_headers(
         tenant_id=config.secondary_tenant_id,
-        user_id=(config.user_id or None),
+        user_id=config.user_id,
         token=None,
     )
     return primary_headers, secondary_headers
@@ -957,16 +957,16 @@ def run_live_core_release_gate(
 
 def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConfig:
     raw_base_url = args.base_url or "http://localhost:8000"
-    _root_base, api_base = _normalize_base_urls(str(raw_base_url))
+    _root_base, api_base = _normalize_base_urls(raw_base_url)
     secondary_api_base = None
-    if str(args.secondary_base_url or "").strip():
-        _secondary_root, secondary_api_base = _normalize_base_urls(str(args.secondary_base_url))
-    timeout = float(args.timeout_sec or 60.0)
-    ready_timeout = float(args.ready_timeout_sec or 60.0)
-    poll_interval = float(args.poll_interval_sec or 2.0)
+    if args.secondary_base_url.strip():
+        _secondary_root, secondary_api_base = _normalize_base_urls(args.secondary_base_url)
+    timeout = args.timeout_sec or 60.0
+    ready_timeout = args.ready_timeout_sec or 60.0
+    poll_interval = args.poll_interval_sec or 2.0
     tenant_id = str(args.tenant_id or uuid.uuid4()).strip()
     secondary_tenant_id = str(args.secondary_tenant_id or uuid.uuid4()).strip()
-    user_id = str(args.user_id or "live-core-gate").strip()
+    user_id = (args.user_id or "live-core-gate").strip()
 
     return LiveCoreReleaseGateConfig(
         api_base=api_base,
@@ -974,19 +974,19 @@ def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConf
         primary_tenant_id=tenant_id,
         secondary_tenant_id=secondary_tenant_id,
         user_id=user_id,
-        parser_backend=str(args.parser_backend or "auto"),
-        retrieve_requests=max(2, int(args.retrieve_requests or 0)),
-        candidate_concurrency=max(2, int(args.candidate_concurrency or 0)),
-        min_retrieve_throughput_ratio=float(args.min_retrieve_throughput_ratio or 0.0),
+        parser_backend=args.parser_backend or "auto",
+        retrieve_requests=max(2, args.retrieve_requests),
+        candidate_concurrency=max(2, args.candidate_concurrency),
+        min_retrieve_throughput_ratio=args.min_retrieve_throughput_ratio or 0.0,
         ready_timeout_sec=ready_timeout,
-        ingest_timeout_sec=float(args.ingest_timeout_sec or 600.0),
+        ingest_timeout_sec=args.ingest_timeout_sec or 600.0,
         poll_interval_sec=poll_interval,
         timeout_sec=timeout,
-        cleanup_on_success=not bool(args.keep_datasets),
-        png_probe_enabled=not bool(args.skip_png_probe),
-        png_timeout_sec=max(1.0, float(args.png_timeout_sec or 120.0)),
+        cleanup_on_success=not args.keep_datasets,
+        png_probe_enabled=not args.skip_png_probe,
+        png_timeout_sec=max(1.0, args.png_timeout_sec or 120.0),
         png_worker_lost_wait_sec=(
-            None if args.png_worker_lost_wait_sec is None else max(0.0, float(args.png_worker_lost_wait_sec))
+            None if args.png_worker_lost_wait_sec is None else max(0.0, args.png_worker_lost_wait_sec)
         ),
     )
 
@@ -1035,7 +1035,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[live-core-release-gate] ERROR: {exc}", file=sys.stderr)
         return 1
 
-    out_path = str(args.out or "").strip()
+    out_path = args.out.strip()
     if out_path:
         output = Path(out_path)
         output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import type { Key, KeyboardEvent, RefObject } from "react"
-import { Loader2 } from "lucide-react"
+import type { Key, KeyboardEvent, RefObject } from 'react'
+import { Loader2 } from '@/components/icons'
 
-import type { DocumentChunk } from "@/types"
+import type { DocumentChunk } from '@/types/backend'
 
-import { DocumentChunkCard } from "./chunk-renderer"
-import { ChunksToolbarPanel } from "./chunks-toolbar-panel"
+import { DocumentChunkCard } from './chunk-renderer'
+import { ChunksToolbarPanel } from './chunks-toolbar-panel'
 
 type VirtualRow = {
   index: number
@@ -128,8 +128,8 @@ export function ChunksTabPanel({
           <div
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
+              width: '100%',
+              position: 'relative',
             }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -142,10 +142,10 @@ export function ChunksTabPanel({
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
                   style={{
-                    position: "absolute",
+                    position: 'absolute',
                     top: 0,
                     left: 0,
-                    width: "100%",
+                    width: '100%',
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className="pb-4"

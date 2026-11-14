@@ -1,13 +1,16 @@
 <div align="center">
 
-<img src="./web/public/brand/mimirq-mark.png" alt="MimirQ Logo" width="136"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/ragvia/logo-inverse.svg"/>
+  <img src="./web/public/brand/ragvia/logo.svg" alt="Ragvia" width="230"/>
+</picture>
 
-<h1>MimirQ</h1>
+<h1>Ragvia</h1>
 
 <p><strong>可观察、可替换、可回归的企业 RAG 基础设施</strong><br/><sub>中文优先 · 从文档解析到证据引用，每一步都能检查输入、输出与版本</sub></p>
 
 <p>
-  <a href="#为什么做-mimirq">项目定位</a> ·
+  <a href="#为什么做-ragvia">项目定位</a> ·
   <a href="#产品界面">产品界面</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#与-difyragflowfastgptanythingllm-和-langchain-的功能对比">平台对比</a> ·
@@ -16,8 +19,8 @@
 </p>
 
 <p>
-  <a href="https://github.com/skygazer42/MimirQ/actions/workflows/ci.yml"><img src="https://github.com/skygazer42/MimirQ/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"/></a>
-  <a href="https://github.com/skygazer42/MimirQ/actions/workflows/security.yml"><img src="https://github.com/skygazer42/MimirQ/actions/workflows/security.yml/badge.svg?branch=main" alt="Security status"/></a>
+  <a href="https://github.com/skygazer42/MimirQ/actions/workflows/ci.yml"><img src="https://github.com/skygazer42/MimirQ/actions/workflows/ci.yml/badge.svg?branch=feat%2Fragvia-ui" alt="CI status"/></a>
+  <a href="https://github.com/skygazer42/MimirQ/actions/workflows/security.yml"><img src="https://github.com/skygazer42/MimirQ/actions/workflows/security.yml/badge.svg?branch=feat%2Fragvia-ui" alt="Security status"/></a>
   <a href="./docs/releases/v1.0.1.md"><img src="https://img.shields.io/badge/release-v1.0.1-2563EB.svg" alt="Release v1.0.1"/></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"/></a>
@@ -27,7 +30,9 @@
 
 </div>
 
-## 为什么做 MimirQ
+当前产品名为 **Ragvia**，统一开发分支为 [`feat/ragvia-ui`](https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui)。`main` 保留为历史基线；GitHub 仓库地址仍为 `skygazer42/MimirQ`。
+
+## 为什么做 Ragvia
 
 **企业知识库真正难的，不是把文档向量化，而是让错误可定位、策略可替换、质量可回归。**
 
@@ -35,7 +40,7 @@
 |:---|:---|:---|
 | 查看解析、Chunk、召回、重排与引用证据 | 按文档和场景切换解析器、索引、检索与模型 | 用 Golden 题集、质量门禁和 Trace 守住版本质量 |
 
-MimirQ 起源于真实的政务知识库交付。回答出错时，团队需要快速判断问题究竟来自解析、治理、切块、召回、重排，还是生成偏离引用。把整条链路藏在一个“上传并开始问答”的按钮后面，原型很快，长期交付却难以估算、验收和治理。
+Ragvia 起源于真实的政务知识库交付。回答出错时，团队需要快速判断问题究竟来自解析、治理、切块、召回、重排，还是生成偏离引用。把整条链路藏在一个“上传并开始问答”的按钮后面，原型很快，长期交付却难以估算、验收和治理。
 
 > **一条可控的企业知识流水线**
 >
@@ -49,44 +54,46 @@ MimirQ 起源于真实的政务知识库交付。回答出错时，团队需要�
 |:---|:---|
 | 业务简单、流程稳定、低代码优先 | Dify、FastGPT 等应用平台通常更快 |
 | 一体化使用 DeepDoc 与 GraphRAG | RAGFlow 是成熟选择 |
-| 知识链路需要按业务替换、审计和回归 | 使用 MimirQ，或把它作为 Dify 的外部知识层 |
+| 知识链路需要按业务替换、审计和回归 | 使用 Ragvia，或把它作为 Dify 的外部知识层 |
 
 当前仓库覆盖 30 个解析后端、86 种切块策略、13 类重排器，并保留固定 800 题的实测证据。数字只是实现广度，核心是每一步都能检查输入输出、追溯引用与版本，并用 Golden 题集守住发布质量。完整方法见[企业知识流水线设计准则](./docs/guides/rag_platform_design_principles.md)。
 
-> 最新稳定版：v1.0.1。见 [发布说明](./docs/releases/v1.0.1.md) 与 [发布索引](./docs/releases/README.md)。
+> 历史发布基线：v1.0.1。见 [发布说明](./docs/releases/v1.0.1.md) 与 [发布索引](./docs/releases/README.md)；当前 Ragvia 开发版以 `feat/ragvia-ui` 为准。
 
 ## 产品界面
 
 以下界面使用仓库内公开的政务插件演示样例生成，不含生产知识库数据。
 
+这些截图来自改名前的 MimirQ 基线，用于展示功能；当前分支采用已确认的 Ragvia 界面与品牌，截图尚未更新。
+
 <table>
   <tr>
     <td colspan="2" align="center">
-      <img src="./docs/images/screenshots/knowledge-graph.png" alt="MimirQ 知识图谱界面" width="100%"/>
+      <img src="./docs/images/screenshots/knowledge-graph.png" alt="Ragvia 知识图谱界面" width="100%"/>
       <br/><strong>知识图谱</strong>
       <br/><sub>在同一画布中检索和分析实体、事件与关系。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/dataset-management.png" alt="MimirQ 知识库管理界面" width="100%"/>
+      <img src="./docs/images/screenshots/dataset-management.png" alt="Ragvia 知识库管理界面" width="100%"/>
       <br/><strong>知识库管理</strong>
       <br/><sub>集中查看数据集、文档、Chunk 与入库状态。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ 数据治理工作台" width="100%"/>
+      <img src="./docs/images/screenshots/data-governance.png" alt="Ragvia 数据治理工作台" width="100%"/>
       <br/><strong>数据治理</strong>
       <br/><sub>在同一工作台完成文档预览、质量检测、清洗与标注。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="MimirQ 入库执行监控界面" width="100%"/>
+      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="Ragvia 入库执行监控界面" width="100%"/>
       <br/><strong>入库执行监控</strong>
       <br/><sub>按数据集观察解析、切块、治理、导出和失败重试状态。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ Golden 回归评测界面" width="100%"/>
+      <img src="./docs/images/screenshots/rag-evaluation.png" alt="Ragvia Golden 回归评测界面" width="100%"/>
       <br/><strong>Golden 回归评测</strong>
       <br/><sub>标准问答、运行记录与 Recall / MRR 等指标同屏可查。</sub>
     </td>
@@ -107,7 +114,7 @@ MimirQ 起源于真实的政务知识库交付。回答出错时，团队需要�
 ### 初始化
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -138,7 +145,7 @@ make api-ping
 
 启动后访问 [http://localhost:3000](http://localhost:3000)；未预置管理员时，在页面注册首个账户。首次构建、代理、生产凭据和网络配置见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md)。
 
-停止使用 `make down`；清空持久化数据使用 `make docker-reset`；连同本项目服务镜像删除使用 `make docker-purge`。MimirQ 固定使用独立的 `mimirq` Compose 项目名，不会把同机 Dify 当成本项目；后两项不可恢复。Windows PowerShell、容器归属检查、旧版数据迁移、误删恢复和精确删除范围见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md#4-数据卷与清理)。
+停止使用 `make down`；清空持久化数据使用 `make docker-reset`；连同本项目服务镜像删除使用 `make docker-purge`。Ragvia 固定使用独立的 `mimirq` Compose 项目名，不会把同机 Dify 当成本项目；后两项不可恢复。Windows PowerShell、容器归属检查、旧版数据迁移、误删恢复和精确删除范围见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md#4-数据卷与清理)。
 
 #### 按文档类型启用可选解析器
 
@@ -147,7 +154,7 @@ make api-ping
 | 文档场景 | 建议解析器 | 额外要求 | 启动命令 |
 |:---|:---|:---|:---|
 | 常规 PDF / Office / 文本 | 内置 DeepDoc | 无 | 无需额外容器 |
-| 表格、公式与复杂版式，多格式 CPU 解析 | Docling Serve | CPU；独立重型镜像，不进入 MimirQ 主镜像 | `make up-docling` |
+| 表格、公式与复杂版式，多格式 CPU 解析 | Docling Serve | CPU；独立重型镜像，不进入 Ragvia 主镜像 | `make up-docling` |
 | 表格、公式、OCR 与复杂版式 GPU 解析 | Docling Serve CUDA | NVIDIA GPU；默认 CUDA 12.8 | `make up-docling-gpu` |
 | PDF 转 Markdown，服务器无 GPU | Marker | CPU | `make up-marker` |
 | 版面、表格与图片混合文档 | ETL4LLM | CPU | `make up-etl4llm` |
@@ -196,48 +203,48 @@ make api-ping
 | **前端 UI** | [http://localhost:3000](http://localhost:3000) |
 | **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
 
-> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或改用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
+> `make up-lite` 保留 API/Worker 入口，向量索引统一使用共享 Milvus，关闭文档对象存储，默认不含前端。Milvus 自身仍运行 Etcd 和内部 MinIO；该入口不再是免向量服务的低资源模式。需要 UI 时另运行 `make web`，或使用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
 
 高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
 ## Dify 接入
 
-MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现工作流画布。当前支持两种方式：
+Ragvia 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现工作流画布。当前支持两种方式：
 
-- **External Knowledge API**：Dify 负责编排与生成，MimirQ 负责文档治理、检索、重排、权限过滤和证据返回。
-- **Workflow HTTP 节点**：Dify 负责自定义路由与参数，MimirQ 按指定知识范围返回证据和 Trace。
+- **External Knowledge API**：Dify 负责编排与生成，Ragvia 负责文档治理、检索、重排、权限过滤和证据返回。
+- **Workflow HTTP 节点**：Dify 负责自定义路由与参数，Ragvia 按指定知识范围返回证据和 Trace。
 
 ### Workflow HTTP 节点
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 节点调用 MimirQ 检索接口并合并证据" width="1100" style="max-width: 100%; height: auto;"/>
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 节点调用 Ragvia 检索接口并合并证据" width="1100" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>真实 Dify HTTP 子链（已脱敏）：安全构造 JSON 请求 → HTTP 节点调用 MimirQ retrieval endpoint → 转换结果 → 合并知识证据。</sub>
+  <sub>真实 Dify HTTP 子链（已脱敏）：安全构造 JSON 请求 → HTTP 节点调用 Ragvia retrieval endpoint → 转换结果 → 合并知识证据。</sub>
 </p>
 
 ### External Knowledge API
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 工作流通过区域路由接入八个 MimirQ 政务知识库" width="560" style="max-width: 100%; height: auto;"/>
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 工作流通过区域路由接入八个 Ragvia 政务知识库" width="560" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>真实 Dify Chatflow（已脱敏）：绿色知识检索节点通过 External Knowledge API 调用 MimirQ，再统一合并证据；点击查看原图。</sub>
+  <sub>真实 Dify Chatflow（已脱敏）：绿色知识检索节点通过 External Knowledge API 调用 Ragvia，再统一合并证据；点击查看原图。</sub>
 </p>
 
-> 图中的地区路由来自可选示例插件；MimirQ 核心不内置地区、事项或行业规则。
+> 图中的地区路由来自可选示例插件；Ragvia 核心不内置地区、事项或行业规则。
 
 Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。`knowledge_id` 默认必须显式配置在 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` 中。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#真实场景验证)。
 
 ## 与 Dify、RAGFlow、FastGPT、AnythingLLM 和 LangChain 的功能对比
 
-| 功能维度 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
+| 功能维度 | **Ragvia** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
 | **文档解析** | **30 种解析后端**：PDF、OCR、版式、表格、公式、VLM | Knowledge Pipeline；PDF、PPT 等常见格式 | **DeepDoc**；复杂版式、扫描件、MinerU / Docling | PDF、扫描件、表格、公式转 Markdown | PDF、TXT、DOCX 等文档管道 | Document Loaders 与第三方解析器集成 |
 | **切块能力** | **86 种策略**：递归、语义、父子、RAPTOR、Late Chunking；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
-| **检索 / 重排** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**13 种重排器** | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
+| **检索 / 重排** | Milvus + BM25 / SPLADE / ColBERT / RRF | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
 | **知识图谱** | 实体、关系、事件抽取；实体消解、社区发现与多跳检索 | 通过工作流、插件或外部服务接入 | 内建 GraphRAG | 通过工作流或外部服务接入 | 通过 Agent / Tool 外接 | 图数据库集成与自定义链路 |
 | **Agent / MCP** | LangGraph Agent、Self-RAG / CRAG / FLARE；MCP client / server | Function Calling / ReAct Agent、工具与 MCP | Agentic Workflow、MCP、代码执行器 | Agent V2、工具、MCP 与 VM 执行 | No-code Agent Builder、MCP、定时任务 | Agents / LangGraph / MCP；代码优先 |
 | **可视化工作流** | **无通用节点画布**；专注 RAG 调试、治理页面与 API | **核心能力**：应用 / Agent 节点编排 | Agent 与入库 Pipeline 编排 | **核心能力**：Flow 节点编排 | No-code Agent Builder | 无内建产品 UI；由应用实现 |
@@ -252,21 +259,21 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 
 ## 真实场景验证
 
-MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。2026-07-27 使用同一固定 800 题和真实自托管模型复测，五条链路最终均无失败：
+Ragvia 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。2026-07-27 使用同一固定 800 题和真实自托管模型复测，五条链路最终均无失败：
 
 <!-- 数据来源：artifacts/dify_4way_800_20260727/comparison_report.json、artifacts/dify_4way_800_20260727/summary_for_sharing.md 与 artifacts/changzhou_local_3model_800_20260727/summary.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
 
 | <sub>链路</sub> | <sub>成功执行</sub> | <sub>准确 / 部分准确 /<br>证据不足</sub> | <sub>准确率 / 可用率</sub> | <sub>证据覆盖</sub> | <sub>平均 / P50 / P95</sub> |
 |:---|---:|---:|---:|---:|---:|
-| <sub><b>MimirQ 检索直连</b></sub> | <sub><b>800 / 800</b></sub> | <sub><b>791 / 9 / 0</b></sub> | <sub><b>98.9% / 100%</b></sub> | <sub><b>99.5%</b></sub> | <sub><b>3.64s / 2.02s / 12.58s</b></sub> |
+| <sub><b>Ragvia 检索直连</b></sub> | <sub><b>800 / 800</b></sub> | <sub><b>791 / 9 / 0</b></sub> | <sub><b>98.9% / 100%</b></sub> | <sub><b>99.5%</b></sub> | <sub><b>3.64s / 2.02s / 12.58s</b></sub> |
 | <sub><b>真实 Embedding + Reranker + LLM</b></sub> | <sub><b>800 / 800</b></sub> | <sub><b>727 / 73 / 0</b></sub> | <sub><b>90.9% / 100%</b></sub> | <sub><b>99.7%</b></sub> | <sub><b>2.59s / 1.53s / 8.15s</b></sub> |
-| <sub><b>Dify HTTP → MimirQ</b></sub> | <sub><b>800 / 800</b></sub> | <sub>514 / 223 / 63</sub> | <sub>64.3% / 92.1%</sub> | <sub>96.3%</sub> | <sub>13.15s / 12.93s / 17.33s</sub> |
-| <sub><b>Dify External → MimirQ</b></sub> | <sub><b>800 / 800</b></sub> | <sub>502 / 232 / 66</sub> | <sub>62.7% / 91.7%</sub> | <sub><b>99.7%</b></sub> | <sub>12.14s / 11.17s / 23.49s</sub> |
+| <sub><b>Dify HTTP → Ragvia</b></sub> | <sub><b>800 / 800</b></sub> | <sub>514 / 223 / 63</sub> | <sub>64.3% / 92.1%</sub> | <sub>96.3%</sub> | <sub>13.15s / 12.93s / 17.33s</sub> |
+| <sub><b>Dify External → Ragvia</b></sub> | <sub><b>800 / 800</b></sub> | <sub>502 / 232 / 66</sub> | <sub>62.7% / 91.7%</sub> | <sub><b>99.7%</b></sub> | <sub>12.14s / 11.17s / 23.49s</sub> |
 | <sub><b>Dify 原生知识库</b></sub> | <sub><b>800 / 800</b></sub> | <sub>309 / 287 / 204</sub> | <sub>38.6% / 74.5%</sub> | <sub>83.8%</sub> | <sub>13.67s / 11.34s / 29.55s</sub> |
 
-直连输出检索证据，其他链路输出生成答案，因此准确率与延迟不是严格同任务横比。Dify HTTP / External 的证据覆盖为 96.3% / 99.7%，答案条款覆盖仅为 83.6% / 83.8%，主要损失在 Dify 生成编排而不是 MimirQ 召回；Dify 原生知识库不经过 MimirQ。
+直连输出检索证据，其他链路输出生成答案，因此准确率与延迟不是严格同任务横比。Dify HTTP / External 的证据覆盖为 96.3% / 99.7%，答案条款覆盖仅为 83.6% / 83.8%，主要损失在 Dify 生成编排而不是 Ragvia 召回；Dify 原生知识库不经过 Ragvia。
 
-并发 5 直连首轮触发 15 次配置化 admission backpressure，降至并发 3 仅重试失败题后恢复为 800 / 800。MimirQ 没有加入地区、事项或题目特判；不同 Embedding runtime 的多库请求由通用检索层分片处理。
+并发 5 直连首轮触发 15 次配置化 admission backpressure，降至并发 3 仅重试失败题后恢复为 800 / 800。Ragvia 没有加入地区、事项或题目特判；不同 Embedding runtime 的多库请求由通用检索层分片处理。
 
 [完整方法、指标解释与历史复测](./docs/benchmarks/changzhou_dify.md) · [Dify 接入方式与真实工作流](#dify-接入)
 
@@ -278,7 +285,7 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 |:---:|:---|:---|
 | **标准部署** | `make up` | 完整栈：Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **标准 + 前端** | `make up-web` | 推荐首次启动；自动初始化本地配置并启动完整 Web 栈 |
-| **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
+| **API/Worker 模式** | `make up-lite` | 共享 Milvus 及其内部依赖；关闭文档对象存储，不含前端 |
 | **开发模式** | `make infra-up` | 仅基础设施，后端/前端本地运行 |
 | **Helm / K8s** | `helm install` | 生产级部署，含 HPA、PDB、CronJob、PrometheusRule |
 | **解析器扩展** | [Docker Compose 指南](./docs/deployment/docker_compose.md) | 按需启动 CPU / GPU profile |
@@ -358,7 +365,7 @@ make rag-concurrency-gate
 
 ## 致谢
 
-MimirQ 构建于优秀的开源生态之上，感谢以下项目：
+Ragvia 构建于优秀的开源生态之上，感谢以下项目：
 
 [Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
 

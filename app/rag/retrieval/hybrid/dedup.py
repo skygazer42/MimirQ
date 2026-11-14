@@ -13,13 +13,14 @@ import jieba
 
 from app.core.config import settings
 from app.rag.core.filters import match_metadata_filter
-from app.rag.core.hashing import stable_hash
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.retrieval.hybrid.common import (
     _RECORD_IDENTITY_METADATA_KEY,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     logger,
 )
+from app.rag.retrieval.hybrid.result_values import result_key
 
 
 @dataclass
@@ -50,45 +51,36 @@ class _DedupState:
 class DedupDiversityMixin:
     """Result identity keys, hierarchy family collapse, dedup, and doc/page diversity caps."""
 
-    def _result_key(self, result: dict[str, Any]) -> str:
-        meta = result.get("metadata") or {}
-        doc_id = meta.get("document_id")
-        chunk_index = meta.get("chunk_index")
-        if doc_id is not None and chunk_index is not None:
-            return f"{doc_id}:{chunk_index}"
-        cid = result.get("chunk_id") or meta.get("chunk_id")
-        if cid:
-            return str(cid)
-        content = str(result.get("content") or "")
-        return f"content:{stable_hash(content)}"
+    _result_key = staticmethod(result_key)
 
     @staticmethod
-    def _first_metadata_value(meta: dict[str, Any], keys: tuple[str, ...]) -> str:
+    def _first_metadata_value(meta: dict[str, Any], keys: tuple[str, ...]) -> str | None:
         for key in keys:
-            value = str(meta.get(key) or "").strip()
+            value = _stringified_metadata_text(meta, key)
             if value:
                 return value
-        return ""
+        return None
 
     @staticmethod
-    def _document_chunk_family_key(meta: dict[str, Any]) -> str:
+    def _document_chunk_family_key(meta: dict[str, Any]) -> str | None:
         doc_id = meta.get("document_id")
         chunk_index = meta.get("chunk_index")
-        return f"{doc_id}:{chunk_index}" if doc_id is not None and chunk_index is not None else ""
+        return f"{doc_id}:{chunk_index}" if doc_id is not None and chunk_index is not None else None
 
     @staticmethod
-    def _result_chunk_family_key(meta: dict[str, Any], result: dict[str, Any] | None) -> str:
+    def _result_chunk_family_key(meta: dict[str, Any], result: dict[str, Any] | None) -> str | None:
         if result is None:
-            return ""
-        chunk_id = result.get("chunk_id") or meta.get("chunk_id")
-        return str(chunk_id).strip() if chunk_id else ""
+            return None
+        return _stringified_metadata_text(result, "chunk_id") or _stringified_metadata_text(meta, "chunk_id")
 
-    def _resolve_family_collapse_key(self, meta: dict[str, Any], *, result: dict[str, Any] | None = None) -> str:
+    def _resolve_family_collapse_key(self, meta: dict[str, Any], *, result: dict[str, Any] | None = None) -> str | None:
         key = self._first_metadata_value(meta, ("hierarchy_family_key", "parent_id", "parent_node_id"))
         if key:
             return key
 
-        role = str(meta.get("chunk_role") or "").strip().lower()
+        role = _stringified_metadata_text(meta, "chunk_role")
+        if role is not None:
+            role = role.lower()
         if role == "parent":
             key = self._first_metadata_value(meta, ("hierarchy_node_key", "chunk_key"))
             if key:
@@ -113,8 +105,13 @@ class DedupDiversityMixin:
         if stats is None:
             return
         stats.clear()
+        retrieval_profile = self.retrieval_profile
+        if retrieval_profile is not None:
+            retrieval_profile = retrieval_profile.strip().lower()
+        if not retrieval_profile:
+            retrieval_profile = None
         stats["enabled"] = bool(enabled)
-        stats["retrieval_profile"] = str(self.retrieval_profile or "").strip().lower() or None
+        stats["retrieval_profile"] = retrieval_profile
         stats["input_results"] = int(input_count)
 
     @staticmethod
@@ -187,7 +184,7 @@ class DedupDiversityMixin:
 
     @staticmethod
     def _tokenize_for_similarity(text: str) -> set[str]:
-        raw = (text or "").strip()
+        raw = (text).strip()
         if not raw:
             return set()
         tokens: list[str] = []
@@ -207,7 +204,7 @@ class DedupDiversityMixin:
 
     @staticmethod
     def _fingerprint(text: str) -> str:
-        norm = re.sub(r"\s+", " ", (text or "").strip())
+        norm = re.sub(r"\s+", " ", (text).strip())
         return norm.casefold()
 
     @staticmethod
@@ -216,9 +213,9 @@ class DedupDiversityMixin:
 
     @staticmethod
     def _resolve_near_dedup_runtime() -> tuple[bool, int, int, Any | None]:
-        near_enabled = bool(getattr(settings, "RETRIEVAL_NEAR_DEDUP_ENABLED", False))
-        near_thr = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0))
-        near_max_compare = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0))
+        near_enabled = settings.RETRIEVAL_NEAR_DEDUP_ENABLED
+        near_thr = max(0, settings.RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD)
+        near_max_compare = max(0, settings.RETRIEVAL_NEAR_DEDUP_MAX_COMPARE)
         distance_func = None
         if near_enabled:
             try:
@@ -231,7 +228,7 @@ class DedupDiversityMixin:
 
     @staticmethod
     def _simhash64_from_meta(meta: dict[str, Any]) -> int | None:
-        sh_hex = str(meta.get("simhash64") or "").strip().lower()
+        sh_hex = _stringified_metadata_text(meta, "simhash64")
         if not sh_hex:
             return None
         try:
@@ -268,10 +265,10 @@ class DedupDiversityMixin:
         record_identity = meta.get(_RECORD_IDENTITY_METADATA_KEY)
         if not isinstance(record_identity, dict):
             return None
-        key = str(record_identity.get("key") or "").strip()
+        key = _stringified_metadata_text(record_identity, "key")
         if not key:
             return None
-        scope = str(meta.get("dataset_id") or meta.get("document_id") or "").strip()
+        scope = _stringified_metadata_text(meta, "dataset_id") or _stringified_metadata_text(meta, "document_id")
         return f"{scope}:{key}" if scope else key
 
     @staticmethod
@@ -317,7 +314,7 @@ class DedupDiversityMixin:
     def _remember_near_simhash(meta: dict[str, Any], *, near_enabled: bool, kept_simhashes: list[int]) -> None:
         if not near_enabled:
             return
-        sh_hex = str(meta.get("simhash64") or "").strip().lower()
+        sh_hex = _stringified_metadata_text(meta, "simhash64")
         if not sh_hex:
             return
         try:
@@ -410,7 +407,7 @@ class DedupDiversityMixin:
         if self._is_seen_chunk_id(result, meta, state.seen_chunk_ids):
             return
 
-        content = (result.get("content") or "").strip()
+        content = (result["content"]).strip()
         if not content:
             return
 
@@ -787,6 +784,7 @@ class DedupDiversityMixin:
             rest = [r for r in results if self._result_key(r) not in used_keys]
             out_all = selected + rest
         if any(isinstance(item, dict) and item.get("fusion_budgeted_prefix_rank") is not None for item in out_all):
+
             def _budgeted_prefix_sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
                 return (
                     0 if item.get("fusion_budgeted_prefix_rank") is not None else 1,

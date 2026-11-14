@@ -6,29 +6,44 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.core.config import settings
+from app.core.pii_redaction import pii_redaction_enabled, redact_text
+from app.core.token_utils import num_tokens_from_string
+from app.rag.core.claim_evidence import build_claim_evidence_map
+from app.rag.core.confidence import compute_confidence_score
+from app.rag.core.faithfulness import compute_faithfulness_score
+from app.rag.core.logging import get_logger
+from app.rag.core.sentence_citations import render_sentence_citations_inline, render_sentence_citations_markdown
+from app.rag.core.text import (
+    scrub_structured_output_visible_evidence_only,
+    split_into_claims,
+    verify_claim_with_fallback,
+)
+from app.rag.core.vision_reader import build_vision_image_blocks, stream_vision_chat_completions_tokens
+from app.rag.engine_support.common import _RAG_ENGINE_FALLBACK_LOG_MESSAGE, _UNABLE_TO_ANSWER_MESSAGE
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.llm.structured_output import parse_and_repair_structured_output
+from app.rag.retrieval.source_labels import maybe_build_source_identification_answer
+from app.services.metrics_logger import log_metrics
+
+logger = get_logger("rag.engine")
 
 
 async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
     # Step 4: Stream answer generation.
     runtime.data.full_response = ""
     runtime.data.gen_start = time.time()
-    runtime.data.pii_on = bool(runtime.module.pii_redaction_enabled())
+    runtime.data.pii_on = bool(pii_redaction_enabled())
 
-    runtime.data.claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or bool(
-        runtime.data.strict_visible
-    )
-    runtime.data.claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
-    runtime.data.claim_verifier_mode = (
-        str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
-    )
+    runtime.data.claim_check_configured = bool(settings.RAG_CLAIM_CHECK_ENABLED) or bool(runtime.data.strict_visible)
+    runtime.data.claim_check_max_claims = max(1, int(settings.RAG_CLAIM_CHECK_MAX_CLAIMS))
+    runtime.data.claim_verifier_mode = str(settings.RAG_CLAIM_VERIFIER_MODE).strip().lower()
     if runtime.data.claim_verifier_mode not in {"token_overlap", "semantic_heuristic", "strict"}:
         runtime.data.claim_verifier_mode = "token_overlap"
     runtime.data.claim_verifier_enable_contradiction_check = bool(
-        getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+        settings.RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK
     )
     runtime.data.claim_check_mode = "none"
     if bool(runtime.data.claim_check_configured):
@@ -39,14 +54,12 @@ async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dic
     runtime.data.claim_check_total = 0
     runtime.data.claim_check_removed_reasons: list[dict[str, Any]] = []
 
-    runtime.data.context_for_model = (
-        runtime.module.redact_text(runtime.data.context) if runtime.data.pii_on else runtime.data.context
-    )
+    runtime.data.context_for_model = redact_text(runtime.data.context) if runtime.data.pii_on else runtime.data.context
     runtime.data.history_for_model = (
-        runtime.module.redact_text(runtime.data.history_text) if runtime.data.pii_on else runtime.data.history_text
+        redact_text(runtime.data.history_text) if runtime.data.pii_on else runtime.data.history_text
     )
     runtime.data.question_for_model = (
-        runtime.module.redact_text(runtime.data.question) if runtime.data.pii_on else runtime.data.question
+        redact_text(runtime.data.question) if runtime.data.pii_on else runtime.data.question
     )
 
     # PII redaction must see the complete response before any bytes are
@@ -80,14 +93,14 @@ async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dic
     runtime.data.token_stream = None
     runtime.data.deterministic_source_answer = None
     if not runtime.data.structured_output:
-        runtime.data.deterministic_source_answer = runtime.module.maybe_build_source_identification_answer(
+        runtime.data.deterministic_source_answer = maybe_build_source_identification_answer(
             question=runtime.data.question,
             docs=runtime.data.docs,
         )
     if runtime.data.deterministic_source_answer:
         runtime.data.source_identification_answer_used = True
         runtime.data.source_answer_text = (
-            runtime.module.redact_text(str(runtime.data.deterministic_source_answer))
+            redact_text(str(runtime.data.deterministic_source_answer))
             if runtime.data.pii_on
             else str(runtime.data.deterministic_source_answer)
         )
@@ -99,7 +112,7 @@ def _vision_generation_skip_meta(runtime: StandardStreamState) -> dict[str, Any]
         return {"enabled": False, "used": False, "reason": "source_identification_answer"}
     if not runtime.data.vision_gen_enabled:
         return {"enabled": False, "used": False, "reason": "VISION_RAG_GENERATION_ENABLED=false"}
-    if not getattr(settings, "VISION_LLM_ENABLED", False):
+    if not settings.VISION_LLM_ENABLED:
         return {"enabled": True, "used": False, "reason": "VISION_LLM_ENABLED=false"}
     if str(runtime.data.multimodal_modality or "text").strip().lower() != "image":
         return {
@@ -113,7 +126,7 @@ def _vision_generation_skip_meta(runtime: StandardStreamState) -> dict[str, Any]
 
 
 def _vision_message_role(message: Any) -> str:
-    role = str(getattr(message, "type", "") or "").strip().lower()
+    role = message.type.strip().lower()
     if role == "human":
         return "user"
     if role == "ai":
@@ -126,19 +139,16 @@ def _render_vision_messages(runtime: StandardStreamState) -> list[dict[str, Any]
         rendered_messages = runtime.data.current_prompt_template.format_messages(**runtime.data.generation_inputs)
     except Exception:
         rendered_messages = []
-    return [
-        {"role": _vision_message_role(message), "content": getattr(message, "content", "")}
-        for message in rendered_messages
-    ]
+    return [{"role": _vision_message_role(message), "content": message.content} for message in rendered_messages]
 
 
 def _attach_vision_blocks(runtime: StandardStreamState) -> None:
     attached = False
     for index in range(len(runtime.data.openai_msgs) - 1, -1, -1):
-        if str(runtime.data.openai_msgs[index].get("role") or "") != "user":
+        if runtime.data.openai_msgs[index]["role"] != "user":
             continue
         content = runtime.data.openai_msgs[index].get("content")
-        parts = list(content) if isinstance(content, list) else [{"type": "text", "text": str(content or "")}]
+        parts = list(content) if isinstance(content, list) else [{"type": "text", "text": content}]
         parts.extend(runtime.data.blocks)
         runtime.data.openai_msgs[index]["content"] = parts
         attached = True
@@ -151,16 +161,14 @@ def _attach_vision_blocks(runtime: StandardStreamState) -> None:
 
 async def prepare_vision_generation(runtime: StandardStreamState) -> None:
     try:
-        runtime.data.vision_gen_enabled = bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False))
+        runtime.data.vision_gen_enabled = bool(settings.VISION_RAG_GENERATION_ENABLED)
         skip_meta = _vision_generation_skip_meta(runtime)
         if skip_meta is not None:
             runtime.data.vision_generation_meta.update(skip_meta)
             return
-        runtime.data.max_images = max(0, int(getattr(settings, "VISION_RAG_GENERATION_MAX_IMAGES", 2) or 2))
-        runtime.data.max_bytes = max(
-            1, int(getattr(settings, "VISION_RAG_GENERATION_MAX_IMAGE_BYTES", 3_000_000) or 3_000_000)
-        )
-        runtime.data.blocks, runtime.data.blocks_meta = await runtime.module.build_vision_image_blocks(
+        runtime.data.max_images = max(0, int(settings.VISION_RAG_GENERATION_MAX_IMAGES))
+        runtime.data.max_bytes = max(1, int(settings.VISION_RAG_GENERATION_MAX_IMAGE_BYTES))
+        runtime.data.blocks, runtime.data.blocks_meta = await build_vision_image_blocks(
             image_docs=runtime.data.image_docs,
             tenant_id=runtime.data.tenant_id,
             max_images=runtime.data.max_images,
@@ -174,23 +182,23 @@ async def prepare_vision_generation(runtime: StandardStreamState) -> None:
                 "image_blocks": runtime.data.blocks_meta,
                 "max_images": int(runtime.data.max_images),
                 "max_image_bytes": int(runtime.data.max_bytes),
-                "model": str(getattr(settings, "VISION_LLM_MODEL", "") or "").strip() or None,
+                "model": settings.VISION_LLM_MODEL,
             }
         )
         if runtime.data.blocks:
             runtime.data.openai_msgs = _render_vision_messages(runtime)
             _attach_vision_blocks(runtime)
             runtime.data.vision_generation_meta.update(
-                {"used": True, "reason": "ok", "returned_images": int(len(runtime.data.blocks))}
+                {"used": True, "reason": "ok", "returned_images": len(runtime.data.blocks)}
             )
-            runtime.data.token_stream = runtime.module.stream_vision_chat_completions_tokens(
+            runtime.data.token_stream = stream_vision_chat_completions_tokens(
                 http_client=runtime.engine.http_async_client,
                 messages=runtime.data.openai_msgs,
             )
     except Exception as exc:  # noqa: BLE001
         runtime.data.vision_generation_meta.update(
             {
-                "enabled": bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False)),
+                "enabled": bool(settings.VISION_RAG_GENERATION_ENABLED),
                 "used": False,
                 "reason": f"vision_generation_exception:{str(exc)[:160]}",
             }
@@ -225,9 +233,7 @@ async def stream_generation_tokens(runtime: StandardStreamState) -> AsyncGenerat
     if runtime.data.buffered_parts is not None:
         runtime.data.raw_generated = "".join(runtime.data.buffered_parts)
         runtime.data.full_response = (
-            runtime.module.redact_text(runtime.data.raw_generated)
-            if runtime.data.pii_on
-            else runtime.data.raw_generated
+            redact_text(runtime.data.raw_generated) if runtime.data.pii_on else runtime.data.raw_generated
         )
 
     runtime.data.llm_invocation_meta: dict[str, Any] = {}
@@ -246,22 +252,22 @@ async def capture_llm_invocation(runtime: StandardStreamState) -> None:
 
 
 def _verify_text_claims(runtime: StandardStreamState) -> None:
-    runtime.data.claims = runtime.module.split_into_claims(
+    runtime.data.claims = split_into_claims(
         runtime.data.full_response,
         max_claims=runtime.data.claim_check_max_claims,
     )
     runtime.data.claim_check_total = len(runtime.data.claims)
     runtime.data.kept = []
     for claim in runtime.data.claims:
-        verification = runtime.module.verify_claim_with_fallback(
+        verification = verify_claim_with_fallback(
             claim,
             runtime.data.evidence_text,
             verifier_mode=runtime.data.claim_verifier_mode,
             verifier_enable_contradiction_check=runtime.data.claim_verifier_enable_contradiction_check,
-            use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-            nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-            nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-            nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+            use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
+            nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+            nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
+            nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC),
         )
         if verification.supported:
             runtime.data.kept.append(claim)
@@ -271,7 +277,7 @@ def _verify_text_claims(runtime: StandardStreamState) -> None:
             diagnostics = verification.diagnostics if isinstance(verification.diagnostics, dict) else {}
             runtime.data.claim_check_removed_reasons.append(
                 {
-                    "claim": str(claim or "")[:300],
+                    "claim": claim[:300],
                     "reason_code": str(diagnostics.get("reason_code") or diagnostics.get("reason") or "unsupported")[
                         :120
                     ],
@@ -283,7 +289,7 @@ def _verify_text_claims(runtime: StandardStreamState) -> None:
                 }
             )
     cleaned = "\n".join(runtime.data.kept).strip()
-    runtime.data.full_response = cleaned or runtime.module._UNABLE_TO_ANSWER_MESSAGE
+    runtime.data.full_response = cleaned or _UNABLE_TO_ANSWER_MESSAGE
 
 
 def _structured_claim_citations(runtime: StandardStreamState) -> list[dict[str, Any]]:
@@ -301,22 +307,22 @@ def _structured_claim_citations(runtime: StandardStreamState) -> list[dict[str, 
 
 def _verify_structured_claims(runtime: StandardStreamState) -> None:
     runtime.data.structured_citations = _structured_claim_citations(runtime)
-    runtime.data.parsed, runtime.data._meta = runtime.module.parse_and_repair_structured_output(
+    runtime.data.parsed, runtime.data._meta = parse_and_repair_structured_output(
         runtime.data.full_response,
         preset=runtime.data.structured_preset,
-        fallback_answer=runtime.module._UNABLE_TO_ANSWER_MESSAGE,
+        fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
         fallback_citations=runtime.data.structured_citations,
     )
-    runtime.data.scrubbed, runtime.data.scrub_meta = runtime.module.scrub_structured_output_visible_evidence_only(
+    runtime.data.scrubbed, runtime.data.scrub_meta = scrub_structured_output_visible_evidence_only(
         runtime.data.parsed,
         evidence_text=runtime.data.evidence_text,
         max_claims=runtime.data.claim_check_max_claims,
         verifier_mode=runtime.data.claim_verifier_mode,
         verifier_enable_contradiction_check=runtime.data.claim_verifier_enable_contradiction_check,
-        use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-        nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-        nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-        nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+        use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
+        nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+        nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
+        nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC),
     )
     if isinstance(runtime.data.scrub_meta, dict):
         runtime.data.claim_check_total = int(runtime.data.scrub_meta.get("claims_total") or 0)
@@ -328,11 +334,11 @@ def _verify_structured_claims(runtime: StandardStreamState) -> None:
         if (
             isinstance(runtime.data.scrubbed, dict)
             and isinstance(runtime.data.scrubbed.get("answer"), str)
-            and not str(runtime.data.scrubbed.get("answer") or "").strip()
+            and not runtime.data.scrubbed["answer"].strip()
         ):
-            runtime.data.scrubbed["answer"] = runtime.module._UNABLE_TO_ANSWER_MESSAGE
+            runtime.data.scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
     except Exception as exc:
-        runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+        logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
     runtime.data.full_response = json.dumps(runtime.data.scrubbed, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -369,7 +375,7 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
                 else:
                     runtime.data.full_response = runtime.data.blocked_message
         except Exception as exc:  # noqa: BLE001
-            runtime.module.logger.warning("Output guard failed open: %s", str(exc)[:160])
+            logger.warning("Output guard failed open: %s", str(exc)[:160])
             runtime.data.output_guard_result = {
                 "enabled": True,
                 "action": "allow",
@@ -381,16 +387,16 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
     runtime.data.claim_evidence: list[dict[str, Any]] = []
     if not runtime.data.structured_output:
         try:
-            runtime.data.claim_evidence = runtime.module.build_claim_evidence_map(
+            runtime.data.claim_evidence = build_claim_evidence_map(
                 runtime.data.full_response,
                 evidence_chunks=runtime.data.docs,
                 max_claims=runtime.data.claim_check_max_claims if runtime.data.claim_check_configured else 24,
                 verifier_mode=runtime.data.claim_verifier_mode,
                 verifier_enable_contradiction_check=runtime.data.claim_verifier_enable_contradiction_check,
-                use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-                nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+                use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
+                nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+                nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
+                nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC),
             )
         except Exception:
             runtime.data.claim_evidence = []
@@ -405,29 +411,23 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
 
 
 async def score_evidence_and_confidence(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
-    if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+    if bool(settings.FAITHFULNESS_SCORE_ENABLED):
         runtime.data.evidence_text = "\n".join(
-            [
-                str(getattr(d, "page_content", "") or "")
-                for d in (runtime.data.docs or [])
-                if str(getattr(d, "page_content", "") or "").strip()
-            ]
+            [d.page_content for d in (runtime.data.docs or []) if d.page_content.strip()]
         )
-        runtime.data.max_evidence_chars = max(
-            0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
-        )
+        runtime.data.max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS))
         if runtime.data.max_evidence_chars and len(runtime.data.evidence_text) > runtime.data.max_evidence_chars:
             runtime.data.evidence_text = runtime.data.evidence_text[: runtime.data.max_evidence_chars]
-        runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
-            answer=str(runtime.data.full_response or ""),
+        runtime.data.faithfulness_meta = compute_faithfulness_score(
+            answer=runtime.data.full_response,
             evidence_text=runtime.data.evidence_text,
-            max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
+            max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
             verifier_mode=runtime.data.claim_verifier_mode,
             verifier_enable_contradiction_check=bool(runtime.data.claim_verifier_enable_contradiction_check),
-            use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-            nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-            nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-            nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+            use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
+            nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+            nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
+            nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC),
         )
     if runtime.data.source_identification_answer_used:
         runtime.data.faithfulness_meta = {
@@ -438,17 +438,16 @@ async def score_evidence_and_confidence(runtime: StandardStreamState) -> AsyncGe
             "method": "deterministic_source_identification",
         }
 
-    runtime.data.sentence_citations_inline_enabled = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
+    runtime.data.sentence_citations_inline_enabled = bool(settings.SENTENCE_CITATIONS_INLINE_ENABLED)
     runtime.data.sentence_citations_inline_used = False
     runtime.data.sentence_citations_inline_count = 0
     runtime.data.sentence_citations_inline_style = (
-        str(getattr(settings, "SENTENCE_CITATIONS_INLINE_STYLE", "appendix") or "appendix").strip().lower()
-        or "appendix"
+        str(settings.SENTENCE_CITATIONS_INLINE_STYLE).strip().lower() or "appendix"
     )
     if runtime.data.sentence_citations_inline_style not in {"appendix", "inline"}:
         runtime.data.sentence_citations_inline_style = "appendix"
     runtime.data.sentence_citations_inline_fallback_reason: str | None = None
-    runtime.data.confidence_meta = runtime.module.compute_confidence_score(
+    runtime.data.confidence_meta = compute_confidence_score(
         faithfulness_score=runtime.data.faithfulness_meta.get("score"),
         claim_total=runtime.data.faithfulness_meta.get("total_claims"),
         claim_supported=runtime.data.faithfulness_meta.get("supported_claims"),
@@ -489,22 +488,15 @@ async def render_claim_citations(runtime: StandardStreamState) -> None:
         and runtime.data.sentence_citations_inline_style == "inline"
     ):
         if runtime.data.claim_check_mode == "text":
-            runtime.data.inline_text, runtime.data.rendered_count = runtime.module.render_sentence_citations_inline(
+            runtime.data.inline_text, runtime.data.rendered_count = render_sentence_citations_inline(
                 runtime.data.claim_evidence,
                 max_items=max(
                     0,
-                    int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8),
+                    int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS),
                 ),
                 max_evidence_per_claim=max(
                     1,
-                    int(
-                        getattr(
-                            settings,
-                            "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM",
-                            2,
-                        )
-                        or 2
-                    ),
+                    int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM),
                 ),
             )
             if runtime.data.inline_text:
@@ -547,10 +539,10 @@ async def append_image_citations(runtime: StandardStreamState) -> AsyncGenerator
                 runtime.data.images_md_parts.append(f"![Cited Image {runtime.data.i}]({runtime.data.url})")
             runtime.data.images_md = "\n\n".join(runtime.data.images_md_parts) + "\n"
             runtime.data.images_md_safe = (
-                runtime.module.redact_text(runtime.data.images_md) if runtime.data.pii_on else runtime.data.images_md
+                redact_text(runtime.data.images_md) if runtime.data.pii_on else runtime.data.images_md
             )
             runtime.data.full_response += runtime.data.images_md_safe
-            if not runtime.data.claim_check_applied:
+            if runtime.data.buffered_parts is None:
                 yield {"type": "token", "data": {"content": runtime.data.images_md_safe}}
 
 
@@ -561,21 +553,19 @@ async def flush_response_and_init_costs(runtime: StandardStreamState) -> AsyncGe
         and runtime.data.sentence_citations_inline_enabled
         and runtime.data.sentence_citations_inline_style == "appendix"
     ):
-        runtime.data.suffix_md, runtime.data.rendered_count = runtime.module.render_sentence_citations_markdown(
+        runtime.data.suffix_md, runtime.data.rendered_count = render_sentence_citations_markdown(
             runtime.data.claim_evidence,
-            max_items=max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
-            max_evidence_per_claim=max(
-                1, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2)
-            ),
+            max_items=max(0, int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS)),
+            max_evidence_per_claim=max(1, int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM)),
         )
         if runtime.data.suffix_md:
             runtime.data.suffix_md_safe = (
-                runtime.module.redact_text(runtime.data.suffix_md) if runtime.data.pii_on else runtime.data.suffix_md
+                redact_text(runtime.data.suffix_md) if runtime.data.pii_on else runtime.data.suffix_md
             )
             runtime.data.full_response += runtime.data.suffix_md_safe
             runtime.data.sentence_citations_inline_used = True
             runtime.data.sentence_citations_inline_count = int(runtime.data.rendered_count or 0)
-            if not runtime.data.claim_check_applied:
+            if runtime.data.buffered_parts is None:
                 yield {"type": "token", "data": {"content": runtime.data.suffix_md_safe}}
 
     if runtime.data.buffered_parts is not None:
@@ -584,17 +574,17 @@ async def flush_response_and_init_costs(runtime: StandardStreamState) -> AsyncGe
     # Cost attribution per request.
     #
     # Keep this PII-safe: only numeric counters and model identifiers.
-    runtime.data.answer_chars = len(runtime.data.full_response or "")
-    runtime.data.answer_tokens = runtime.module.num_tokens_from_string(runtime.data.full_response or "")
-    runtime.data.question_tokens = runtime.module.num_tokens_from_string(runtime.data.question or "")
+    runtime.data.answer_chars = len(runtime.data.full_response)
+    runtime.data.answer_tokens = num_tokens_from_string(runtime.data.full_response)
+    runtime.data.question_tokens = num_tokens_from_string(runtime.data.question)
     runtime.data.prompt_overhead = int(settings.COST_PROMPT_OVERHEAD_TOKENS)
     runtime.data.prompt_tokens_est = (
-        runtime.module.num_tokens_from_string(runtime.data.history_text or "")
-        + runtime.module.num_tokens_from_string(runtime.data.context or "")
+        num_tokens_from_string(runtime.data.history_text)
+        + num_tokens_from_string(runtime.data.context)
         + runtime.data.question_tokens
         + max(0, runtime.data.prompt_overhead)
     )
-    runtime.data.llm_source = "mock" if bool(getattr(settings, "LLM_MOCK_ENABLED", False)) else "estimate"
+    runtime.data.llm_source = "mock" if bool(settings.LLM_MOCK_ENABLED) else "estimate"
 
     runtime.data.embed_query_tokens = 0
     runtime.data.embed_query_chars = 0
@@ -607,11 +597,11 @@ async def measure_embedding_costs(runtime: StandardStreamState) -> None:
         try:
             runtime.data.embed_query_tokens += int(runtime.data.q.get("query_tokens") or 0)
         except Exception as exc:
-            runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+            logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
         try:
             runtime.data.embed_query_chars += int(runtime.data.q.get("query_chars") or 0)
         except Exception as exc:
-            runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+            logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
 
     runtime.data.rerank_elapsed_sec: float | None = None
 
@@ -626,7 +616,7 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
         try:
             runtime.data.fv = float(runtime.data.v)
         except Exception:
-            runtime.module.logger.debug("Skipping item after non-critical exception", exc_info=True)
+            logger.debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if runtime.data.fv < 0:
             continue
@@ -643,9 +633,9 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
             "source": runtime.data.llm_source,
         },
         "embeddings": {
-            "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
-            "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
-            "query_count": int(len(runtime.data.retrieval_per_query or [])),
+            "provider": str(settings.EMBEDDING_PROVIDER),
+            "model": str(settings.EMBEDDING_MODEL),
+            "query_count": len(runtime.data.retrieval_per_query or []),
             "query_chars": int(runtime.data.embed_query_chars),
             "query_tokens": int(runtime.data.embed_query_tokens),
             "source": "estimate",
@@ -655,8 +645,8 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
             "rerank_elapsed_sec": round(float(runtime.data.rerank_elapsed_sec), 3)
             if runtime.data.rerank_elapsed_sec is not None
             else None,
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-            "query_count": int(len(runtime.data.retrieval_per_query or [])),
+            "vector_backend": str(settings.VECTOR_BACKEND),
+            "query_count": len(runtime.data.retrieval_per_query or []),
         },
     }
     # Metrics JSONL (rag_trace) keeps a nested shape for UI tooling.
@@ -674,13 +664,13 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
         "removed_reasons": runtime.data.claim_check_removed_reasons,
     }
     runtime.data.rag_trace_payload["faithfulness"] = {
-        "enabled": bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)),
+        "enabled": bool(settings.FAITHFULNESS_SCORE_ENABLED),
         "score": runtime.data.faithfulness_meta.get("score"),
         "supported_claims": int(runtime.data.faithfulness_meta.get("supported_claims") or 0),
         "total_claims": int(runtime.data.faithfulness_meta.get("total_claims") or 0),
         "unsupported_claims": list(runtime.data.faithfulness_meta.get("unsupported_claims") or []),
         "method": str(runtime.data.faithfulness_meta.get("method") or "claim_support_ratio"),
-        "sentence_citations_count": int(len(runtime.data.claim_evidence or [])),
+        "sentence_citations_count": len(runtime.data.claim_evidence or []),
         "sentence_citations_inline_enabled": bool(runtime.data.sentence_citations_inline_enabled),
         "sentence_citations_inline_style": str(runtime.data.sentence_citations_inline_style),
         "sentence_citations_inline_used": bool(runtime.data.sentence_citations_inline_used),
@@ -702,8 +692,8 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
             has_error=bool(runtime.data.retrieval_errors),
         )
     except Exception as exc:
-        runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
-    runtime.module.log_metrics(runtime.data.rag_trace_payload)
+        logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+    log_metrics(runtime.data.rag_trace_payload)
 
 
 async def enqueue_online_evaluation(runtime: StandardStreamState) -> None:
@@ -715,13 +705,13 @@ async def enqueue_online_evaluation(runtime: StandardStreamState) -> None:
             tenant_id=runtime.data.tenant_id,
             dataset_id=runtime.data.dataset_id,
             request_id=str(runtime.data.request_id),
-            answer=str(runtime.data.full_response or ""),
-            contexts=[str(getattr(d, "page_content", "") or "") for d in (runtime.data.docs or [])],
-            retrieval_mode=str(runtime.data.mode_used or "") or None,
-            citations_count=int(len(runtime.data.citations or [])),
+            answer=runtime.data.full_response,
+            contexts=[d.page_content for d in (runtime.data.docs or [])],
+            retrieval_mode=runtime.data.mode_used,
+            citations_count=len(runtime.data.citations or []),
         )
     except Exception as exc:
-        runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+        logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
 
 
 GENERATION_OPERATIONS = (

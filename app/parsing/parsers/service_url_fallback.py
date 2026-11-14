@@ -1,4 +1,3 @@
-
 from urllib.parse import urlsplit, urlunsplit
 
 DOCKER_LOCALHOST_FALLBACK = "127.0.0.1"
@@ -16,32 +15,34 @@ def build_docker_service_url_candidates(raw_url: str, *, service_hostnames: set[
     Keep both candidates so an env file from one shape does not silently break
     the other during Docker rebuild/restart workflows.
     """
-    raw = (raw_url or "").strip()
+    raw = raw_url.strip()
     if not raw:
         return []
 
     candidates: list[str] = [raw]
     try:
         parts = urlsplit(raw)
-    except Exception:
+    except ValueError:
         return candidates
 
-    hostname = (parts.hostname or "").strip().lower()
+    hostname = parts.hostname.strip().lower() if parts.hostname is not None else None
     normalized_services = sorted({name.strip().lower() for name in service_hostnames if name.strip()})
     if not normalized_services:
         return candidates
 
-    def _append_candidate(netloc_host: str) -> None:
+    if hostname in normalized_services:
+        alternative_hosts = [DOCKER_LOCALHOST_FALLBACK]
+    elif hostname in LOCALHOST_NAMES:
+        alternative_hosts = normalized_services
+    else:
+        return candidates
+
+    for netloc_host in alternative_hosts:
         netloc = netloc_host
-        if parts.port:
+        if parts.port is not None:
             netloc = f"{netloc}:{parts.port}"
         fallback = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
         if fallback and fallback not in candidates:
             candidates.append(fallback)
 
-    if hostname in normalized_services:
-        _append_candidate(DOCKER_LOCALHOST_FALLBACK)
-    elif hostname in LOCALHOST_NAMES:
-        for service in normalized_services:
-            _append_candidate(service)
     return candidates

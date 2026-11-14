@@ -1,17 +1,17 @@
 import asyncio
-import contextlib
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from app.core.config import settings
 from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
-logger = get_logger("tasks.locks")
+if TYPE_CHECKING:
+    from arq import Retry
 
-_SCRIPT_UNAVAILABLE = object()
+logger = get_logger("tasks.locks")
 
 _COMPARE_DELETE_LUA = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -29,9 +29,7 @@ return 0
 
 _SEMAPHORE_LEASE_SEPARATOR = "|"
 _SEMAPHORE_BUSY_ATTR = "_mimirq_semaphore_busy"
-_DEFAULT_TASK_JOB_TIMEOUT_SEC = 60 * 30
 _TASK_JOB_LOCK_MIN_TTL_SEC = 40 * 60
-_DEFAULT_TASK_SEMAPHORE_LEASE_TTL_SEC = 60
 _TASK_SEMAPHORE_LEASE_MIN_TTL_SEC = 5
 _TASK_SEMAPHORE_HEARTBEAT_MAX_INTERVAL_SEC = 10.0
 _TASK_SEMAPHORE_WAIT_POLL_INTERVAL_SEC = 0.1
@@ -47,35 +45,25 @@ _SEMAPHORE_HEARTBEATS: dict[str, _SemaphoreHeartbeat] = {}
 _SEMAPHORE_HEARTBEATS_LOCK = threading.Lock()
 
 
-def task_job_timeout_sec(*, default_sec: int = _DEFAULT_TASK_JOB_TIMEOUT_SEC) -> int:
-    return max(1, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", default_sec) or default_sec))
-
-
 def task_job_lock_ttl_sec(*, minimum_sec: int = _TASK_JOB_LOCK_MIN_TTL_SEC) -> int:
-    return max(max(1, int(minimum_sec or 0)), task_job_timeout_sec() + 60)
+    return max(minimum_sec, settings.TASK_JOB_TIMEOUT_SEC + 60)
 
 
 def task_semaphore_lease_ttl_sec(
     *,
-    default_sec: int = _DEFAULT_TASK_SEMAPHORE_LEASE_TTL_SEC,
     minimum_sec: int = _TASK_SEMAPHORE_LEASE_MIN_TTL_SEC,
 ) -> int:
-    configured = getattr(settings, "TASK_SEMAPHORE_LEASE_TTL_SEC", default_sec) or default_sec
-    return max(max(1, int(minimum_sec or 0)), int(configured))
+    return max(minimum_sec, settings.TASK_SEMAPHORE_LEASE_TTL_SEC)
 
 
-def get_retry_exc():  # noqa: ANN201
+def get_retry_exc() -> "type[Retry]":
     # When task queue is enabled, Retry must exist; failing silently would bypass concurrency limits.
     mod = require_dependency("arq", feature="task_queue_retry")
-    retry_cls = getattr(mod, "Retry", None)
-    if retry_cls is None:
-        # If arq is installed but doesn't expose Retry, it's likely a version mismatch.
-        raise RuntimeError("arq is installed but Retry is missing (version mismatch?)")
-    return retry_cls
+    return mod.Retry
 
 
-def _semaphore_busy_retry(retry_cls, *, defer_sec: int) -> Exception:  # noqa: ANN001
-    exc = retry_cls(defer=int(defer_sec))
+def _semaphore_busy_retry(retry_cls: "type[Retry]", *, defer_sec: int) -> "Retry":
+    exc = retry_cls(defer=defer_sec)
     setattr(exc, _SEMAPHORE_BUSY_ATTR, True)
     return exc
 
@@ -85,15 +73,7 @@ def is_semaphore_busy_retry(exc: Exception) -> bool:
 
 
 async def _eval_redis_script(redis: Any, script: str, *, keys: tuple[str, ...], args: tuple[Any, ...]) -> Any:
-    eval_fn = getattr(redis, "eval", None)
-    if callable(eval_fn):
-        return await eval_fn(script, len(keys), *keys, *args)
-
-    execute_command = getattr(redis, "execute_command", None)
-    if callable(execute_command):
-        return await execute_command("EVAL", script, len(keys), *keys, *args)
-
-    return _SCRIPT_UNAVAILABLE
+    return await redis.eval(script, len(keys), *keys, *args)
 
 
 async def _semaphore_acquire(
@@ -106,11 +86,11 @@ async def _semaphore_acquire(
 ) -> str | None:
     token = uuid4().hex
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + max(0.0, float(wait_timeout_sec or 0.0))
+    deadline = loop.time() + max(0.0, wait_timeout_sec)
     while True:
-        for slot in range(1, int(limit) + 1):
+        for slot in range(1, limit + 1):
             key = f"{key_prefix}:{slot}"
-            if await redis.set(key, token, ex=max(1, int(ttl_sec)), nx=True):
+            if await redis.set(key, token, ex=max(1, ttl_sec), nx=True):
                 return f"{key}{_SEMAPHORE_LEASE_SEPARATOR}{token}"
         remaining_sec = deadline - loop.time()
         if remaining_sec <= 0:
@@ -119,7 +99,7 @@ async def _semaphore_acquire(
 
 
 def _semaphore_heartbeat_interval_sec(ttl_sec: int) -> float:
-    return max(1.0, min(float(max(1, int(ttl_sec))) / 3.0, _TASK_SEMAPHORE_HEARTBEAT_MAX_INTERVAL_SEC))
+    return max(1.0, min(ttl_sec / 3.0, _TASK_SEMAPHORE_HEARTBEAT_MAX_INTERVAL_SEC))
 
 
 async def _semaphore_refresh(redis: Any, *, key: str, token: str, ttl_sec: int) -> bool | None:
@@ -128,11 +108,8 @@ async def _semaphore_refresh(redis: Any, *, key: str, token: str, ttl_sec: int) 
             redis,
             _COMPARE_EXPIRE_LUA,
             keys=(key,),
-            args=(token, max(1, int(ttl_sec))),
+            args=(token, max(1, ttl_sec)),
         )
-        if refreshed is _SCRIPT_UNAVAILABLE:
-            logger.warning("Semaphore heartbeat disabled because Redis EVAL is unavailable")
-            return False
         return bool(refreshed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Semaphore heartbeat refresh failed: %s", str(exc)[:200])
@@ -185,19 +162,55 @@ async def _semaphore_release(redis: Any, lease: str) -> None:
     except ValueError:
         logger.warning("Ignoring malformed semaphore lease")
         return
-    controller = None
     with _SEMAPHORE_HEARTBEATS_LOCK:
         controller = _SEMAPHORE_HEARTBEATS.pop(lease, None)
-    if controller is not None:
-        controller.stop_event.set()
-        controller.task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await controller.task
-    if key and token:
-        await release_lock(redis, key=key, value=token)
+    try:
+        if controller is not None:
+            controller.stop_event.set()
+            controller.task.cancel()
+            await asyncio.wait({controller.task})
+            if not controller.task.cancelled():
+                controller.task.result()
+    finally:
+        if key and token:
+            await release_lock(redis, key=key, value=token)
 
 
-async def tenant_acquire(  # noqa: ANN201
+async def _acquire_semaphore_lease(
+    redis: Any,
+    *,
+    scope: str,
+    key_prefix: str,
+    limit: int,
+    ttl_sec: int,
+    retry_defer_sec: int,
+    wait_timeout_sec: float,
+) -> str:
+    retry_cls = get_retry_exc()
+    if redis is None:
+        logger.warning(f"{scope} semaphore acquire failed (retry): Redis client unavailable")
+        raise retry_cls(defer=retry_defer_sec)
+    try:
+        lease = await _semaphore_acquire(
+            redis,
+            key_prefix=key_prefix,
+            limit=limit,
+            ttl_sec=ttl_sec,
+            wait_timeout_sec=wait_timeout_sec,
+        )
+        if lease is None:
+            raise _semaphore_busy_retry(retry_cls, defer_sec=retry_defer_sec)
+        key, token = lease.rsplit(_SEMAPHORE_LEASE_SEPARATOR, 1)
+        _register_semaphore_heartbeat(redis, lease=lease, key=key, token=token, ttl_sec=ttl_sec)
+        return lease
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, retry_cls):
+            raise
+        logger.warning(f"{scope} semaphore acquire failed (retry): %s", str(exc)[:200])
+        raise retry_cls(defer=retry_defer_sec) from exc
+
+
+async def tenant_acquire(
     redis: Any,
     *,
     tenant_id: str,
@@ -206,7 +219,7 @@ async def tenant_acquire(  # noqa: ANN201
     ttl_sec: int = 120,
     retry_defer_sec: int = 2,
     wait_timeout_sec: float = 0.0,
-):
+) -> str | None:
     """
     Per-tenant concurrency limit backed by expiring, owner-scoped Redis slots.
 
@@ -216,31 +229,18 @@ async def tenant_acquire(  # noqa: ANN201
         return None
 
     key_prefix = f"sem:tenant:{tenant_id}:{kind}"
-    retry_cls = get_retry_exc()
-    if redis is None:
-        logger.warning("Tenant semaphore acquire failed (retry): Redis client unavailable")
-        raise retry_cls(defer=int(retry_defer_sec))
-    try:
-        lease = await _semaphore_acquire(
-            redis,
-            key_prefix=key_prefix,
-            limit=limit,
-            ttl_sec=ttl_sec,
-            wait_timeout_sec=wait_timeout_sec,
-        )
-        if lease is None:
-            raise _semaphore_busy_retry(retry_cls, defer_sec=retry_defer_sec)
-        key, token = lease.rsplit(_SEMAPHORE_LEASE_SEPARATOR, 1)
-        _register_semaphore_heartbeat(redis, lease=lease, key=key, token=token, ttl_sec=ttl_sec)
-        return lease
-    except Exception as exc:  # noqa: BLE001
-        if isinstance(exc, retry_cls):
-            raise
-        logger.warning("Tenant semaphore acquire failed (retry): %s", str(exc)[:200])
-        raise retry_cls(defer=int(retry_defer_sec)) from exc
+    return await _acquire_semaphore_lease(
+        redis,
+        scope="Tenant",
+        key_prefix=key_prefix,
+        limit=limit,
+        ttl_sec=ttl_sec,
+        retry_defer_sec=retry_defer_sec,
+        wait_timeout_sec=wait_timeout_sec,
+    )
 
 
-async def dataset_acquire(  # noqa: ANN201
+async def dataset_acquire(
     redis: Any,
     *,
     tenant_id: str,
@@ -250,7 +250,7 @@ async def dataset_acquire(  # noqa: ANN201
     ttl_sec: int = 120,
     retry_defer_sec: int = 2,
     wait_timeout_sec: float = 0.0,
-):
+) -> str | None:
     """
     Per-dataset concurrency limit backed by expiring, owner-scoped Redis slots.
 
@@ -259,33 +259,20 @@ async def dataset_acquire(  # noqa: ANN201
     if limit <= 0:
         return None
 
-    ds = str(dataset_id or "").strip()
+    ds = dataset_id.strip()
     if not ds:
         return None
 
     key_prefix = f"sem:dataset:{tenant_id}:{ds}:{kind}"
-    retry_cls = get_retry_exc()
-    if redis is None:
-        logger.warning("Dataset semaphore acquire failed (retry): Redis client unavailable")
-        raise retry_cls(defer=int(retry_defer_sec))
-    try:
-        lease = await _semaphore_acquire(
-            redis,
-            key_prefix=key_prefix,
-            limit=limit,
-            ttl_sec=ttl_sec,
-            wait_timeout_sec=wait_timeout_sec,
-        )
-        if lease is None:
-            raise _semaphore_busy_retry(retry_cls, defer_sec=retry_defer_sec)
-        key, token = lease.rsplit(_SEMAPHORE_LEASE_SEPARATOR, 1)
-        _register_semaphore_heartbeat(redis, lease=lease, key=key, token=token, ttl_sec=ttl_sec)
-        return lease
-    except Exception as exc:  # noqa: BLE001
-        if isinstance(exc, retry_cls):
-            raise
-        logger.warning("Dataset semaphore acquire failed (retry): %s", str(exc)[:200])
-        raise retry_cls(defer=int(retry_defer_sec)) from exc
+    return await _acquire_semaphore_lease(
+        redis,
+        scope="Dataset",
+        key_prefix=key_prefix,
+        limit=limit,
+        ttl_sec=ttl_sec,
+        retry_defer_sec=retry_defer_sec,
+        wait_timeout_sec=wait_timeout_sec,
+    )
 
 
 async def dataset_release(redis: Any, key: str | None) -> None:
@@ -326,18 +313,18 @@ async def acquire_lock(
         if retry_defer_sec is not None:
             retry_cls = get_retry_exc()
             logger.warning("Redis lock acquire failed (retry): Redis client unavailable")
-            raise retry_cls(defer=int(retry_defer_sec))
+            raise retry_cls(defer=retry_defer_sec)
         if fail_open:
             return True
         raise RuntimeError("Redis client unavailable")
     try:
-        acquired = await redis.set(key, value, ex=int(ttl_sec), nx=True)
+        acquired = await redis.set(key, value, ex=ttl_sec, nx=True)
         return bool(acquired)
     except Exception as exc:  # noqa: BLE001
         if retry_defer_sec is not None:
             retry_cls = get_retry_exc()
             logger.warning("Redis lock acquire failed (retry): %s", str(exc)[:200])
-            raise retry_cls(defer=int(retry_defer_sec)) from exc
+            raise retry_cls(defer=retry_defer_sec) from exc
         if fail_open:
             logger.warning("Redis lock acquire failed (continue without lock): %s", str(exc)[:200])
             return True
@@ -354,12 +341,7 @@ async def release_lock(redis: Any, *, key: str, value: str) -> None:
     if redis is None:
         return
     try:
-        deleted = await _eval_redis_script(redis, _COMPARE_DELETE_LUA, keys=(key,), args=(value,))
-        if deleted is _SCRIPT_UNAVAILABLE:
-            cur = await redis.get(key)
-            cur_decoded = cur.decode("utf-8", "ignore") if isinstance(cur, (bytes, bytearray)) else cur
-            if cur_decoded == value:
-                await redis.delete(key)
+        await _eval_redis_script(redis, _COMPARE_DELETE_LUA, keys=(key,), args=(value,))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis lock release failed: %s", str(exc)[:200])
 

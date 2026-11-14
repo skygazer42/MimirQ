@@ -1,0 +1,44 @@
+[
+  {
+    "file": "app/rag/embedding/factory.py",
+    "old": "test_embedding_model_status",
+    "new": "probe_embedding_model_status",
+    "before_line": 124,
+    "after_line": 124
+  },
+  {
+    "file": "app/rag/embedding/factory.py",
+    "old": "test_all_embedding_models_status",
+    "new": "probe_all_embedding_models_status",
+    "before_line": 171,
+    "after_line": 171
+  },
+  {
+    "file": "app/rag/embedding/factory.py",
+    "old": "get_default_embedding_model",
+    "new": "get_default_embedding_model_id",
+    "before_line": 210,
+    "after_line": 210
+  },
+  {
+    "file": "app/rag/retrieval/colbert_ann.py",
+    "old": "resolve_colbert_ann_provider_capability",
+    "new": "resolve_colbert_retrieval_capability",
+    "before_line": 118,
+    "after_line": 118
+  },
+  {
+    "file": "app/rag/retrieval/hybrid/colbert_index.py",
+    "old": "ColbertIndexMixin._search_colbert_ann_docs",
+    "new": "ColbertIndexMixin._search_colbert_dense_docs",
+    "before_line": 524,
+    "after_line": 524
+  },
+  {
+    "file": "app/rag/retrieval/hybrid/colbert_index.py",
+    "old": "ColbertIndexMixin._search_colbert_ann",
+    "new": "ColbertIndexMixin._search_colbert_dense",
+    "before_line": 589,
+    "after_line": 589
+  }
+]

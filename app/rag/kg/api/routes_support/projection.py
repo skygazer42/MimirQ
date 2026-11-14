@@ -11,13 +11,14 @@ import hashlib
 import time
 import zlib
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.pipeline_versions import get_active_pipeline_hash as _doc_pipeline_hash
 from app.rag.kg.api.routes_support.common import logger
 from app.rag.kg.api.routes_support.schemas import (
     KGGraphBuildResult,
@@ -28,6 +29,14 @@ from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.kg.schemas import KGGraphResponse
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.metrics_logger import log_metrics
+
+if TYPE_CHECKING:
+    from sqlalchemy import Row
+    from sqlalchemy.orm import Query
+
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 
 
 def _log_kg_api_metric(event: str, **fields: object) -> None:
@@ -47,10 +56,10 @@ def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:
     key = (entity_type or "unknown").strip().lower() or "unknown"
     buckets_i = max(1, int(buckets))
     digest = zlib.crc32(key.encode("utf-8"))
-    return int(digest % buckets_i) + 1
+    return digest % buckets_i + 1
 
 
-def _kg_event_node(ev: Any, event_degree: Counter[str], *, center_id: UUID | None = None) -> dict[str, Any]:
+def _kg_event_node(ev: "KgSourceEvent", event_degree: Counter[str], *, center_id: UUID | None = None) -> dict[str, Any]:
     ev_id = str(ev.id)
     meta: dict[str, Any] = {
         "kind": "event",
@@ -61,34 +70,36 @@ def _kg_event_node(ev: Any, event_degree: Counter[str], *, center_id: UUID | Non
         meta["center"] = ev_id == str(center_id)
     return {
         "id": ev_id,
-        "label": (ev.title or "").strip() or ev_id,
+        "label": (ev.title).strip() or ev_id,
         "group": 0,
-        "val": max(1, int(event_degree.get(ev_id, 0))),
+        "val": max(1, event_degree.get(ev_id, 0)),
         "meta": meta,
     }
 
 
-def _kg_entity_node(ent: Any, entity_hit_count: Counter[str], *, center_id: UUID | None = None) -> dict[str, Any]:
+def _kg_entity_node(
+    ent: "KgEntity", entity_hit_count: Counter[str], *, center_id: UUID | None = None
+) -> dict[str, Any]:
     ent_id = str(ent.id)
     meta: dict[str, Any] = {
         "kind": "entity",
-        "type": getattr(ent, "type", None),
-        "normalized_name": getattr(ent, "normalized_name", None),
+        "type": ent.type,
+        "normalized_name": ent.normalized_name,
     }
     if center_id is not None:
         meta["center"] = ent_id == str(center_id)
     return {
         "id": ent_id,
-        "label": (ent.name or "").strip() or ent_id,
-        "group": _stable_group_for(getattr(ent, "type", "") or "unknown"),
-        "val": max(1, int(entity_hit_count.get(ent_id, 0))),
+        "label": (ent.name).strip() or ent_id,
+        "group": _stable_group_for(ent.type or "unknown"),
+        "val": max(1, entity_hit_count.get(ent_id, 0)),
         "meta": meta,
     }
 
 
-def _kg_event_entity_link(assoc: Any, ent: Any) -> dict[str, Any]:
+def _kg_event_entity_link(assoc: "KgEventEntity", ent: "KgEntity") -> dict[str, Any]:
     ent_id = str(ent.id)
-    raw_extra = getattr(assoc, "extra_data", None)
+    raw_extra = assoc.extra_data
     edge_meta = {"kind": "event_entity"}
     edge_meta.update(
         build_event_entity_provenance(
@@ -100,21 +111,21 @@ def _kg_event_entity_link(assoc: Any, ent: Any) -> dict[str, Any]:
     return {
         "source": str(assoc.event_id),
         "target": ent_id,
-        "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
-        "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
+        "label": (assoc.role or "").strip() or ent.type or "mentions",
+        "weight": float(assoc.weight or 1.0),
         "meta": edge_meta,
     }
 
 
-def _kg_relation_link(rel: Any) -> dict[str, Any] | None:
-    subj = str(getattr(rel, "subject_entity_id", "") or "")
-    obj = str(getattr(rel, "object_entity_id", "") or "")
+def _kg_relation_link(rel: "KgRelation") -> dict[str, Any] | None:
+    subj = str(rel.subject_entity_id)
+    obj = str(rel.object_entity_id)
     if not subj or not obj:
         return None
-    pred = str(getattr(rel, "predicate", "") or "").strip()
+    pred = rel.predicate.strip()
     if not pred:
         return None
-    conf_raw = getattr(rel, "confidence", None)
+    conf_raw = rel.confidence
     try:
         conf = float(conf_raw) if conf_raw is not None else 1.0
     except Exception:
@@ -128,14 +139,14 @@ def _kg_relation_link(rel: Any) -> dict[str, Any] | None:
             "kind": "entity_relation",
             "predicate": pred,
             "confidence": conf,
-            "document_id": str(getattr(rel, "document_id", "") or ""),
-            "chunk_id": str(getattr(rel, "chunk_id", "") or ""),
-            "event_id": str(getattr(rel, "event_id", "") or ""),
+            "document_id": rel.document_id,
+            "chunk_id": rel.chunk_id,
+            "event_id": rel.event_id,
         },
     }
 
 
-def _kg_event_degrees(db: Session, kg_event_entity_model: Any, event_ids: list[UUID]) -> Counter[str]:
+def _kg_event_degrees(db: Session, kg_event_entity_model: type["KgEventEntity"], event_ids: list[UUID]) -> Counter[str]:
     from sqlalchemy import func
 
     degree_rows = (
@@ -149,7 +160,7 @@ def _kg_event_degrees(db: Session, kg_event_entity_model: Any, event_ids: list[U
 
 def _kg_allowed_entities(
     db: Session,
-    kg_event_entity_model: Any,
+    kg_event_entity_model: type["KgEventEntity"],
     event_ids: list[UUID],
     *,
     max_entities: int,
@@ -161,7 +172,7 @@ def _kg_allowed_entities(
         .filter(kg_event_entity_model.event_id.in_(event_ids))
         .group_by(kg_event_entity_model.entity_id)
         .order_by(func.count(kg_event_entity_model.event_id).desc())
-        .limit(int(max_entities))
+        .limit(max_entities)
         .all()
     )
     allowed_entity_ids = [row[0] for row in ent_rows if row and row[0]]
@@ -174,11 +185,11 @@ def _kg_allowed_entities(
 
 def _kg_event_entity_rows(
     db: Session,
-    kg_event_entity_model: Any,
-    kg_entity_model: Any,
+    kg_event_entity_model: type["KgEventEntity"],
+    kg_entity_model: type["KgEntity"],
     event_ids: list[UUID],
     allowed_entity_ids: list[UUID],
-) -> list[Any]:
+) -> list["Row[tuple[KgEventEntity, KgEntity]]"]:
     return (
         db.query(kg_event_entity_model, kg_entity_model)
         .join(kg_entity_model, kg_entity_model.id == kg_event_entity_model.entity_id)
@@ -191,7 +202,7 @@ def _kg_event_entity_rows(
 
 
 def _kg_entity_cooccurrence_counts(
-    rows: list[Any],
+    rows: list["Row[tuple[KgEventEntity, KgEntity]]"],
     allowed_entity_id_strs: set[str],
     *,
     per_event_entity_cap: int,
@@ -219,13 +230,13 @@ def _kg_entity_cooccurrence_counts(
 def _add_kg_entity_cooccurrence_links(
     *,
     links: list[dict[str, Any]],
-    rows: list[Any],
+    rows: list["Row[tuple[KgEventEntity, KgEntity]]"],
     allowed_entity_id_strs: set[str],
     max_links: int,
     max_entity_links: int,
     min_shared_events: int,
 ) -> int:
-    per_event_entity_cap = int(getattr(settings, "KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT", 60) or 60)
+    per_event_entity_cap = int(settings.KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT)
     per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
     co_counts = _kg_entity_cooccurrence_counts(
         rows,
@@ -234,10 +245,10 @@ def _add_kg_entity_cooccurrence_links(
     )
 
     links_added = 0
-    remaining_budget = max(0, int(max_links) - len(links))
-    edge_limit = min(int(max_entity_links), remaining_budget)
+    remaining_budget = max(0, max_links - len(links))
+    edge_limit = min(max_entity_links, remaining_budget)
     for (a, b), cnt in co_counts.most_common(edge_limit):
-        if int(cnt) < int(min_shared_events) or len(links) >= int(max_links):
+        if cnt < min_shared_events or len(links) >= max_links:
             break
         links.append(
             {
@@ -245,7 +256,7 @@ def _add_kg_entity_cooccurrence_links(
                 "target": b,
                 "label": "co_occurs",
                 "weight": float(cnt),
-                "meta": {"kind": "entity_entity", "shared_events": int(cnt)},
+                "meta": {"kind": "entity_entity", "shared_events": cnt},
             }
         )
         links_added += 1
@@ -279,13 +290,7 @@ def _resolve_entity_id_via_redirects(
     hops = 0
     while hops < max(1, int(max_hops or 0)):
         hops += 1
-        q = db.query(KgEntityRedirect)
-        # Compatibility: some unit tests use a lightweight FakeQuery that only implements `.filter(...)`.
-        if hasattr(q, "filter_by"):
-            q = q.filter_by(tenant_id=tenant_id, from_entity_id=cur)
-        else:
-            q = q.filter(KgEntityRedirect.tenant_id == tenant_id, KgEntityRedirect.from_entity_id == cur)
-        row = q.first()
+        row = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, from_entity_id=cur).first()
         if not row:
             break
         nxt = getattr(row, "to_entity_id", None)
@@ -295,35 +300,35 @@ def _resolve_entity_id_via_redirects(
     return cur
 
 
-def _relation_snapshot(rel: object) -> dict[str, Any]:
+def _relation_snapshot(rel: "KgRelation") -> dict[str, Any]:
     """Best-effort serialize a KgRelation row into a JSON-safe dict for undo payloads."""
     return {
-        "id": str(getattr(rel, "id", "")),
-        "tenant_id": str(getattr(rel, "tenant_id", "")),
-        "pipeline_hash": getattr(rel, "pipeline_hash", None),
-        "document_id": str(getattr(rel, "document_id", "")) if getattr(rel, "document_id", None) else None,
-        "chunk_id": str(getattr(rel, "chunk_id", "")) if getattr(rel, "chunk_id", None) else None,
-        "event_id": str(getattr(rel, "event_id", "")) if getattr(rel, "event_id", None) else None,
-        "subject_entity_id": str(getattr(rel, "subject_entity_id", "")),
-        "predicate": getattr(rel, "predicate", None),
-        "predicate_raw": getattr(rel, "predicate_raw", None),
-        "object_entity_id": str(getattr(rel, "object_entity_id", "")),
-        "confidence": float(getattr(rel, "confidence", 0.0) or 0.0),
-        "qualifiers": getattr(rel, "qualifiers", None),
-        "references": getattr(rel, "references", None),
-        "extra_data": getattr(rel, "extra_data", None),
+        "id": str(rel.id),
+        "tenant_id": str(rel.tenant_id),
+        "pipeline_hash": rel.pipeline_hash,
+        "document_id": str(rel.document_id) if rel.document_id else None,
+        "chunk_id": str(rel.chunk_id) if rel.chunk_id else None,
+        "event_id": str(rel.event_id) if rel.event_id else None,
+        "subject_entity_id": str(rel.subject_entity_id),
+        "predicate": rel.predicate,
+        "predicate_raw": rel.predicate_raw,
+        "object_entity_id": str(rel.object_entity_id),
+        "confidence": float(rel.confidence or 0.0),
+        "qualifiers": rel.qualifiers,
+        "references": rel.references,
+        "extra_data": rel.extra_data,
     }
 
 
-def _event_entity_snapshot(assoc: object) -> dict[str, Any]:
+def _event_entity_snapshot(assoc: "KgEventEntity") -> dict[str, Any]:
     """Best-effort serialize a KgEventEntity row into a JSON-safe dict for undo payloads."""
     return {
-        "id": str(getattr(assoc, "id", "")),
-        "event_id": str(getattr(assoc, "event_id", "")),
-        "entity_id": str(getattr(assoc, "entity_id", "")),
-        "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-        "role": getattr(assoc, "role", None),
-        "extra_data": getattr(assoc, "extra_data", None),
+        "id": str(assoc.id),
+        "event_id": str(assoc.event_id),
+        "entity_id": str(assoc.entity_id),
+        "weight": float(assoc.weight or 1.0),
+        "role": assoc.role,
+        "extra_data": assoc.extra_data,
     }
 
 
@@ -359,31 +364,18 @@ def _dict_list(values: object) -> list[dict]:
 
 def _audit_hash_text(text: str) -> str:
     """Stable short hash for potentially sensitive strings (PII-minimal)."""
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
-def _doc_pipeline_hash(meta: object) -> str | None:
-    """
-    Best-effort pipeline hash extraction from document metadata.
-
-    We prefer active_pipeline_hash when present, falling back to pipeline_hash.
-    """
-    if not isinstance(meta, dict):
-        return None
-    ph = meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or None
-    s = str(ph or "").strip()
-    return s or None
-
-
-def _chunk_matches_pipeline(chunk: object, *, document_id: UUID, pipeline_hash: str) -> bool:
+def _chunk_matches_pipeline(chunk: "DocumentChunk", *, document_id: UUID, pipeline_hash: str) -> bool:
     """
     Best-effort check whether a chunk belongs to a specific pipeline version.
 
     This is used by KG extraction to avoid mixing chunk versions when a document
     has been re-processed under multiple pipelines.
     """
-    meta_any = getattr(chunk, "doc_metadata", None)
+    meta_any = chunk.doc_metadata
     if not isinstance(meta_any, dict):
         return False
     doc_key = str(meta_any.get("doc_pipeline_key") or "").strip()
@@ -393,7 +385,7 @@ def _chunk_matches_pipeline(chunk: object, *, document_id: UUID, pipeline_hash: 
     return bool(ph and ph == pipeline_hash)
 
 
-def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
+def _active_pipeline_hash_expr(doc_model: type["DBDocument"]):  # noqa: ANN001
     """
     SQL expression for a document's active pipeline hash.
 
@@ -409,7 +401,7 @@ def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
     )
 
 
-def _apply_event_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: ANN001
+def _apply_event_pipeline_scope(query: "Query", *, pipeline_hash: str | None):  # noqa: ANN001
     """
     Apply pipeline scoping to a query that includes KgSourceEvent.
 
@@ -433,7 +425,7 @@ def _apply_event_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: A
     ).filter(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
 
 
-def _apply_relation_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: ANN001
+def _apply_relation_pipeline_scope(query: "Query", *, pipeline_hash: str | None):  # noqa: ANN001
     """
     Apply pipeline scoping to a query that includes KgRelation.
 
@@ -464,7 +456,7 @@ def _resolve_allowed_documents(
     account_id: str,
     db: Session,
 ) -> list[UUID]:
-    eff_limit = max(0, int(getattr(settings, "KG_API_MAX_DOCUMENT_IDS", 500) or 500))
+    eff_limit = max(0, int(settings.KG_API_MAX_DOCUMENT_IDS))
     if document_ids:
         # Deduplicate while preserving original order.
         seen: set[UUID] = set()
@@ -501,8 +493,8 @@ def _kg_graph_limits(params: KGGraphProjectionParams, *, expand: bool = False) -
         max_events=_kg_limit_value(params.max_events, default_max_events),
         max_entities=_kg_limit_value(params.max_entities, 400),
         max_links=_kg_limit_value(params.max_links, default_max_links),
-        include_entity_links=bool(params.include_entity_links),
-        include_relation_links=bool(params.include_relation_links),
+        include_entity_links=params.include_entity_links,
+        include_relation_links=params.include_relation_links,
         min_shared_events=_kg_limit_value(params.min_shared_events, 2),
         max_entity_links=_kg_limit_value(params.max_entity_links, default_max_entity_links),
     )
@@ -544,25 +536,25 @@ def _empty_kg_graph_response(
 
 def _load_kg_projection_events(
     db: Session,
-    source_event_model: Any,
+    source_event_model: type["KgSourceEvent"],
     *,
     tenant_id: UUID,
     allowed_doc_ids: list[UUID],
     pipeline_hash: str | None,
     max_events: int,
-) -> list[Any]:
+) -> list["KgSourceEvent"]:
     events_q = db.query(source_event_model).filter(
         source_event_model.tenant_id == tenant_id,
         source_event_model.document_id.in_(allowed_doc_ids),
     )
     events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
-    return events_q.order_by(source_event_model.updated_at.desc()).limit(int(max_events)).all()
+    return events_q.order_by(source_event_model.updated_at.desc()).limit(max_events).all()
 
 
 def _event_entity_nodes_and_links(
     *,
-    events: list[Any],
-    rows: list[tuple[Any, Any]],
+    events: list["KgSourceEvent"],
+    rows: list["Row[tuple[KgEventEntity, KgEntity]]"],
     event_degree: Counter[str],
     allowed_entity_id_strs: set[str],
     entity_hit_count: Counter[str],
@@ -579,14 +571,14 @@ def _event_entity_nodes_and_links(
         if ent_id not in seen_entities:
             seen_entities.add(ent_id)
             nodes.append(_kg_entity_node(ent, entity_hit_count, center_id=center_id))
-        if len(links) < int(max_links):
+        if len(links) < max_links:
             links.append(_kg_event_entity_link(assoc, ent))
     return nodes, links, seen_entities
 
 
 def _append_relation_links(
     db: Session,
-    relation_model: Any,
+    relation_model: type["KgRelation"],
     *,
     tenant_id: UUID,
     allowed_doc_ids: list[UUID],
@@ -595,7 +587,7 @@ def _append_relation_links(
     links: list[dict],
     max_links: int,
 ) -> int:
-    remaining_budget = max(0, int(max_links) - len(links))
+    remaining_budget = max(0, max_links - len(links))
     if remaining_budget <= 0:
         return 0
     rel_q = db.query(relation_model).filter(
@@ -606,8 +598,8 @@ def _append_relation_links(
     )
     rel_q = _apply_relation_pipeline_scope(rel_q, pipeline_hash=pipeline_hash)
     added = 0
-    for rel in rel_q.order_by(relation_model.updated_at.desc()).limit(int(remaining_budget)).all():
-        if len(links) >= int(max_links):
+    for rel in rel_q.order_by(relation_model.updated_at.desc()).limit(remaining_budget).all():
+        if len(links) >= max_links:
             break
         link = _kg_relation_link(rel)
         if link is None:
@@ -622,7 +614,7 @@ def _build_kg_graph_response_from_events(
     *,
     tenant_id: UUID,
     allowed_doc_ids: list[UUID],
-    events: list[Any],
+    events: list["KgSourceEvent"],
     limits: KGGraphProjectionLimits,
     pipeline_hash: str | None,
     center_id: UUID | None = None,
@@ -635,7 +627,7 @@ def _build_kg_graph_response_from_events(
         db,
         KgEventEntity,
         event_ids,
-        max_entities=int(limits.max_entities),
+        max_entities=limits.max_entities,
     )
     if not allowed_entity_ids:
         nodes = [_kg_event_node(ev, event_degree, center_id=center_id) for ev in events]
@@ -653,12 +645,12 @@ def _build_kg_graph_response_from_events(
         event_degree=event_degree,
         allowed_entity_id_strs=allowed_entity_id_strs,
         entity_hit_count=entity_hit_count,
-        max_links=int(limits.max_links),
+        max_links=limits.max_links,
         center_id=center_id,
     )
     event_entity_links = len(links)
     relation_links_added = 0
-    if limits.include_relation_links and len(links) < int(limits.max_links):
+    if limits.include_relation_links and len(links) < limits.max_links:
         relation_links_added = _append_relation_links(
             db,
             KgRelation,
@@ -667,24 +659,24 @@ def _build_kg_graph_response_from_events(
             allowed_entity_ids=allowed_entity_ids,
             pipeline_hash=pipeline_hash,
             links=links,
-            max_links=int(limits.max_links),
+            max_links=limits.max_links,
         )
 
     entity_links_added = 0
-    if limits.include_entity_links and int(limits.max_entity_links) > 0 and len(links) < int(limits.max_links):
+    if limits.include_entity_links and limits.max_entity_links > 0 and len(links) < limits.max_links:
         entity_links_added = _add_kg_entity_cooccurrence_links(
             links=links,
             rows=rows,
             allowed_entity_id_strs=allowed_entity_id_strs,
-            max_links=int(limits.max_links),
-            max_entity_links=int(limits.max_entity_links),
-            min_shared_events=int(limits.min_shared_events),
+            max_links=limits.max_links,
+            max_entity_links=limits.max_entity_links,
+            min_shared_events=limits.min_shared_events,
         )
 
     stats: dict[str, Any] = {
         "events": len(events),
         "entities": len(seen_entities),
-        "links": min(len(links), int(limits.max_links)),
+        "links": min(len(links), limits.max_links),
         "event_entity_links": event_entity_links,
         "entity_relation_links": relation_links_added,
         "entity_entity_links": entity_links_added,
@@ -701,12 +693,12 @@ def _build_kg_graph_response_from_events(
 
 def _related_event_ids_for_center_event(
     db: Session,
-    event_entity_model: Any,
-    source_event_model: Any,
+    event_entity_model: type["KgEventEntity"],
+    source_event_model: type["KgSourceEvent"],
     *,
     tenant_id: UUID,
     allowed_doc_ids: list[UUID],
-    center_event: Any,
+    center_event: "KgSourceEvent",
     pipeline_hash: str | None,
     max_events: int,
 ) -> list[UUID]:
@@ -714,7 +706,7 @@ def _related_event_ids_for_center_event(
         db.query(event_entity_model.entity_id).filter(event_entity_model.event_id == center_event.id).limit(2000).all()
     )
     entity_ids_flat = [row[0] for row in entity_ids]
-    if not entity_ids_flat or int(max_events) <= 1:
+    if not entity_ids_flat or max_events <= 1:
         return []
     related_q = (
         db.query(event_entity_model.event_id)
@@ -728,21 +720,20 @@ def _related_event_ids_for_center_event(
     )
     related_q = _apply_event_pipeline_scope(related_q, pipeline_hash=pipeline_hash)
     return [
-        row[0]
-        for row in related_q.order_by(source_event_model.updated_at.desc()).limit(max(0, int(max_events) - 1)).all()
+        row[0] for row in related_q.order_by(source_event_model.updated_at.desc()).limit(max(0, max_events - 1)).all()
     ]
 
 
 def _load_events_by_ids(
     db: Session,
-    source_event_model: Any,
+    source_event_model: type["KgSourceEvent"],
     *,
     tenant_id: UUID,
     allowed_doc_ids: list[UUID],
     event_ids: list[UUID],
     pipeline_hash: str | None,
     max_events: int,
-) -> list[Any]:
+) -> list["KgSourceEvent"]:
     if not event_ids:
         return []
     events_q = db.query(source_event_model).filter(
@@ -751,13 +742,13 @@ def _load_events_by_ids(
         source_event_model.document_id.in_(allowed_doc_ids),
     )
     events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
-    return events_q.order_by(source_event_model.updated_at.desc()).limit(int(max_events)).all()
+    return events_q.order_by(source_event_model.updated_at.desc()).limit(max_events).all()
 
 
 def _event_ids_for_center_entity(
     db: Session,
-    event_entity_model: Any,
-    source_event_model: Any,
+    event_entity_model: type["KgEventEntity"],
+    source_event_model: type["KgSourceEvent"],
     *,
     tenant_id: UUID,
     allowed_doc_ids: list[UUID],
@@ -775,7 +766,7 @@ def _event_ids_for_center_entity(
         )
     )
     ev_ids_q = _apply_event_pipeline_scope(ev_ids_q, pipeline_hash=pipeline_hash)
-    return [row[0] for row in ev_ids_q.order_by(source_event_model.updated_at.desc()).limit(int(max_events)).all()]
+    return [row[0] for row in ev_ids_q.order_by(source_event_model.updated_at.desc()).limit(max_events).all()]
 
 
 def _expanded_kg_events_for_node(
@@ -786,7 +777,7 @@ def _expanded_kg_events_for_node(
     allowed_doc_ids: list[UUID],
     pipeline_hash: str | None,
     max_events: int,
-) -> tuple[list[Any], str | None]:
+) -> tuple[list["KgSourceEvent"], str | None]:
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
     center_event_q = db.query(KgSourceEvent).filter(

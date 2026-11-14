@@ -1,4 +1,3 @@
-
 import hashlib
 from collections.abc import Sequence
 from typing import Any
@@ -15,9 +14,9 @@ def normalize_ruleset_names(raw: Any, *, max_items: int = 8) -> list[str]:
     if isinstance(raw, str):
         values = [p.strip() for p in raw.replace(";", ",").split(",")]
     elif isinstance(raw, Sequence) and not isinstance(raw, (bytes, bytearray)):
-        values = [str(item or "").strip() for item in raw]
+        values = [str(item).strip() for item in raw if item is not None]
     else:
-        values = [str(raw or "").strip()]
+        values = [str(raw).strip()]
 
     out: list[str] = []
     seen: set[str] = set()
@@ -36,50 +35,32 @@ def normalize_ruleset_names(raw: Any, *, max_items: int = 8) -> list[str]:
 
 
 def _hash_text(value: str) -> str:
-    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[str]) -> dict[str, Any]:
+    query_hash = _hash_text(original)
     return {
         "schema": _SCHEMA,
-        "enabled": bool(enabled),
+        "enabled": enabled,
         "used": False,
         "rulesets_requested": ruleset_names,
         "rulesets_used": [],
         "alias_count": 0,
         "query_changed": False,
-        "query_hash": _hash_text(original),
-        "expanded_query_hash": _hash_text(original),
+        "query_hash": query_hash,
+        "expanded_query_hash": query_hash,
         "errors": [],
     }
 
 
-def _collect_matching_aliases(*, before: str, glossary: dict[str, Any], aliases: list[str]) -> None:
-    for term, values in (glossary or {}).items():
-        token = str(term or "").strip()
-        if not token or token not in before:
+def _collect_matching_aliases(*, before: str, glossary: dict[str, list[str]], aliases: list[str]) -> None:
+    for term, values in glossary.items():
+        if term not in before:
             continue
-        for value in values or []:
-            alias = str(value or "").strip()
-            if alias and alias not in aliases:
+        for alias in values:
+            if alias not in aliases:
                 aliases.append(alias)
-
-
-def _apply_ruleset_expansion(
-    *,
-    name: str,
-    expanded: str,
-    aliases: list[str],
-    meta: dict[str, Any],
-) -> str:
-    ruleset = load_ruleset(name)
-    before = expanded
-    after = expand_query_terms(expanded, ruleset.glossary)
-    if after == before:
-        return expanded
-    _collect_matching_aliases(before=before, glossary=ruleset.glossary, aliases=aliases)
-    meta["rulesets_used"].append(name)
-    return after
 
 
 def apply_industry_rules_query_expansion(
@@ -90,7 +71,7 @@ def apply_industry_rules_query_expansion(
     max_aliases: int = 16,
     max_query_chars: int = 2000,
 ) -> tuple[str, dict[str, Any]]:
-    original = str(query or "").strip()
+    original = query.strip()
     max_aliases_i = max(0, int(max_aliases or 0))
     max_query_chars_i = max(64, int(max_query_chars or 2000))
     names = normalize_ruleset_names(ruleset_names)
@@ -102,12 +83,13 @@ def apply_industry_rules_query_expansion(
     aliases: list[str] = []
     for name in names:
         try:
-            expanded = _apply_ruleset_expansion(
-                name=name,
-                expanded=expanded,
-                aliases=aliases,
-                meta=meta,
-            )
+            ruleset = load_ruleset(name)
+            before = expanded
+            after = expand_query_terms(expanded, ruleset.glossary)
+            if after != before:
+                _collect_matching_aliases(before=before, glossary=ruleset.glossary, aliases=aliases)
+                meta["rulesets_used"].append(name)
+            expanded = after
         except Exception as exc:  # noqa: BLE001
             meta["errors"].append({"ruleset": name, "error": str(exc)[:160]})
         if len(aliases) >= max_aliases_i:
@@ -119,9 +101,9 @@ def apply_industry_rules_query_expansion(
     if len(expanded) > max_query_chars_i:
         expanded = expanded[:max_query_chars_i].rstrip()
 
-    meta["alias_count"] = max(0, len([a for a in aliases[:max_aliases_i] if a]))
+    meta["alias_count"] = len(aliases[:max_aliases_i])
     meta["query_changed"] = expanded != original
-    meta["used"] = bool(meta["query_changed"])
+    meta["used"] = meta["query_changed"]
     meta["expanded_query_hash"] = _hash_text(expanded)
     return expanded, meta
 

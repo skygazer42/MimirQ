@@ -4,7 +4,6 @@ LangChain TokenTextSplitter wrapper.
 Splits text by token count using tiktoken encoding.
 """
 
-
 from langchain_core.documents import Document
 from langchain_text_splitters import TokenTextSplitter
 
@@ -23,7 +22,7 @@ class LangChainTokenChunker(BaseChunker):
         chunk_size: int,
         chunk_overlap: int,
         encoding_name: str = "cl100k_base",
-    ):
+    ) -> None:
         # NOTE: For langchain_token strategy, the UI/docs treat chunk_size/chunk_overlap as *tokens*.
         # Keep this strategy token-native (unlike other strategies which use chars).
         self.chunk_size_tokens = max(1, int(chunk_size) or 1)
@@ -47,15 +46,12 @@ class LangChainTokenChunker(BaseChunker):
             self.splitter = None
 
     def _split_text_fallback(self, text: str) -> list[str]:
-        raw = text or ""
+        raw = text
         if not raw:
             return []
 
         # Heuristic: approximate chars/token from the whole text, then split by char window.
-        est = estimate_tokens(raw)
-        chars_per_token = 4
-        if isinstance(est, int) and est > 0:
-            chars_per_token = max(1, len(raw) // est)
+        chars_per_token = max(1, len(raw) // estimate_tokens(raw))
 
         chunk_chars = max(1, self.chunk_size_tokens * chars_per_token)
         overlap_chars = max(0, self.chunk_overlap_tokens * chars_per_token)
@@ -89,7 +85,7 @@ class LangChainTokenChunker(BaseChunker):
                 if start_idx == -1:
                     start_idx = current_pos
                 end_idx = start_idx + len(split_text)
-                metadata = dict(doc.metadata or {})
+                metadata = dict(doc.metadata)
                 metadata["start_char"] = start_idx
                 metadata["end_char"] = end_idx
                 metadata["chunk_strategy"] = "langchain_token"

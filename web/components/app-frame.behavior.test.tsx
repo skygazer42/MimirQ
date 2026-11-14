@@ -25,9 +25,7 @@ vi.mock('@/store/document-view', () => ({
 import { AppFrame } from './app-frame'
 
 function renderFrame(isMobile: boolean) {
-  ;(
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
@@ -44,6 +42,9 @@ function renderFrame(isMobile: boolean) {
 
   return {
     container,
+    setNavigationVariant(navigationVariant: 'default' | 'rail') {
+      act(() => root.render(<AppFrame navigationVariant={navigationVariant}>content</AppFrame>))
+    },
     unmount() {
       act(() => root.unmount())
       container.remove()
@@ -70,6 +71,16 @@ describe('AppFrame responsive sidebar', () => {
     const view = renderFrame(false)
 
     expect(view.container.querySelector('[data-testid="navbar"]')?.getAttribute('data-open')).toBe('true')
+
+    view.unmount()
+  })
+
+  it('uses the compact rail when switching from an already open workspace', () => {
+    const view = renderFrame(false)
+    view.setNavigationVariant('rail')
+
+    expect(view.container.querySelector('[data-testid="navbar"]')?.getAttribute('data-open')).toBe('false')
+    expect(view.container.querySelector('#main-content')?.parentElement?.hasAttribute('aria-hidden')).toBe(false)
 
     view.unmount()
   })

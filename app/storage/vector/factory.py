@@ -1,21 +1,17 @@
 """
-Vector store router: supports multiple backends.
-Milvus is implemented today; other backends are placeholders for extension.
+Vector store router for Milvus, memory, Qdrant and pgvector.
 Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
 
 import json
 import math
-import os
 import threading
-import time
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
-from app.rag.core.filters import match_metadata_filter
+from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
@@ -23,228 +19,16 @@ from app.storage.vector.milvus import milvus_store
 from app.storage.vector.pgvector import PGVectorStore
 from app.storage.vector.qdrant import QdrantVectorStore
 
+if TYPE_CHECKING:
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
+
 logger = get_logger("storage.vector.factory")
-
-_FAISS_CLS = None
-_CHROMA_CLS = None
-_CHROMA_JSON_PREFIX = "__mimirq_json_v1__:"
-_CHROMA_ESCAPED_STRING_PREFIX = "__mimirq_string_v1__:"
-
-
-def _get_faiss_cls():
-    global _FAISS_CLS
-    if _FAISS_CLS is not None:
-        return _FAISS_CLS
-    try:
-        # `langchain_community.vectorstores.FAISS` lazily imports `faiss` in some code paths,
-        # which can make optional-dependency failures surface later (and break tests that
-        # only probe `_get_faiss_cls`). Import `faiss` eagerly so callers can reliably
-        # detect availability and skip gracefully when the binary is broken (e.g. numpy ABI mismatch).
-        import faiss as faiss
-        from langchain_community.vectorstores import FAISS
-
-        _FAISS_CLS = FAISS
-        return _FAISS_CLS
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "FAISS vector backend requires optional dependencies. Install `faiss-cpu` and `langchain-community`."
-        ) from exc
-
-
-def _get_chroma_cls():
-    global _CHROMA_CLS
-    if _CHROMA_CLS is not None:
-        return _CHROMA_CLS
-    try:
-        # `Chroma` wrappers may import `chromadb` lazily at instance-construction time.
-        # Import it eagerly so optional-dependency problems are surfaced deterministically
-        # when callers probe backend availability.
-        import chromadb  # noqa: F401
-
-        chromadb_file = getattr(chromadb, "__file__", None)
-        # In unit tests we often monkeypatch a tiny `chromadb` stub module without a backing file;
-        # skip deep optional-dependency validation in that case so preference/fallback behavior
-        # can still be tested independently from the host environment.
-        if chromadb_file:
-            import pypika as pypika
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "Chroma vector backend requires optional dependencies. "
-            "Ensure `chromadb` is installed and importable, and install "
-            "`langchain-chroma` (preferred) or `langchain-community`."
-        ) from exc
-    try:
-        # Prefer the dedicated package to avoid upstream deprecations.
-        from langchain_chroma import Chroma  # type: ignore[import-not-found]
-
-        _CHROMA_CLS = Chroma
-        return _CHROMA_CLS
-    except Exception:  # noqa: BLE001
-        try:
-            from langchain_community.vectorstores import Chroma
-
-            _CHROMA_CLS = Chroma
-            return _CHROMA_CLS
-        except Exception as exc2:  # noqa: BLE001
-            raise RuntimeError(
-                "Chroma vector backend requires optional dependencies. "
-                "Install `chromadb` and `langchain-chroma` (preferred) or `langchain-community`."
-            ) from exc2
-
-
-def _match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) -> bool:
-    """Metadata filter matcher (supports operators)."""
-    return match_metadata_filter(meta, filter_spec)
-
-
-def _tenant_lock_key(tenant_id: UUID | None) -> str:
-    return str(tenant_id or settings.DEFAULT_TENANT_ID)
-
-
-def _encode_chroma_metadata(metadata: dict[str, Any]) -> dict[str, str | int | float | bool | None]:
-    """Flatten complex metadata without losing it on Chroma round trips."""
-    encoded: dict[str, str | int | float | bool | None] = {}
-    for raw_key, value in metadata.items():
-        key = str(raw_key)
-        if isinstance(value, str):
-            if value.startswith((_CHROMA_JSON_PREFIX, _CHROMA_ESCAPED_STRING_PREFIX)):
-                encoded[key] = f"{_CHROMA_ESCAPED_STRING_PREFIX}{value}"
-            else:
-                encoded[key] = value
-            continue
-        if value is None or isinstance(value, (bool, int, float)):
-            encoded[key] = value
-            continue
-        try:
-            payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
-        except (TypeError, ValueError):
-            payload = json.dumps(str(value), ensure_ascii=False, separators=(",", ":"))
-        encoded[key] = f"{_CHROMA_JSON_PREFIX}{payload}"
-    return encoded
-
-
-def _decode_chroma_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    decoded: dict[str, Any] = {}
-    for key, value in metadata.items():
-        if isinstance(value, str) and value.startswith(_CHROMA_ESCAPED_STRING_PREFIX):
-            decoded[key] = value.removeprefix(_CHROMA_ESCAPED_STRING_PREFIX)
-            continue
-        if isinstance(value, str) and value.startswith(_CHROMA_JSON_PREFIX):
-            try:
-                decoded[key] = json.loads(value.removeprefix(_CHROMA_JSON_PREFIX))
-                continue
-            except (TypeError, ValueError, json.JSONDecodeError):
-                pass
-        decoded[key] = value
-    return decoded
-
-
-def _search_candidate_limit(top_k: int, total_candidates: int | None) -> int:
-    limit = max(top_k, top_k * 2)
-    if total_candidates is None:
-        return limit
-    return max(0, min(limit, total_candidates))
-
-
-def _should_expand_candidate_window(
-    *,
-    accepted_hits: int,
-    top_k: int,
-    requested_k: int,
-    returned_hits: int,
-    total_candidates: int | None,
-) -> bool:
-    if accepted_hits >= top_k:
-        return False
-    if returned_hits < requested_k:
-        return False
-    if total_candidates is None:
-        return True
-    return requested_k < total_candidates
-
-
-def _next_candidate_limit(requested_k: int, total_candidates: int | None) -> int:
-    next_limit = max(requested_k + 1, requested_k * 2)
-    if total_candidates is None:
-        return next_limit
-    return min(next_limit, total_candidates)
-
-
-def _yield_refill_lock_handoff() -> None:
-    """
-    Yield once between refill rounds so waiting writers can acquire the tenant lock.
-
-    The refill loop may need multiple similarity-search calls when post-filtering removes
-    early hits. Holding the tenant lock across the entire loop creates a long critical
-    section and starves same-tenant writes. A tiny positive sleep keeps each underlying
-    search thread-safe while giving blocked writers a realistic chance before the next
-    refill round re-acquires the lock.
-    """
-    time.sleep(0.001)
-
-
-def _similarity_hits(
-    *,
-    results: list[Any],
-    score_threshold: float,
-    allowed: set[str] | None,
-    metadata_filter: dict[str, Any] | None,
-    metadata_loader,
-) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for doc, score in results:
-        metadata = metadata_loader(doc)
-        if allowed and metadata.get("document_id") not in allowed:
-            continue
-        if metadata_filter and not _match_metadata_filter(metadata, metadata_filter):
-            continue
-        similarity = 1.0 / (1.0 + float(score))
-        if similarity < score_threshold:
-            continue
-        out.append(
-            {
-                "chunk_id": doc.id,
-                "content": doc.page_content,
-                "metadata": metadata,
-                "score": similarity,
-                "vector_score": similarity,
-            }
-        )
-    return out
-
-
-def _docstore_ids_matching_filter(docstore: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
-    target = str(document_id)
-    ids_to_delete: list[str] = []
-    try:
-        for doc_id, doc in getattr(docstore, "_dict", {}).items():
-            metadata = getattr(doc, "metadata", None) or {}
-            if str(metadata.get("document_id") or "") != target:
-                continue
-            if _match_metadata_filter(metadata, metadata_filter):
-                ids_to_delete.append(str(doc_id))
-    except Exception:
-        return []
-    return ids_to_delete
-
-
-def _chroma_ids_matching_filter(collection: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
-    got = collection.get(where={"document_id": str(document_id)}, include=["metadatas"])
-    ids = got.get("ids") or []
-    metadatas = got.get("metadatas") or []
-    ids_to_delete: list[str] = []
-    for chunk_id, metadata in zip(ids, metadatas, strict=False):
-        if not isinstance(metadata, dict):
-            continue
-        if _match_metadata_filter(_decode_chroma_metadata(metadata), metadata_filter):
-            ids_to_delete.append(str(chunk_id))
-    return ids_to_delete
 
 
 class BaseVectorStore:
-    """Unified interface for future FAISS/Chroma/Memory extensions."""
+    """Unified interface for vector storage backends."""
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         raise NotImplementedError
 
     def search(
@@ -276,14 +60,14 @@ class BaseVectorStore:
         """
         raise NotImplementedError
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         raise NotImplementedError
 
 
 class MilvusVectorStore(BaseVectorStore):
     """Milvus backend wrapper."""
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         return milvus_store.add_documents(docs, document_id, tenant_id)
 
     def search(
@@ -318,41 +102,8 @@ class MilvusVectorStore(BaseVectorStore):
             document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter
         )
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return milvus_store.get_embedding_model()
-
-
-class StubVectorStore(BaseVectorStore):
-    """Placeholder implementation for future backends."""
-
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        raise RuntimeError("Vector backend not implemented")
-
-    def search(
-        self,
-        query: str,
-        top_k: int,
-        score_threshold: float,
-        document_ids: list[UUID] | None,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        return []
-
-    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        return
-
-    def delete_by_document_id_and_filter(
-        self,
-        *,
-        document_id: UUID,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any],
-    ) -> None:
-        raise NotImplementedError("Vector backend not implemented")
-
-    def get_embedding_client(self):  # noqa: ANN201
-        raise RuntimeError("Vector backend does not expose an embedding client")
 
 
 class MemoryVectorStore(BaseVectorStore):
@@ -361,26 +112,26 @@ class MemoryVectorStore(BaseVectorStore):
     Uses OpenAI-compatible embeddings (requires EMBEDDING_API_KEY/LLM_API_KEY).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         provider = EmbeddingProviders.PROVIDER_MAP.get(
             (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
         )
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
+        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
         self.emb = create_langchain_embeddings_from_config(
             provider=provider,
             model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
+            api_key=api_key,
+            base_url=base_url,
             dimension=None,
         )
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
         self._lock = threading.RLock()
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         with self._lock:
-            texts = [d.get("content", "") for d in docs]
+            texts = [d["content"] for d in docs]
             vectors = self.emb.embed_documents(texts)
             for vec, doc in zip(vectors, docs, strict=False):
                 meta = dict(doc.get("metadata") or {})
@@ -388,7 +139,7 @@ class MemoryVectorStore(BaseVectorStore):
                 meta.setdefault("tenant_id", str(tenant_id))
                 if meta.get("chunk_id"):
                     meta["chunk_id"] = str(meta.get("chunk_id"))
-                meta.setdefault("content", doc.get("content", ""))
+                meta.setdefault("content", doc["content"])
                 self.storage.append((vec, meta))
             # In-memory mode uses placeholder IDs instead of real vector IDs.
             ids: list[str] = []
@@ -433,7 +184,7 @@ class MemoryVectorStore(BaseVectorStore):
                 results.append(
                     {
                         "chunk_id": meta.get("chunk_id"),
-                        "content": meta.get("content") or meta.get("text") or "",
+                        "content": meta["content"],
                         "metadata": meta,
                         "score": score,
                         "vector_score": score,
@@ -474,419 +225,37 @@ class MemoryVectorStore(BaseVectorStore):
                 )
             ]
 
-    def get_embedding_client(self):  # noqa: ANN201
-        return self.emb
-
-
-class FAISSVectorStore(BaseVectorStore):
-    """
-    FAISS backend for single-node/local development with optional persistence.
-    """
-
-    def __init__(self):
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
-        model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
-        provider = EmbeddingProviders.PROVIDER_MAP.get(
-            (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
-        )
-        self.emb = create_langchain_embeddings_from_config(
-            provider=provider,
-            model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
-            dimension=None,
-        )
-        self.store_by_tenant: dict[str, Any] = {}
-        self.persist_path = settings.FAISS_STORE_PATH
-        self.allow_dangerous_deserialization = bool(getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False))
-        self._warned_dangerous_deserialization = False
-        self._tenant_locks_guard = threading.Lock()
-        self._tenant_locks: dict[str, threading.RLock] = {}
-
-    def _get_tenant_lock(self, tenant_id: UUID | None) -> threading.RLock:
-        key = _tenant_lock_key(tenant_id)
-        with self._tenant_locks_guard:
-            lock = self._tenant_locks.get(key)
-            if lock is None:
-                lock = threading.RLock()
-                self._tenant_locks[key] = lock
-            return lock
-
-    def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any | None]:
-        key = _tenant_lock_key(tenant_id)
-        with self._get_tenant_lock(tenant_id):
-            store = self.store_by_tenant.get(key)
-            # If a persistence path exists and memory isn't loaded, try loading it.
-            if store is None and self.persist_path and os.path.isdir(self.persist_path):
-                if not self.allow_dangerous_deserialization:
-                    if not self._warned_dangerous_deserialization:
-                        logger.warning(
-                            "FAISS persistence found at %s but loading is disabled. "
-                            "Set FAISS_ALLOW_DANGEROUS_DESERIALIZATION=true only if the directory is trusted.",
-                            self.persist_path,
-                        )
-                        self._warned_dangerous_deserialization = True
-                    return key, None
-                try:
-                    faiss_cls = _get_faiss_cls()
-                    store = faiss_cls.load_local(
-                        folder_path=self.persist_path,
-                        embeddings=self.emb,
-                        index_name=key,
-                        allow_dangerous_deserialization=True,
-                    )
-                    self.store_by_tenant[key] = store
-                except Exception:
-                    store = None
-            return key, store
-
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        with self._get_tenant_lock(tenant_id):
-            texts = [d.get("content", "") for d in docs]
-            metadatas = []
-            ids = []
-            for idx, doc in enumerate(docs):
-                meta = dict(doc.get("metadata") or {})
-                meta.setdefault("document_id", str(document_id))
-                meta.setdefault("tenant_id", str(tenant_id))
-                meta.setdefault("chunk_index", idx)
-                if meta.get("chunk_id"):
-                    meta["chunk_id"] = str(meta.get("chunk_id"))
-                if "img_id" in meta and "image_id" not in meta:
-                    meta["image_id"] = meta.get("img_id")
-                if "image_url" not in meta:
-                    meta.setdefault("image_url", meta.get("img_url"))
-                metadatas.append(meta)
-                ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
-
-            key, store = self._get_store(tenant_id)
-            if store is None:
-                faiss_cls = _get_faiss_cls()
-                store = faiss_cls.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas, ids=ids)
-            else:
-                store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-
-            self.store_by_tenant[key] = store
-            # Persist (full save each time).
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                store.save_local(self.persist_path, index_name=key)
-            return ids
-
-    def search(
-        self,
-        query: str,
-        top_k: int,
-        score_threshold: float,
-        document_ids: list[UUID] | None,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        allowed = {str(did) for did in document_ids} if document_ids else None
-        requested_k: int | None = None
-        out: list[dict[str, Any]] = []
-        while True:
-            with self._get_tenant_lock(tenant_id):
-                _key, store = self._get_store(tenant_id)
-                if store is None:
-                    return []
-                docstore = getattr(getattr(store, "docstore", None), "_dict", None)
-                total_candidates = len(docstore) if isinstance(docstore, Mapping) else None
-                if requested_k is None:
-                    requested_k = _search_candidate_limit(top_k, total_candidates)
-                elif total_candidates is not None:
-                    requested_k = min(requested_k, total_candidates)
-                if requested_k <= 0:
-                    return []
-                results = store.similarity_search_with_score(query, k=requested_k)
-            out = _similarity_hits(
-                results=results,
-                score_threshold=score_threshold,
-                allowed=allowed,
-                metadata_filter=metadata_filter,
-                metadata_loader=lambda doc: doc.metadata or {},
-            )
-            if not _should_expand_candidate_window(
-                accepted_hits=len(out),
-                top_k=top_k,
-                requested_k=requested_k,
-                returned_hits=len(results),
-                total_candidates=total_candidates,
-            ):
-                break
-            next_k = _next_candidate_limit(requested_k, total_candidates)
-            if next_k <= requested_k:
-                break
-            requested_k = next_k
-            _yield_refill_lock_handoff()
-        out.sort(key=lambda x: x["score"], reverse=True)
-        return out[:top_k]
-
-    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        with self._get_tenant_lock(tenant_id):
-            key, store = self._get_store(tenant_id)
-            if store is None:
-                return
-            target = str(document_id)
-            ids_to_delete = []
-            try:
-                for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
-                    if str((doc.metadata or {}).get("document_id")) == target:
-                        ids_to_delete.append(str(doc_id))
-            except Exception:
-                ids_to_delete = []
-
-            if ids_to_delete and hasattr(store, "delete"):
-                try:
-                    store.delete(ids_to_delete)
-                except Exception as exc:
-                    logger.debug("Ignoring FAISS delete-by-document-id failure: %s", exc)
-
-            # Persist (overwrite save).
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                store.save_local(self.persist_path, index_name=key)
-
-    def delete_by_document_id_and_filter(
-        self,
-        *,
-        document_id: UUID,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any],
-    ) -> None:
-        """
-        Best-effort selective delete for FAISS.
-
-        LangChain's FAISS wrapper supports delete-by-id (docstore keys), but does not provide
-        a stable "where" API. We implement selective delete by scanning the in-memory docstore
-        metadata for matches and deleting those doc IDs.
-        """
-        with self._get_tenant_lock(tenant_id):
-            if not metadata_filter or not isinstance(metadata_filter, dict):
-                return self.delete_by_document_id(document_id, tenant_id=tenant_id)
-
-            key, store = self._get_store(tenant_id)
-            if store is None:
-                return
-
-            ids_to_delete = _docstore_ids_matching_filter(
-                getattr(store, "docstore", None),
-                document_id=document_id,
-                metadata_filter=metadata_filter,
-            )
-            if not ids_to_delete:
-                return
-
-            if not hasattr(store, "delete"):
-                raise NotImplementedError("Selective delete is not supported for FAISS backend")
-            try:
-                store.delete(ids_to_delete)
-            except Exception as exc:
-                raise NotImplementedError("Selective delete is not supported for FAISS backend") from exc
-
-            # Persist (overwrite save) if enabled.
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                store.save_local(self.persist_path, index_name=key)
-
-    def get_embedding_client(self):  # noqa: ANN201
-        return self.emb
-
-
-class ChromaVectorStore(BaseVectorStore):
-    """Chroma backend persisted to a local path."""
-
-    def __init__(self):
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
-        model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
-        provider = EmbeddingProviders.PROVIDER_MAP.get(
-            (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
-        )
-        self.emb = create_langchain_embeddings_from_config(
-            provider=provider,
-            model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
-            dimension=None,
-        )
-        # Empty path => in-memory Chroma (useful for unit tests / ephemeral runs).
-        self.persist_path = str(settings.CHROMA_PERSIST_PATH or "").strip()
-        if self.persist_path:
-            os.makedirs(self.persist_path, exist_ok=True)
-        self.store_by_tenant: dict[str, Any] = {}
-        self._tenant_locks_guard = threading.Lock()
-        self._tenant_locks: dict[str, threading.RLock] = {}
-
-    def _get_tenant_lock(self, tenant_id: UUID | None) -> threading.RLock:
-        key = _tenant_lock_key(tenant_id)
-        with self._tenant_locks_guard:
-            lock = self._tenant_locks.get(key)
-            if lock is None:
-                lock = threading.RLock()
-                self._tenant_locks[key] = lock
-            return lock
-
-    def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any]:
-        key = _tenant_lock_key(tenant_id)
-        with self._get_tenant_lock(tenant_id):
-            store = self.store_by_tenant.get(key)
-            if store is None:
-                chroma_cls = _get_chroma_cls()
-                kwargs: dict[str, Any] = {"collection_name": key, "embedding_function": self.emb}
-                if self.persist_path:
-                    kwargs["persist_directory"] = self.persist_path
-                store = chroma_cls(**kwargs)
-                self.store_by_tenant[key] = store
-            return key, store
-
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        with self._get_tenant_lock(tenant_id):
-            texts = [d.get("content", "") for d in docs]
-            metadatas = []
-            ids = []
-            for idx, doc in enumerate(docs):
-                meta = dict(doc.get("metadata") or {})
-                meta.setdefault("document_id", str(document_id))
-                meta.setdefault("tenant_id", str(tenant_id))
-                meta.setdefault("chunk_index", idx)
-                if meta.get("chunk_id"):
-                    meta["chunk_id"] = str(meta.get("chunk_id"))
-                if "img_id" in meta and "image_id" not in meta:
-                    meta["image_id"] = meta.get("img_id")
-                meta.setdefault("image_url", meta.get("img_url"))
-                metadatas.append(_encode_chroma_metadata(meta))
-                ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
-            _key, store = self._get_store(tenant_id)
-            store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-            # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
-            return ids
-
-    def search(
-        self,
-        query: str,
-        top_k: int,
-        score_threshold: float,
-        document_ids: list[UUID] | None,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        allowed = {str(did) for did in document_ids} if document_ids else None
-        requested_k: int | None = None
-        out: list[dict[str, Any]] = []
-        while True:
-            with self._get_tenant_lock(tenant_id):
-                _, store = self._get_store(tenant_id)
-                total_candidates = None
-                collection = getattr(store, "_collection", None)
-                count_fn = getattr(collection, "count", None)
-                if callable(count_fn):
-                    try:
-                        total_candidates = int(count_fn())
-                    except Exception:
-                        total_candidates = None
-                if requested_k is None:
-                    requested_k = _search_candidate_limit(top_k, total_candidates)
-                elif total_candidates is not None:
-                    requested_k = min(requested_k, total_candidates)
-                if requested_k <= 0:
-                    return []
-                results = store.similarity_search_with_score(query, k=requested_k)
-            out = _similarity_hits(
-                results=results,
-                score_threshold=score_threshold,
-                allowed=allowed,
-                metadata_filter=metadata_filter,
-                metadata_loader=lambda doc: _decode_chroma_metadata(doc.metadata or {}),
-            )
-            if not _should_expand_candidate_window(
-                accepted_hits=len(out),
-                top_k=top_k,
-                requested_k=requested_k,
-                returned_hits=len(results),
-                total_candidates=total_candidates,
-            ):
-                break
-            next_k = _next_candidate_limit(requested_k, total_candidates)
-            if next_k <= requested_k:
-                break
-            requested_k = next_k
-            _yield_refill_lock_handoff()
-        out.sort(key=lambda x: x["score"], reverse=True)
-        return out[:top_k]
-
-    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        with self._get_tenant_lock(tenant_id):
-            _, store = self._get_store(tenant_id)
-            target = str(document_id)
-            try:
-                # LangChain Chroma lacks a stable where delete API; use the underlying collection.
-                store._collection.delete(where={"document_id": target})  # type: ignore[attr-defined]
-                # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
-            except Exception:
-                return
-
-    def delete_by_document_id_and_filter(
-        self,
-        *,
-        document_id: UUID,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any],
-    ) -> None:
-        with self._get_tenant_lock(tenant_id):
-            if not metadata_filter or not isinstance(metadata_filter, dict):
-                return self.delete_by_document_id(document_id, tenant_id=tenant_id)
-
-            _, store = self._get_store(tenant_id)
-
-            # Chroma's where spec isn't compatible with our generic filter syntax.
-            # Instead: fetch all rows for this document_id (which is cheap for typical local-dev usage),
-            # then filter in Python with our matcher and delete by explicit IDs.
-            try:
-                collection = store._collection  # type: ignore[attr-defined]
-                ids_to_delete = _chroma_ids_matching_filter(
-                    collection,
-                    document_id=document_id,
-                    metadata_filter=metadata_filter,
-                )
-                if not ids_to_delete:
-                    return
-                collection.delete(ids=ids_to_delete)
-            except Exception as exc:
-                raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
-
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return self.emb
 
 
 _VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
 _VECTOR_STORE_SINGLETONS_LOCK = threading.RLock()
-_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "faiss", "chroma", "qdrant", "pgvector"})
+_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "qdrant", "pgvector"})
 
 
 def _normalize_region(region: str | None = None) -> str:
-    return str(region or getattr(settings, "DATA_REGION", "") or "").strip().lower()
+    selected_region = settings.DATA_REGION if region is None else region
+    return selected_region.strip().lower()
 
 
 def _load_vector_region_backends() -> dict[str, str]:
-    raw = getattr(settings, "VECTOR_REGION_BACKENDS", "") or ""
-    if isinstance(raw, Mapping):
-        source = dict(raw)
-    else:
-        text = str(raw).strip()
-        if not text:
-            return {}
-        try:
-            parsed = json.loads(text)
-        except Exception:
-            return {}
-        source = dict(parsed) if isinstance(parsed, dict) else {}
+    raw = settings.VECTOR_REGION_BACKENDS.strip()
+    if not raw:
+        return {}
+    try:
+        source = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("VECTOR_REGION_BACKENDS must be a JSON object") from exc
+    if not isinstance(source, dict):
+        raise ValueError("VECTOR_REGION_BACKENDS must be a JSON object")
 
     out: dict[str, str] = {}
     for key, value in source.items():
-        region = str(key or "").strip().lower()
-        backend = str(value or "").strip().lower()
+        if not isinstance(value, str):
+            raise ValueError("VECTOR_REGION_BACKENDS must map region names to backend strings")
+        region = key.strip().lower()
+        backend = value.strip().lower()
         if not region or not backend:
             continue
         out[region] = backend
@@ -895,23 +264,27 @@ def _load_vector_region_backends() -> dict[str, str]:
 
 def _resolve_vector_backend(*, backend: str | None = None, region: str | None = None) -> tuple[str, str | None]:
     region_key = _normalize_region(region)
-    requested = str(backend or settings.VECTOR_BACKEND or "milvus").strip().lower()
+    selected_backend = settings.VECTOR_BACKEND if backend is None else backend
+    requested = selected_backend.strip().lower()
     if region_key:
         requested = _load_vector_region_backends().get(region_key, requested)
-    return requested, (region_key or None)
+    if requested == "faiss":
+        raise ValueError("FAISS vector backend has been retired. Select a supported backend explicitly.")
+    if requested == "chroma":
+        raise ValueError("Chroma vector backend has been retired. Select a supported backend explicitly.")
+    return requested, (region_key if region_key else None)
 
 
 def _embedding_client_cache_token() -> str:
     provider = EmbeddingProviders.PROVIDER_MAP.get(
-        str(getattr(settings, "EMBEDDING_PROVIDER", "openai_compatible") or "openai_compatible").strip().lower(),
+        (settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower(),
         "openai_compatible",
     )
-    model = str(getattr(settings, "EMBEDDING_MODEL", "") or "text-embedding-3-small").strip()
-    api_base = str(getattr(settings, "EMBEDDING_API_BASE", "") or getattr(settings, "LLM_API_BASE", "") or "").strip()
-    api_key = str(getattr(settings, "EMBEDDING_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip()
-    dimension = str(getattr(settings, "EMBEDDING_DIMENSION", "") or "").strip()
+    model = (settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
+    api_base = (settings.EMBEDDING_API_BASE or settings.LLM_API_BASE).strip()
+    api_key = (settings.EMBEDDING_API_KEY or settings.LLM_API_KEY).strip()
     api_key_hash = stable_hash(api_key, length=16) if api_key else ""
-    return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}|{dimension}", length=24)
+    return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}", length=24)
 
 
 def _vector_store_cache_key(*, backend_name: str, region_key: str | None) -> str:
@@ -929,7 +302,7 @@ def reset_vector_store_singletons() -> None:
 def get_vector_store(*, backend: str | None = None, region: str | None = None) -> BaseVectorStore:
     """
     Return the configured vector store backend (singleton).
-    Note: memory/faiss backends keep state in-process; singleton avoids losing data on each call.
+    The memory backend keeps state in-process; its singleton preserves that state.
     """
     backend_name, region_key = _resolve_vector_backend(backend=backend, region=region)
     cache_key = _vector_store_cache_key(backend_name=backend_name, region_key=region_key)
@@ -942,21 +315,17 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
             store: BaseVectorStore = MilvusVectorStore()
         elif backend_name == "memory":
             store = MemoryVectorStore()
-        elif backend_name == "faiss":
-            store = FAISSVectorStore()
-        elif backend_name == "chroma":
-            store = ChromaVectorStore()
         elif backend_name == "qdrant":
             store = QdrantVectorStore()
         elif backend_name == "pgvector":
             store = PGVectorStore()
         else:
-            store = StubVectorStore()
+            raise ValueError(f"Unsupported vector backend: {backend_name}")
 
         _VECTOR_STORE_SINGLETONS[cache_key] = store
         return store
 
 
-def get_embedding_client(*, backend: str | None = None, region: str | None = None):  # noqa: ANN201
+def get_embedding_client(*, backend: str | None = None, region: str | None = None) -> "LangChainEmbeddingsAdapter":
     store = get_vector_store(backend=backend, region=region)
     return store.get_embedding_client()

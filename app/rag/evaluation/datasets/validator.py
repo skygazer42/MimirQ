@@ -1,14 +1,14 @@
-
 from collections import Counter
 from typing import Any
 
-from app.rag.evaluation.datasets.schema import EVAL_DATASET_SCHEMA_V1, normalize_eval_dataset_sample
+from app.rag.evaluation.datasets.schema import (
+    _ANNOTATION_STATUS,
+    _QUERY_TYPES,
+    _REVIEW_STATUS,
+    _SOURCE_TYPES,
+    normalize_eval_dataset_sample,
+)
 
-_QUERY_TYPES = {"factual", "multi_hop", "structured", "unanswerable"}
-_SOURCE_TYPES = {"real_log", "manual_seed", "adversarial", "synthetic"}
-_ROUTES = {"retrieval", "kg", "hybrid", "agentic"}
-_ANNOTATION_STATUS = {"todo", "labeled", "reviewed"}
-_REVIEW_STATUS = {"pending", "reviewed", "approved"}
 _MANIFEST_SCHEMA = "mimirq.eval.dataset.manifest.v1"
 
 
@@ -41,11 +41,6 @@ def _validate_row(
         if value not in allowed:
             errors.append(f"{row_prefix}.{field} invalid")
 
-    if row["expected_route"] is not None and row["expected_route"] not in _ROUTES:
-        errors.append(f"{row_prefix}.expected_route invalid")
-    if not row["is_unanswerable"] and not isinstance(row["gold_chunk_ids"], list):
-        errors.append(f"{row_prefix}.gold_chunk_ids invalid")
-
     query_counts[row["query_type"]] += 1
     source_counts[row["source_type"]] += 1
 
@@ -58,7 +53,7 @@ def _validate_manifest(
     source_counts: Counter[str],
     errors: list[str],
 ) -> None:
-    if str(manifest.get("schema_version") or "").strip() != _MANIFEST_SCHEMA:
+    if manifest.get("schema_version") != _MANIFEST_SCHEMA:
         errors.append("manifest.schema_version invalid")
     if int(manifest.get("sample_count") or 0) != len(normalized_rows):
         errors.append("manifest.sample_count mismatch")
@@ -76,8 +71,6 @@ def validate_eval_dataset(*, rows: list[dict[str, Any]], manifest: dict[str, Any
     query_counts: Counter[str] = Counter()
     source_counts: Counter[str] = Counter()
     for index, row in enumerate(normalized_rows, start=1):
-        if row["schema_version"] != EVAL_DATASET_SCHEMA_V1:
-            errors.append(f"row[{index}].schema_version invalid")
         _validate_row(
             row=row,
             index=index,

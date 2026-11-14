@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -26,6 +26,12 @@ from app.services.document_index_channel_service import (
 from app.services.metrics_logger import log_metrics
 from app.types.pipeline import PipelineEffective
 
+if TYPE_CHECKING:
+    from app.services.indexer import Indexer
+    from app.types.indexing import IndexingOptions
+
+RetryCleanupStatus = Literal["applied", "deferred", "invalid"]
+
 AUDIT_ACTION_DOCUMENT_INGEST_GATE = "document.ingest_gate"
 logger = get_logger("parsing.document_processor")
 
@@ -42,7 +48,7 @@ def _load_retry_cleanup_request(
     request = metadata.get("retry_cleanup")
     if request is None:
         return "missing", None
-    if not isinstance(request, dict) or str(request.get("version") or "") != "1":
+    if not isinstance(request, dict) or request.get("version") != "1":
         logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
         return "invalid", None
     return "ok", request
@@ -53,11 +59,21 @@ def _validate_retry_cleanup_scope(
     *,
     request: dict[str, Any],
     document_id: UUID,
-) -> tuple[str, str, bool] | None:
-    pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
-    scope = str(request.get("scope") or "").strip()
-    target_key = str(request.get("doc_pipeline_key") or "").strip()
-    if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
+) -> tuple[str, str | None, bool] | None:
+    pipeline_hash = metadata.get("pipeline_hash")
+    requested_hash = request.get("pipeline_hash")
+    scope = request.get("scope")
+    target_key = request.get("doc_pipeline_key")
+    if any(
+        value is not None and not isinstance(value, str) for value in (pipeline_hash, requested_hash, scope, target_key)
+    ):
+        logger.error("Refusing malformed retry cleanup intent for document %s", document_id)
+        return None
+    pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
+    requested_hash = requested_hash.strip() if requested_hash is not None else None
+    scope = scope.strip() if scope is not None else None
+    target_key = target_key.strip() if target_key is not None else None
+    if not pipeline_hash or requested_hash != pipeline_hash or scope not in {"document", "pipeline"}:
         logger.error("Refusing stale retry cleanup intent for document %s", document_id)
         return None
     if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
@@ -71,7 +87,6 @@ def _clear_forced_retry_state(
     *,
     metadata: dict[str, Any],
     request: dict[str, Any],
-    parsed_content_model: type[DocumentParsedContent],
     document_id: UUID,
     tenant_id: UUID,
 ) -> None:
@@ -79,16 +94,15 @@ def _clear_forced_retry_state(
         return
     metadata.pop("ingest_checkpoint", None)
     metadata.pop("parsed_content_persisted", None)
-    db.query(parsed_content_model).filter(
-        parsed_content_model.document_id == document_id,
-        parsed_content_model.tenant_id == tenant_id,
+    db.query(DocumentParsedContent).filter(
+        DocumentParsedContent.document_id == document_id,
+        DocumentParsedContent.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
 
 
 def _load_pipeline_cleanup_chunk_ids(
     db: Session,
     *,
-    chunk_model: type[DocumentChunk],
     document_id: UUID,
     tenant_id: UUID,
     target_key: str,
@@ -96,15 +110,14 @@ def _load_pipeline_cleanup_chunk_ids(
     return [
         chunk_id
         for (chunk_id,) in (
-            db.query(chunk_model.id)
+            db.query(DocumentChunk.id)
             .filter(
-                chunk_model.document_id == document_id,
-                chunk_model.tenant_id == tenant_id,
-                chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
             )
             .all()
         )
-        if isinstance(chunk_id, UUID)
     ]
 
 
@@ -114,8 +127,7 @@ def _delete_retry_cleanup_chunks(
     db_document: DBDocument,
     metadata: dict[str, Any],
     preserve_existing: bool,
-    indexer: Any,
-    chunk_model: type[DocumentChunk],
+    indexer: "Indexer",
     document_id: UUID,
     tenant_id: UUID,
     target_key: str,
@@ -123,7 +135,6 @@ def _delete_retry_cleanup_chunks(
     if preserve_existing:
         cleanup_chunk_ids = _load_pipeline_cleanup_chunk_ids(
             db,
-            chunk_model=chunk_model,
             document_id=document_id,
             tenant_id=tenant_id,
             target_key=target_key,
@@ -133,17 +144,17 @@ def _delete_retry_cleanup_chunks(
             document_id=document_id,
             doc_pipeline_key=target_key,
         )
-        db.query(chunk_model).filter(
-            chunk_model.document_id == document_id,
-            chunk_model.tenant_id == tenant_id,
-            chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+        db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
         ).delete(synchronize_session=False)
         return cleanup_chunk_ids
 
     indexer.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-    db.query(chunk_model).filter(
-        chunk_model.document_id == document_id,
-        chunk_model.tenant_id == tenant_id,
+    db.query(DocumentChunk).filter(
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
     metadata.pop("img_ids", None)
     db_document.chunk_count = 0
@@ -154,7 +165,7 @@ def _delete_retry_cleanup_chunks(
 def _cleanup_retry_relations(
     db: Session,
     *,
-    indexer: Any,
+    indexer: "Indexer",
     preserve_existing: bool,
     cleanup_chunk_ids: list[UUID],
     tenant_id: UUID,
@@ -204,13 +215,10 @@ def apply_pending_retry_cleanup(
     db_document: DBDocument,
     tenant_id: UUID,
     document_id: UUID,
-    indexer_factory: Callable[[Session], Any],
-    parsed_content_model: type[DocumentParsedContent] = DocumentParsedContent,
-    chunk_model: type[DocumentChunk] = DocumentChunk,
-) -> str:
-    original_meta = dict(getattr(db_document, "doc_metadata", None) or {})
-    original_chunk_count = getattr(db_document, "chunk_count", None)
-    original_total_characters = getattr(db_document, "total_characters", None)
+) -> RetryCleanupStatus:
+    original_meta = dict(db_document.doc_metadata or {})
+    original_chunk_count = db_document.chunk_count
+    original_total_characters = db_document.total_characters
     meta = dict(original_meta)
     request_status, request = _load_retry_cleanup_request(meta, document_id=document_id)
     if request_status == "missing":
@@ -222,12 +230,13 @@ def apply_pending_retry_cleanup(
     if cleanup_scope is None:
         return "invalid"
     scope, target_key, preserve_existing = cleanup_scope
-    indexer = indexer_factory(db)
+    from app.services.indexer import Indexer
+
+    indexer = Indexer(db)
     _clear_forced_retry_state(
         db,
         metadata=meta,
         request=request,
-        parsed_content_model=parsed_content_model,
         document_id=document_id,
         tenant_id=tenant_id,
     )
@@ -237,7 +246,6 @@ def apply_pending_retry_cleanup(
         metadata=meta,
         preserve_existing=preserve_existing,
         indexer=indexer,
-        chunk_model=chunk_model,
         document_id=document_id,
         tenant_id=tenant_id,
         target_key=target_key,
@@ -269,6 +277,7 @@ def apply_pending_retry_cleanup(
             "Failed to complete retry cleanup for document %s; keeping retry cleanup marker for a later retry: %s",
             document_id,
             str(exc)[:200],
+            exc_info=True,
         )
         return "deferred"
 
@@ -276,11 +285,12 @@ def apply_pending_retry_cleanup(
     return "applied"
 
 
-def checkpoint_stage(metadata: dict[str, Any]) -> str:
+def checkpoint_stage(metadata: dict[str, Any]) -> str | None:
     checkpoint = metadata.get("ingest_checkpoint")
     if not isinstance(checkpoint, dict):
-        return ""
-    return str(checkpoint.get("stage") or "").strip().lower()
+        return None
+    stage = checkpoint.get("stage")
+    return stage.strip().lower() if isinstance(stage, str) else None
 
 
 def _checkpoint_matches_current_document(
@@ -291,14 +301,24 @@ def _checkpoint_matches_current_document(
     checkpoint = metadata.get("ingest_checkpoint")
     if not (
         isinstance(checkpoint, dict)
-        and str(checkpoint.get("version") or "") == "1"
-        and str(checkpoint.get("stage") or "").strip().lower() == str(expected_stage or "").strip().lower()
+        and checkpoint.get("version") == "1"
+        and isinstance(checkpoint.get("stage"), str)
+        and checkpoint["stage"].strip().lower() == expected_stage.strip().lower()
     ):
         return False
-    pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
-    file_sha256 = str(metadata.get("file_sha256") or "").strip().lower()
-    checkpoint_pipeline_hash = str(checkpoint.get("pipeline_hash") or "").strip()
-    checkpoint_file_sha256 = str(checkpoint.get("file_sha256") or "").strip().lower()
+    pipeline_hash = metadata.get("pipeline_hash")
+    file_sha256 = metadata.get("file_sha256")
+    checkpoint_pipeline_hash = checkpoint.get("pipeline_hash")
+    checkpoint_file_sha256 = checkpoint.get("file_sha256")
+    if any(
+        value is not None and not isinstance(value, str)
+        for value in (pipeline_hash, file_sha256, checkpoint_pipeline_hash, checkpoint_file_sha256)
+    ):
+        return False
+    pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
+    file_sha256 = file_sha256.strip().lower() if file_sha256 is not None else None
+    checkpoint_pipeline_hash = checkpoint_pipeline_hash.strip() if checkpoint_pipeline_hash is not None else None
+    checkpoint_file_sha256 = checkpoint_file_sha256.strip().lower() if checkpoint_file_sha256 is not None else None
     if pipeline_hash and checkpoint_pipeline_hash and pipeline_hash != checkpoint_pipeline_hash:
         return False
     if file_sha256 and checkpoint_file_sha256 and file_sha256 != checkpoint_file_sha256:
@@ -325,13 +345,13 @@ def upsert_ingest_checkpoint(
     source: str,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    out = dict(metadata or {})
+    out = dict((metadata if metadata is not None else {}))
     checkpoint = {
         "version": "1",
-        "stage": str(stage or "").strip() or "unknown",
-        "source": str(source or "").strip() or "unknown",
-        "file_sha256": str(out.get("file_sha256") or "").strip().lower(),
-        "pipeline_hash": str(out.get("pipeline_hash") or "").strip(),
+        "stage": stage.strip() or "unknown",
+        "source": source.strip() or "unknown",
+        "file_sha256": out["file_sha256"].strip().lower() if out.get("file_sha256") is not None else None,
+        "pipeline_hash": out["pipeline_hash"].strip() if out.get("pipeline_hash") is not None else None,
     }
     if isinstance(extra, dict):
         for key, value in extra.items():
@@ -349,13 +369,13 @@ def record_ingest_gate_outcome(
     reason: str,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    out = dict(metadata or {})
+    out = dict((metadata if metadata is not None else {}))
     existing = out.get("ingest_gate_outcomes")
     gate_outcomes = dict(existing) if isinstance(existing, dict) else {}
     entry: dict[str, Any] = {
-        "gate": str(gate or "").strip() or "unknown",
-        "outcome": str(outcome or "").strip() or "degraded",
-        "reason": str(reason or "").strip() or "unknown",
+        "gate": gate.strip() or "unknown",
+        "outcome": outcome.strip() or "degraded",
+        "reason": reason.strip() or "unknown",
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
     }
     if isinstance(details, dict):
@@ -368,27 +388,29 @@ def record_ingest_gate_outcome(
 
 
 def _document_questions_enabled(metadata: dict[str, Any] | None) -> bool:
-    meta = dict(metadata or {})
+    meta = dict((metadata if metadata is not None else {}))
     for key in ("document_questions_enabled", "generate_document_questions"):
         if key in meta:
             value = meta.get(key)
             if isinstance(value, bool):
                 return value
-            if str(value or "").strip().lower() in {"1", "true", "yes", "on"}:
+            if value is None:
+                continue
+            if str(value).strip().lower() in {"1", "true", "yes", "on"}:
                 return True
-            if str(value or "").strip().lower() in {"0", "false", "no", "off"}:
+            if str(value).strip().lower() in {"0", "false", "no", "off"}:
                 return False
-    return bool(getattr(settings, "DOCUMENT_QUESTIONS_ENABLED", False))
+    return bool(settings.DOCUMENT_QUESTIONS_ENABLED)
 
 
 def _document_questions_count(metadata: dict[str, Any] | None) -> int:
-    meta = dict(metadata or {})
+    meta = dict((metadata if metadata is not None else {}))
     raw = meta.get("document_questions_count")
     if raw is None:
-        raw = getattr(settings, "DOCUMENT_QUESTIONS_COUNT", 3)
+        raw = settings.DOCUMENT_QUESTIONS_COUNT
     try:
-        count = int(raw or 3)
-    except Exception:
+        count = int(raw)
+    except (OverflowError, TypeError, ValueError):
         count = 3
     return max(3, min(5, count))
 
@@ -408,15 +430,15 @@ def audit_ingest_gate(
     audit_log_event(
         db,
         tenant_id=tenant_id,
-        actor_id=(getattr(db_document, "owner_id", None) or None),
+        actor_id=db_document.owner_id,
         action=AUDIT_ACTION_DOCUMENT_INGEST_GATE,
         resource_type="document",
-        resource_id=str(getattr(db_document, "id", "")),
+        resource_id=str(db_document.id),
         details={
-            "gate": str(gate or "").strip() or "unknown",
-            "outcome": str(outcome or "").strip() or "degraded",
-            "reason": str(reason or "").strip() or "unknown",
-            **(dict(details or {}) if isinstance(details, dict) else {}),
+            "gate": gate.strip() or "unknown",
+            "outcome": outcome.strip() or "degraded",
+            "reason": reason.strip() or "unknown",
+            **(dict((details if details is not None else {})) if isinstance(details, dict) else {}),
         },
     )
     db.commit()
@@ -430,7 +452,7 @@ def maybe_enrich_document_questions(
 ) -> None:
     if not documents:
         return
-    metadata = dict(getattr(db_document, "doc_metadata", None) or {})
+    metadata = dict(db_document.doc_metadata or {})
     if not _document_questions_enabled(metadata):
         return
     if metadata.get("document_questions"):
@@ -439,7 +461,7 @@ def maybe_enrich_document_questions(
     source_parts: list[str] = []
     remaining = 4000
     for doc in documents:
-        content = str(getattr(doc, "page_content", "") or "").strip()
+        content = doc.page_content.strip()
         if not content:
             continue
         source_parts.append(content[:remaining])
@@ -481,24 +503,16 @@ def maybe_enrich_document_questions(
 
 
 def _kg_prompt_template_id() -> UUID | None:
-    try:
-        raw_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
-        return UUID(raw_template_id) if raw_template_id else None
-    except Exception:
-        return None
-
-
-def _kg_optional_setting(name: str) -> str | None:
-    value = str(getattr(settings, name, "") or "").strip()
-    return value or None
+    raw_template_id = settings.KG_EXTRACT_PROMPT_TEMPLATE_ID.strip()
+    return UUID(raw_template_id) if raw_template_id else None
 
 
 def _kg_python_plugin_ref(pipeline_effective: PipelineEffective) -> str:
-    plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
+    plugin_ref = pipeline_effective.kg_python_plugin.strip()
     if plugin_ref:
         return plugin_ref
     return derive_registered_stage_plugin_ref(
-        str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
+        pipeline_effective.chunk_python_plugin.strip(),
         "kg",
     )
 
@@ -536,24 +550,19 @@ async def _enqueue_post_completion_kg(
     from app.core.pipeline_versions import get_active_pipeline_hash
     from app.tasks.queue import enqueue_kg_extraction
 
-    raw_pipeline_hash = (
-        get_active_pipeline_hash(db_document.doc_metadata or {})
-        or (db_document.doc_metadata or {}).get("pipeline_hash")
-        or None
-    )
-    pipeline_hash = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
+    pipeline_hash = get_active_pipeline_hash(db_document.doc_metadata)
     effective_options = build_kg_extraction_job_options(
         pipeline_hash=pipeline_hash,
         prompt_template_id=_kg_prompt_template_id(),
-        prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
-        prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
-        extraction_backend=_kg_optional_setting("KG_EXTRACTION_BACKEND"),
+        prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY,
+        prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY,
+        extraction_backend=settings.KG_EXTRACTION_BACKEND,
         kg_python_plugin=_kg_python_plugin_ref(pipeline_effective),
-        kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
-        replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
-        prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
-        extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-        extract_skills=bool(getattr(settings, "KG_SKILL_ENABLED", False)),
+        kg_python_params=dict(pipeline_effective.kg_python_params or {}),
+        replace_existing=bool(settings.KG_EXTRACT_REPLACE_EXISTING),
+        prune_orphan_entities=bool(settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES),
+        extract_relations=bool(settings.KG_RELATION_ENABLED),
+        extract_skills=bool(settings.KG_SKILL_ENABLED),
     )
     options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
     pipeline_job_label = pipeline_hash or "unversioned"
@@ -580,7 +589,7 @@ async def _extract_post_completion_kg_events(
     chunk_ids: list[UUID],
     tenant_id: UUID,
     db_chunks: list[DocumentChunk],
-    index_options: Any,
+    index_options: "IndexingOptions",
     pipeline_effective: PipelineEffective,
 ) -> tuple[list[Any], str]:
     kg_python_plugin_ref = _kg_python_plugin_ref(pipeline_effective)
@@ -590,10 +599,10 @@ async def _extract_post_completion_kg_events(
         chunks=db_chunks,
         index_options=index_options,
         prompt_template_id=_kg_prompt_template_id(),
-        prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
-        prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
+        prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY,
+        prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY,
         kg_python_plugin=kg_python_plugin_ref,
-        kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
+        kg_python_params=dict(pipeline_effective.kg_python_params or {}),
     )
     return events, kg_python_plugin_ref
 
@@ -606,10 +615,10 @@ async def run_post_completion_kg(
     document_id: UUID,
     chunk_ids: list[UUID],
     db_chunks: list[DocumentChunk],
-    index_options: Any,
+    index_options: "IndexingOptions",
     pipeline_effective: PipelineEffective,
 ) -> None:
-    if not getattr(pipeline_effective, "kg_enabled", False):
+    if not pipeline_effective.kg_enabled:
         return
 
     transition_document_index_channel(
@@ -621,7 +630,7 @@ async def run_post_completion_kg(
         commit=False,
     )
 
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if bool(settings.TASK_QUEUE_ENABLED):
         try:
             await _enqueue_post_completion_kg(
                 db=db,
@@ -669,9 +678,12 @@ def resolve_ingestion_run_update_criticality(
     *,
     status_norm: str,
 ) -> str:
-    meta = dict(getattr(db_doc, "doc_metadata", None) or {})
+    meta = dict(db_doc.doc_metadata or {})
     for key in ("ingestion_run_update_criticality", "ingestion_run_status_criticality"):
-        raw = str(meta.get(key) or "").strip().lower()
+        raw = meta.get(key)
+        if not isinstance(raw, str):
+            continue
+        raw = raw.strip().lower()
         if raw in {"best_effort", "required"}:
             return raw
     if status_norm in {"completed", "failed", "quarantined", "cancelled"}:
@@ -701,7 +713,7 @@ def persist_retry_boundary_failure(
         raise CheckpointedRetryRequiredError(reason) from error
 
     meta = record_ingest_gate_outcome(
-        dict(getattr(db_doc, "doc_metadata", None) or {}),
+        dict(db_doc.doc_metadata or {}),
         gate="ingestion_run",
         outcome="closed",
         reason=reason,
@@ -709,15 +721,15 @@ def persist_retry_boundary_failure(
     )
     meta["ingest_resume_required"] = {
         "required": True,
-        "reason": str(reason or "").strip() or "retry_required",
+        "reason": reason.strip() or "retry_required",
         "checkpoint_stage": checkpoint_stage(meta),
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
     }
     db_doc.status = "failed"
     db_doc.processing_progress = 0
     db_doc.current_stage = "finalizing"
-    db_doc.error_message = str(reason or "").strip() or "retry_required"
+    db_doc.error_message = reason.strip() or "retry_required"
     db_doc.doc_metadata = meta
     db.commit()
     db.refresh(db_doc)
-    raise CheckpointedRetryRequiredError(str(reason or "").strip() or "retry_required") from error
+    raise CheckpointedRetryRequiredError(reason.strip() or "retry_required") from error

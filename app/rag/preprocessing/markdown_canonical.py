@@ -15,7 +15,6 @@ This module is intentionally dependency-free and line-oriented; it is NOT a full
 Markdown parser.
 """
 
-
 from dataclasses import dataclass
 
 from app.rag.preprocessing.normalization import normalize_text
@@ -55,10 +54,7 @@ def _split_blockquote_lead(line: str) -> tuple[str, str]:
 
     Implemented without regex so it stays linear-time and avoids backtracking hotspots.
     """
-    s = line or ""
-    if not s:
-        return "", ""
-
+    s = line
     i = 0
     n = len(s)
     lead_end = 0
@@ -87,10 +83,7 @@ def _parse_code_fence(line: str) -> tuple[str, str, str] | None:
     Parse a fenced code marker line of the form:
       [ \\t]* ```+ <rest>
     """
-    s = line or ""
-    if not s:
-        return None
-
+    s = line
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -112,10 +105,7 @@ def _parse_heading(line: str) -> tuple[str, str, str] | None:
     Parse ATX headings (1-6 hashes), e.g.:
       '##Heading' or '##  Heading'
     """
-    s = line or ""
-    if not s:
-        return None
-
+    s = line
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -140,10 +130,7 @@ def _parse_heading(line: str) -> tuple[str, str, str] | None:
 
 
 def _parse_ulist(line: str) -> tuple[str, str] | None:
-    s = line or ""
-    if not s:
-        return None
-
+    s = line
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -162,10 +149,7 @@ def _parse_ulist(line: str) -> tuple[str, str] | None:
 
 
 def _parse_olist(line: str) -> tuple[str, str, str] | None:
-    s = line or ""
-    if not s:
-        return None
-
+    s = line
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -192,17 +176,17 @@ def _parse_olist(line: str) -> tuple[str, str, str] | None:
 
 
 def _is_indented_code_line(line: str) -> bool:
-    s = line or ""
+    s = line
     if len(s) < 2:
         return False
     if s[0] == "\t":
-        return len(s) > 1 and (not s[1].isspace())
+        return not s[1].isspace()
     if s.startswith("    "):
         i = 0
         n = len(s)
         while i < n and s[i] == " ":
             i += 1
-        return i >= 4 and i < n and (not s[i].isspace())
+        return i < n and not s[i].isspace()
     return False
 
 
@@ -229,7 +213,7 @@ def _canonicalize_body_line(lead: str, body: str) -> _CanonicalLine:
     head = _parse_heading(body)
     if head is not None:
         indent, hashes, title = head
-        new_body = f"{indent}{hashes} {(title or '').rstrip()}"
+        new_body = f"{indent}{hashes} {title.rstrip()}"
         return _CanonicalLine(text=f"{lead}{new_body}", in_fence=False, headings_changed=int(new_body != body))
 
     unordered = _parse_ulist(body)
@@ -241,7 +225,7 @@ def _canonicalize_body_line(lead: str, body: str) -> _CanonicalLine:
     ordered = _parse_olist(body)
     if ordered is not None:
         indent, num, rest = ordered
-        new_body = f"{indent}{num or '1'}. {rest.lstrip()}"
+        new_body = f"{indent}{num}. {rest.lstrip()}"
         return _CanonicalLine(
             text=f"{lead}{new_body}",
             in_fence=False,
@@ -264,7 +248,7 @@ def _canonicalize_markdown_line(raw_line: str, in_fence: bool) -> _CanonicalLine
 
 
 def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
-    original = text if isinstance(text, str) else ""
+    original = text
     if not original:
         return MarkdownCanonicalizeResult(text="", changed=False)
 
@@ -296,12 +280,12 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
     return MarkdownCanonicalizeResult(
         text=final,
         changed=(final != original),
-        headings_changed=int(headings_changed),
-        list_markers_changed=int(list_markers_changed),
-        ordered_list_markers_changed=int(olist_markers_changed),
-        code_fences_changed=int(code_fences_changed),
-        tables=int(tbl.tables or 0),
-        table_rows_changed=int(tbl.rows_changed or 0),
+        headings_changed=headings_changed,
+        list_markers_changed=list_markers_changed,
+        ordered_list_markers_changed=olist_markers_changed,
+        code_fences_changed=code_fences_changed,
+        tables=tbl.tables,
+        table_rows_changed=tbl.rows_changed,
     )
 
 

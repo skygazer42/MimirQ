@@ -10,7 +10,6 @@ Design principles:
 - Script-friendly: return small JSON-safe summaries
 """
 
-
 import re
 import time
 from datetime import UTC, datetime
@@ -39,14 +38,14 @@ def build_postgres_maintenance_commands(
     - When `tables` is provided, identifiers are validated against a conservative
       regex to prevent SQL injection via ops tooling.
     """
-    if not bool(vacuum) and not bool(analyze):
+    if not vacuum and not analyze:
         raise ValueError("No operation selected (vacuum/analyze)")
 
     table_list = ""
     if tables:
         cleaned: list[str] = []
         for raw in tables:
-            name = str(raw or "").strip()
+            name = raw.strip()
             if not name:
                 continue
             if not _TABLE_RE.match(name):
@@ -56,18 +55,18 @@ def build_postgres_maintenance_commands(
             table_list = " " + ", ".join(cleaned)
 
     cmds: list[str] = []
-    if bool(vacuum):
+    if vacuum:
         opts: list[str] = []
-        if bool(analyze):
+        if analyze:
             opts.append("ANALYZE")
-        if bool(verbose):
+        if verbose:
             opts.append("VERBOSE")
         opt_sql = f" ({', '.join(opts)})" if opts else ""
         cmds.append(f"VACUUM{opt_sql}{table_list};")
         return cmds
 
     # analyze-only
-    verbose_sql = " VERBOSE" if bool(verbose) else ""
+    verbose_sql = " VERBOSE" if verbose else ""
     cmds.append(f"ANALYZE{verbose_sql}{table_list};")
     return cmds
 
@@ -92,7 +91,7 @@ def run_postgres_maintenance(
     commands = build_postgres_maintenance_commands(vacuum=vacuum, analyze=analyze, verbose=verbose, tables=tables)
 
     url = make_url(settings.DATABASE_URL)
-    driver = str(url.drivername or "").lower()
+    driver = url.drivername.lower()
     if not driver.startswith("postgres"):
         return {
             "ok": True,
@@ -104,7 +103,7 @@ def run_postgres_maintenance(
             "commands": list(commands),
         }
 
-    if bool(dry_run):
+    if dry_run:
         return {
             "ok": True,
             "skipped": False,
@@ -136,4 +135,3 @@ __all__ = [
     "build_postgres_maintenance_commands",
     "run_postgres_maintenance",
 ]
-

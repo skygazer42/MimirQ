@@ -7,7 +7,6 @@ This is used as a robust fallback when general converters (MarkItDown/Pandoc)
 fail on certain presentations.
 """
 
-
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -19,7 +18,7 @@ logger = get_logger(__name__)
 
 
 def _clean_line(text: str) -> str:
-    text = (text or "").replace("\r", " ").strip()
+    text = (text).replace("\r", " ").strip()
     return " ".join(text.split())
 
 
@@ -58,7 +57,7 @@ def _extract_table_text(shape: object) -> str | None:
                 row.append(_escape_md_cell(cell_text))
             if any(row):
                 rows.append(row)
-        return _md_table(rows) if rows else ""
+        return _md_table(rows)
     except Exception as exc:
         # Best-effort: ignore table extraction errors.
         logger.debug("Failed to extract PPTX table; falling back to text frame handling: %s", exc)
@@ -66,7 +65,7 @@ def _extract_table_text(shape: object) -> str | None:
 
 
 def _paragraph_text(para: object) -> str:
-    raw = str(getattr(para, "text", "") or "")
+    raw = para.text
     text = _clean_line(raw)
     if not text:
         return ""
@@ -75,8 +74,8 @@ def _paragraph_text(para: object) -> str:
     except Exception:
         level = 0
     level = max(0, min(level, 10))
-    prefix = ("  " * level) + "- " if text else ""
-    return f"{prefix}{text}" if prefix else text
+    prefix = ("  " * level) + "- "
+    return f"{prefix}{text}"
 
 
 def _extract_shape_text(shape: object) -> list[str]:
@@ -122,7 +121,7 @@ class PptxParser:
 
         for idx, slide in enumerate(prs.slides):
             parts = _extract_slide_parts(slide)
-            content = "\n".join([p for p in (parts or []) if p]).strip()
+            content = "\n".join(parts).strip()
             if not content:
                 continue
 

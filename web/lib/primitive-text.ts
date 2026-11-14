@@ -11,7 +11,5 @@ export function toTrimmedPrimitiveString(value: unknown, fallback = ''): string 
 }
 
 export function toSingleLinePrimitiveString(value: unknown, fallback = ''): string {
-  return toTrimmedPrimitiveString(value, fallback)
-    .replaceAll(/\s+/g, ' ')
-    .trim()
+  return toTrimmedPrimitiveString(value, fallback).replaceAll(/\s+/g, ' ').trim()
 }

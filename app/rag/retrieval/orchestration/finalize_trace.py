@@ -9,18 +9,18 @@ from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.policy.must_recall import MUST_RECALL_FAIL_REASON_TAXONOMY_V1
 from app.rag.retrieval.orchestration.common import _log_orchestrator_fallback
+from app.rag.retrieval.orchestration.query_contracts import QueryPlan
 
 
 @dataclass(frozen=True)
 class RetrievalTraceStageInput:
-    query_for_retrieval: str
+    query_plan: QueryPlan
     requested_retrieval_mode: Any
     request_retrieval_mode: str
     retrieval_mode_routed: bool
     requested_retrieval_profile: Any
     profile_norm: str | None
     retrieval_contract_mode: str | None
-    retrieval_contract_policy: dict[str, Any]
     contract_deterministic_recall: bool
     must_recall_enabled: bool
     must_recall_status: str
@@ -81,9 +81,8 @@ class RetrievalTraceStageInput:
     rewrite_strategy_hash: str | None
     rewrite_temperature: float | None
     rewrite_max_chars: int | None
-    rewrite_used: bool
     rewrite_elapsed: float
-    rewrite_model_used: Any
+    rewrite_model_used: str | None
     query_expansion_budget_meta: dict[str, Any]
     alias_enabled: bool
     alias_used: bool
@@ -104,39 +103,38 @@ class RetrievalTraceStageInput:
     lightweight_subqueries: list[str]
     mq_enabled: bool
     multi_query_used: bool
-    multi_queries: list[str]
     multi_query_elapsed: float
-    multi_query_model_used: Any
+    multi_query_model_used: str | None
     multi_query_parse_meta: dict[str, Any]
     multi_query_ab_test_key: str | None
     multi_query_ab_variant: str | None
-    multi_query_ab_seed: int | None
+    multi_query_ab_seed: int | str | None
     multi_query_ab_forced: bool
     step_back_enabled: bool
     step_back_used: bool
     step_back_elapsed: float
-    step_back_model_used: Any
+    step_back_model_used: str | None
     step_back_parse_meta: dict[str, Any]
     hyde_enabled: bool
     hyde_used: bool
     hyde_elapsed: float
-    hyde_model_used: Any
+    hyde_model_used: str | None
     decompose_used: bool
     sub_questions: list[str]
     decompose_elapsed: float
-    decompose_model_used: Any
+    decompose_model_used: str | None
     decompose_parse_meta: dict[str, Any]
     top_k: int
     retriever_update: dict[str, Any]
     retrieval_parallelism: int
-    retrieval_plan: list[tuple[Any, Any, Any]]
+    retrieval_plan: list[tuple[str, str, Any]]
     retrieval_per_query: list[dict[str, Any]]
     retrieval_errors: list[dict[str, Any]]
     retrieval_elapsed: float
     retrieval_degraded: bool
     retrieval_degraded_reason_codes: list[str]
     retrieval_channel_health: dict[str, Any]
-    docs_by_query: Any
+    docs_by_query: list[list[Document]]
     mq_diversify_enabled: bool
     mq_diversify_budget: int
     mq_diversify_used: bool
@@ -188,25 +186,38 @@ class RetrievalTraceStageInput:
     parse_risk: dict[str, Any]
     metrics: dict[str, Any]
 
+    @property
+    def query_for_retrieval(self) -> str:
+        return self.query_plan.query
+
+    @property
+    def retrieval_contract_policy(self) -> dict[str, Any]:
+        return self.query_plan.routing.normalization.retrieval_contract_policy
+
+    @property
+    def rewrite_used(self) -> bool:
+        return self.query_plan.prepared.rewrite.used
+
+    @property
+    def multi_queries(self) -> list[str]:
+        return self.query_plan.models.multi_query.queries
+
 
 @dataclass(frozen=True)
 class RetrievalTraceStageOutput:
     retrieval_trace: dict[str, Any]
 
 
-def _retrieval_variant_counts(retrieval_plan: list[tuple[Any, Any, Any]]) -> dict[str, int]:
-    try:
-        variants: dict[str, int] = {}
-        for kind, _q, _r in retrieval_plan:
-            key = str(kind or "").strip() or "main"
-            variants[key] = int(variants.get(key, 0) or 0) + 1
-        return variants
-    except (TypeError, ValueError, AttributeError):
-        return {}
+def _retrieval_variant_counts(retrieval_plan: list[tuple[str, str, Any]]) -> dict[str, int]:
+    variants: dict[str, int] = {}
+    for kind, _q, _r in retrieval_plan:
+        key = kind.strip()
+        variants[key] = variants.get(key, 0) + 1
+    return variants
 
 
 def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
-    kind = str(item.get("kind") or "").strip() or "main"
+    kind = item["kind"].strip()
     payload: dict[str, Any] = {
         "kind": kind,
         "query_chars": int(item.get("query_chars") or 0),
@@ -229,11 +240,7 @@ def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _per_query_trace(retrieval_per_query: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    try:
-        return [_trace_per_query_item(item) for item in retrieval_per_query if isinstance(item, dict)]
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        return []
+    return [_trace_per_query_item(item) for item in retrieval_per_query]
 
 
 def _citations_by_role(citations: list[dict[str, Any]]) -> dict[str, int]:
@@ -243,7 +250,7 @@ def _citations_by_role(citations: list[dict[str, Any]]) -> dict[str, int]:
             if not isinstance(citation, dict):
                 continue
             role = str(citation.get("retrieval_role") or "main").strip().lower() or "main"
-            by_role[role] = int(by_role.get(role, 0) or 0) + 1
+            by_role[role] = by_role.get(role, 0) + 1
         return by_role
     except (TypeError, ValueError, AttributeError):
         return {}
@@ -272,16 +279,16 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
     retrieval_trace = {
         "schema": "mimirq.retrieval_trace_pass.v1",
         "query_for_retrieval_hash": stable_hash(payload.query_for_retrieval),
-        "requested_retrieval_mode": str(payload.requested_retrieval_mode or ""),
-        "retrieval_mode": str(payload.request_retrieval_mode or ""),
+        "requested_retrieval_mode": payload.requested_retrieval_mode,
+        "retrieval_mode": payload.request_retrieval_mode,
         "retrieval_mode_auto_routed": bool(payload.retrieval_mode_routed),
-        "retrieval_profile": payload.profile_norm or None,
+        "retrieval_profile": payload.profile_norm,
         "retrieval_profile_requested": (
             str(payload.requested_retrieval_profile).strip().lower()
             if payload.requested_retrieval_profile is not None
             else None
         ),
-        "retrieval_contract_mode": payload.retrieval_contract_mode or None,
+        "retrieval_contract_mode": payload.retrieval_contract_mode,
         "retrieval_contract_policy": dict(payload.retrieval_contract_policy or {}),
         "retrieval_contract_deterministic_recall": bool(payload.contract_deterministic_recall),
         "contract_diagnostics": {
@@ -380,13 +387,13 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             "alias": {
                 "enabled": bool(payload.alias_enabled),
                 "used": bool(payload.alias_used),
-                "count": int(len(payload.alias_queries)),
+                "count": len(payload.alias_queries),
                 "elapsed_sec": round(float(payload.alias_elapsed or 0.0), 3),
             },
             "dict": {
                 "enabled": bool(payload.dict_meta.get("enabled")),
                 "used": bool(payload.dict_used),
-                "count": int(len(payload.dict_expansions)),
+                "count": len(payload.dict_expansions),
                 "elapsed_sec": round(float(payload.dict_elapsed or 0.0), 3),
             },
             "kg_query": {
@@ -394,23 +401,23 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
                 "used": bool(payload.kg_query_expansion_used),
                 "entities_total": int(payload.kg_query_expansion_entities_total),
                 "entities_selected": int(payload.kg_query_expansion_entities_selected),
-                "query_count": int(len(payload.kg_query_expansion_queries)),
+                "query_count": len(payload.kg_query_expansion_queries),
                 "elapsed_sec": round(float(payload.kg_query_expansion_elapsed or 0.0), 3),
                 "error": payload.kg_query_expansion_error,
             },
             "clause_fastlane": {
                 "used": bool(payload.clause_fastlane_queries),
-                "count": int(len(payload.clause_fastlane_queries)),
+                "count": len(payload.clause_fastlane_queries),
             },
             "lightweight_subquery": {
-                "enabled": bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)),
+                "enabled": bool(settings.RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED),
                 "used": bool(payload.lightweight_subqueries),
-                "count": int(len(payload.lightweight_subqueries)),
+                "count": len(payload.lightweight_subqueries),
             },
             "multi_query": {
                 "enabled": bool(payload.mq_enabled),
                 "used": bool(payload.multi_query_used),
-                "count": int(len(payload.multi_queries)),
+                "count": len(payload.multi_queries),
                 "elapsed_sec": round(float(payload.multi_query_elapsed or 0.0), 3),
                 "model_used": payload.multi_query_model_used,
                 "parse_ok": bool(payload.multi_query_parse_meta.get("ok")),
@@ -439,7 +446,7 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             "decompose": {
                 "enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
                 "used": bool(payload.decompose_used),
-                "count": int(len(payload.sub_questions)),
+                "count": len(payload.sub_questions),
                 "elapsed_sec": round(float(payload.decompose_elapsed or 0.0), 3),
                 "model_used": payload.decompose_model_used,
                 "parse_ok": bool(payload.decompose_parse_meta.get("ok")),
@@ -465,21 +472,21 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
                 if isinstance(payload.retriever_update.get("fusion_min_scores"), dict)
                 else None
             ),
-            "rrf_k": int(getattr(settings, "RETRIEVAL_RRF_K", 60) or 60),
+            "rrf_k": int(settings.RETRIEVAL_RRF_K),
             "query_parallelism": int(payload.retrieval_parallelism),
-            "query_count": int(len(payload.retrieval_plan)),
+            "query_count": len(payload.retrieval_plan),
             "query_variants": variants,
             "per_query": per_query_trace[:8],
             "errors": payload.retrieval_errors[:5],
             "elapsed_sec": round(float(payload.retrieval_elapsed or 0.0), 3),
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+            "vector_backend": str(settings.VECTOR_BACKEND),
             "retrieval_degraded": bool(payload.retrieval_degraded),
             "retrieval_degraded_reasons": list(payload.retrieval_degraded_reason_codes or []),
             "channel_health": dict(payload.retrieval_channel_health),
         },
         "query_variant_fusion": {
             "strategy": ("rrf" if len(payload.docs_by_query) > 1 else "single"),
-            "rrf_k": int(settings.RETRIEVAL_RRF_K or 0) if len(payload.docs_by_query) > 1 else None,
+            "rrf_k": int(settings.RETRIEVAL_RRF_K) if len(payload.docs_by_query) > 1 else None,
             "multi_query_diversify": {
                 "enabled": bool(payload.mq_diversify_enabled),
                 "budget": int(payload.mq_diversify_budget or 0) if payload.mq_diversify_enabled else None,
@@ -532,13 +539,13 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             "reason": payload.abstain_reason,
             "evidence_span_strict_enabled": bool(payload.evidence_span_strict_enabled),
             "evidence_span_missing_citations": int(payload.evidence_span_missing_citations or 0),
-            "min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
-            "min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
+            "min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS),
+            "min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE),
             "top_relevance_score": round(float(payload.top_rel or 0.0), 3),
         },
         "fallback_reason": payload.retrieval_fallback_reason,
         "citations": {
-            "count": int(len(payload.citations)),
+            "count": len(payload.citations),
             "by_role": citations_by_role,
             "chunk_quality": chunk_quality_summary,
         },

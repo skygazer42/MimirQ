@@ -19,7 +19,6 @@ export { healthApi } from './health'
 export { industryRulesApi } from './industry-rules'
 export { integrationApi } from './integrations'
 export { lineageApi } from './lineage'
-export { ltrApi } from './ltr'
 export { metaApi } from './meta'
 export { observabilityApi } from './observability'
 export { parsingApi } from './parsing'
@@ -57,16 +56,21 @@ export type {
   KGSearchDiagnosticsResponse,
   KGSearchDiagnosticsRunDetail,
   KGSearchDiagnosticsRunList,
+  KGSearchDiagnosticsRunListParams,
   KGSearchDiagnosticsRunOut,
+  RagasConversationReadinessItem,
+  RagasConversationReadinessRequest,
+  RagasConversationReadinessResponse,
   RagasItem,
   RagasRun,
+  RagasRunCreateRequest,
   RagasRunDetail,
+  RagasRunList,
 } from './evaluation'
 export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, PromptTemplateUpdate } from './prompts'
 export type { BackendMeta, BackendMetaDetails } from './meta'
 export type { TenantMember } from './access'
 export type { TenantAccess, TenantPermission } from '../tenant-permissions'
-export type { LTRModelInfo } from './ltr'
 export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from './graph'
 export type {
   IndustryRulesGlossaryUpdateRequest,
@@ -91,21 +95,31 @@ export type {
   CacheConfig,
   ChatConfig,
   DifyExternalKnowledgeConfig,
+  DoclingConfig,
+  EmbeddingConfig,
   Etl4LlmConfig,
   FeatureFlags,
+  GovernanceConfig,
   KGConfig,
   LangGraphConfig,
+  LLMConfig,
   MagicPDFConfig,
   MarkerConfig,
+  MilvusConfig,
   MinIOConfig,
   MinerUConfig,
   NavigationConfig,
   ObservabilityConfig,
   PaddleVLConfig,
+  ParserBackendStatus,
+  RAGConfig,
   SafetyConfig,
+  SettingsUpdateResponse,
   SystemSettings,
   SystemStatus,
-  TextInConfig,
   TestLLMRequest,
   TestLLMResponse,
+  TextInConfig,
+  UpdateSettingsRequest,
+  UrlIngestStatus,
 } from './settings'

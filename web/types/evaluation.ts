@@ -2,27 +2,28 @@
  * Evaluation, evidence, and similarity workbench types re-exported by `@/types`.
  */
 
+import type { OpenApiSchema } from './backend'
 import type { JsonObject } from './common'
 
 // ==================== 批量上传相关类型 ====================
 
-export interface BatchFileInfo {
+export type BatchFileInfo = {
   name: string
   data_id: string
 }
 
-export interface BatchUploadRequest {
+export type BatchUploadRequest = {
   files: BatchFileInfo[]
 }
 
-export interface BatchUploadResponse {
+export type BatchUploadResponse = {
   batch_id: string
   file_urls: string[]
   files: BatchFileInfo[]
   message: string
 }
 
-export interface BatchTaskStatus {
+export type BatchTaskStatus = {
   batch_id: string
   status: string
   total_files: number
@@ -39,7 +40,7 @@ export type DocumentBatchUploadResponse = import('./backend').DocumentBatchUploa
 
 // ==================== RAGAS 回归测试相关类型 ====================
 
-export interface ReferenceSource {
+export type ReferenceSource = {
   document_id: string
   chunk_id: string
   chunk_index?: number
@@ -55,7 +56,7 @@ export interface ReferenceSource {
 // Alias kept for UI components that use the older naming.
 export type RegressionReferenceSource = ReferenceSource
 
-export interface RegressionCase {
+export type RegressionCase = {
   id: string
   tenant_id: string
   dataset_id?: string
@@ -70,7 +71,7 @@ export interface RegressionCase {
   updated_at: string
 }
 
-export interface RegressionCaseCreate {
+export type RegressionCaseCreate = {
   question: string
   dataset_id?: string
   document_ids?: string[]
@@ -80,7 +81,7 @@ export interface RegressionCaseCreate {
   extra?: JsonObject
 }
 
-export interface RegressionCasePatch {
+export type RegressionCasePatch = {
   question?: string
   document_ids?: string[]
   expected_answer?: string | null
@@ -89,7 +90,7 @@ export interface RegressionCasePatch {
   extra?: JsonObject
 }
 
-export interface RegressionCaseBundleItem {
+export type RegressionCaseBundleItem = {
   question: string
   expected_answer?: string | null
   tags: string[]
@@ -99,13 +100,13 @@ export interface RegressionCaseBundleItem {
   extra?: JsonObject
 }
 
-export interface RegressionCaseBundleV1 {
+export type RegressionCaseBundleV1 = {
   schema: 'mimirq.regression_cases.v1'
   dataset_id: string
   items: RegressionCaseBundleItem[]
 }
 
-export interface RegressionCaseImportResponse {
+export type RegressionCaseImportResponse = {
   created: number
   updated: number
   skipped: number
@@ -116,7 +117,7 @@ export interface RegressionCaseImportResponse {
   case_ids: string[]
 }
 
-export interface RegressionCaseList {
+export type RegressionCaseList = {
   total: number
   items: RegressionCase[]
 }
@@ -157,7 +158,54 @@ export type EvidenceReferenceRepairResponse = import('./backend').EvidenceRefere
 export type EvidenceHardcaseCandidate = import('./backend').EvidenceHardcaseCandidate
 export type EvidenceHardcaseDiscovery = import('./backend').EvidenceHardcaseDiscovery
 
-export interface GeneratedQuestion {
+export type WhyMissedReferenceStatus = 'retrieved' | 'missing' | 'drifted' | 'unknown'
+
+export type WhyMissedReferenceHints = {
+  /** Rank (1-based) of the first citation matching the reference document. */
+  document_hit_rank?: number
+  /** Rank (1-based) of the first citation matching the document and chunk index. */
+  chunk_index_hit_rank?: number
+  /** Rank (1-based) of the first citation matching the reference hierarchy family. */
+  family_hit_rank?: number
+}
+
+export type WhyMissedRetrievalInfo = {
+  rank: number
+  hit_type?: string
+  score?: number
+}
+
+export type WhyMissedDriftInfo = {
+  reason: string
+  expected?: unknown
+  observed?: unknown
+}
+
+export type WhyMissedReferenceReportRow = {
+  document_id: string | null
+  chunk_id: string
+  chunk_index?: number
+  label?: string | null
+  status: WhyMissedReferenceStatus
+  retrieval?: WhyMissedRetrievalInfo
+  drift?: WhyMissedDriftInfo
+  hints?: WhyMissedReferenceHints
+}
+
+export type WhyMissedSummary = {
+  total_references: number
+  retrieved_references: number
+  missing_references: number
+  drifted_references: number
+  unknown_references: number
+}
+
+export type WhyMissedReport = {
+  summary: WhyMissedSummary
+  references: WhyMissedReferenceReportRow[]
+}
+
+export type GeneratedQuestion = {
   question: string
   expected_answer?: string
   context?: string
@@ -166,7 +214,7 @@ export interface GeneratedQuestion {
   metadata: JsonObject
 }
 
-export interface TestGenFromDocsRequest {
+export type TestGenFromDocsRequest = {
   dataset_id?: string
   document_ids?: string[]
   num_questions?: number
@@ -174,21 +222,135 @@ export interface TestGenFromDocsRequest {
   auto_save_as_cases?: boolean
 }
 
-export interface TestGenFromConversationsRequest {
+export type TestGenFromConversationsRequest = {
   conversation_ids: string[]
   num_questions?: number
   quality_threshold?: number
   auto_save_as_cases?: boolean
 }
 
-export interface TestGenResponse {
+export type TestGenResponse = {
   status: string
   generated_questions: GeneratedQuestion[]
   saved_case_ids: string[]
   error_message?: string
 }
 
-export interface RegressionRun {
+export type RagasRun = {
+  id: string
+  conversation_id?: string
+  status: string
+  metrics: string[]
+  params: JsonObject
+  summary: JsonObject
+  error_message?: string
+  created_at: string
+  started_at?: string
+  finished_at?: string
+}
+
+export type RagasItem = {
+  id: string
+  run_id: string
+  turn_index: number
+  user_message_id?: string
+  assistant_message_id?: string
+  user_input: string
+  response: string
+  retrieved_contexts?: string[] | null
+  citations: unknown[]
+  scores: JsonObject
+  created_at: string
+}
+
+export type RagasRunDetail = {
+  run: RagasRun
+  items: RagasItem[]
+}
+
+export type RagasRunList = {
+  total: number
+  items: RagasRun[]
+}
+
+export type RagasRunCreateRequest = {
+  conversation_id: string
+  metrics?: string[]
+  max_turns?: number
+  skip_empty_contexts?: boolean
+  include_contexts_in_response?: boolean
+}
+
+export type RagasConversationReadinessRequest = {
+  conversation_ids: string[]
+}
+
+export type RagasConversationReadinessItem = {
+  conversation_id: string
+  assistant_turns: number
+  evaluable_turns: number
+  citations_count: number
+  is_evaluable: boolean
+}
+
+export type RagasConversationReadinessResponse = {
+  total: number
+  items: RagasConversationReadinessItem[]
+}
+
+export type KGHardcaseMode = 'off' | 'deterministic' | 'llm'
+
+export type KGSearchDiagnosticsRequest = {
+  dataset_id: string
+  case_ids?: string[]
+  max_cases?: number
+  k?: number
+  auto_extract_kg?: boolean
+  extract_skills?: boolean | null
+  extract_relations?: boolean | null
+  hardcase_mode?: KGHardcaseMode
+  hardcases_per_failed_case?: number
+  max_failed_cases_for_hardcase?: number
+  llm_temperature?: number
+  persist_run?: boolean
+}
+
+export type KGSearchDiagnosticsItem = OpenApiSchema<'KGSearchDiagnosticsItem'>
+export type KGSearchDiagnosticsSummary = OpenApiSchema<'KGSearchDiagnosticsSummary'>
+
+export type KGSearchDiagnosticsResponse = {
+  run_id?: string | null
+  summary: KGSearchDiagnosticsSummary
+  items?: KGSearchDiagnosticsItem[]
+}
+
+export type KGSearchDiagnosticsRunOut = {
+  id: string
+  tenant_id: string
+  account_id?: string | null
+  dataset_id: string
+  status: string
+  params?: JsonObject
+  summary?: JsonObject
+  created_at: string
+}
+
+export type KGSearchDiagnosticsRunList = {
+  total: number
+  items: KGSearchDiagnosticsRunOut[]
+}
+
+export type KGSearchDiagnosticsRunListParams = {
+  dataset_id: string
+  limit?: number
+}
+
+export type KGSearchDiagnosticsRunDetail = {
+  run: KGSearchDiagnosticsRunOut
+  items?: JsonObject[]
+}
+
+export type RegressionRun = {
   id: string
   tenant_id: string
   account_id?: string
@@ -203,7 +365,7 @@ export interface RegressionRun {
   finished_at?: string
 }
 
-export interface RegressionRunCreate {
+export type RegressionRunCreate = {
   case_ids?: string[]
   dataset_id?: string
   metrics?: string[]
@@ -253,13 +415,13 @@ export interface RegressionRunCreate {
 
 export type RegressionAblationGridValue = string | number | boolean | null | JsonObject
 
-export interface RegressionAblationBatchRequest extends RegressionRunCreate {
+export type RegressionAblationBatchRequest = RegressionRunCreate & {
   grid: Record<string, RegressionAblationGridValue[]>
   max_combinations?: number
   ablation_label_prefix?: string | null
 }
 
-export interface RegressionAblationBatchResponse {
+export type RegressionAblationBatchResponse = {
   ablation_id: string
   total: number
   run_ids: string[]
@@ -267,12 +429,12 @@ export interface RegressionAblationBatchResponse {
   status: string
 }
 
-export interface RegressionRunList {
+export type RegressionRunList = {
   total: number
   items: RegressionRun[]
 }
 
-export interface RegressionItem {
+export type RegressionItem = {
   id: string
   run_id: string
   case_id: string
@@ -285,19 +447,19 @@ export interface RegressionItem {
   created_at: string
 }
 
-export interface RegressionRunDetail {
+export type RegressionRunDetail = {
   run: RegressionRun
   items: RegressionItem[]
 }
 
-export interface RegressionRunMetricDiff {
+export type RegressionRunMetricDiff = {
   key: string
   before?: unknown
   after?: unknown
   delta?: number | null
 }
 
-export interface RegressionRunDiffScore {
+export type RegressionRunDiffScore = {
   version: string
   used_metric_keys: string[]
   weights: Record<string, number>
@@ -308,20 +470,20 @@ export interface RegressionRunDiffScore {
   target_metrics: Record<string, number>
 }
 
-export interface RegressionRunSliceBucketDiff {
+export type RegressionRunSliceBucketDiff = {
   key: string
   items_before: number
   items_after: number
   metrics: RegressionRunMetricDiff[]
 }
 
-export interface RegressionRunSliceDiff {
+export type RegressionRunSliceDiff = {
   truncated_before: boolean
   truncated_after: boolean
   buckets: RegressionRunSliceBucketDiff[]
 }
 
-export interface RegressionRunCaseDiff {
+export type RegressionRunCaseDiff = {
   case_id: string
   question: string
   metric_diffs: RegressionRunMetricDiff[]
@@ -329,7 +491,7 @@ export interface RegressionRunCaseDiff {
   label: string
 }
 
-export interface RegressionRunMetricSignificance {
+export type RegressionRunMetricSignificance = {
   key: string
   compared: number
   base_mean?: number | null
@@ -346,7 +508,7 @@ export interface RegressionRunMetricSignificance {
   significant: boolean
 }
 
-export interface RagasRegressionRunDiffResponse {
+export type RagasRegressionRunDiffResponse = {
   base_run_id: string
   target_run_id: string
   generated_at: string
@@ -362,7 +524,7 @@ export interface RagasRegressionRunDiffResponse {
 
 // ==================== RAGViz（相似度热力图） ====================
 
-export interface RagvizSimilarityCollection {
+export type RagvizSimilarityCollection = {
   id: string
   label: string
   kind: string
@@ -370,13 +532,13 @@ export interface RagvizSimilarityCollection {
   meta?: JsonObject
 }
 
-export interface RagvizSimilarityCollectionsResponse {
+export type RagvizSimilarityCollectionsResponse = {
   success: boolean
   collections: RagvizSimilarityCollection[]
   count: number
 }
 
-export interface RagvizSimilarityRequest {
+export type RagvizSimilarityRequest = {
   x_collection: string
   y_collection: string
   x_max_items?: number
@@ -384,7 +546,7 @@ export interface RagvizSimilarityRequest {
   max_items?: number
 }
 
-export interface RagvizSimilarityStats {
+export type RagvizSimilarityStats = {
   total_pairs: number
   avg_similarity: number
   min_similarity: number
@@ -396,7 +558,7 @@ export interface RagvizSimilarityStats {
   compute_time: number
 }
 
-export interface RagvizSimilarityMatrixResult {
+export type RagvizSimilarityMatrixResult = {
   matrix: number[][]
   x_data: JsonObject[]
   y_data: JsonObject[]
@@ -406,7 +568,7 @@ export interface RagvizSimilarityMatrixResult {
   metadata: JsonObject
 }
 
-export interface RagvizSimilarityCalculateResponse {
+export type RagvizSimilarityCalculateResponse = {
   success: boolean
   result?: RagvizSimilarityMatrixResult
   message?: string

@@ -1,4 +1,3 @@
-
 import re
 from typing import Any, Callable
 
@@ -19,7 +18,9 @@ def normalize_document_questions(value: Any, *, max_items: int = 5) -> list[str]
     out: list[str] = []
     seen: set[str] = set()
     for item in value:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text:
             continue
         key = text.casefold()
@@ -84,7 +85,7 @@ def _metadata_view_header_lines(metadata: dict[str, Any], *, max_fields: int = 1
 
 
 def rerank_text_from_result(result: dict[str, Any]) -> str:
-    content = str(result.get("content") or "").strip()
+    content = result["content"].strip()
     metadata = result.get("metadata") if isinstance(result, dict) else None
     if not isinstance(metadata, dict):
         return content
@@ -98,7 +99,7 @@ def rerank_text_from_result(result: dict[str, Any]) -> str:
 
 
 def augment_retrieval_corpus_text(*, content: str, metadata: dict[str, Any]) -> tuple[str, bool]:
-    base = str(content or "")
+    base = content
     if bool(metadata.get("rich_metadata_header_applied")):
         return base, False
 
@@ -123,12 +124,10 @@ def prepare_retrieval_document(
     log_fallback: Callable[[str, Exception], None],
 ) -> Document:
     meta = dict(doc.metadata or {})
-    display_content = str(meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY) or doc.page_content or "")
+    display_content = meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY) or doc.page_content
     indexed_content = meta.get(_RETRIEVAL_TEXT_KEY)
     retrieval_base = (
-        str(indexed_content)
-        if isinstance(indexed_content, str) and indexed_content.strip()
-        else display_content
+        str(indexed_content) if isinstance(indexed_content, str) and indexed_content.strip() else display_content
     )
     retrieval_content, applied = augment_retrieval_corpus_text(content=retrieval_base, metadata=meta)
     meta[_RETRIEVAL_DISPLAY_CONTENT_KEY] = display_content

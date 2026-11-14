@@ -1,19 +1,14 @@
-"""Small ingestion-preview config/data helpers for the pipeline API.
-
-Extracted verbatim from ``app/api/v1/pipeline.py``. Most ingestion-preview
-helpers stay in ``app.api.v1.pipeline`` because tests monkeypatch them there.
-Submodules must not import ``app.api.v1.pipeline`` (circular import).
-"""
+"""Build ingestion previews from the matched policy and resolved pipeline."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import UUID
 
-from app.api.schemas.pipeline import CleanPreviewRequest, CleanRegexRuleModel
+from app.api.schemas.pipelines import CleanPreviewRequest, CleanRegexRuleModel
+from app.api.schemas.sources import IngestionRule
 from app.core.config import settings
 from app.parsing.preprocess.file_preprocessor import preprocess_file
-
-from .clean_preview import REDACTED_MASK, SECRET_MASK
+from app.types.pipeline import PipelineEffective
 
 
 @dataclass
@@ -27,60 +22,31 @@ class _IngestionPreviewConfig:
     patch_dict: dict[str, object] = field(default_factory=dict)
 
 
-def _empty_preprocess_summary() -> dict[str, object]:
-    return {"changed": False, "size_before": 0, "size_after": 0, "steps": [], "warnings": []}
-
-
 def _ingestion_preview_defaults(
     parser_backend: str | None,
     chunk_strategy: str | None,
 ) -> tuple[str, str, str, str]:
-    default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    default_cs = (
-        (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-    )
-    base_pb = (parser_backend or default_pb).strip().lower() or default_pb
-    base_cs = (chunk_strategy or default_cs).strip().lower() or default_cs
-    return default_pb, default_cs, base_pb, base_cs
+    default_parser_backend = settings.DEFAULT_PARSER_BACKEND.strip().lower()
+    default_chunk_strategy = settings.DEFAULT_CHUNK_STRATEGY.strip().lower()
+    base_parser_backend = default_parser_backend
+    base_chunk_strategy = default_chunk_strategy
+    if parser_backend and parser_backend.strip():
+        base_parser_backend = parser_backend.strip().lower()
+    if chunk_strategy and chunk_strategy.strip():
+        base_chunk_strategy = chunk_strategy.strip().lower()
+    return default_parser_backend, default_chunk_strategy, base_parser_backend, base_chunk_strategy
 
 
-def _ingestion_rule_preprocess_steps(matched_rule: object | None) -> list[dict[str, object]]:
-    preprocess = getattr(matched_rule, "preprocess", None) if matched_rule is not None else None
-    steps = (
-        getattr(preprocess, "steps", None)
-        if preprocess is not None and bool(getattr(preprocess, "enabled", True))
-        else None
-    )
-    if not isinstance(steps, list) or not steps:
+def _ingestion_rule_preprocess_steps(matched_rule: IngestionRule | None) -> list[dict[str, object]]:
+    if matched_rule is None or not matched_rule.preprocess.enabled:
         return []
     return [
         {
-            "id": str(getattr(step, "id", "") or "").strip(),
-            "params": dict(getattr(step, "params", {}) or {}),
+            "id": step.id.strip(),
+            "params": dict(step.params),
         }
-        for step in steps
+        for step in matched_rule.preprocess.steps
     ]
-
-
-def _effective_bool(effective: object, name: str, default: bool) -> bool:
-    return bool(getattr(effective, name, default))
-
-
-def _effective_int(effective: object, name: str, default: int) -> int:
-    return int(getattr(effective, name, default) or default)
-
-
-def _effective_float(effective: object, name: str, default: float) -> float:
-    return float(getattr(effective, name, default) or default)
-
-
-def _effective_str(effective: object, name: str, default: str) -> str:
-    return str(getattr(effective, name, default) or default)
-
-
-def _dataset_metadata_dict(dataset: object) -> dict[str, object]:
-    dataset_meta = getattr(dataset, "dataset_metadata", None)
-    return dataset_meta if isinstance(dataset_meta, dict) else {}
 
 
 def _preprocess_ingestion_preview_file(
@@ -88,148 +54,128 @@ def _preprocess_ingestion_preview_file(
     preprocess_steps: list[dict[str, object]],
 ) -> tuple[Path, dict[str, object]]:
     if not preprocess_steps:
-        return temp_path, _empty_preprocess_summary()
+        return temp_path, {"changed": False, "size_before": 0, "size_after": 0, "steps": [], "warnings": []}
 
     pre = preprocess_file(input_path=temp_path, steps=preprocess_steps)
     summary = {
-        "changed": bool(pre.changed),
-        "size_before": int(pre.size_before),
-        "size_after": int(pre.size_after),
+        "changed": pre.changed,
+        "size_before": pre.size_before,
+        "size_after": pre.size_after,
         "steps": [
             {
                 "id": step.id,
-                "applied": bool(step.applied),
-                "changed": bool(step.changed),
+                "applied": step.applied,
+                "changed": step.changed,
                 "note": step.note,
-                "bytes_before": int(getattr(step, "bytes_before", 0) or 0),
-                "bytes_after": int(getattr(step, "bytes_after", 0) or 0),
-                "elapsed_ms": int(getattr(step, "elapsed_ms", 0) or 0),
+                "bytes_before": step.bytes_before,
+                "bytes_after": step.bytes_after,
+                "elapsed_ms": step.elapsed_ms,
             }
-            for step in (pre.steps or [])
+            for step in pre.steps
         ],
-        "warnings": list(pre.warnings or []),
+        "warnings": list(pre.warnings),
     }
-    parse_path = Path(str(pre.output_path)) if bool(pre.changed) else temp_path
+    parse_path = Path(pre.output_path) if pre.changed else temp_path
     return parse_path, summary
 
 
 def _build_ingestion_clean_preview_request(
     *,
-    parsed: dict[str, object],
-    effective: object,
+    markdown: str,
+    effective: PipelineEffective,
     diff_max_lines: int,
 ) -> CleanPreviewRequest:
     return CleanPreviewRequest(
-        markdown=str(parsed.get("markdown") or ""),
-        rules=[CleanRegexRuleModel(**rule) for rule in (getattr(effective, "governance_regex_rules", None) or [])],
-        use_default_rules=True,
+        markdown=markdown,
+        rules=[CleanRegexRuleModel(**rule) for rule in effective.governance_regex_rules],
         include_diff=True,
-        diff_max_lines=int(diff_max_lines or 0),
-        input_format="markdown",
-        html_xpath=None,
-        normalize_line_endings=True,
-        trim_trailing_spaces=True,
-        collapse_blank_lines=True,
-        max_blank_lines=_effective_int(effective, "governance_max_blank_lines", 1),
-        remove_control_chars=True,
-        remove_toc_lines=_effective_bool(effective, "governance_remove_toc_lines", True),
-        remove_noise_lines=_effective_bool(effective, "governance_remove_noise_lines", True),
-        remove_common_lines=_effective_bool(effective, "governance_remove_common_lines", True),
-        unwrap_lines=_effective_bool(effective, "governance_unwrap_lines", True),
-        remove_boilerplate=_effective_bool(effective, "governance_remove_boilerplate", False),
-        remove_images=_effective_str(effective, "governance_remove_images", "none"),  # type: ignore[arg-type]
-        extract_frontmatter=_effective_bool(effective, "governance_extract_frontmatter", False),
-        strip_frontmatter=_effective_bool(effective, "governance_strip_frontmatter", False),
-        detect_language=_effective_bool(effective, "governance_detect_language", False),
-        language_min_chars=_effective_int(effective, "governance_language_min_chars", 40),
-        normalize_urls=_effective_bool(effective, "governance_normalize_urls", False),
-        normalize_urls_strip_tracking=_effective_bool(effective, "governance_normalize_urls_strip_tracking", True),
-        drop_duplicate_paragraphs=_effective_bool(effective, "governance_drop_duplicate_paragraphs", False),
-        drop_duplicate_paragraphs_min_occurrences=_effective_int(
-            effective,
-            "governance_drop_duplicate_paragraphs_min_occurrences",
-            3,
-        ),
-        drop_duplicate_paragraphs_min_chars=_effective_int(
-            effective,
-            "governance_drop_duplicate_paragraphs_min_chars",
-            40,
-        ),
-        drop_duplicate_paragraphs_max_chars=_effective_int(
-            effective,
-            "governance_drop_duplicate_paragraphs_max_chars",
-            1200,
-        ),
-        trim_references=_effective_bool(effective, "governance_trim_references", False),
-        extract_keywords=_effective_bool(effective, "governance_extract_keywords", False),
-        keywords_provider=_effective_str(effective, "governance_keywords_provider", "auto"),
-        keywords_top_k=_effective_int(effective, "governance_keywords_top_k", 10),
-        keywords_max_chars=_effective_int(effective, "governance_keywords_max_chars", 20000),
-        normalize_tables=_effective_bool(effective, "governance_normalize_tables", False),
-        strip_code_line_numbers=_effective_bool(effective, "governance_strip_code_line_numbers", False),
-        pii_anonymize=_effective_bool(effective, "governance_pii_anonymize", False),
-        pii_mode=_effective_str(effective, "governance_pii_mode", "mask"),  # type: ignore[arg-type]
-        pii_mask=_effective_str(effective, "governance_pii_mask", REDACTED_MASK),
-        secrets_redact=_effective_bool(effective, "governance_secrets_redact", False),
-        secrets_mode=_effective_str(effective, "governance_secrets_mode", "mask"),  # type: ignore[arg-type]
-        secrets_mask=_effective_str(effective, "governance_secrets_mask", SECRET_MASK),
-        drop_outline_only=_effective_bool(effective, "governance_drop_outline_only", False),
-        drop_outline_min_content_chars=_effective_int(effective, "governance_drop_outline_min_content_chars", 200),
-        drop_outline_max_heading_ratio=_effective_float(effective, "governance_drop_outline_max_heading_ratio", 0.85),
-        drop_low_density=_effective_bool(effective, "governance_drop_low_density", False),
-        drop_low_density_threshold=_effective_float(effective, "governance_drop_low_density_threshold", 0.12),
-        unwrap_max_line_length=_effective_int(effective, "governance_unwrap_max_line_length", 120),
-        noise_min_chars=_effective_int(effective, "governance_noise_min_chars", 2),
-        noise_ratio_threshold=_effective_float(effective, "governance_noise_ratio_threshold", 0.2),
-        common_lines_min_occurrences=_effective_int(effective, "governance_common_lines_min_docs", 3),
+        diff_max_lines=diff_max_lines,
+        max_blank_lines=effective.governance_max_blank_lines,
+        remove_toc_lines=effective.governance_remove_toc_lines,
+        remove_noise_lines=effective.governance_remove_noise_lines,
+        remove_common_lines=effective.governance_remove_common_lines,
+        unwrap_lines=effective.governance_unwrap_lines,
+        remove_boilerplate=effective.governance_remove_boilerplate,
+        remove_images=effective.governance_remove_images,  # type: ignore[arg-type]
+        extract_frontmatter=effective.governance_extract_frontmatter,
+        strip_frontmatter=effective.governance_strip_frontmatter,
+        detect_language=effective.governance_detect_language,
+        language_min_chars=effective.governance_language_min_chars,
+        normalize_urls=effective.governance_normalize_urls,
+        normalize_urls_strip_tracking=effective.governance_normalize_urls_strip_tracking,
+        drop_duplicate_paragraphs=effective.governance_drop_duplicate_paragraphs,
+        drop_duplicate_paragraphs_min_occurrences=effective.governance_drop_duplicate_paragraphs_min_occurrences,
+        drop_duplicate_paragraphs_min_chars=effective.governance_drop_duplicate_paragraphs_min_chars,
+        drop_duplicate_paragraphs_max_chars=effective.governance_drop_duplicate_paragraphs_max_chars,
+        trim_references=effective.governance_trim_references,
+        extract_keywords=effective.governance_extract_keywords,
+        keywords_provider=effective.governance_keywords_provider,
+        keywords_top_k=effective.governance_keywords_top_k,
+        keywords_max_chars=effective.governance_keywords_max_chars,
+        normalize_tables=effective.governance_normalize_tables,
+        strip_code_line_numbers=effective.governance_strip_code_line_numbers,
+        pii_anonymize=effective.governance_pii_anonymize,
+        pii_mode=effective.governance_pii_mode,  # type: ignore[arg-type]
+        pii_mask=effective.governance_pii_mask,
+        secrets_redact=effective.governance_secrets_redact,
+        secrets_mode=effective.governance_secrets_mode,  # type: ignore[arg-type]
+        secrets_mask=effective.governance_secrets_mask,
+        drop_outline_only=effective.governance_drop_outline_only,
+        drop_outline_min_content_chars=effective.governance_drop_outline_min_content_chars,
+        drop_outline_max_heading_ratio=effective.governance_drop_outline_max_heading_ratio,
+        drop_low_density=effective.governance_drop_low_density,
+        drop_low_density_threshold=effective.governance_drop_low_density_threshold,
+        unwrap_max_line_length=effective.governance_unwrap_max_line_length,
+        noise_min_chars=effective.governance_noise_min_chars,
+        noise_ratio_threshold=effective.governance_noise_ratio_threshold,
+        common_lines_min_occurrences=effective.governance_common_lines_min_docs,
     )
 
 
 def _ingestion_preview_rule_output(
-    matched_rule: object | None,
+    matched_rule: IngestionRule | None,
     config: _IngestionPreviewConfig,
 ) -> dict[str, object]:
     return {
         "matched": matched_rule is not None,
-        "rule_id": getattr(matched_rule, "id", None) if matched_rule is not None else None,
-        "rule_name": getattr(matched_rule, "name", None) if matched_rule is not None else None,
+        "rule_id": matched_rule.id if matched_rule is not None else None,
+        "rule_name": matched_rule.name if matched_rule is not None else None,
         "governance_profile_ref": config.governance_profile_ref,
         "preprocess_steps": config.preprocess_steps,
-        "parser_backend": str(config.parser_backend_choice or "auto"),
-        "chunk_strategy": str(config.chunk_strategy_choice or ""),
+        "parser_backend": config.parser_backend_choice,
+        "chunk_strategy": config.chunk_strategy_choice,
     }
 
 
 def _ingestion_preview_explain(
     *,
     dataset_id: UUID,
-    file: object,
+    filename: str,
     file_ext: str,
     config: _IngestionPreviewConfig,
     rule_out: dict[str, object],
     pre_summary: dict[str, object],
     parsed: dict[str, object],
 ) -> dict[str, object]:
-    filename = str(getattr(file, "filename", "") or "")
     return {
         "dataset_id": str(dataset_id),
         "filename": filename,
-        "file_type": str(file_ext or ""),
+        "file_type": file_ext,
         "requested": {
-            "parser_backend": str(config.base_parser_backend or ""),
-            "chunk_strategy": str(config.base_chunk_strategy or ""),
+            "parser_backend": config.base_parser_backend,
+            "chunk_strategy": config.base_chunk_strategy,
         },
         "rule": rule_out,
         "snapshot": {
             "dataset_id": str(dataset_id),
             "filename": filename,
-            "file_type": str(file_ext or ""),
+            "file_type": file_ext,
             "rule": rule_out,
             "preprocess": dict(pre_summary),
             "pipeline_patch": dict(config.patch_dict),
-            "parser_backend": str(config.parser_backend_choice or "auto"),
-            "chunk_strategy": str(config.chunk_strategy_choice or ""),
-            "parse_backend": str(parsed.get("backend") or ""),
+            "parser_backend": config.parser_backend_choice,
+            "chunk_strategy": config.chunk_strategy_choice,
+            "parse_backend": parsed["backend"],
             "pdf_quality": parsed.get("pdf_quality"),
         },
     }

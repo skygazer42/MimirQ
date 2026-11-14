@@ -20,6 +20,7 @@ from app.parsing.enrich.image_code import (
     _extract_md_images,
     _safe_read_local_image_bytes,
 )
+from app.parsing.enrich.image_references import next_non_empty_line as _next_non_empty_line
 from app.parsing.enrich.image_understanding import ocr_image
 from app.rag.core.logging import get_logger
 
@@ -38,13 +39,13 @@ class ImageOcrAudit:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "applied": bool(self.applied),
-            "ocr_blocks_added": int(self.ocr_blocks_added),
-            "images_attempted": int(self.images_attempted),
-            "images_succeeded": int(self.images_succeeded),
-            "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
-            "error": (str(self.error)[:200] if self.error else None),
+            "applied": self.applied,
+            "ocr_blocks_added": self.ocr_blocks_added,
+            "images_attempted": self.images_attempted,
+            "images_succeeded": self.images_succeeded,
+            "elapsed_ms": self.elapsed_ms,
+            "backend": self.backend,
+            "error": (self.error[:200] if self.error else None),
         }
 
 
@@ -59,25 +60,13 @@ def _build_image_ocr_audit(
 ) -> ImageOcrAudit:
     return ImageOcrAudit(
         applied=applied,
-        ocr_blocks_added=int(ocr_blocks_added),
-        images_attempted=int(images_attempted),
-        images_succeeded=int(images_succeeded),
-        elapsed_ms=int(elapsed_ms),
+        ocr_blocks_added=ocr_blocks_added,
+        images_attempted=images_attempted,
+        images_succeeded=images_succeeded,
+        elapsed_ms=elapsed_ms,
         backend="local_ocr",
         error=error,
     )
-
-
-def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
-    for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = (lines[index] or "").strip()
-        if candidate:
-            return candidate
-    return ""
-
-
-def _iter_line_images(line: str) -> list[tuple[str, str]]:
-    return _extract_md_images(line) + _extract_html_imgs(line)
 
 
 def _ocr_text_for_image(
@@ -102,7 +91,7 @@ def _ocr_text_for_image(
         return None, 1, 0
 
     try:
-        text = str(ocr_image(image, _max_chars=int(max_ocr_chars or 0)) or "").strip()
+        text = ocr_image(image, _max_chars=max_ocr_chars)
     finally:
         try:
             image.close()
@@ -155,7 +144,7 @@ def add_image_ocr_blocks(
     max_image_bytes: int = 5_000_000,
     max_ocr_chars: int = 2000,
 ) -> tuple[str, int, ImageOcrAudit]:
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
         return (
             "",
@@ -191,22 +180,19 @@ def add_image_ocr_blocks(
 
     lines = raw.splitlines()
     for index, line in enumerate(lines):
-        if _FENCE_RE.match(line or ""):
+        out_lines.append(line)
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
-            out_lines.append(line)
             continue
         if in_fence:
-            out_lines.append(line)
             continue
-
-        out_lines.append(line)
         if ocr_blocks_added >= max_images_i:
             continue
 
         if _next_non_empty_line(lines, index).lower().startswith("image ocr:"):
             continue
 
-        images = _iter_line_images(line)
+        images = _extract_md_images(line) + _extract_html_imgs(line)
         if not images:
             continue
 
@@ -225,7 +211,7 @@ def add_image_ocr_blocks(
     elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
     return (
         "\n".join(out_lines).rstrip() + "\n",
-        int(ocr_blocks_added),
+        ocr_blocks_added,
         _build_image_ocr_audit(
             applied=True,
             ocr_blocks_added=ocr_blocks_added,

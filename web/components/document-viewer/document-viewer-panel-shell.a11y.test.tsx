@@ -6,13 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/ui/tabs', () => ({
   Tabs: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TabsContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  TabsContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   TabsList: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TabsTrigger: ({ children }: { children: React.ReactNode }) => (
-    <button type="button">{children}</button>
-  ),
+  TabsTrigger: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
 }))
 vi.mock('@/components/document-viewer/chunk-editor-dialog', () => ({
   ChunkEditorDialog: () => null,
@@ -44,8 +40,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       writable: true,
@@ -77,6 +72,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
     const props = {
       activeTab: 'preview',
       chunks: [],
+      clearRetrievePreview: vi.fn(),
       closeDocument: vi.fn(),
       copyChunkContent: vi.fn(),
       copyChunkLink: vi.fn(),
@@ -175,19 +171,13 @@ describe('DocumentViewerPanelShell accessibility', () => {
       root.render(<DocumentViewerPanelShell {...props} />)
     })
 
-    const handle = container.querySelector(
-      '[data-document-viewer-resize-handle="true"]'
-    ) as HTMLElement | null
+    const handle = container.querySelector('[data-document-viewer-resize-handle="true"]') as HTMLElement | null
     expect(handle?.getAttribute('role')).toBe('separator')
     expect(handle?.getAttribute('aria-valuenow')).toBe('576')
 
     act(() => {
-      handle?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
-      )
-      handle?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-      )
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
     })
 
     expect(setPanelWidthPx).toHaveBeenNthCalledWith(1, 600)

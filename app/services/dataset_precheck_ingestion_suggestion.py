@@ -20,12 +20,16 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
+from app.api.schemas.sources import IngestionPolicy, IngestionRule
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
-from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
+from app.services.dataset_precheck_service import (
+    _assert_artifact_path_under_tenant,
+    _jsonl_path_from_row,
+    _list_finding_from_jsonl,
+)
 from app.services.ingestion_policy import validate_and_normalize_ingestion_policy
 from app.services.ingestion_policy_diff import diff_ingestion_policies
 
@@ -73,30 +77,17 @@ class _SuggestionSignals:
 
 
 def _summary_or_404(scan_run: DBDatasetPrecheckScanRun) -> dict[str, Any]:
-    summary = getattr(scan_run, "summary", None)
+    summary = scan_run.summary
     summary = summary if isinstance(summary, dict) else {}
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not available")
     return summary
 
 
-def _load_jsonl_path(scan_run: DBDatasetPrecheckScanRun, *, tenant_id: UUID) -> Path:
-    artifacts = getattr(scan_run, "artifacts", None)
-    artifacts = artifacts if isinstance(artifacts, dict) else {}
-    raw = str(artifacts.get("files_jsonl") or "").strip()
-    if not raw:
-        raise HTTPException(status_code=404, detail="Artifacts not available")
-    p = Path(raw)
-    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=p)
-    if not p.exists() or not p.is_file():
-        raise HTTPException(status_code=404, detail="Artifacts not found")
-    return p
-
-
 def _iter_jsonl(path: Path):  # noqa: ANN202
     with path.open("r", encoding="utf-8") as f:
         for line in f:
-            s = (line or "").strip()
+            s = line.strip()
             if not s:
                 continue
             try:
@@ -115,23 +106,23 @@ def _rule(
     extensions: list[str],
     filename_regex: str | None = None,
     enabled: bool = True,
-    preprocess_steps: list[str] | None = None,
-    parser_backend: str | None = None,
+    preprocess_steps: list[str],
+    parser_backend: str,
     chunk_strategy: str | None = None,
-    governance_profile_ref: str | None = None,
-    pipeline_patch: dict[str, Any] | None = None,
+    governance_profile_ref: str,
+    pipeline_patch: dict[str, Any],
 ) -> dict[str, Any]:
-    steps = [{"id": sid, "params": {}} for sid in (preprocess_steps or [])]
+    steps = [{"id": sid, "params": {}} for sid in preprocess_steps]
     return {
         "id": rid,
         "name": name,
-        "enabled": bool(enabled),
+        "enabled": enabled,
         "match": {"extensions": extensions, "filename_regex": filename_regex},
         "preprocess": {"enabled": bool(steps), "steps": steps},
         "parser_backend": parser_backend,
         "chunk_strategy": chunk_strategy,
         "governance_profile_ref": governance_profile_ref,
-        "pipeline_patch": dict(pipeline_patch or {}),
+        "pipeline_patch": dict(pipeline_patch),
     }
 
 
@@ -159,9 +150,7 @@ def _pii_secrets_patch(*, enable_pii: bool, enable_secrets: bool) -> dict[str, A
 def _extract_suggestion_signals(summary: dict[str, Any]) -> _SuggestionSignals:
     pdf_scan = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     finding_list = summary.get("findings") if isinstance(summary.get("findings"), list) else []
-    finding_by_key = {
-        str(item.get("key") or "").strip().lower(): item for item in finding_list if isinstance(item, dict)
-    }
+    finding_by_key = {item["key"].strip().lower(): item for item in finding_list if isinstance(item, dict)}
     length_percentiles = (
         summary.get("length_percentiles") if isinstance(summary.get("length_percentiles"), dict) else {}
     )
@@ -189,9 +178,9 @@ def _collect_sensitive_file_types(jsonl_path: Path) -> tuple[set[str], set[str]]
     pii_types: set[str] = set()
     secrets_types: set[str] = set()
     for obj in _iter_jsonl(jsonl_path):
-        file_type = str(obj.get("file_type") or "").strip().lower()
+        file_type = obj["file_type"].strip().lower()
         findings = obj.get("findings") if isinstance(obj.get("findings"), list) else []
-        finding_set = {str(x or "").strip().lower() for x in findings}
+        finding_set = {x.strip().lower() for x in findings}
         if file_type and "pii" in finding_set:
             pii_types.add(file_type)
         if file_type and "secrets" in finding_set:
@@ -200,13 +189,13 @@ def _collect_sensitive_file_types(jsonl_path: Path) -> tuple[set[str], set[str]]
 
 
 def _chunk_size_note(signals: _SuggestionSignals) -> str | None:
-    if not bool(getattr(settings, "PRECHECK_SUGGEST_CHUNK_SIZE", True)):
+    if not bool(settings.PRECHECK_SUGGEST_CHUNK_SIZE):
         return None
     if signals.token_p90 <= 0:
         return None
 
-    base_chunk_size = int(getattr(settings, "CHUNK_SIZE", 1000) or 1000)
-    base_chunk_overlap = int(getattr(settings, "CHUNK_OVERLAP", 200) or 200)
+    base_chunk_size = int(settings.CHUNK_SIZE or 1000)
+    base_chunk_overlap = int(settings.CHUNK_OVERLAP or 200)
     overlap_ratio = (base_chunk_overlap / base_chunk_size) if base_chunk_size > 0 else 0.2
 
     suggested_size = int(base_chunk_size)
@@ -274,14 +263,12 @@ def _table_pipeline_patch(*, pii_types: set[str]) -> dict[str, Any]:
     table_patch: dict[str, Any] = {
         "table_store_enabled": True,
         "table_store_auto_route": True,
-        "table_store_auto_row_threshold": int(getattr(settings, "TABLE_STORE_AUTO_ROW_THRESHOLD", 5000) or 5000),
-        "table_store_auto_col_threshold": int(getattr(settings, "TABLE_STORE_AUTO_COL_THRESHOLD", 80) or 80),
-        "table_store_auto_sheet_threshold": int(getattr(settings, "TABLE_STORE_AUTO_SHEET_THRESHOLD", 5) or 5),
-        "table_store_auto_file_bytes_threshold": int(
-            getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000
-        ),
+        "table_store_auto_row_threshold": int(settings.TABLE_STORE_AUTO_ROW_THRESHOLD or 5000),
+        "table_store_auto_col_threshold": int(settings.TABLE_STORE_AUTO_COL_THRESHOLD or 80),
+        "table_store_auto_sheet_threshold": int(settings.TABLE_STORE_AUTO_SHEET_THRESHOLD or 5),
+        "table_store_auto_file_bytes_threshold": int(settings.TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD or 5_000_000),
     }
-    if bool({"csv", "xls", "xlsx"} & pii_types):
+    if {"csv", "xls", "xlsx"} & pii_types:
         table_patch["table_store_sample_rows"] = 0
     return table_patch
 
@@ -332,7 +319,7 @@ def _build_ingestion_rules(
                 name="PDF 扫描/OCR（优先：文件名命中 scan/ocr/扫描）",
                 extensions=[".pdf"],
                 filename_regex=r"(?i)(scan|ocr|扫描|影印|图片|照片)",
-                preprocess_steps=None,
+                preprocess_steps=[],
                 parser_backend="auto",
                 governance_profile_ref="builtin:pdf_scanned_ocr",
                 pipeline_patch=pdf_patch,
@@ -343,7 +330,7 @@ def _build_ingestion_rules(
             rid="pdf-default",
             name="PDF 文本版（默认）",
             extensions=[".pdf"],
-            preprocess_steps=None,
+            preprocess_steps=[],
             parser_backend="auto",
             governance_profile_ref="builtin:pdf_text",
             pipeline_patch=pdf_patch,
@@ -371,7 +358,7 @@ def _build_ingestion_rules(
             rid="tables-excel-tag",
             name="表格（XLS/XLSX）：TAG 自动分流（大表→SQL，小表→RAG）",
             extensions=[".xls", ".xlsx"],
-            preprocess_steps=None,
+            preprocess_steps=[],
             parser_backend="auto",
             governance_profile_ref=STRUCTURED_DATA_PROFILE_REF,
             pipeline_patch=table_patch,
@@ -387,7 +374,7 @@ def _build_ingestion_rules(
             rid="office-default",
             name="Office（DOCX/PPTX）",
             extensions=[".docx", ".pptx"],
-            preprocess_steps=None,
+            preprocess_steps=[],
             parser_backend="markitdown",
             governance_profile_ref="builtin:kb_default",
             pipeline_patch=office_patch,
@@ -426,7 +413,7 @@ def _build_ingestion_rules(
             name="聊天导出（Slack/Teams）：TXT（文件名命中）",
             extensions=[".txt"],
             filename_regex=r"(?i)(slack|teams|chat|conversation|messages?|export|\u804a\u5929|\u4f1a\u8bdd|\u5bf9\u8bdd)",
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="semantic_sentence",
             governance_profile_ref="builtin:chat_exports",
@@ -442,7 +429,7 @@ def _build_ingestion_rules(
             name="Markdown（层级：段落->句子，可用于层级召回）",
             enabled=False,
             extensions=[".md"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="markdown_hierarchy",
             governance_profile_ref=md_profile,
@@ -454,7 +441,7 @@ def _build_ingestion_rules(
             rid="markdown-md",
             name="Markdown（按标题分块）",
             extensions=[".md"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="markdown_header",
             governance_profile_ref=md_profile,
@@ -467,7 +454,7 @@ def _build_ingestion_rules(
             name="纯文本（层级：段落->句子，可用于层级召回）",
             enabled=False,
             extensions=[".txt"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="text_hierarchy",
             governance_profile_ref=md_profile,
@@ -479,7 +466,7 @@ def _build_ingestion_rules(
             rid="text-txt",
             name="纯文本（按句子分块）",
             extensions=[".txt"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="semantic_sentence",
             governance_profile_ref=md_profile,
@@ -495,9 +482,11 @@ def _near_dup_manual_review_bucket(
     tenant_id: UUID,
     max_names: int,
 ) -> dict[str, Any]:
-    artifacts = getattr(scan_run, "artifacts", None)
+    artifacts = scan_run.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
-    near_raw = str(artifacts.get("near_dups_json") or "").strip()
+    near_raw = artifacts.get("near_dups_json")
+    if near_raw is not None:
+        near_raw = near_raw.strip()
     names: list[str] = []
     total_affected = 0
     if near_raw:
@@ -513,12 +502,12 @@ def _near_dup_manual_review_bucket(
                 members = cluster.get("members")
                 if isinstance(members, list):
                     for member in members:
-                        name = str(member or "").strip()
+                        name = member.strip()
                         if name:
                             affected.append(name)
             total_affected = len(set(affected))
             names = sorted(set(affected))[:max_names]
-    return {"key": "near_dup", "total": int(total_affected), "sample_names": names}
+    return {"key": "near_dup", "total": total_affected, "sample_names": names}
 
 
 def _manual_review_bucket(
@@ -530,8 +519,8 @@ def _manual_review_bucket(
     res = _list_finding_from_jsonl(jsonl_path=jsonl_path, finding_key=key, skip=0, limit=max_names or 1)
     return {
         "key": key,
-        "total": int(res.total),
-        "sample_names": [x.name for x in (res.items or [])],
+        "total": res.total,
+        "sample_names": [x.name for x in res.items],
     }
 
 
@@ -572,7 +561,7 @@ def build_ingestion_policy_suggestion(
     """
     max_names = max(0, min(int(max_names_per_bucket or 0), 2000))
     summary = _summary_or_404(scan_run)
-    jsonl_path = _load_jsonl_path(scan_run, tenant_id=tenant_id)
+    jsonl_path = _jsonl_path_from_row(scan_run, tenant_id=tenant_id)
     signals = _extract_suggestion_signals(summary)
     pii_types, secrets_types = _collect_sensitive_file_types(jsonl_path)
     notes = _build_suggestion_notes(signals)
@@ -612,13 +601,13 @@ def apply_ingestion_policy_suggestion(
     """
     Apply a suggested ingestion policy to a dataset (server-side convenience wrapper).
     """
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
-    if not bool(replace) and "ingestion_policy" in meta:
+    meta = dict(dataset.dataset_metadata or {})
+    if not replace and "ingestion_policy" in meta:
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
 
     suggestion = build_ingestion_policy_suggestion(scan_run, tenant_id=tenant_id, max_names_per_bucket=0)
     try:
-        policy = IngestionPolicy(**(suggestion.get("policy") or {}))
+        policy = IngestionPolicy(**suggestion["policy"])
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Invalid suggested policy: {str(exc)[:200]}") from exc
 

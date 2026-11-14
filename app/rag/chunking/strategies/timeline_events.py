@@ -35,7 +35,7 @@ _EVENT_LINE_RE = re.compile(
 
 
 def _iter_events(text: str) -> list[_Event]:
-    matches = list(_EVENT_LINE_RE.finditer(text or ""))
+    matches = list(_EVENT_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -43,16 +43,14 @@ def _iter_events(text: str) -> list[_Event]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        date = (m.group("date") or "").strip()
+        date = (m.group("date")).strip()
         time = (m.group("time") or "").strip() or None
-        rest = (m.group("rest") or "").strip()
+        rest = (m.group("rest")).strip()
         preview = rest.splitlines()[0].strip() if rest else None
         if preview and len(preview) > 120:
             preview = preview[:117].rstrip() + "..."
-        if not date:
-            continue
         events.append(_Event(start=start, end=end, date=date, time=time, preview=preview))
-    return events if len(events) >= 2 else []
+    return events
 
 
 def looks_like_timeline_events(text: str) -> bool:
@@ -71,11 +69,10 @@ def _fallback_documents(
     out: list[Document] = []
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     for sd in split_docs:
-        local_start = sd.metadata.pop("start_index", None) or 0
-        abs_start = int(local_start)
+        abs_start = sd.metadata.pop("start_index")
         abs_end = abs_start + len(sd.page_content)
         meta: dict[str, Any] = dict(base_meta)
-        meta.update(sd.metadata or {})
+        meta.update(sd.metadata)
         meta["chunk_strategy"] = "timeline_events"
         meta["start_char"] = abs_start
         meta["end_char"] = abs_end
@@ -93,7 +90,7 @@ def _window_end_index(*, events: list[_Event], start_idx: int, chunk_size: int) 
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _next_window_start(*, events: list[_Event], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -107,7 +104,7 @@ def _next_window_start(*, events: list[_Event], start_idx: int, end_idx: int, ch
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 def _event_chunk_document(
@@ -129,7 +126,7 @@ def _event_chunk_document(
     meta["chunk_strategy"] = "timeline_events"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["event_count"] = int(end_idx - start_idx)
+    meta["event_count"] = end_idx - start_idx
     meta["first_event"] = first_date
     meta["last_event"] = last_date
     if previews:
@@ -138,7 +135,7 @@ def _event_chunk_document(
 
 
 class TimelineEventsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -154,8 +151,8 @@ class TimelineEventsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -172,6 +169,8 @@ class TimelineEventsChunker(BaseChunker):
                         text=text, base_meta=base_meta, events=events, start_idx=start_idx, end_idx=end_idx
                     )
                 )
+                if end_idx == len(events):
+                    break
                 start_idx = _next_window_start(
                     events=events,
                     start_idx=start_idx,
@@ -180,7 +179,7 @@ class TimelineEventsChunker(BaseChunker):
                 )
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

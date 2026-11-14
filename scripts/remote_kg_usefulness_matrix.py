@@ -20,35 +20,14 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 ensure_repo_root_on_sys_path(__file__)
 
 
-def load_runtime_deps() -> tuple[Any, Any, Any, Any, Any, Any]:
-    from scripts.remote_real_pdf_chain import (
-        DEFAULT_TENANT_ID,
-        LiveApi,
-        ok_status,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
-
-    return (
-        DEFAULT_TENANT_ID,
-        LiveApi,
-        ok_status,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
-
-
-(
+from scripts.remote_real_pdf_chain import (  # noqa: E402
     DEFAULT_TENANT_ID,
     LiveApi,
     ok_status,
     perform_cleanup,
     record_step,
     snippet,
-) = load_runtime_deps()
-
+)
 
 FIXTURES: list[dict[str, str]] = [
     {
@@ -207,7 +186,7 @@ def chunk_list(body: Any) -> list[dict[str, Any]]:
 
 
 def delete_regression_cases(
-    api: Any,
+    api: LiveApi,
     *,
     case_ids: list[str],
     steps: list[dict[str, Any]],
@@ -236,7 +215,7 @@ def delete_regression_cases(
 
 
 def poll_document_until_completed(
-    api: Any,
+    api: LiveApi,
     *,
     document_id: str,
     steps: list[dict[str, Any]],
@@ -262,7 +241,7 @@ def poll_document_until_completed(
 
 
 def poll_kg_diagnostics_run(
-    api: Any,
+    api: LiveApi,
     *,
     run_id: str,
     steps: list[dict[str, Any]],
@@ -308,7 +287,7 @@ def build_artifact_dir(*, artifact_dir_arg: str, run_id: str) -> Path:
 
 
 def create_dataset(
-    api: Any,
+    api: LiveApi,
     *,
     run_id: str,
     steps: list[dict[str, Any]],
@@ -336,7 +315,7 @@ def create_dataset(
 
 
 def upload_fixture_documents(
-    api: Any,
+    api: LiveApi,
     *,
     artifact_dir: Path,
     dataset_id: str,
@@ -417,7 +396,7 @@ def upload_fixture_documents(
 
 
 def extract_kg_documents(
-    api: Any,
+    api: LiveApi,
     *,
     document_rows: list[dict[str, str]],
     steps: list[dict[str, Any]],
@@ -440,7 +419,7 @@ def extract_kg_documents(
 
 
 def create_regression_cases(
-    api: Any,
+    api: LiveApi,
     *,
     dataset_id: str,
     document_rows: list[dict[str, str]],
@@ -519,7 +498,7 @@ def build_chat_payload(*, dataset_id: str, question: str, use_graph: bool) -> di
 
 
 def run_chat_variant(
-    api: Any,
+    api: LiveApi,
     *,
     dataset_id: str,
     item: dict[str, Any],
@@ -555,26 +534,26 @@ def run_chat_variant(
         raise RuntimeError(f"{label} failed: {snippet(body)}")
 
     chat_expectation = chat_expectation_summary(item, answer, citation_count=citation_count)
-    if not bool(chat_expectation["passes_gate"]):
+    if not chat_expectation["passes_gate"]:
         raise RuntimeError(f"{label} answer did not satisfy expectation for question: {question} :: {answer[:300]}")
 
     return {
         "answer_preview": answer[:200],
         "citation_count": citation_count,
-        "matches_expected": bool(chat_expectation["matches_expectation"]),
+        "matches_expected": chat_expectation["matches_expectation"],
         "matched_terms": list(chat_expectation["matched_terms"]),
-        "matched_term_count": int(chat_expectation["matched_term_count"]),
+        "matched_term_count": chat_expectation["matched_term_count"],
         "expected_terms": list(chat_expectation["expected_terms"]),
-        "min_expected_terms": int(chat_expectation["min_expected_terms"]),
-        "min_citations": int(chat_expectation["min_citations"]),
-        "require_expected_match": bool(chat_expectation["require_expected_match"]),
-        "passes_gate": bool(chat_expectation["passes_gate"]),
+        "min_expected_terms": chat_expectation["min_expected_terms"],
+        "min_citations": chat_expectation["min_citations"],
+        "require_expected_match": chat_expectation["require_expected_match"],
+        "passes_gate": chat_expectation["passes_gate"],
         "elapsed_sec": round(elapsed, 3),
     }
 
 
 def run_question_matrix(
-    api: Any,
+    api: LiveApi,
     *,
     dataset_id: str,
     steps: list[dict[str, Any]],
@@ -677,7 +656,7 @@ def validate_kg_diagnostics(
 
 
 def run_kg_diagnostics(
-    api: Any,
+    api: LiveApi,
     *,
     dataset_id: str,
     regression_case_ids: list[str],
@@ -710,7 +689,7 @@ def run_kg_diagnostics(
 
     result = {
         "kg_diagnostics": {
-            "run_id": run_id or None,
+            "run_id": (run_id),
             "baseline_hit_rate": summary_obj.get("baseline_hit_rate"),
             "baseline_recall": summary_obj.get("baseline_recall"),
             "failure_breakdown": summary_obj.get("failure_breakdown"),
@@ -732,7 +711,7 @@ def run_kg_diagnostics(
 
 
 def run_cleanup(
-    api: Any,
+    api: LiveApi,
     *,
     dataset_id: str,
     document_rows: list[dict[str, str]],
@@ -762,7 +741,7 @@ def run_cleanup(
 
 
 def maybe_cleanup(
-    api: Any,
+    api: LiveApi,
     *,
     summary: dict[str, Any],
     dataset_id: str,

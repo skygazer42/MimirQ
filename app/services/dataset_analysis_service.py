@@ -1,7 +1,7 @@
 import json
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -39,8 +39,11 @@ from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
 from app.rag.industry_rules import load_ruleset
 from app.rag.industry_rules.loaders import write_glossary_candidates
 from app.rag.industry_rules.mining.auto_rules import build_ruleset_suggestions
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.rag_trace_service import list_rag_traces
+
+if TYPE_CHECKING:
+    from fastapi import BackgroundTasks
 
 _SUMMARY_SCHEMA = "mimirq.dataset_analysis.summary.v1"
 _EXAMPLES_SCHEMA = "mimirq.dataset_analysis.examples.v1"
@@ -57,7 +60,7 @@ class DatasetAnalysisSourceIncompleteError(MimirQError):
         failed_conversation_ids: list[str] | None = None,
     ) -> None:
         detail = {
-            "dataset_id": str(dataset_id or ""),
+            "dataset_id": dataset_id,
             "failed_conversation_ids": list(failed_conversation_ids or []),
         }
         super().__init__(
@@ -77,7 +80,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    text = str(value or "").strip()
+    text = str(value).strip()
     if not text:
         return None
     if text.endswith("Z"):
@@ -144,8 +147,8 @@ def _definitions() -> dict[str, str]:
 
 
 def _scope_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
-    feedback_interactions = len([row for row in rows if bool(row.get("has_feedback"))])
-    attributable = len([row for row in rows if bool(row.get("attributable_feedback_eligible"))])
+    feedback_interactions = len([row for row in rows if row.get("has_feedback")])
+    attributable = len([row for row in rows if row.get("attributable_feedback_eligible")])
     return {
         "all_interactions": len(rows),
         "feedback_interactions": feedback_interactions,
@@ -158,7 +161,7 @@ def _load_scope_entities(
     db: Session,
     tenant_id: UUID,
     dataset_id: UUID,
-) -> tuple[list[Any], list[Any], list[Any]]:
+) -> tuple[list[Conversation], list[Message], list[MessageFeedback]]:
     conversations = (
         db.query(Conversation).filter(Conversation.tenant_id == tenant_id, Conversation.dataset_id == dataset_id).all()
     )
@@ -194,7 +197,7 @@ def _collect_scope_traces(
     *,
     tenant_id: UUID,
     dataset_id: UUID,
-    conversations: list[Any],
+    conversations: list[Conversation],
     window_minutes: int,
 ) -> list[dict[str, Any]]:
     traces: list[dict[str, Any]] = []
@@ -218,7 +221,7 @@ def _collect_scope_traces(
                 exc_info=True,
             )
             continue
-        for item in getattr(response, "items", []) or []:
+        for item in response.items:
             traces.append(_coerce_mapping(item))
     if trace_failures:
         raise DatasetAnalysisSourceIncompleteError(
@@ -236,14 +239,14 @@ def _filter_scope_rows(
     feedback_polarity: str | None,
 ) -> list[dict[str, Any]]:
     filtered: list[dict[str, Any]] = []
-    wanted_polarity = str(feedback_polarity or "").strip().lower() or None
+    wanted_polarity = feedback_polarity
     for row in rows:
         created_at = _coerce_datetime(row.get("created_at"))
         if from_dt is not None and created_at is not None and created_at < from_dt:
             continue
         if to_dt is not None and created_at is not None and created_at > to_dt:
             continue
-        if wanted_polarity and row.get("feedback_polarity") != wanted_polarity:
+        if wanted_polarity is not None and row.get("feedback_polarity") != wanted_polarity:
             continue
         filtered.append(row)
     return filtered
@@ -312,7 +315,7 @@ def _build_full_bundle(
     patterns = mine_query_patterns(rows, top_k_keywords=20)
     metrics = compute_feedback_metrics(
         all_interactions=len(rows),
-        feedback_interactions=len([row for row in rows if bool(row.get("has_feedback"))]),
+        feedback_interactions=len([row for row in rows if row.get("has_feedback")]),
         counts=attribution["counts"],
     )
 
@@ -354,10 +357,10 @@ def build_dataset_analysis_summary(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> dict[str, Any]:
     bundle = _build_full_bundle(
         db=db,
@@ -385,10 +388,10 @@ def build_dataset_analysis_examples(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
     limit: int = 20,
 ) -> dict[str, Any]:
     bundle = _build_full_bundle(
@@ -402,20 +405,21 @@ def build_dataset_analysis_examples(
         category=category,
         limit=limit,
     )
+    example_limit = max(1, int(limit or 1))
     top_examples = bundle["top_examples"]
     if category:
-        top_examples = {str(category): list(top_examples.get(str(category), []))[: max(1, int(limit or 1))]}
-        manual_review = [
-            row for row in bundle["manual_review_candidates"] if str(row.get("category") or "") == str(category)
-        ][: max(1, int(limit or 1))]
+        top_examples = {str(category): list(top_examples.get(str(category), []))[:example_limit]}
+        manual_review = [row for row in bundle["manual_review_candidates"] if row["category"] == str(category)][
+            :example_limit
+        ]
     else:
-        manual_review = list(bundle["manual_review_candidates"])[: max(1, int(limit or 1))]
+        manual_review = list(bundle["manual_review_candidates"])[:example_limit]
     bundle["meta"]["schema_version"] = _EXAMPLES_SCHEMA
     return {
         "meta": bundle["meta"],
         "top_examples": top_examples,
         "manual_review_candidates": manual_review,
-        "glossary_candidates": bundle["glossary_candidates"][: max(1, int(limit or 1))],
+        "glossary_candidates": bundle["glossary_candidates"][:example_limit],
     }
 
 
@@ -426,9 +430,9 @@ def build_dataset_analysis_rule_suggestions(
     dataset_id: UUID,
     dataset_name: str,
     ruleset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
     limit: int = 20,
 ) -> dict[str, Any]:
     rows = _load_dataset_scope_rows(
@@ -452,12 +456,12 @@ def build_tenant_dataset_analysis_dashboard(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     rows = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.name.asc()).all()
 
     cards: list[dict[str, Any]] = []
@@ -471,40 +475,38 @@ def build_tenant_dataset_analysis_dashboard(
     }
 
     for dataset in rows:
-        if not DatasetService.check_dataset_permission(db, dataset, account_id):
+        if not dataset_service.check_dataset_permission(db, dataset, account_id):
             continue
         payload = build_dataset_analysis_summary(
             db=db,
             tenant_id=tenant_id,
             dataset_id=dataset.id,
-            dataset_name=str(getattr(dataset, "name", "") or ""),
+            dataset_name=dataset.name,
             from_ts=from_ts,
             to_ts=to_ts,
             feedback_polarity=feedback_polarity,
             category=None,
         )
-        meta = dict(payload.get("meta") or {})
-        scope_summary = dict(meta.get("scope_summary") or {})
-        counts = dict(payload.get("counts") or {})
-        metrics = dict(payload.get("metrics") or {})
+        meta = payload["meta"]
+        scope_summary = dict(meta["scope_summary"])
+        counts = dict(payload["counts"])
+        metrics = dict(payload["metrics"])
 
-        summary["all_interactions"] += int(scope_summary.get("all_interactions") or 0)
-        summary["feedback_interactions"] += int(scope_summary.get("feedback_interactions") or 0)
-        summary["attributable_feedback_interactions"] += int(
-            scope_summary.get("attributable_feedback_interactions") or 0
-        )
-        summary["retrieval_miss"] += int(counts.get("retrieval_miss") or 0)
-        summary["generation_error"] += int(counts.get("generation_error") or 0)
-        summary["out_of_scope"] += int(counts.get("out_of_scope") or 0)
+        summary["all_interactions"] += scope_summary["all_interactions"]
+        summary["feedback_interactions"] += scope_summary["feedback_interactions"]
+        summary["attributable_feedback_interactions"] += scope_summary["attributable_feedback_interactions"]
+        summary["retrieval_miss"] += counts["retrieval_miss"]
+        summary["generation_error"] += counts["generation_error"]
+        summary["out_of_scope"] += counts["out_of_scope"]
 
         cards.append(
             {
                 "dataset_id": str(dataset.id),
-                "dataset_name": str(getattr(dataset, "name", "") or ""),
+                "dataset_name": dataset.name,
                 "scope_summary": scope_summary,
                 "metrics": metrics,
                 "counts": counts,
-                "ratios": dict(payload.get("ratios") or {}),
+                "ratios": dict(payload["ratios"]),
             }
         )
         if len(cards) >= max(1, int(limit or 1)):
@@ -513,7 +515,7 @@ def build_tenant_dataset_analysis_dashboard(
     return {
         "schema": _DASHBOARD_SCHEMA,
         "tenant_id": str(tenant_id),
-        "dataset_count": int(len(cards)),
+        "dataset_count": len(cards),
         "summary": summary,
         "datasets": cards,
         "filters": {
@@ -531,10 +533,10 @@ def export_dataset_analysis_json(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> dict[str, Any]:
     bundle = _build_full_bundle(
         db=db,
@@ -557,10 +559,10 @@ def export_dataset_analysis_jsonl(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> str:
     bundle = _build_full_bundle(
         db=db,
@@ -583,10 +585,10 @@ def export_dataset_analysis_html(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> str:
     bundle = _build_full_bundle(
         db=db,
@@ -599,25 +601,11 @@ def export_dataset_analysis_html(
         category=category,
         limit=20,
     )
-    report = build_dataset_analysis_report(
-        DatasetAnalysisReportPayload(
-            dataset_id=str(dataset_id),
-            dataset_name=dataset_name,
-            filters=bundle["meta"]["filters"],
-            scope_summary=bundle["meta"]["scope_summary"],
-            metrics=bundle["metrics"],
-            counts=bundle["counts"],
-            ratios=bundle["ratios"],
-            top_examples=bundle["top_examples"],
-            manual_review_candidates=bundle["manual_review_candidates"],
-            glossary_candidates=bundle["glossary_candidates"],
-            keyword_scores=bundle["keyword_scores"],
-            coverage_heatmap=bundle["coverage_heatmap"],
-            umap_scatter=bundle["umap_scatter"],
-            latency_breakdown=bundle["latency_breakdown"],
-        )
+    report = _build_dataset_analysis_report_payload(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        bundle=bundle,
     )
-    report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
 
 
@@ -651,7 +639,7 @@ def writeback_dataset_analysis_glossary_candidates(
         "schema": _GLOSSARY_WRITEBACK_SCHEMA,
         "dataset_id": str(dataset_id),
         "dataset_name": dataset_name,
-        "ruleset": str(ruleset_name or "").strip(),
+        "ruleset": ruleset_name.strip(),
         "filters": bundle["meta"]["filters"],
         "candidate_count": int(result["candidate_count"]),
         "added_count": int(result["added_count"]),
@@ -774,7 +762,7 @@ def _complete_dataset_analysis_png_task(
     payload: bytes,
     heartbeat_state: dict[str, Any],
 ) -> None:
-    reason = str(heartbeat_state.get("reason") or "")
+    reason = heartbeat_state["reason"]
     if reason == "shared_state_unavailable":
         _fail_dataset_analysis_png_task(
             task_id=task_id,
@@ -805,7 +793,7 @@ def _handle_dataset_analysis_png_exception(
     heartbeat_state: dict[str, Any],
     exc: Exception,
 ) -> None:
-    reason = str(heartbeat_state.get("reason") or "")
+    reason = heartbeat_state["reason"]
     if reason == "shared_state_unavailable":
         _fail_dataset_analysis_png_task(
             task_id=task_id,
@@ -878,7 +866,7 @@ def _run_dataset_analysis_png_task(
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
         )
-        owner_token = str(started.get("owner_token") or "")
+        owner_token = started["owner_token"]
         heartbeat_thread = _start_dataset_analysis_png_heartbeat(
             task_id=task_id,
             tenant_id=tenant_id,
@@ -940,7 +928,7 @@ def create_dataset_analysis_png_task(
     dataset_id: UUID,
     dataset_name: str,
     account_id: str,
-    background_tasks: Any,
+    background_tasks: "BackgroundTasks",
     from_ts: str | None = None,
     to_ts: str | None = None,
     feedback_polarity: str | None = None,

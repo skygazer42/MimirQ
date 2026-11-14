@@ -43,7 +43,7 @@ class GovernanceIssue:
 def _clip_samples(samples: list[str], *, limit: int = 5, max_len: int = 160) -> list[str]:
     out: list[str] = []
     for s in samples[: max(0, int(limit))]:
-        val = (s or "").strip()
+        val = s.strip()
         if not val:
             continue
         out.append(val[:max_len])
@@ -51,24 +51,24 @@ def _clip_samples(samples: list[str], *, limit: int = 5, max_len: int = 160) -> 
 
 
 def _line_stats(text: str) -> tuple[int, float, float, float]:
-    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in (text).splitlines() if ln.strip()]
     if not lines:
         return 0, 0.0, 0.0, 0.0
     lengths = [len(ln) for ln in lines]
     n = len(lengths)
-    avg = sum(lengths) / max(1, n)
-    short_ratio = sum(1 for x in lengths if x <= 80) / max(1, n)
-    very_short_ratio = sum(1 for x in lengths if x <= 40) / max(1, n)
-    return n, float(avg), float(short_ratio), float(very_short_ratio)
+    avg = sum(lengths) / n
+    short_ratio = sum(1 for x in lengths if x <= 80) / n
+    very_short_ratio = sum(1 for x in lengths if x <= 40) / n
+    return n, avg, short_ratio, very_short_ratio
 
 
 def _density(text: str) -> float:
-    raw = text or ""
+    raw = text
     non_space = sum(1 for ch in raw if not ch.isspace())
     if non_space <= 0:
         return 0.0
     alnum = len(_ALNUM_CJK_RE.findall(raw))
-    return float(alnum / non_space)
+    return alnum / non_space
 
 
 def _append_issue(issues: list[GovernanceIssue], issue: GovernanceIssue | None) -> None:
@@ -127,14 +127,14 @@ def _soft_line_break_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue | 
 
 
 def _hyphenation_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue | None:
-    hyphen_breaks = list(_HYPHEN_BREAK_RE.finditer(raw))
-    if len(hyphen_breaks) < 5:
+    hyphen_breaks = len(_HYPHEN_BREAK_RE.findall(raw))
+    if hyphen_breaks < 5:
         return None
     return GovernanceIssue(
         code="pdf_hyphenation_breaks",
         severity="info",
         message="检测到较多断字连字符（'-\n'）：合并软换行/去连字符可改善连贯性。",
-        count=len(hyphen_breaks),
+        count=hyphen_breaks,
         samples=[],
         suggested_pipeline_patch=_unwrap_patch(opts),
     )
@@ -178,7 +178,7 @@ def _tracking_urls_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue | No
         code="tracking_urls",
         severity="info",
         message="检测到带追踪参数的 URL：建议开启“规范化 URL（去追踪参）”。",
-        count=int(tracking),
+        count=tracking,
         samples=[],
         suggested_pipeline_patch={
             "governance_normalize_urls": True,
@@ -243,12 +243,15 @@ def _low_density_risk_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue |
 
 
 def _after_clean_density_issue(raw_after: str) -> GovernanceIssue | None:
-    if not raw_after or _density(raw_after) >= 0.08:
+    if not raw_after:
+        return None
+    density = _density(raw_after)
+    if density >= 0.08:
         return None
     return GovernanceIssue(
         code="low_density_after_clean",
         severity="warning",
-        message=f"清洗后文本密度仍偏低（density={_density(raw_after):.3f}）：建议检查解析器/是否为扫描件。",
+        message=f"清洗后文本密度仍偏低（density={density:.3f}）：建议检查解析器/是否为扫描件。",
         count=0,
         samples=[],
         suggested_pipeline_patch={},
@@ -271,8 +274,9 @@ def analyze_governance(
       actions that are already enabled.
     """
     opts = options or {}
-    raw_before = (before or "")[: max(0, int(max_chars))]
-    raw_after = (after or "")[: max(0, int(max_chars))]
+    limit = max(0, int(max_chars))
+    raw_before = before[:limit]
+    raw_after = after[:limit]
 
     issues: list[GovernanceIssue] = []
     patch: dict[str, Any] = {}
@@ -296,6 +300,6 @@ def analyze_governance(
     # Merge issue-level patches into one patch (best-effort, last wins).
     for it in issues:
         if it.suggested_pipeline_patch:
-            patch.update(dict(it.suggested_pipeline_patch))
+            patch.update(it.suggested_pipeline_patch)
 
     return issues, patch

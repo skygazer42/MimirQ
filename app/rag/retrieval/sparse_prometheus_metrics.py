@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter, Histogram
@@ -75,13 +74,13 @@ SPARSE_INDEX_BUILD_DURATION_SECONDS = Histogram(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return bool(settings.PROMETHEUS_ENABLED)
 
 
 def _norm_provider(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
-    s = (s[:40] or "").strip("_")
+    s = s[:40].strip("_")
     if not s:
         return "unknown"
     if s in {"det", "deterministic"}:
@@ -92,9 +91,9 @@ def _norm_provider(value: str | None) -> str:
 
 
 def _norm_outcome(value: str | None, *, allowed: set[str], fallback: str) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
-    s = (s[:24] or "").strip("_")
+    s = s[:24].strip("_")
     if not s:
         return fallback
     if s not in allowed:

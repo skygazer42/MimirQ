@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 检索测试布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC 字体，以及当前全局导航。五版使用同一个问题、五条命中与相同参数；只比较检索测试右侧工作区的构图、密度与操作位置。",
+  "round": "检索测试 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-split",
+      "name": "A · 参数分栏",
+      "concept": "左边调参，右边核对命中，适合反复测试召回效果。",
+      "typography": "Manrope / Noto Sans SC；14px 结果正文，12–13px 参数与元数据",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#31754D", "#B14E47"],
+      "traits": ["问题与配置常驻左侧", "右侧连续五条命中", "索引检查收成轻量状态栏"],
+      "source": "a-split.html"
+    },
+    {
+      "id": "b-table",
+      "name": "B · 结果宽表",
+      "concept": "把分数、来源与片段排进同一张表，便于逐项对照。",
+      "typography": "Manrope / Noto Sans SC；14px 文档名与正文，12px 表头和辅助项",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#31754D", "#B14E47"],
+      "traits": ["顶部查询与紧凑参数", "按列对齐分数与来源", "当前结果在行内展开"],
+      "source": "b-table.html"
+    },
+    {
+      "id": "c-reader",
+      "name": "C · 片段阅读",
+      "concept": "先在命中清单里定位，再在右侧完整读懂当前片段。",
+      "typography": "Manrope / Noto Sans SC；紧凑结果清单，15px 阅读正文",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#31754D", "#B14E47"],
+      "traits": ["左侧命中清单", "右侧完整片段与来源", "参数收在顶部横条"],
+      "source": "c-reader.html"
+    },
+    {
+      "id": "d-search",
+      "name": "D · 搜索结果",
+      "concept": "像搜索引擎一样快速浏览五条命中，参数留在查询旁。",
+      "typography": "Manrope / Noto Sans SC；15px 查询，14px / 25px 连续摘录",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#31754D", "#B14E47"],
+      "traits": ["居中连续结果流", "每条直接阅读原文摘录", "无常驻配置或审计侧栏"],
+      "source": "d-search.html"
+    },
+    {
+      "id": "e-console",
+      "name": "E · 三栏控制台",
+      "concept": "问题记录、命中清单、片段详情同时可见，适合连续排查。",
+      "typography": "Manrope / Noto Sans SC；13px 队列、15px / 29px 详情正文",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#31754D", "#B14E47"],
+      "traits": ["左侧最近问题队列", "中间紧凑命中清单", "右侧结构化片段检查"],
+      "source": "e-console.html"
+    }
+  ]
+}

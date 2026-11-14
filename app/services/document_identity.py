@@ -12,8 +12,10 @@ PIPELINE_EXECUTION_IDENTITY_SCHEMA = "mimirq.pipeline_execution_identity.v1"
 
 
 def normalize_content_sha256(value: Any) -> str | None:
-    raw = str(value or "").strip().lower()
-    return raw or None
+    if value is None:
+        return None
+    raw = str(value).strip().lower()
+    return raw if raw else None
 
 
 def get_content_sha256(meta: dict[str, Any] | None) -> str | None:
@@ -34,14 +36,16 @@ def set_content_sha256(meta: dict[str, Any], content_sha256: str | None) -> str 
         meta.pop(CONTENT_SHA256_KEY, None)
         return None
     meta[CONTENT_SHA256_KEY] = normalized
-    # Keep the legacy key for older readers/tests until the rest of the codebase flips.
+    # Duplicate and profile APIs still read file_sha256.
     meta[LEGACY_FILE_SHA256_KEY] = normalized
     return normalized
 
 
 def build_document_dedup_key(*, content_sha256: str | None, pipeline_hash: str | None) -> str | None:
     sha = normalize_content_sha256(content_sha256)
-    ph = str(pipeline_hash or "").strip()
+    if pipeline_hash is None:
+        return None
+    ph = pipeline_hash.strip()
     if not sha or not ph:
         return None
     return f"{sha}:{ph}"
@@ -67,18 +71,18 @@ def sync_pipeline_execution_identity(
     parser_backend_resolved: str | None = None,
 ) -> dict[str, Any]:
     normalized_sha = set_content_sha256(meta, content_sha256)
-    pipeline_hash_norm = str(pipeline_hash or "").strip() or None
-    dedup_key = build_document_dedup_key(content_sha256=normalized_sha, pipeline_hash=pipeline_hash_norm)
+    dedup_key = build_document_dedup_key(content_sha256=normalized_sha, pipeline_hash=pipeline_hash)
     identity = {
         "schema": PIPELINE_EXECUTION_IDENTITY_SCHEMA,
         CONTENT_SHA256_KEY: normalized_sha,
-        "pipeline_hash": pipeline_hash_norm,
-        "parser_backend": str(meta.get("parser_backend") or "").strip() or None,
-        "parser_backend_requested": str(meta.get("parser_backend_requested") or "").strip() or None,
-        "parser_backend_resolved": str(parser_backend_resolved or meta.get("parser_backend_resolved") or "").strip()
-        or None,
-        "chunk_strategy": str(meta.get("chunk_strategy") or "").strip() or None,
-        "chunk_strategy_requested": str(meta.get("chunk_strategy_requested") or "").strip() or None,
+        "pipeline_hash": pipeline_hash,
+        "parser_backend": meta.get("parser_backend"),
+        "parser_backend_requested": meta.get("parser_backend_requested"),
+        "parser_backend_resolved": (
+            parser_backend_resolved if parser_backend_resolved is not None else meta.get("parser_backend_resolved")
+        ),
+        "chunk_strategy": meta.get("chunk_strategy"),
+        "chunk_strategy_requested": meta.get("chunk_strategy_requested"),
         "dedup_key": dedup_key,
     }
     meta[PIPELINE_EXECUTION_IDENTITY_KEY] = identity

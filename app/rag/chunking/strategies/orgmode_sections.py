@@ -9,7 +9,6 @@ The chunker splits the document into heading blocks first, then applies a
 fallback RecursiveCharacterTextSplitter while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -18,13 +17,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -47,21 +41,8 @@ _ORG_TAG_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX
 _ORG_TODO_KEYWORDS = frozenset({"todo", "done", "next", "wait", "cancelled"})
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
-
-
 def _clean_title(raw: str) -> str:
-    s = (raw or "").strip()
+    s = (raw).strip()
     if not s:
         return ""
 
@@ -86,12 +67,12 @@ def _clean_title(raw: str) -> str:
     if first_rest:
         head = first_rest[0].strip().casefold()
         if head in _ORG_TODO_KEYWORDS and len(first_rest) > 1:
-            s = (first_rest[1] or "").strip()
+            s = (first_rest[1]).strip()
     return s
 
 
 def _parse_heading_line(line: str) -> tuple[int, str] | None:
-    plain = (line or "").rstrip("\r\n")
+    plain = (line).rstrip("\r\n")
     if not plain.strip():
         return None
 
@@ -113,13 +94,13 @@ def _parse_heading_line(line: str) -> tuple[int, str] | None:
     title = _clean_title(plain[i:])
     if not title:
         return None
-    return max(1, min(10, int(level))), title
+    return max(1, min(10, level)), title
 
 
 def _iter_headings(text: str) -> list[OrgHeading]:
     headings: list[OrgHeading] = []
     for ln in _iter_lines(text):
-        parsed = _parse_heading_line(ln.text)
+        parsed = _parse_heading_line(ln.plain)
         if not parsed:
             continue
         level, title = parsed
@@ -127,18 +108,11 @@ def _iter_headings(text: str) -> list[OrgHeading]:
             OrgHeading(
                 start=ln.start,
                 end=ln.end,
-                level=max(1, min(10, int(level))),
+                level=level,
                 title=title,
             )
         )
-    deduped: list[OrgHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[OrgHeading]) -> list[_Section]:
@@ -156,13 +130,6 @@ def _build_sections(text: str, headings: list[OrgHeading]) -> list[_Section]:
     return sections
 
 
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
-
-
 def looks_like_orgmode(text: str) -> bool:
     if not text or len(text) < 120:
         return False
@@ -175,7 +142,7 @@ def looks_like_orgmode(text: str) -> bool:
 
 
 class OrgModeSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -212,7 +179,7 @@ class OrgModeSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["org_heading"] = section.heading.title
-                meta["org_level"] = int(section.heading.level)
+                meta["org_level"] = section.heading.level
             if path:
                 meta["org_path"] = path
             if path_str:
@@ -224,7 +191,7 @@ class OrgModeSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

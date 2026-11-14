@@ -481,7 +481,7 @@ def test_dead_letter_replay_only_forces_completed_documents(
         captured.update(kwargs)
         return {"status": "queued"}
 
-    monkeypatch.setattr(document_dead_letters.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_dead_letters.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         document_dead_letters,
         "assert_document_writable_for_lifecycle",

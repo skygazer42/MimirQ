@@ -3,9 +3,9 @@
 This exposes a unified run_id view for ingestion entrypoints (upload/batch/URL/connector).
 """
 
-import contextlib
 import json
 import re
+from collections.abc import Mapping
 from typing import Annotated
 from uuid import UUID
 
@@ -13,34 +13,58 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.ingestion_run import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.sources import (
     IngestionRunCompareResponse,
     IngestionRunDocumentOut,
+    IngestionRunListQuery,
     IngestionRunListResponse,
     IngestionRunOut,
 )
-from app.api.utils.response_headers import download_response_headers
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.api.utils import file_response_headers
 from app.core.database import get_db
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.group_permissions import DatasetGroupPermission
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
 from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
+from app.services import dataset_service, ingestion_run_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import EDIT_ROLES, DatasetService
-from app.services.ingestion_run_service import IngestionRunService
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
+from app.services.dataset_service import EDIT_ROLES
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
+
+
+def _commit_ingestion_run_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    action: str,
+    run_id: UUID,
+    details: Mapping[str, object],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="ingestion_run",
+            resource_id=str(run_id),
+            details=dict(details),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Ingestion-run operation committed but audit logging failed: action=%s run_id=%s",
+            action,
+            run_id,
+            exc_info=True,
+        )
 
 
 def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
@@ -75,56 +99,56 @@ def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
 
 def _run_out(run: DBIngestionRun) -> IngestionRunOut:
     docs: list[IngestionRunDocumentOut] = []
-    for d in getattr(run, "documents", None) or []:
-        if getattr(d, "document_id", None) is None:
+    for document in run.documents:
+        if document.document_id is None:
             continue
         docs.append(
             IngestionRunDocumentOut(
-                document_id=d.document_id,
-                status=str(getattr(d, "status", "") or ""),
-                source_ref=getattr(d, "source_ref", None),
-                created_at=getattr(d, "created_at", None),
+                document_id=document.document_id,
+                status=document.status,
+                source_ref=document.source_ref,
+                created_at=document.created_at,
             )
         )
 
     return IngestionRunOut(
         id=run.id,
         tenant_id=run.tenant_id,
-        dataset_id=getattr(run, "dataset_id", None),
-        kind=str(getattr(run, "kind", "") or ""),
-        requested_by=getattr(run, "requested_by", None),
-        status=str(getattr(run, "status", "") or ""),
-        config=dict(getattr(run, "config", None) or {}),
-        stats=dict(getattr(run, "stats", None) or {}),
-        error_message=getattr(run, "error_message", None),
-        created_at=getattr(run, "created_at", None),
-        started_at=getattr(run, "started_at", None),
-        finished_at=getattr(run, "finished_at", None),
+        dataset_id=run.dataset_id,
+        kind=run.kind,
+        requested_by=run.requested_by,
+        status=run.status,
+        config=dict(run.config or {}),
+        stats=dict(run.stats or {}),
+        error_message=run.error_message,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
         documents=docs,
     )
 
 
-def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account_id: str) -> DBIngestionRun:
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    base = (
+def _load_ingestion_run(*, db: Session, run_id: UUID, tenant_id: UUID, account_id: str) -> DBIngestionRun:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    run = (
         db.query(DBIngestionRun)
         .options(selectinload(DBIngestionRun.documents))
         .filter(DBIngestionRun.id == run_id, DBIngestionRun.tenant_id == tenant_id)
         .first()
     )
-    if not base:
+    if run is None:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
-    if base.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, base.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-    return base
+    if run.dataset_id is not None:
+        ds = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
+    return run
 
 
 def _collect_replay_doc_ids(base: DBIngestionRun) -> list[UUID]:
     doc_ids: list[UUID] = []
-    for document in getattr(base, "documents", None) or []:
-        document_id = getattr(document, "document_id", None)
-        if document_id:
+    for document in base.documents:
+        document_id = document.document_id
+        if document_id is not None:
             doc_ids.append(document_id)
         if len(doc_ids) >= 2000:
             break
@@ -133,49 +157,17 @@ def _collect_replay_doc_ids(base: DBIngestionRun) -> list[UUID]:
     return doc_ids
 
 
-def _audit_replay_creation(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    new_run: DBIngestionRun,
-    base: DBIngestionRun,
-    doc_ids: list[UUID],
-) -> None:
-    try:
-        audit_log_event(
+def _attach_replay_documents(*, db: Session, tenant_id: UUID, run_id: UUID, doc_ids: list[UUID]) -> None:
+    for doc_id in doc_ids:
+        ingestion_run_service.add_document(
             db,
             tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.replay",
-            resource_type="ingestion_run",
-            resource_id=str(new_run.id),
-            details={
-                "base_run_id": str(base.id),
-                "dataset_id": str(getattr(base, "dataset_id", None)) if getattr(base, "dataset_id", None) else None,
-                "documents": int(len(doc_ids)),
-            },
+            run_id=run_id,
+            document_id=doc_id,
+            source_ref=None,
+            initial_status="pending",
+            doc_meta=None,
         )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
-
-def _attach_replay_documents(*, db: Session, tenant_id: UUID, run_id: UUID, doc_ids: list[UUID]) -> None:
-    for doc_id in doc_ids[:2000]:
-        try:
-            IngestionRunService.add_document(
-                db,
-                tenant_id=tenant_id,
-                run_id=run_id,
-                document_id=doc_id,
-                source_ref=None,
-                initial_status="pending",
-                doc_meta=None,
-            )
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
 
 
 async def _run_replay_retries(
@@ -185,30 +177,33 @@ async def _run_replay_retries(
     new_run_id: UUID,
     doc_ids: list[UUID],
 ) -> None:
-    from app.api.v1.documents import retry_document_processing
     from app.core.database import SessionLocal
     from app.models.document import Document as DBDocument
+    from app.services.document_processing_operations import retry_document
 
     db0 = SessionLocal()
     try:
-        for doc_id in (doc_ids or [])[:2000]:
+        for doc_id in doc_ids:
             try:
                 doc = db0.query(DBDocument).filter(DBDocument.id == doc_id, DBDocument.tenant_id == tenant_id).first()
                 if doc is not None:
-                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                    meta0 = dict(doc.doc_metadata or {})
                     meta0["last_ingestion_run_id"] = str(new_run_id)
                     meta0["last_ingestion_kind"] = "replay"
                     doc.doc_metadata = meta0
                     db0.commit()
-                    with contextlib.suppress(Exception):
-                        db0.refresh(doc)
             except Exception:
-                with contextlib.suppress(Exception):
-                    db0.rollback()
+                logger.warning(
+                    "Replay document metadata update failed: run_id=%s document_id=%s",
+                    new_run_id,
+                    doc_id,
+                    exc_info=True,
+                )
+                db0.rollback()
 
             bg = BackgroundTasks()
             try:
-                await retry_document_processing(
+                await retry_document(
                     document_id=doc_id,
                     background_tasks=bg,
                     force=True,
@@ -217,49 +212,47 @@ async def _run_replay_retries(
                     account_id=account_id,
                     db=db0,
                 )
+                await bg()
             except Exception:
-                with contextlib.suppress(Exception):
-                    db0.rollback()
-                continue
-            with contextlib.suppress(Exception):
-                if getattr(bg, "tasks", None):
-                    await bg()
+                logger.warning(
+                    "Replay document retry failed: run_id=%s document_id=%s",
+                    new_run_id,
+                    doc_id,
+                    exc_info=True,
+                )
+                db0.rollback()
     finally:
         db0.close()
 
 
 @router.get("/runs", response_model=IngestionRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_ingestion_runs(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
-    dataset_id: UUID | None = None,
-    status: Annotated[str | None, Query(max_length=32)] = None,
-    kind: Annotated[str | None, Query(max_length=80)] = None,
+    params: Annotated[IngestionRunListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """List ingestion runs (requires dataset write permission for each returned run's dataset)."""
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
 
     q = db.query(DBIngestionRun).filter(DBIngestionRun.tenant_id == tenant_id)
-    if dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-        q = q.filter(DBIngestionRun.dataset_id == dataset_id)
-    elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+    if params.dataset_id is not None:
+        ds = dataset_service.get_dataset(db, tenant_id, params.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
+        q = q.filter(DBIngestionRun.dataset_id == params.dataset_id)
+    elif member.role.lower() not in EDIT_ROLES:
         return IngestionRunListResponse(total=0, items=[])
     else:
         q = q.filter(
             DBIngestionRun.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
         )
 
-    status_norm = str(status or "").strip().lower()
+    status_norm = params.status.strip().lower() if params.status is not None else None
     if status_norm:
         q = q.filter(DBIngestionRun.status == status_norm)
 
-    kind_norm = str(kind or "").strip()
+    kind_norm = params.kind.strip() if params.kind is not None else None
     if kind_norm:
         q = q.filter(DBIngestionRun.kind == kind_norm)
 
@@ -267,8 +260,8 @@ def list_ingestion_runs(
     runs = (
         q.options(selectinload(DBIngestionRun.documents))
         .order_by(DBIngestionRun.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+        .offset(params.skip)
+        .limit(params.limit)
         .all()
     )
 
@@ -284,21 +277,7 @@ def get_ingestion_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get ingestion run detail (requires dataset write permission)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    run = (
-        db.query(DBIngestionRun)
-        .options(selectinload(DBIngestionRun.documents))
-        .filter(DBIngestionRun.id == run_id, DBIngestionRun.tenant_id == tenant_id)
-        .first()
-    )
-    if not run:
-        raise HTTPException(status_code=404, detail="Ingestion run not found")
-
-    if run.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-
+    run = _load_ingestion_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
     return _run_out(run)
 
 
@@ -311,28 +290,22 @@ def export_ingestion_run_json(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export ingestion run manifest as JSON (offline-friendly)."""
-    run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
+    run = _run_out(_load_ingestion_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id))
 
     # Best-effort audit log (PII-minimal): record export operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.export_json",
-            resource_type="ingestion_run",
-            resource_id=str(run_id),
-            details={
-                "dataset_id": str(getattr(run, "dataset_id", None)) if getattr(run, "dataset_id", None) else None,
-                "kind": str(getattr(run, "kind", "") or ""),
-                "status": str(getattr(run, "status", "") or ""),
-                "documents": int(len(getattr(run, "documents", None) or [])),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.export_json",
+        run_id=run_id,
+        details={
+            "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+            "kind": run.kind,
+            "status": run.status,
+            "documents": len(run.documents),
+        },
+    )
 
     content = json.dumps(run.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
     safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(run.kind or "ingestion"))[:64]
@@ -340,7 +313,7 @@ def export_ingestion_run_json(
     return Response(
         content=content,
         media_type="application/json",
-        headers=download_response_headers(filename),
+        headers=file_response_headers(filename),
     )
 
 
@@ -356,36 +329,30 @@ def export_ingestion_run_html(
     # Keep this simple: reuse dataset report HTML style (raw JSON + KPIs).
     from app.services.report_html import render_dataset_report_html
 
-    run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
+    run = _run_out(_load_ingestion_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id))
 
     # Best-effort audit log (PII-minimal): record export operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.export_html",
-            resource_type="ingestion_run",
-            resource_id=str(run_id),
-            details={
-                "dataset_id": str(getattr(run, "dataset_id", None)) if getattr(run, "dataset_id", None) else None,
-                "kind": str(getattr(run, "kind", "") or ""),
-                "status": str(getattr(run, "status", "") or ""),
-                "documents": int(len(getattr(run, "documents", None) or [])),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.export_html",
+        run_id=run_id,
+        details={
+            "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+            "kind": run.kind,
+            "status": run.status,
+            "documents": len(run.documents),
+        },
+    )
 
     payload = run.model_dump(mode="json")
     title = "MimirQ · Ingestion Run Manifest"
     html = render_dataset_report_html(
         title=title,
-        dataset_name=str(payload.get("kind") or "ingestion_run"),
-        dataset_id=str(payload.get("id") or ""),
-        generated_at=payload.get("created_at"),
+        dataset_name=run.kind or "ingestion_run",
+        dataset_id=str(payload["id"]),
+        generated_at=payload["created_at"],
         report=payload,
         redact=False,
     )
@@ -394,7 +361,7 @@ def export_ingestion_run_html(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers=download_response_headers(filename),
+        headers=file_response_headers(filename),
     )
 
 
@@ -412,38 +379,24 @@ def compare_ingestion_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Compare two ingestion runs (same ACL as get)."""
-    a = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
-    b = get_ingestion_run(run_id=other_run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
-
-    # Load ORM rows for diff (best-effort; avoid duplicate queries when possible).
-    row_a = db.query(DBIngestionRun).filter(DBIngestionRun.id == run_id, DBIngestionRun.tenant_id == tenant_id).first()
-    row_b = (
-        db.query(DBIngestionRun)
-        .filter(DBIngestionRun.id == other_run_id, DBIngestionRun.tenant_id == tenant_id)
-        .first()
-    )
-    diff = {}
-    if row_a is not None and row_b is not None:
-        diff = IngestionRunService.compare_runs(run_a=row_a, run_b=row_b)
+    row_a = _load_ingestion_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
+    a = _run_out(row_a)
+    row_b = _load_ingestion_run(db=db, run_id=other_run_id, tenant_id=tenant_id, account_id=account_id)
+    b = _run_out(row_b)
+    diff = ingestion_run_service.compare_runs(run_a=row_a, run_b=row_b)
 
     # Best-effort audit log (PII-minimal): record compare operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.compare",
-            resource_type="ingestion_run",
-            resource_id=str(run_id),
-            details={
-                "other_run_id": str(other_run_id),
-                "dataset_id": str(getattr(a, "dataset_id", None)) if getattr(a, "dataset_id", None) else None,
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.compare",
+        run_id=run_id,
+        details={
+            "other_run_id": str(other_run_id),
+            "dataset_id": str(a.dataset_id) if a.dataset_id else None,
+        },
+    )
 
     return IngestionRunCompareResponse(run_a=a, run_b=b, diff=diff)
 
@@ -469,26 +422,30 @@ def replay_ingestion_run(
     - Uses existing /documents/{id}/retry logic (force=true) to kick off processing.
     - Does not re-download connector sources; it reprocesses existing stored files.
     """
-    base = _load_replay_base_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
+    base = _load_ingestion_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
     doc_ids = _collect_replay_doc_ids(base)
 
-    new_run = IngestionRunService.create_run(
+    new_run = ingestion_run_service.create_run(
         db,
         tenant_id=tenant_id,
-        dataset_id=getattr(base, "dataset_id", None),
+        dataset_id=base.dataset_id,
         requested_by=account_id,
         kind="replay",
-        config={"replay_of": str(base.id), "base_kind": str(getattr(base, "kind", "") or "")},
+        config={"replay_of": str(base.id), "base_kind": base.kind},
         expected_documents=len(doc_ids),
     )
 
-    _audit_replay_creation(
-        db=db,
+    _commit_ingestion_run_audit(
+        db,
         tenant_id=tenant_id,
         account_id=account_id,
-        new_run=new_run,
-        base=base,
-        doc_ids=doc_ids,
+        action="ingestion.run.replay",
+        run_id=new_run.id,
+        details={
+            "base_run_id": str(base.id),
+            "dataset_id": str(base.dataset_id) if base.dataset_id else None,
+            "documents": len(doc_ids),
+        },
     )
     _attach_replay_documents(db=db, tenant_id=tenant_id, run_id=new_run.id, doc_ids=doc_ids)
     background_tasks.add_task(

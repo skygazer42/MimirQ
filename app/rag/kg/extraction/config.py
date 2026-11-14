@@ -38,7 +38,7 @@ def _clean_kg_python_params(raw: object) -> dict | None:
             continue
         cleaned_key, cleaned_value = item
         cleaned[cleaned_key] = cleaned_value
-    return cleaned or None
+    return cleaned
 
 
 def _clean_kg_python_plugin(raw: object) -> str | None:
@@ -69,9 +69,7 @@ class ExtractConfig(KGBaseModel):
     prompt_template_key: str | None = None
     prompt_ab_experiment_key: str | None = None
     ab_user_key: str | None = None
-    extraction_backend: str | None = Field(
-        default=None, description="Extraction backend override: llm|gliner|hybrid|heuristic"
-    )
+    extraction_backend: str | None = Field(default=None, description="Extraction backend override: llm|heuristic")
     kg_python_plugin: str | None = Field(
         default=None,
         description=(

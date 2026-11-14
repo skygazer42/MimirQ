@@ -9,13 +9,13 @@ sidebar_position: 10
 
 ## Request-ID 关联
 
-MimirQ 在响应中返回 `X-Request-ID`（或类似 Header），可用于跨层日志关联：
+Ragvia 在响应中返回 `X-Request-ID`（或类似 Header），可用于跨层日志关联：
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Gateway as 反向代理
-    participant API as MimirQ API
+    participant API as Ragvia API
     participant DB as 数据库
     Client->>Gateway: 请求 (X-Request-ID: req-123)
     Gateway->>API: 转发 (保留 Request-ID)
@@ -97,7 +97,7 @@ async function apiCall(url, options) {
 
 ## 后端结构化日志
 
-MimirQ 后端使用结构化日志，包含以下关键字段：
+Ragvia 后端使用结构化日志，包含以下关键字段：
 
 | 字段 | 说明 |
 |------|------|

@@ -5,12 +5,16 @@ A lightweight alternative to `langgraph-checkpoint-sqlite`, suitable for local/d
 and compatible with LangGraph's `BaseCheckpointSaver` interface.
 """
 
+import asyncio
 import re
 import sqlite3
 import threading
 from collections.abc import AsyncIterator, Iterator, Sequence
+from contextlib import ExitStack
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+from weakref import finalize
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import (
@@ -26,6 +30,9 @@ from langgraph.checkpoint.base import (
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from langgraph.checkpoint.serde.base import SerializerProtocol
 
 logger = get_logger(__name__)
 
@@ -43,29 +50,44 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         db_path: str | None = None,
         *,
         table_prefix: str = "langgraph",
-        serde=None,
+        serde: "SerializerProtocol | None" = None,
     ) -> None:
         super().__init__(serde=serde)
         # Validate table_prefix to prevent SQL injection
         if not re.match(r"^[A-Za-z_]\w*$", table_prefix, flags=re.ASCII):
             raise ValueError(f"Invalid table_prefix '{table_prefix}': must be alphanumeric with underscores only")
-        self.db_path = db_path or getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
+        self.db_path = db_path or settings.CHECKPOINT_SQLITE_PATH
+        self._connect_path = (
+            f"file:ragvia-checkpoints-{uuid4().hex}?mode=memory&cache=shared"
+            if self.db_path == ":memory:"
+            else self.db_path
+        )
         self.table_prefix = table_prefix
         self._local = threading.local()
         self._lock = threading.RLock()
-        self._init_db()
+        self._connections = ExitStack()
+        self._close_connections = finalize(self, self._connections.close)
+        try:
+            self._init_db()
+        except BaseException:
+            self.close()
+            raise
 
     def _get_conn(self) -> sqlite3.Connection:
+        if not self._close_connections.alive:
+            raise RuntimeError("SQLite checkpointer is closed")
         conn = getattr(self._local, "conn", None)
         if conn is not None:
             return conn
 
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(
-            self.db_path,
+            self._connect_path,
             check_same_thread=False,
             isolation_level=None,
+            uri=self.db_path == ":memory:",
         )
+        self._connections.callback(conn.close)
         conn.row_factory = sqlite3.Row
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
@@ -74,6 +96,10 @@ class SqliteSaver(BaseCheckpointSaver[str]):
             logger.debug("Ignoring SQLite checkpointer PRAGMA setup failure: %s", exc)
         self._local.conn = conn
         return conn
+
+    def close(self) -> None:
+        """Release the connections owned by this saver after its users finish."""
+        self._close_connections()
 
     @property
     def _checkpoints_table(self) -> str:
@@ -149,25 +175,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         ).fetchall()
         return [
             (r["task_id"], r["channel"], self.serde.loads_typed((r["value_type"], r["value_blob"])))
-            for r in (writes_rows or [])
+            for r in writes_rows
         ]
-
-    @staticmethod
-    def _build_parent_config(
-        *,
-        thread_id: str,
-        checkpoint_ns: str,
-        parent_checkpoint_id: str | None,
-    ) -> RunnableConfig | None:
-        if not parent_checkpoint_id:
-            return None
-        return {
-            "configurable": {
-                "thread_id": thread_id,
-                "checkpoint_ns": checkpoint_ns,
-                "checkpoint_id": parent_checkpoint_id,
-            }
-        }
 
     def _build_checkpoint_tuple(
         self,
@@ -190,11 +199,15 @@ class SqliteSaver(BaseCheckpointSaver[str]):
             },
             checkpoint=checkpoint,
             metadata=metadata,
-            parent_config=self._build_parent_config(
-                thread_id=thread_id,
-                checkpoint_ns=checkpoint_ns,
-                parent_checkpoint_id=parent_checkpoint_id,
-            ),
+            parent_config={
+                "configurable": {
+                    "thread_id": thread_id,
+                    "checkpoint_ns": checkpoint_ns,
+                    "checkpoint_id": parent_checkpoint_id,
+                }
+            }
+            if parent_checkpoint_id
+            else None,
             pending_writes=pending_writes,
         )
 
@@ -207,26 +220,6 @@ class SqliteSaver(BaseCheckpointSaver[str]):
             return [config["configurable"]["thread_id"]]
         rows = conn.execute(f"SELECT DISTINCT thread_id FROM {self._checkpoints_table}").fetchall()  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
         return [r["thread_id"] for r in rows]
-
-    @staticmethod
-    def _checkpoint_matches_list_request(
-        checkpoint_id: str,
-        *,
-        config_checkpoint_id: str | None,
-        before_checkpoint_id: str | None,
-    ) -> bool:
-        if config_checkpoint_id and checkpoint_id != config_checkpoint_id:
-            return False
-        if before_checkpoint_id and checkpoint_id >= before_checkpoint_id:
-            return False
-        return True
-
-    @staticmethod
-    def _metadata_matches_filter(
-        metadata: CheckpointMetadata,
-        filter: dict[str, Any] | None,
-    ) -> bool:
-        return not filter or all(metadata.get(k) == v for k, v in filter.items())
 
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         thread_id: str = config["configurable"]["thread_id"]
@@ -322,15 +315,13 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
                 for row in rows:
                     checkpoint_id = row["checkpoint_id"]
-                    if not self._checkpoint_matches_list_request(
-                        checkpoint_id,
-                        config_checkpoint_id=config_checkpoint_id,
-                        before_checkpoint_id=before_checkpoint_id,
-                    ):
+                    if config_checkpoint_id and checkpoint_id != config_checkpoint_id:
+                        continue
+                    if before_checkpoint_id and checkpoint_id >= before_checkpoint_id:
                         continue
 
                     metadata: CheckpointMetadata = self.serde.loads_typed((row["metadata_type"], row["metadata_blob"]))
-                    if not self._metadata_matches_filter(metadata, filter):
+                    if filter and not all(metadata.get(k) == v for k, v in filter.items()):
                         continue
 
                     if remaining is not None and remaining <= 0:
@@ -454,7 +445,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         conn.execute(f"DELETE FROM {self._checkpoints_table} WHERE thread_id = ?", (thread_id,))  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        return self.get_tuple(config)
+        return await asyncio.to_thread(self.get_tuple, config)
 
     async def alist(
         self,
@@ -464,7 +455,11 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> AsyncIterator[CheckpointTuple]:
-        for item in self.list(config, filter=filter, before=before, limit=limit):
+        checkpoints = self.list(config, filter=filter, before=before, limit=limit)
+        while True:
+            item = await asyncio.to_thread(next, checkpoints, None)
+            if item is None:
+                return
             yield item
 
     async def aput(
@@ -474,7 +469,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        return self.put(config, checkpoint, metadata, new_versions)
+        return await asyncio.to_thread(self.put, config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -483,7 +478,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        return self.put_writes(config, writes, task_id, task_path)
+        await asyncio.to_thread(self.put_writes, config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
-        return self.delete_thread(thread_id)
+        await asyncio.to_thread(self.delete_thread, thread_id)

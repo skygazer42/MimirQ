@@ -1,5 +1,3 @@
-
-
 def test_extract_parsing_fields_prefers_matching_seal_elements_with_bbox_evidence():
     from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
 

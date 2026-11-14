@@ -12,8 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies import get_current_account_id, get_tenant_id
 from app.core.database import get_db
 from app.services.ragviz_similarity import (
     SimilarityLimitError,
@@ -39,24 +38,22 @@ class SimilarityCollectionOut(BaseModel):
     label: str
     kind: str
     count: int
-    meta: dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any]
 
 
 class SimilarityCollectionsResponse(BaseModel):
-    success: bool = True
-    collections: list[SimilarityCollectionOut] = Field(default_factory=list)
-    count: int = 0
+    success: bool
+    collections: list[SimilarityCollectionOut]
+    count: int
 
 
-@router.get(
-    "/similarity/collections", response_model=SimilarityCollectionsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.get("/similarity/collections", response_model=SimilarityCollectionsResponse)
 def get_similarity_collections(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> SimilarityCollectionsResponse:
     collections = list_similarity_collections(db, tenant_id, account_id)
     out = [
         SimilarityCollectionOut(
@@ -72,15 +69,15 @@ def get_similarity_collections(
 
 
 class SimilarityRequest(BaseModel):
-    x_collection: str = Field(..., description="X axis collection id")
-    y_collection: str = Field(..., description="Y axis collection id")
-    x_max_items: int | None = Field(None, ge=1, description="X axis max items")
-    y_max_items: int | None = Field(None, ge=1, description="Y axis max items")
-    max_items: int | None = Field(100, ge=1, description="Back-compat max items")
+    x_collection: str = Field(description="X axis collection id")
+    y_collection: str = Field(description="Y axis collection id")
+    x_max_items: int | None = Field(default=None, ge=1, description="X axis max items")
+    y_max_items: int | None = Field(default=None, ge=1, description="Y axis max items")
+    max_items: int | None = Field(default=100, ge=1, description="Back-compat max items")
 
 
 class SimilarityCalculateResponse(BaseModel):
-    success: bool = True
+    success: bool
     result: dict[str, Any] | None = None
     message: str | None = None
     error: str | None = None
@@ -89,16 +86,14 @@ class SimilarityCalculateResponse(BaseModel):
     y_collection: str | None = None
 
 
-@router.post(
-    "/similarity/calculate", response_model=SimilarityCalculateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.post("/similarity/calculate", response_model=SimilarityCalculateResponse)
 def similarity_calculate(
     request: SimilarityRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> SimilarityCalculateResponse:
     x_collection = request.x_collection
     y_collection = request.y_collection
 
@@ -120,12 +115,12 @@ def similarity_calculate(
         return SimilarityCalculateResponse(
             success=True,
             result=result,
-            message=f"成功计算 {len(result.get('y_data') or [])} x {len(result.get('x_data') or [])} 相似度矩阵",
+            message=f"成功计算 {len(result['y_data'])} x {len(result['x_data'])} 相似度矩阵",
         )
     except SimilarityLimitError as exc:
         raise HTTPException(
             status_code=422,
-            detail={"message": str(exc), **(exc.detail or {})},
+            detail={"message": str(exc), **exc.detail},
         ) from exc
     except ValueError as exc:
         msg = str(exc)

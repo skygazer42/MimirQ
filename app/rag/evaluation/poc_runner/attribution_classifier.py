@@ -1,34 +1,20 @@
-from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
-from app.rag.evaluation.poc_runner.telemetry import feedback_polarity_from_score
+from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, _safe_str, feedback_polarity_from_score
 
 POC_ATTRIBUTION_SCHEMA_V1 = "mimirq.poc.attribution.v1"
 _CATEGORIES = ("retrieval_miss", "generation_error", "out_of_scope")
 
 
-def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return text[: max(1, int(max_len or 1))]
-
-
-def _coerce_datetime(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    text = str(value or "").strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except Exception:
-        return None
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+class _AttributionExample(TypedDict):
+    interaction_id: str | None
+    category: str
+    confidence: float
+    rationale: str
+    created_at: str | None
+    original_query: str | None
+    llm_response: str | None
+    final_context_filenames: list[Any]
 
 
 def _is_negative_feedback(row: dict[str, Any]) -> bool:
@@ -39,12 +25,12 @@ def _is_negative_feedback(row: dict[str, Any]) -> bool:
 
 
 def heuristic_classify_feedback_record(row: dict[str, Any]) -> dict[str, Any]:
-    comment = (_safe_str(row.get("feedback_comment")) or "").casefold()
-    query = (_safe_str(row.get("original_query")) or "").casefold()
-    answer = (_safe_str(row.get("llm_response")) or "").casefold()
+    comment = _safe_str(row.get("feedback_comment"))
+    query = _safe_str(row.get("original_query"))
+    answer = _safe_str(row.get("llm_response"))
     filenames = row.get("final_context_filenames") or []
     has_files = isinstance(filenames, list) and bool(filenames)
-    joined = " ".join(part for part in (comment, query, answer) if part)
+    joined = " ".join(part.casefold() for part in (comment, query, answer) if part is not None)
 
     if any(token in joined for token in ("知识库没有", "未收录", "超出知识库", "新型号", "没有相关资料")):
         return {
@@ -79,7 +65,9 @@ def heuristic_classify_feedback_record(row: dict[str, Any]) -> dict[str, Any]:
 
 def _build_llm_prompt(row: dict[str, Any]) -> str:
     filenames = ", ".join(
-        str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()
+        str(name).strip()
+        for name in (row.get("final_context_filenames") or [])
+        if name is not None and str(name).strip()
     )
     return (
         "Classify the root cause of this negative feedback into one of: "
@@ -106,7 +94,7 @@ def build_llm_attribution_classifier(
         except Exception:
             return dict(fallback(row) or {})
 
-        category = _safe_str(raw.get("category"), max_len=40) or ""
+        category = _safe_str(raw.get("category"), max_len=40)
         try:
             confidence = round(float(raw.get("confidence") or 0.0), 4)
         except Exception:
@@ -125,12 +113,12 @@ def build_llm_attribution_classifier(
     return _classifier
 
 
-def _top_example_sort_key(example: dict[str, Any]) -> tuple[float, float, str]:
-    confidence = float(example.get("confidence") or 0.0)
+def _top_example_sort_key(example: _AttributionExample) -> tuple[float, float, bool, str | None]:
+    confidence = example["confidence"] or 0.0
     created_at = _coerce_datetime(example.get("created_at"))
     created_ts = created_at.timestamp() if created_at is not None else 0.0
-    interaction_id = str(example.get("interaction_id") or "")
-    return (confidence, created_ts, interaction_id)
+    interaction_id = example["interaction_id"]
+    return (confidence, created_ts, interaction_id is not None, interaction_id)
 
 
 def classify_feedback_records(
@@ -140,7 +128,7 @@ def classify_feedback_records(
     review_confidence_threshold: float = 0.7,
     max_examples_per_category: int = 10,
 ) -> dict[str, Any]:
-    selected = [dict(row or {}) for row in (records or []) if isinstance(row, dict) and _is_negative_feedback(row)]
+    selected = [dict(row) for row in (records or []) if isinstance(row, dict) and _is_negative_feedback(row)]
     counts = dict.fromkeys(_CATEGORIES, 0)
     top_examples = {category: [] for category in _CATEGORIES}
     manual_review_candidates: list[dict[str, Any]] = []
@@ -148,7 +136,7 @@ def classify_feedback_records(
     if classifier is None:
         classifier = heuristic_classify_feedback_record
 
-    annotated: list[dict[str, Any]] = []
+    annotated: list[_AttributionExample] = []
     for row in selected:
         result = dict(classifier(row) or {})
         category = _safe_str(result.get("category"), max_len=40) or "generation_error"
@@ -156,7 +144,7 @@ def classify_feedback_records(
             category = "generation_error"
         confidence = float(result.get("confidence") or 0.0)
         rationale = _safe_str(result.get("rationale"), max_len=255) or "unspecified"
-        example = {
+        example: _AttributionExample = {
             "interaction_id": _safe_str(row.get("interaction_id"), max_len=255),
             "category": category,
             "confidence": round(confidence, 4),

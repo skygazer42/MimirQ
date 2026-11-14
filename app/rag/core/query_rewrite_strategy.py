@@ -11,10 +11,9 @@ This module exposes:
 - a stable strategy_hash derived from the strategy definition (prompt template, etc)
 """
 
-import json
 from functools import lru_cache
 
-from app.rag.core.hashing import stable_hash
+from app.rag.core.hashing import stable_json_hash
 
 QUERY_REWRITE_STRATEGY_SPEC_SCHEMA_V1 = "mimirq.query_rewrite_strategy_spec.v1"
 
@@ -61,18 +60,13 @@ _STRATEGY_TEMPLATES: dict[str, str] = {
 }
 
 
-def _normalize_strategy_id(raw: str | None) -> str:
-    sid = str(raw or "").strip()
-    return sid
-
-
 def resolve_query_rewrite_strategy_id(raw: str | None) -> str:
     """
     Resolve the configured strategy id to a known/registered identifier.
 
     Unknown ids fall back to DEFAULT_QUERY_REWRITE_STRATEGY_ID (safe behavior).
     """
-    sid = _normalize_strategy_id(raw)
+    sid = str(raw or "").strip()
     if not sid:
         return DEFAULT_QUERY_REWRITE_STRATEGY_ID
     if sid in _STRATEGY_TEMPLATES:
@@ -88,7 +82,7 @@ def get_query_rewrite_prompt_template(strategy_id: str | None) -> str:
     when you need a PII-safe identifier.
     """
     sid = resolve_query_rewrite_strategy_id(strategy_id)
-    return _STRATEGY_TEMPLATES.get(sid, _STRATEGY_TEMPLATES[DEFAULT_QUERY_REWRITE_STRATEGY_ID])
+    return _STRATEGY_TEMPLATES[sid]
 
 
 @lru_cache(maxsize=32)
@@ -100,13 +94,10 @@ def _strategy_hash_for_id(strategy_id: str) -> str:
     even if a human forgets to bump the strategy id.
     """
     tmpl = get_query_rewrite_prompt_template(strategy_id)
-    payload = json.dumps(
+    return stable_json_hash(
         {"strategy_id": str(strategy_id), "template": str(tmpl)},
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
+        length=16,
     )
-    return stable_hash(payload, length=16)
 
 
 def build_query_rewrite_strategy_spec(strategy_id: str | None) -> dict[str, str]:

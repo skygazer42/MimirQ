@@ -9,7 +9,6 @@ Config via env/.env:
 - OLMOCR_API_URL=http://localhost:2085/convert  (recommended: full endpoint)
 """
 
-
 import json
 import re
 from pathlib import Path
@@ -19,6 +18,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.parsers.response_text import extract_markdown_from_json as _extract_markdown_from_json
 from app.rag.core.logging import get_logger
 
 from .service_url_fallback import build_docker_service_url_candidates
@@ -27,7 +27,7 @@ logger = get_logger("parsing.olmocr")
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "olmocr"
     return text
 
@@ -46,9 +46,9 @@ class OlmocrParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
-        self._api_url = (getattr(settings, "OLMOCR_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "OLMOCR_TIMEOUT_SEC", 1800) or 1800)
+        self._enabled = settings.OLMOCR_ENABLED
+        self._api_url = settings.OLMOCR_API_URL.strip()
+        self._timeout_sec = float(settings.OLMOCR_TIMEOUT_SEC or 1800)
 
         if not self._enabled:
             raise RuntimeError("olmOCR is disabled (OLMOCR_ENABLED=false).")
@@ -61,25 +61,20 @@ class OlmocrParser:
         run_id = _sanitize_run_id(document_id or file_path.stem or "olmocr")
         return (file_path.parent / ".olmocr" / run_id).absolute()
 
-    def _candidate_api_urls(self) -> list[str]:
-        return build_docker_service_url_candidates(
-            self._api_url,
-            service_hostnames={"mimirq-olmocr"},
-        )
-
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
-        suffix = (file_path.suffix or "").lower()
+        suffix = (file_path.suffix).lower()
         content_type = "application/pdf" if suffix == ".pdf" else "application/octet-stream"
         files = {"file": (file_path.name, file_bytes, content_type)}
         data = {"output_format": "markdown"}
-        candidate_urls = self._candidate_api_urls()
-        last_error: Exception | None = None
+        candidate_urls = build_docker_service_url_candidates(
+            self._api_url,
+            service_hostnames={"mimirq-olmocr"},
+        )
         for index, url in enumerate(candidate_urls):
             try:
                 return self._session.post(url, files=files, data=data, timeout=self._timeout_sec)
             except requests.RequestException as exc:
-                last_error = exc
                 if index == len(candidate_urls) - 1:
                     raise
                 logger.warning(
@@ -88,18 +83,7 @@ class OlmocrParser:
                     exc.__class__.__name__,
                     candidate_urls[index + 1],
                 )
-        if last_error is not None:
-            raise last_error
         raise RuntimeError("olmOCR parser requires at least one candidate API URL.")
-
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
 
     def parse(
         self,
@@ -120,8 +104,8 @@ class OlmocrParser:
 
         logger.info("[olmocr] parsing %s", file_path.name)
         resp = self._post_multipart(file_path=file_path)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"olmOCR API error {resp.status_code}: {(resp.text or '')[:500]}")
+        if resp.status_code != 200:
+            raise RuntimeError(f"olmOCR API error {resp.status_code}: {(resp.text)[:500]}")
 
         markdown_text = ""
         ctype = str(resp.headers.get("content-type") or "").lower()
@@ -129,14 +113,14 @@ class OlmocrParser:
             try:
                 data = resp.json()
             except Exception:
-                data = json.loads((resp.text or "").strip() or "{}")
-            markdown_text = self._extract_markdown_from_json(data)
+                data = json.loads((resp.text).strip() or "{}")
+            markdown_text = _extract_markdown_from_json(data)
         else:
-            markdown_text = resp.text or ""
+            markdown_text = resp.text
 
         try:
             artifact_root.mkdir(parents=True, exist_ok=True)
-            (artifact_root / "result.md").write_text(markdown_text or "", encoding="utf-8")
+            (artifact_root / "result.md").write_text(markdown_text, encoding="utf-8")
         except Exception as exc:
             # Best-effort only; do not block parsing.
             logger.debug("Failed to write olmOCR parse artifact; continuing: %s", exc)

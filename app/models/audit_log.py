@@ -5,7 +5,6 @@ Keep audit records small and PII-minimal by default; callers should avoid storin
 questions/content in `details` unless explicitly required and compliant.
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, String
@@ -36,4 +35,3 @@ class AuditLog(Base):
     details = Column(JSONB, default=dict)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-

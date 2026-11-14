@@ -13,15 +13,14 @@ Key components:
 Note: text chunking has moved to app.rag.chunking.
 """
 
-
 from typing import Any
 
 __all__ = [
     "score_pdf_quality",
     "parser_factory",
-    "document_processor",
-    "document_parser_service",
-    "zip_image_processor",
+    "process_document",
+    "parse_for_preview",
+    "process_zip_with_images",
 ]
 
 
@@ -39,19 +38,16 @@ def __getattr__(name: str) -> Any:
         from app.parsing.factory import parser_factory
 
         return parser_factory
-    if name == "document_processor":
-        from app.parsing.processors.processor import document_processor
+    if name == "process_document":
+        from app.parsing.processors.support.process_document_flow import process_document
 
-        return document_processor
-    if name == "document_parser_service":
-        from app.parsing.processors.parser_service import document_parser_service
+        return process_document
+    if name == "parse_for_preview":
+        from app.parsing.processors.parser_service import parse_for_preview
 
-        return document_parser_service
-    if name == "zip_image_processor":
-        from app.parsing.utils.zip_processor import zip_image_processor
+        return parse_for_preview
+    if name == "process_zip_with_images":
+        from app.parsing.utils.zip_processor import process_zip_with_images
 
-        return zip_image_processor
+        return process_zip_with_images
     raise AttributeError(f"module 'app.parsing' has no attribute {name!r}")
-
-
-

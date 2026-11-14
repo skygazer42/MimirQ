@@ -170,11 +170,11 @@ class PipelinePluginDiscoveryError:
 
 
 def is_registered_plugin_ref(plugin_ref: str) -> bool:
-    return bool(_REGISTERED_PLUGIN_REF_RE.fullmatch(str(plugin_ref or "").strip()))
+    return bool(_REGISTERED_PLUGIN_REF_RE.fullmatch(plugin_ref.strip()))
 
 
 def parse_registered_plugin_ref(plugin_ref: str) -> tuple[str, str, str]:
-    match = _REGISTERED_PLUGIN_REF_RE.fullmatch(str(plugin_ref or "").strip())
+    match = _REGISTERED_PLUGIN_REF_RE.fullmatch(plugin_ref.strip())
     if not match:
         raise PipelinePluginRegistryError("registered plugin ref must be plugin:<id>@<version>:<stage>")
     return match.group("plugin_id"), match.group("version"), match.group("stage")
@@ -188,7 +188,7 @@ def derive_registered_stage_plugin_ref(
     require_test_report: bool | None = None,
 ) -> str:
     """Return the same plugin/version ref for another stage if the descriptor declares it."""
-    stage = str(target_stage or "").strip()
+    stage = target_stage.strip()
     if stage not in {"governance", "chunk", "kg"}:
         return ""
     if not is_registered_plugin_ref(plugin_ref):
@@ -207,7 +207,7 @@ def derive_registered_stage_plugin_ref(
 
 
 def default_plugin_directories() -> list[Path]:
-    raw = str(getattr(settings, "PYTHON_PIPELINE_PLUGIN_DIRS", "") or "").strip()
+    raw = str(settings.PYTHON_PIPELINE_PLUGIN_DIRS).strip()
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     return [Path(p).expanduser() for p in parts]
 
@@ -242,9 +242,7 @@ def _load_manifest(manifest_path: Path) -> dict[str, Any]:
         raise PipelinePluginRegistryError(f"unsupported plugin manifest suffix: {suffix}")
     if not isinstance(raw, dict):
         raise PipelinePluginRegistryError("plugin manifest must be an object")
-    unknown = sorted(
-        str(key or "").strip() or "<empty>" for key in raw if str(key or "").strip() not in _SUPPORTED_MANIFEST_FIELDS
-    )
+    unknown = sorted(str(key).strip() or "<empty>" for key in raw if str(key).strip() not in _SUPPORTED_MANIFEST_FIELDS)
     if unknown:
         raise PipelinePluginRegistryError(
             f"plugin manifest contains unknown top-level fields: {', '.join(unknown[:20])}"
@@ -253,10 +251,18 @@ def _load_manifest(manifest_path: Path) -> dict[str, Any]:
 
 
 def _validate_manifest_text(value: Any, *, field_name: str, pattern: re.Pattern[str]) -> str:
-    text = str(value or "").strip()
+    if value is None:
+        raise PipelinePluginRegistryError(f"plugin manifest field '{field_name}' is invalid")
+    text = str(value).strip()
     if not text or not pattern.fullmatch(text):
         raise PipelinePluginRegistryError(f"plugin manifest field '{field_name}' is invalid")
     return text
+
+
+def _description_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _manifest_entry_target(stage: str, raw_target: Any) -> str | None:
@@ -282,9 +288,7 @@ def _manifest_entries(raw: dict[str, Any]) -> dict[str, PipelinePluginEntry]:
     if not isinstance(entry, dict):
         raise PipelinePluginRegistryError("plugin manifest must define entry object")
     unsupported = sorted(
-        str(stage or "").strip() or "<empty>"
-        for stage in entry
-        if str(stage or "").strip() not in _SUPPORTED_ENTRY_STAGES
+        str(stage).strip() or "<empty>" for stage in entry if str(stage).strip() not in _SUPPORTED_ENTRY_STAGES
     )
     if unsupported:
         raise PipelinePluginRegistryError(
@@ -476,9 +480,7 @@ def _validate_declared_contract_schema(
 ) -> None:
     if raw.get("schema") != expected_schema:
         raise PipelinePluginRegistryError(f"{contract_name}.schema must be {expected_schema}")
-    unknown = sorted(
-        str(key or "").strip() or "<empty>" for key in raw if str(key or "").strip() not in supported_fields
-    )
+    unknown = sorted(key.strip() or "<empty>" for key in raw if key.strip() not in supported_fields)
     if unknown:
         raise PipelinePluginRegistryError(
             f"{contract_name} contains unknown top-level fields: {', '.join(unknown[:20])}"
@@ -515,7 +517,7 @@ def _validate_processing_template_ref(plugin_dir: Path, ref: Any, *, label: str)
 def _builtin_processing_template_keys() -> frozenset[str]:
     from app.services.governance_processing_scripts import list_builtin_processing_scripts
 
-    return frozenset(str(script.key or "").strip() for script in list_builtin_processing_scripts() if script.key)
+    return frozenset(script.key.strip() for script in list_builtin_processing_scripts() if script.key)
 
 
 def _validate_processing_template_item(
@@ -529,14 +531,15 @@ def _validate_processing_template_item(
     if not isinstance(item, dict):
         raise PipelinePluginRegistryError(f"processing_templates.templates[{index}] must be an object")
     unknown = sorted(
-        str(key or "").strip() or "<empty>" for key in item if str(key or "").strip() not in _PROCESSING_TEMPLATE_FIELDS
+        str(key).strip() or "<empty>" for key in item if str(key).strip() not in _PROCESSING_TEMPLATE_FIELDS
     )
     if unknown:
         raise PipelinePluginRegistryError(
             f"processing_templates.templates[{index}] contains unknown fields: {', '.join(unknown[:20])}"
         )
-    key = str(item.get("key") or "").strip()
-    if not _PROCESSING_TEMPLATE_KEY_RE.fullmatch(key):
+    raw_key = item.get("key")
+    key = str(raw_key).strip() if raw_key is not None else None
+    if key is None or not _PROCESSING_TEMPLATE_KEY_RE.fullmatch(key):
         raise PipelinePluginRegistryError(f"processing_templates.templates[{index}].key is invalid")
     if key in _builtin_processing_template_keys():
         raise PipelinePluginRegistryError(
@@ -545,10 +548,12 @@ def _validate_processing_template_item(
     if key in seen:
         raise PipelinePluginRegistryError(f"processing_templates.templates[{index}].key is duplicated")
     seen.add(key)
-    name = str(item.get("name") or "").strip()
+    raw_name = item.get("name")
+    name = str(raw_name).strip() if raw_name is not None else None
     if not name:
         raise PipelinePluginRegistryError(f"processing_templates.templates[{index}].name must be non-empty")
-    stage = str(item.get("stage") or "").strip()
+    raw_stage = item.get("stage")
+    stage = str(raw_stage).strip() if raw_stage is not None else None
     if stage not in entries:
         raise PipelinePluginRegistryError(
             f"processing_templates.templates[{index}].stage must reference a plugin entry stage"
@@ -559,7 +564,7 @@ def _validate_processing_template_item(
     return {
         "key": key,
         "name": name,
-        "description": str(item.get("description") or "").strip(),
+        "description": _description_text(item.get("description")),
         "stage": stage,
         "implemented_by": _validate_processing_template_ref(
             plugin_dir,
@@ -622,7 +627,7 @@ def _validate_processing_templates(
         "schema": "mimirq.pipeline_plugin_processing_templates.v1",
         "plugin_id": plugin_id,
         "version": version,
-        "description": str(raw.get("description") or "").strip(),
+        "description": _description_text(raw.get("description")),
         "templates": cleaned_templates,
     }
 
@@ -648,22 +653,6 @@ def _literal_string_arg(node: ast.Call) -> str | None:
         if keyword.arg == "name" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
             return keyword.value.value
     return None
-
-
-def _is_importlib_import_module_getattr(node: ast.AST, importlib_module_names: set[str]) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    if not isinstance(node.func, ast.Name) or node.func.id != "getattr":
-        return False
-    if len(node.args) < 2:
-        return False
-    target, attr = node.args[0], node.args[1]
-    return (
-        isinstance(target, ast.Name)
-        and target.id in importlib_module_names
-        and isinstance(attr, ast.Constant)
-        and attr.value == "import_module"
-    )
 
 
 def _is_importlib_import_module_attribute(node: ast.AST, importlib_module_names: set[str]) -> bool:
@@ -817,7 +806,7 @@ def _assigns_dynamic_import(
             node.value,
             importlib_module_names,
         )
-        or _is_importlib_import_module_getattr(node.value, importlib_module_names)
+        or _is_module_string_getattr(node.value, importlib_module_names, "import_module")
     )
 
 
@@ -827,11 +816,11 @@ def _validate_static_plugin_imports(tree: ast.AST, *, rel_path: Path) -> None:
             for alias in node.names:
                 _raise_reserved_import(alias.name, rel_path=rel_path, dynamic=False)
         elif isinstance(node, ast.ImportFrom) and node.level == 0:
-            _raise_reserved_import(str(node.module or ""), rel_path=rel_path, dynamic=False)
+            _raise_reserved_import(node.module, rel_path=rel_path, dynamic=False)
 
 
 def _raise_reserved_import(module_name: str, *, rel_path: Path, dynamic: bool) -> None:
-    root_name = str(module_name or "").split(".", 1)[0]
+    root_name = module_name.split(".", 1)[0]
     if root_name not in _RESERVED_ENTRY_MODULE_ROOTS:
         return
     qualifier = "dynamically import" if dynamic else "import"
@@ -878,7 +867,7 @@ def _dynamic_import_name(
         return _literal_string_arg(node)
     if _is_importlib_import_module_attribute(node.func, importlib_module_names):
         return _literal_string_arg(node)
-    if _is_importlib_import_module_getattr(node.func, importlib_module_names):
+    if _is_module_string_getattr(node.func, importlib_module_names, "import_module"):
         return _literal_string_arg(node)
     return None
 
@@ -984,7 +973,7 @@ def _purge_plugin_bytecode(plugin_dir: Path) -> None:
 
 
 @contextmanager
-def _suppress_plugin_bytecode(plugin_dir: Path):
+def _suppress_plugin_bytecode(plugin_dir: Path) -> Iterator[None]:
     previous_dont_write_bytecode = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
@@ -1073,10 +1062,10 @@ def _test_report_summary(report: dict[str, Any] | None) -> dict[str, Any]:
         }
 
     return {
-        "plugin_id": str(report.get("plugin_id") or ""),
-        "version": str(report.get("version") or ""),
-        "package_hash": str(report.get("package_hash") or ""),
-        "tested_at": str(report.get("tested_at") or ""),
+        "plugin_id": report.get("plugin_id"),
+        "version": report.get("version"),
+        "package_hash": report.get("package_hash"),
+        "tested_at": report.get("tested_at"),
         "passed": report.get("passed") is True,
         "stages": stages,
         "golden_draft": golden_report,
@@ -1113,7 +1102,7 @@ def _test_status(
     if not report:
         return False, "missing"
     if not _test_report_matches_manifest(report, plugin_id=plugin_id, version=version, package_hash=package_hash):
-        if str(report.get("plugin_id") or "") != plugin_id or str(report.get("version") or "") != version:
+        if report.get("plugin_id") != plugin_id or report.get("version") != version:
             return False, "mismatch"
         return False, "stale"
     if report.get("passed") is not True:
@@ -1135,7 +1124,7 @@ def _test_report_matches_manifest(
     version: str,
     package_hash: str,
 ) -> bool:
-    if str(report.get("plugin_id") or "") != plugin_id or str(report.get("version") or "") != version:
+    if report.get("plugin_id") != plugin_id or report.get("version") != version:
         return False
     return report.get("package_hash") == package_hash
 
@@ -1266,7 +1255,7 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
     report = _load_test_report(plugin_dir)
     published = str(manifest.get("status") or "draft").strip().lower() == "published"
     require_report = (
-        bool(getattr(settings, "PYTHON_PIPELINE_PLUGIN_REQUIRE_TEST_REPORT", True))
+        bool(settings.PYTHON_PIPELINE_PLUGIN_REQUIRE_TEST_REPORT)
         if require_test_report is None
         else require_test_report
     )
@@ -1285,7 +1274,7 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
         id=plugin_id,
         version=version,
         name=str(manifest.get("name") or plugin_id).strip() or plugin_id,
-        description=str(manifest.get("description") or "").strip(),
+        description=_description_text(manifest.get("description")),
         published=published,
         executable=executable,
         test_status=test_status,
@@ -1401,7 +1390,7 @@ def _load_import_entry_callable(plugin_dir: Path, entry: PipelinePluginEntry) ->
 
 
 @contextmanager
-def _plugin_execution_context(plugin_dir: Path):
+def _plugin_execution_context(plugin_dir: Path) -> Iterator[None]:
     with _PLUGIN_IMPORT_LOCK:
         importlib.invalidate_caches()
         external_snapshot = _purge_plugin_modules(plugin_dir)

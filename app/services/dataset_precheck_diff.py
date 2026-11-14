@@ -4,27 +4,22 @@ Dataset precheck diff helpers (pure functions).
 Goal: compare two scan-run summaries and return objective deltas for reporting.
 """
 
-
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 
-def _now_utc() -> datetime:
-    return datetime.now(UTC)
-
-
 def _as_int(v: Any) -> int:
     try:
         return int(v or 0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
 def _diff_item(*, key: str, before: Any, after: Any) -> dict[str, Any]:
     b = _as_int(before)
     a = _as_int(after)
-    return {"key": str(key), "before": b, "after": a, "delta": int(a - b)}
+    return {"key": key, "before": b, "after": a, "delta": a - b}
 
 
 def diff_precheck_summaries(
@@ -54,7 +49,7 @@ def diff_precheck_summaries(
         for item in raw:
             if not isinstance(item, dict):
                 continue
-            key = str(item.get("key") or "").strip()
+            key = item["key"].strip()
             if not key:
                 continue
             out[key] = _as_int(item.get("count"))
@@ -65,15 +60,15 @@ def diff_precheck_summaries(
     finding_keys = sorted({*base_findings.keys(), *target_findings.keys()})
 
     by_file_type = [_diff_item(key=k, before=base_types.get(k), after=target_types.get(k)) for k in type_keys]
-    by_file_type.sort(key=lambda d: (-abs(int(d.get("delta") or 0)), str(d.get("key") or "")))
+    by_file_type.sort(key=lambda item: (-abs(item["delta"]), item["key"]))
 
     findings = [_diff_item(key=k, before=base_findings.get(k), after=target_findings.get(k)) for k in finding_keys]
-    findings.sort(key=lambda d: (-abs(int(d.get("delta") or 0)), str(d.get("key") or "")))
+    findings.sort(key=lambda item: (-abs(item["delta"]), item["key"]))
 
     return {
         "base_scan_run_id": str(base_scan_run_id),
         "target_scan_run_id": str(target_scan_run_id),
-        "generated_at": _now_utc().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "total_files": _diff_item(
             key="total_files",
             before=base_summary.get("total_files"),
@@ -100,4 +95,3 @@ def diff_precheck_summaries(
 
 
 __all__ = ["diff_precheck_summaries"]
-

@@ -1,23 +1,34 @@
+from typing import Any, TypedDict
 
-from typing import Any
-
+from app.core.model_execution import reject_retired_provider
 from app.rag.kg.extraction.relation_processor import normalize_predicate
 
 AUTO_GRAPH_R1_PLAN_SCHEMA_V1 = "mimirq.kg.auto_graph_r1_plan.v1"
-_VALID_BACKENDS = {"llm", "gliner", "hybrid"}
+_VALID_BACKENDS = {"llm", "heuristic"}
+
+
+class _EntityTypeCount(TypedDict):
+    entity_type: str
+    count: int
+
+
+class _PredicateCount(TypedDict):
+    predicate: str
+    count: int
 
 
 def _normalize_backend(value: str | None) -> str:
-    backend = str(value or "").strip().lower()
+    backend = str((value if value is not None else "")).strip().lower()
+    reject_retired_provider(backend, capability="kg_extraction")
     if backend in _VALID_BACKENDS:
         return backend
     return "llm"
 
 
-def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[dict[str, int | str]]:
+def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[_EntityTypeCount]:
     counts: dict[str, int] = {}
-    for raw_key, raw_count in (entity_type_counts or {}).items():
-        key = str(raw_key or "").strip().lower() or "unknown"
+    for raw_key, raw_count in (entity_type_counts if entity_type_counts is not None else {}).items():
+        key = raw_key.strip().lower() or "unknown"
         try:
             count = max(0, int(raw_count or 0))
         except Exception:
@@ -32,10 +43,10 @@ def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[di
     ]
 
 
-def _normalize_predicate_counts(predicate_counts: dict[str, int] | None) -> list[dict[str, int | str]]:
+def _normalize_predicate_counts(predicate_counts: dict[str, int] | None) -> list[_PredicateCount]:
     counts: dict[str, int] = {}
-    for raw_key, raw_count in (predicate_counts or {}).items():
-        key = normalize_predicate(str(raw_key or ""))
+    for raw_key, raw_count in (predicate_counts if predicate_counts is not None else {}).items():
+        key = normalize_predicate(raw_key)
         try:
             count = max(0, int(raw_count or 0))
         except Exception:
@@ -63,10 +74,10 @@ def build_auto_graph_r1_plan(
     normalized_types = _normalize_type_counts(entity_type_counts)
     normalized_predicates = _normalize_predicate_counts(predicate_counts)
 
-    total_entities = sum(int(row["count"]) for row in normalized_types)
-    total_predicates = sum(int(row["count"]) for row in normalized_predicates)
-    unknown_entities = sum(int(row["count"]) for row in normalized_types if row["entity_type"] == "unknown")
-    unknown_predicates = sum(int(row["count"]) for row in normalized_predicates if row["predicate"] == "unknown")
+    total_entities = sum(row["count"] for row in normalized_types)
+    total_predicates = sum(row["count"] for row in normalized_predicates)
+    unknown_entities = sum(row["count"] for row in normalized_types if row["entity_type"] == "unknown")
+    unknown_predicates = sum(row["count"] for row in normalized_predicates if row["predicate"] == "unknown")
 
     unknown_entity_ratio = (float(unknown_entities) / float(total_entities)) if total_entities > 0 else 0.0
     unknown_predicate_ratio = (float(unknown_predicates) / float(total_predicates)) if total_predicates > 0 else 0.0

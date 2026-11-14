@@ -10,7 +10,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -25,7 +24,6 @@ from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 @dataclass(frozen=True)
 class ResumeHeading:
     start: int
-    end: int
     text: str
     key: str
 
@@ -37,9 +35,7 @@ class _Section:
     heading: ResumeHeading | None
 
 
-_EMAIL_RE = re.compile(
-    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])"
-)
+_EMAIL_RE = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])")
 _CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 
 _EN_SECTIONS: dict[str, str] = {
@@ -89,11 +85,9 @@ _CN_SECTIONS: dict[str, str] = {
     "培训经历": "training",
 }
 
-_EN_CANON = {re.sub(r"\s+", " ", k.strip().lower()): v for k, v in _EN_SECTIONS.items()}
-
 
 def _normalize_title(raw: str) -> str:
-    t = (raw or "").strip()
+    t = (raw).strip()
     if not t:
         return ""
     # Strip markdown heading marker if present.
@@ -113,7 +107,7 @@ def _section_key(title: str) -> str | None:
     if title in _CN_SECTIONS:
         return _CN_SECTIONS[title]
     lower = re.sub(r"\s+", " ", title.strip().lower())
-    return _EN_CANON.get(lower)
+    return _EN_SECTIONS.get(lower)
 
 
 def _iter_headings(text: str) -> list[ResumeHeading]:
@@ -140,20 +134,12 @@ def _iter_headings(text: str) -> list[ResumeHeading]:
         headings.append(
             ResumeHeading(
                 start=line_start,
-                end=line_start + len(raw_line),
                 text=title,
                 key=key,
             )
         )
 
-    deduped: list[ResumeHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[ResumeHeading]) -> list[_Section]:
@@ -184,7 +170,7 @@ def looks_like_resume(text: str) -> bool:
 
 
 class ResumeStructuredChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -200,43 +186,40 @@ class ResumeStructuredChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current_section: ResumeHeading | None = None
-
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():
                     continue
 
-                if section.heading is not None:
-                    current_section = section.heading
+                heading = section.heading
 
                 split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
                 for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
+                    local_start = sd.metadata.pop("start_index")
+                    abs_start = section.start + local_start
                     abs_end = abs_start + len(sd.page_content)
 
                     meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
+                    meta.update(sd.metadata)
                     meta["chunk_strategy"] = "resume_structured"
                     meta["start_char"] = abs_start
                     meta["end_char"] = abs_end
-                    if current_section is not None:
-                        meta["resume_section"] = current_section.key
-                        meta["resume_section_title"] = current_section.text
+                    if heading is not None:
+                        meta["resume_section"] = heading.key
+                        meta["resume_section_title"] = heading.text
 
                     out.append(Document(page_content=sd.page_content, metadata=meta))
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

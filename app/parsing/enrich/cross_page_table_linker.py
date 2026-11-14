@@ -5,22 +5,13 @@ from langchain_core.documents import Document
 
 from app.parsing.enrich.table_cell_schema import TableCell, TableExtraction
 from app.parsing.enrich.table_renderers import render_table_csv, render_table_html, render_table_markdown
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 
 
 def _is_table_doc(doc: Document) -> bool:
-    meta = dict(getattr(doc, "metadata", None) or {})
-    return (
-        str(meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd") or "").lower() == "table"
-    )
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
+    meta = doc.metadata
+    hint = meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd")
+    return isinstance(hint, str) and hint.lower() == "table"
 
 
 def _bbox(meta: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -38,66 +29,66 @@ def _columns(meta: Mapping[str, Any]) -> list[str]:
         extraction = meta.get("table_extraction")
         if isinstance(extraction, Mapping):
             raw = extraction.get("columns")
-    return [str(item or "").strip().casefold() for item in (raw if isinstance(raw, list) else [])]
+    return [item.strip().casefold() for item in (raw if isinstance(raw, list) else [])]
 
 
 def _rows(meta: Mapping[str, Any]) -> list[list[str]]:
     extraction = meta.get("table_extraction")
-    if isinstance(extraction, Mapping) and isinstance(extraction.get("rows"), list):
-        rows = []
-        for raw in extraction.get("rows") or []:
-            if isinstance(raw, list):
-                rows.append([str(cell or "").strip() for cell in raw])
-        return rows
+    if isinstance(extraction, Mapping):
+        rows = extraction.get("rows")
+        if isinstance(rows, list):
+            return [[cell.strip() for cell in row] for row in rows if isinstance(row, list)]
     return []
 
 
 def _near_page_bottom(meta: Mapping[str, Any]) -> bool:
     bbox = _bbox(meta)
     y1 = _coerce_int(bbox.get("y1"))
-    return bool(y1 is not None and int(y1) >= 720)
+    return y1 is not None and y1 >= 720
 
 
 def _near_page_top(meta: Mapping[str, Any]) -> bool:
     bbox = _bbox(meta)
     y0 = _coerce_int(bbox.get("y0"))
-    return bool(y0 is not None and int(y0) <= 180)
+    return y0 is not None and y0 <= 180
 
 
 def _should_merge(left: Document, right: Document) -> bool:
-    left_meta = dict(left.metadata or {})
-    right_meta = dict(right.metadata or {})
+    left_meta = left.metadata
+    right_meta = right.metadata
     left_page = _page(left_meta)
     right_page = _page(right_meta)
-    if left_page is None or right_page is None or int(right_page) != int(left_page) + 1:
+    if left_page is None or right_page is None or right_page != left_page + 1:
         return False
-    if _columns(left_meta) != _columns(right_meta) or not _columns(left_meta):
+    left_columns = _columns(left_meta)
+    if not left_columns or left_columns != _columns(right_meta):
         return False
-    right_text = str(getattr(right, "page_content", "") or "")
+    right_text = right.page_content
     has_continuation_hint = any(token in right_text for token in ("续表", "continued", "Continuation"))
-    return bool((_near_page_bottom(left_meta) and _near_page_top(right_meta)) or has_continuation_hint)
+    return (_near_page_bottom(left_meta) and _near_page_top(right_meta)) or has_continuation_hint
 
 
 def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExtraction:
-    columns = [
-        str(item or "").strip()
-        for item in (meta.get("table_columns") if isinstance(meta.get("table_columns"), list) else [])
-    ]
+    source_id = meta.get("source_element_id")
+    if source_id is None:
+        source_id = meta.get("element_id")
+    raw_columns = meta.get("table_columns")
+    columns = [item.strip() for item in raw_columns] if isinstance(raw_columns, list) else []
     if not columns:
         extraction = meta.get("table_extraction")
         if isinstance(extraction, Mapping) and isinstance(extraction.get("columns"), list):
-            columns = [str(item or "").strip() for item in extraction.get("columns") or []]
+            columns = [item.strip() for item in extraction["columns"]]
     cells = [TableCell(row_index=0, col_index=i, text=col, is_header=True) for i, col in enumerate(columns)]
     for row_index, row in enumerate(rows, start=1):
         for col_index, text in enumerate(row[: len(columns)]):
-            cells.append(TableCell(row_index=row_index, col_index=col_index, text=str(text), is_header=False))
+            cells.append(TableCell(row_index=row_index, col_index=col_index, text=text, is_header=False))
     return TableExtraction(
         columns=columns,
         rows=rows,
         cells=cells,
         page=_page(meta),
         bbox=_bbox(meta),
-        source_element_id=str(meta.get("source_element_id") or meta.get("element_id") or ""),
+        source_element_id=str(source_id) if source_id is not None else None,
         header_rows=1,
         metadata={"source": "cross_page_table_linker"},
     )
@@ -105,16 +96,19 @@ def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExt
 
 def _merge_group(group: list[Document]) -> Document:
     first = group[0]
-    meta = dict(first.metadata or {})
+    meta = dict(first.metadata)
     all_rows: list[list[str]] = []
     pages: list[int] = []
     source_ids: list[str] = []
     for doc in group:
-        doc_meta = dict(doc.metadata or {})
+        doc_meta = doc.metadata
         page = _page(doc_meta)
-        if page is not None and int(page) not in pages:
-            pages.append(int(page))
-        sid = str(doc_meta.get("source_element_id") or doc_meta.get("element_id") or "")
+        if page is not None and page not in pages:
+            pages.append(page)
+        source_id = doc_meta.get("source_element_id")
+        if source_id is None:
+            source_id = doc_meta.get("element_id")
+        sid = str(source_id) if source_id is not None else None
         if sid and sid not in source_ids:
             source_ids.append(sid)
         all_rows.extend(_rows(doc_meta))

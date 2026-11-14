@@ -9,11 +9,11 @@ def test_tokenizer_warmup_initializes_jieba_and_exercises_mixed_text(monkeypatch
     monkeypatch.setattr(tokenization.jieba, "initialize", lambda: initialized.append(True))
     monkeypatch.setattr(
         tokenization,
-        "tokenize_for_bm25",
+        "tokenize_lexical_text",
         lambda text: tokenized.append(text) or ["mimirq", "knowledge", "知识", "检索"],
     )
 
-    tokenization.warmup_bm25_tokenizer()
+    tokenization.warmup_lexical_tokenizer()
 
     assert initialized == [True]
     assert tokenized and not tokenized[0].isascii()
@@ -22,7 +22,7 @@ def test_tokenizer_warmup_initializes_jieba_and_exercises_mixed_text(monkeypatch
 def test_startup_warms_tokenizer_when_bm25_is_enabled(monkeypatch) -> None:
     calls: list[bool] = []
     monkeypatch.setattr(main.settings, "BM25_INDEX_ENABLED", True)
-    monkeypatch.setattr(tokenization, "warmup_bm25_tokenizer", lambda: calls.append(True))
+    monkeypatch.setattr(tokenization, "warmup_lexical_tokenizer", lambda: calls.append(True))
 
     main._warmup_retrieval_tokenizer()
 
@@ -32,7 +32,7 @@ def test_startup_warms_tokenizer_when_bm25_is_enabled(monkeypatch) -> None:
 def test_startup_skips_tokenizer_warmup_when_bm25_is_disabled(monkeypatch) -> None:
     calls: list[bool] = []
     monkeypatch.setattr(main.settings, "BM25_INDEX_ENABLED", False)
-    monkeypatch.setattr(tokenization, "warmup_bm25_tokenizer", lambda: calls.append(True))
+    monkeypatch.setattr(tokenization, "warmup_lexical_tokenizer", lambda: calls.append(True))
 
     main._warmup_retrieval_tokenizer()
 

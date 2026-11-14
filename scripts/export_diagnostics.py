@@ -115,7 +115,7 @@ def export_diagnostics(*, metrics_rows: list[dict[str, Any]], feedback_rows: lis
             "total": len(feedback_rows),
             "rating_counts": dict(sorted(rating_counts.items())),
             "tag_counts": dict(sorted(tag_counts.items())),
-            "reason_present_count": int(reason_present_count),
+            "reason_present_count": reason_present_count,
         },
     }
 

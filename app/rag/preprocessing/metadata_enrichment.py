@@ -16,7 +16,11 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
+from app.rag.preprocessing.frontmatter import (
+    FrontmatterExtractResult,
+    extract_markdown_frontmatter,
+    extract_markdown_title,
+)
 from app.rag.preprocessing.keyword import extract_keywords
 from app.rag.preprocessing.language import detect_language
 
@@ -25,7 +29,9 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 
 def _safe_text(value: Any, *, max_len: int = 500) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -51,11 +57,11 @@ def _safe_str_list(value: Any, *, max_items: int, max_len: int) -> list[str]:
 
 
 def _normalize_space(text: str) -> str:
-    return _WHITESPACE_RE.sub(" ", str(text or "").strip()).strip()
+    return _WHITESPACE_RE.sub(" ", text.strip()).strip()
 
 
 def _strip_leading_title(text: str, *, title: str | None) -> str:
-    raw = str(text or "")
+    raw = text
     title_norm = _normalize_space(title or "")
     if not raw.strip() or not title_norm:
         return raw.strip()
@@ -75,7 +81,7 @@ def _strip_leading_title(text: str, *, title: str | None) -> str:
 
 
 def _summary_from_text(text: str, *, max_chars: int) -> str | None:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return None
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", raw) if p.strip()]
@@ -84,7 +90,7 @@ def _summary_from_text(text: str, *, max_chars: int) -> str | None:
     summary = _normalize_space(paragraphs[0])
     if len(summary) > max_chars:
         summary = summary[: max_chars - 3].rstrip() + "..."
-    return summary or None
+    return summary
 
 
 def _build_questions(
@@ -138,14 +144,9 @@ def _build_questions(
     return out
 
 
-def _frontmatter_data(frontmatter: object) -> dict[str, Any]:
-    data = getattr(frontmatter, "data", None)
-    return data if isinstance(data, dict) else {}
-
-
-def _resolve_title(meta: dict[str, Any], frontmatter: object, working: str) -> str | None:
+def _resolve_title(meta: dict[str, Any], frontmatter: FrontmatterExtractResult | None, working: str) -> str | None:
     title = _safe_text(meta.get("document_title"), max_len=200)
-    data = _frontmatter_data(frontmatter)
+    data = frontmatter.data if frontmatter is not None else {}
     if not title:
         title = _safe_text(data.get("title"), max_len=200)
     if not title:
@@ -153,11 +154,12 @@ def _resolve_title(meta: dict[str, Any], frontmatter: object, working: str) -> s
     return title
 
 
-def _resolve_tags(meta: dict[str, Any], frontmatter: object) -> list[str]:
+def _resolve_tags(meta: dict[str, Any], frontmatter: FrontmatterExtractResult | None) -> list[str]:
     tags = _safe_str_list(meta.get("document_tags"), max_items=20, max_len=64)
     if tags:
         return tags
-    return _safe_str_list(_frontmatter_data(frontmatter).get("tags"), max_items=20, max_len=64)
+    data = frontmatter.data if frontmatter is not None else {}
+    return _safe_str_list(data.get("tags"), max_items=20, max_len=64)
 
 
 def _resolve_summary(meta: dict[str, Any], working: str, title: str | None, max_chars: int) -> str | None:
@@ -172,14 +174,8 @@ def _resolve_language(meta: dict[str, Any], working: str) -> tuple[str | None, A
     language_confidence = meta.get("document_language_confidence")
     if language:
         return language, language_confidence
-    try:
-        detected = detect_language(working, min_chars=20)
-        language = _safe_text(getattr(detected, "language", None), max_len=20)
-        language_confidence = round(float(getattr(detected, "confidence", 0.0) or 0.0), 3)
-    except Exception:
-        language = None
-        language_confidence = None
-    return language, language_confidence
+    detected = detect_language(working, min_chars=20)
+    return detected.language, round(detected.confidence, 3)
 
 
 def _resolve_keywords(
@@ -247,7 +243,7 @@ def _build_enrichment_output(
     questions: list[str],
     language: str | None,
     language_confidence: Any,
-    frontmatter: object,
+    frontmatter: FrontmatterExtractResult | None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {"metadata_enrichment_schema": _SCHEMA}
     if title:
@@ -265,7 +261,7 @@ def _build_enrichment_output(
         out["document_language"] = language
         if isinstance(language_confidence, (int, float)):
             out["document_language_confidence"] = round(float(language_confidence), 3)
-    if frontmatter and isinstance(frontmatter.data, dict) and frontmatter.data:
+    if frontmatter is not None and frontmatter.data:
         out["document_frontmatter"] = dict(frontmatter.data)
     return out
 
@@ -295,12 +291,12 @@ def build_document_metadata_enrichment(
     - document_language_confidence
     """
     meta = dict(metadata or {})
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return {}
 
     frontmatter = extract_markdown_frontmatter(raw, strip=True)
-    working = str(frontmatter.stripped_text if frontmatter else raw).strip()
+    working = (frontmatter.stripped_text if frontmatter is not None else raw).strip()
 
     title = _resolve_title(meta, frontmatter, working)
     tags = _resolve_tags(meta, frontmatter)
@@ -375,11 +371,11 @@ def enrich_documents_metadata(
     generate_questions: bool = True,
 ) -> list[Document]:
     out: list[Document] = []
-    for doc in documents or []:
-        meta = dict(doc.metadata or {})
+    for doc in documents:
+        meta = dict(doc.metadata)
         meta.update(
             build_document_metadata_enrichment(
-                doc.page_content or "",
+                doc.page_content,
                 metadata=meta,
                 keywords_provider=keywords_provider,
                 keyword_top_k=keyword_top_k,
@@ -389,10 +385,7 @@ def enrich_documents_metadata(
                 generate_questions=generate_questions,
             )
         )
-        try:
-            out.append(doc.model_copy(update={"metadata": meta}))
-        except Exception:
-            out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+        out.append(doc.model_copy(update={"metadata": meta}))
     return out
 
 

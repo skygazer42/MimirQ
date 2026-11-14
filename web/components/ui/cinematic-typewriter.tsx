@@ -1,19 +1,18 @@
-"use client"
+'use client'
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { startTransition, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { startTransition, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { AuthImage } from '@/components/auth-image'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import { randomIntInclusive } from '@/lib/secure-random'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
-const CinematicCodeBlock = dynamic(
-  () => import('./cinematic-code-block').then((mod) => mod.CinematicCodeBlock),
-  { ssr: false }
-)
+const CinematicCodeBlock = dynamic(() => import('./cinematic-code-block').then((mod) => mod.CinematicCodeBlock), {
+  ssr: false,
+})
 
 // Typing configuration (ms).
 // Keep it deterministic and relatively low-frequency to reduce layout jitter while streaming.
@@ -23,7 +22,7 @@ const STREAM_WAIT_MS = 50
 const NEWLINE_DELAY_MS = 60
 const PUNCTUATION_DELAY_MS = 140
 
-interface CinematicTypewriterProps {
+type CinematicTypewriterProps = {
   readonly content: string
   readonly onComplete?: () => void
   readonly isStreaming?: boolean
@@ -35,11 +34,7 @@ type MarkdownLinkProps = Readonly<{ href?: string; children?: React.ReactNode }>
 type MarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
 
 function CinematicMarkdownParagraph({ children }: MarkdownChildrenProps) {
-  return (
-    <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">
-      {children}
-    </p>
-  )
+  return <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">{children}</p>
 }
 
 function CinematicMarkdownList({ children }: MarkdownChildrenProps) {
@@ -95,12 +90,7 @@ function CinematicMarkdownImage({ src, alt }: MarkdownImageProps) {
 function CinematicMarkdownCode({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) {
   const match = /language-(\w+)/.exec(className || '')
   if (match) {
-    return (
-      <CinematicCodeBlock
-        language={match[1]}
-        code={String(children).replace(/\n$/, '')}
-      />
-    )
+    return <CinematicCodeBlock language={match[1]} code={String(children).replace(/\n$/, '')} />
   }
 
   return (
@@ -178,8 +168,8 @@ export function CinematicTypewriter({
   className,
 }: Readonly<CinematicTypewriterProps>) {
   const reduceMotion = useReducedMotion()
-  const [displayedContent, setDisplayedContent] = useState("")
-  const [pendingToken, setPendingToken] = useState("")
+  const [displayedContent, setDisplayedContent] = useState('')
+  const [pendingToken, setPendingToken] = useState('')
   const [pendingTokenKey, setPendingTokenKey] = useState(0)
   const [isTyping, setIsTyping] = useState(false)
 
@@ -191,8 +181,10 @@ export function CinematicTypewriter({
   const indexRef = useRef(0)
   const timeoutRef = useRef<number | null>(null)
   const completedRef = useRef(false)
+  const tickRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    if (contentRef.current !== content) completedRef.current = false
     contentRef.current = content
   }, [content])
 
@@ -214,25 +206,7 @@ export function CinematicTypewriter({
   }, [pendingToken])
 
   useEffect(() => {
-    if (reduceMotion) {
-      if (timeoutRef.current != null) {
-        globalThis.window.clearTimeout(timeoutRef.current)
-        timeoutRef.current = null
-      }
-
-      const full = contentRef.current
-      indexRef.current = full.length
-      completedRef.current = !streamingRef.current
-      displayedRef.current = full
-      pendingRef.current = ''
-
-      setDisplayedContent(full)
-      setPendingToken('')
-      setPendingTokenKey(0)
-      setIsTyping(false)
-      if (!streamingRef.current) onCompleteRef.current?.()
-      return
-    }
+    if (reduceMotion) return
 
     // Streaming-safe typing loop: always reads latest content via refs, so appends keep flowing.
     function resetIfReplaced() {
@@ -303,11 +277,13 @@ export function CinematicTypewriter({
       schedule(step.delayMs)
     }
 
+    tickRef.current = tick
     if (timeoutRef.current == null) {
       tick()
     }
 
     return () => {
+      tickRef.current = null
       if (timeoutRef.current != null) {
         globalThis.window.clearTimeout(timeoutRef.current)
         timeoutRef.current = null
@@ -315,21 +291,37 @@ export function CinematicTypewriter({
     }
   }, [reduceMotion])
 
+  useEffect(() => {
+    if (reduceMotion) {
+      indexRef.current = content.length
+      displayedRef.current = content
+      pendingRef.current = ''
+      setDisplayedContent(content)
+      setPendingToken('')
+      setPendingTokenKey(0)
+      setIsTyping(false)
+      if (!isStreaming && !completedRef.current) {
+        completedRef.current = true
+        onCompleteRef.current?.()
+      }
+      return
+    }
+
+    // Wake a completed loop without resetting an active token or punctuation timer.
+    if (timeoutRef.current == null) tickRef.current?.()
+  }, [content, isStreaming, reduceMotion])
+
   const tokenRevealTransition = useMemo(
     () => ({
       duration: reduceMotion ? 0 : 0.18,
       ease: [0.16, 1, 0.3, 1] as const,
     }),
-    [reduceMotion]
+    [reduceMotion],
   )
 
   return (
-    <div className={cn("relative leading-relaxed", className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        skipHtml
-        components={CINEMATIC_MARKDOWN_COMPONENTS}
-      >
+    <div className={cn('relative leading-relaxed', className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={CINEMATIC_MARKDOWN_COMPONENTS}>
         {displayedContent}
       </ReactMarkdown>
       <AnimatePresence initial={false} mode="popLayout">

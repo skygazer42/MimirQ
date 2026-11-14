@@ -3,6 +3,7 @@ Dataset management API.
 Supports dataset creation, query, update, deletion, and permission management.
 """
 
+import asyncio
 import contextlib
 import gzip as gzip_lib
 import io
@@ -11,21 +12,28 @@ import re
 import shutil
 import uuid
 import zipfile
-from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from collections import defaultdict
+from collections.abc import Iterator, Mapping
+from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import String, and_, case, cast, func, or_, select
+from pydantic import BaseModel
+from sqlalchemy import Row, String, and_, case, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Query as ORMQuery
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.selectable import Subquery
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.dataset import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets import (
+    DatasetCategoryAssignmentRequest,
+    DatasetCategoryAssignmentResponse,
     DatasetChunkTargetsV2,
     DatasetCloneRequest,
     DatasetConfigBundle,
@@ -33,39 +41,38 @@ from app.api.schemas.dataset import (
     DatasetConfigImportRequest,
     DatasetCreate,
     DatasetEmbeddingDefaults,
+    DatasetHealthIngestionSummary,
+    DatasetHealthResponse,
     DatasetIngestionStats,
     DatasetListFacets,
     DatasetListIngestionSummary,
     DatasetListResponse,
     DatasetOut,
-    DatasetPurgeResponse,
-    DatasetRAGDefaults,
-    DatasetRetentionPolicy,
-    DatasetUpdate,
-)
-from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
-from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
-from app.api.schemas.dataset_profile import (
     DatasetProfileDocumentListResponse,
     DatasetProfileFindingListResponse,
     DatasetProfileScanRunCreateRequest,
     DatasetProfileScanRunListResponse,
     DatasetProfileScanRunOut,
     DatasetProfileSummary,
+    DatasetPurgeResponse,
+    DatasetRAGDefaults,
+    DatasetUpdate,
+    validate_dataset_execution,
 )
-from app.api.schemas.document import DocumentPipelineOptions
-from app.api.schemas.ingestion_policy import (
+from app.api.schemas.documents import DocumentPipelineOptions
+from app.api.schemas.evaluation import DatasetRetrievalAuditOut
+from app.api.schemas.sources import (
     DatasetTableRoutingPolicyAudit,
     IngestionPolicy,
     IngestionPolicyImportResponse,
     IngestionPolicyRollbackRequest,
     IngestionPolicyVersionListResponse,
     IngestionPolicyWithAudit,
+    IngestionRule,
     IngestionRuleTableRoutingAudit,
     TableRoutingSettingAudit,
 )
-from app.api.schemas.report import DatasetRetrievalAuditOut
-from app.api.utils.response_headers import download_response_headers, set_download_content_disposition
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES, file_response_headers, set_content_disposition
 from app.core.async_bridge import run_coroutine_sync
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
@@ -81,8 +88,8 @@ from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.services import dataset_category_service, dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.dataset_profile_service import (
@@ -90,173 +97,106 @@ from app.services.dataset_profile_service import (
     list_bucket_documents,
     list_finding_documents,
 )
-from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
+from app.services.dataset_scan_session import (
+    CurrentThreadScanSession,
+    DatasetScanSession,
+    ScanTransaction,
+    expire_stale_scan_runs,
+    fail_unhanded_scan_run,
+    persist_scan_handoff_update,
+    settle_scan_enqueue,
+    submit_local_scan_run,
+)
 from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.fls_policy import parse_fls_policy_from_metadata, validate_and_normalize_fls_policy
 from app.services.ingestion_policy import (
     export_policy_json,
     parse_ingestion_policy_from_metadata,
     validate_and_normalize_ingestion_policy,
+    validate_ingestion_policy_execution,
 )
+from app.services.managed_handoff import prepare_managed_handoff
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.report_html import render_dataset_profile_html
 from app.services.report_service import sanitize_retrieval_audit_snapshot
 from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
-from app.tasks.queue import TaskEnqueueRejectedError, enqueue_dataset_profile_scan, get_task_job_status
+from app.tasks.queue import (
+    enqueue_dataset_profile_scan,
+    get_task_job_status,
+    register_local_scan_run_active,
+    unregister_local_scan_run_active,
+)
 from app.types.pipeline import PipelineOptions
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _DATASET_SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 _APPLICATION_JSON_MEDIA_TYPE = "application/json"
 logger = get_logger(__name__)
 _DATASET_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical dataset router fallback failure: %s"
-_DATASET_SCAN_PENDING_STALE_AFTER = timedelta(minutes=15)
-_DATASET_SCAN_RUNNING_STALE_AFTER = timedelta(hours=2)
-_DATASET_SCAN_PENDING_HARD_STALE_AFTER = timedelta(hours=2)
-_DATASET_SCAN_RUNNING_HARD_STALE_AFTER = timedelta(hours=24)
 
 
-def _dataset_scan_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _scan_run_reference_time(row: object) -> datetime | None:
-    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
-    if ts is None:
-        return None
-    if getattr(ts, "tzinfo", None) is None:
-        return ts.replace(tzinfo=timezone.utc)
-    return ts
-
-
-def _is_stale_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
-    if status not in {"pending", "running"}:
-        return False
-    ts = _scan_run_reference_time(row)
-    if ts is None:
-        return False
-    if status == "pending":
-        return ts + _DATASET_SCAN_PENDING_STALE_AFTER <= now
-    return ts + _DATASET_SCAN_RUNNING_STALE_AFTER <= now
-
-
-def _is_hard_stale_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
-    ts = _scan_run_reference_time(row)
-    if ts is None:
-        return False
-    if status == "pending":
-        return ts + _DATASET_SCAN_PENDING_HARD_STALE_AFTER <= now
-    if status == "running":
-        return ts + _DATASET_SCAN_RUNNING_HARD_STALE_AFTER <= now
-    return False
-
-
-async def _expire_stale_dataset_profile_scan_runs(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> int:
-    now = _dataset_scan_now()
-    rows = (
-        db.query(DBDatasetProfileScanRun)
-        .filter(
-            DBDatasetProfileScanRun.tenant_id == tenant_id,
-            DBDatasetProfileScanRun.dataset_id == dataset_id,
-            DBDatasetProfileScanRun.status.in_(["pending", "running"]),
-        )
-        .all()
-    )
-    expired = 0
-    for row in rows:
-        status = str(getattr(row, "status", "") or "").strip().lower()
-        if not _is_stale_scan_run(row, now=now):
-            continue
-        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
-            job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
-            job_status: str | None = None
-            try:
-                job_status = await get_task_job_status(job_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not verify stale dataset profile scan job %s: %s", job_id, str(exc)[:160])
-                if not _is_hard_stale_scan_run(row, now=now):
-                    continue
-            if job_status in {"deferred", "queued", "in_progress"}:
-                continue
-        elif status == "running":
-            from app.tasks.queue import is_local_scan_run_active
-
-            if is_local_scan_run_active(
-                kind="profile",
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=row.id,
-            ):
-                continue
-        row.status = "failed"
-        row.error_message = "stale_running_scan_replaced" if status == "running" else "stale_pending_scan_replaced"
-        row.finished_at = now
-        row.updated_at = now
-        expired += 1
-    if expired:
-        db.flush()
-    return expired
-
-
-def _mark_dataset_profile_scan_run_failed(
+def _commit_dataset_audit(
     db: Session,
     *,
-    row: DBDatasetProfileScanRun,
-    error_message: str,
+    tenant_id: UUID,
+    account_id: str,
+    action: str,
+    dataset_id: UUID,
+    details: Mapping[str, object],
 ) -> None:
-    failed_at = _dataset_scan_now()
-    row.status = "failed"
-    row.error_message = str(error_message or "")[:200]
-    row.finished_at = failed_at
-    row.updated_at = failed_at
     try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details=dict(details),
+        )
         db.commit()
-    except Exception as exc:  # noqa: BLE001
+    except Exception:
         db.rollback()
-        logger.debug("Ignoring dataset profile enqueue failure status update failure: %s", exc)
+        logger.warning(
+            "Dataset operation committed but audit logging failed: action=%s dataset_id=%s",
+            action,
+            dataset_id,
+            exc_info=True,
+        )
+
+
+async def _expire_stale_dataset_profile_scan_runs(
+    transaction: ScanTransaction, *, tenant_id: UUID, dataset_id: UUID
+) -> int:
+    return await expire_stale_scan_runs(
+        transaction,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        now=datetime.now(UTC),
+        kind="profile",
+        queue_enabled=settings.TASK_QUEUE_ENABLED,
+        get_job_status=get_task_job_status,
+    )
 
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
-    opts = parse_pipeline_from_metadata(meta)
-    public_fields = set(DocumentPipelineOptions.model_fields)
-    data = {k: getattr(opts, k) for k in opts.__dataclass_fields__ if k in public_fields}  # type: ignore[attr-defined]
-    # Only return if any pipeline override exists
-    if not any(v is not None for v in data.values()):
-        return None
-    return DocumentPipelineOptions(**data)
-
-
-def _dataset_retention_policy_out(ds: Dataset) -> DatasetRetentionPolicy | None:
-    meta = getattr(ds, "dataset_metadata", None)
-    if not isinstance(meta, dict):
-        return None
-    pol = parse_retention_policy_from_metadata(meta)
-    return pol if isinstance(pol, DatasetRetentionPolicy) else None
+    pipeline = DocumentPipelineOptions.model_validate(parse_pipeline_from_metadata(meta), from_attributes=True)
+    return pipeline if pipeline.model_dump(exclude_none=True) else None
 
 
 def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None
     pb = meta.get("default_parser_backend")
     cs = meta.get("default_chunk_strategy")
-    pb_out = str(pb).strip() if isinstance(pb, str) and pb.strip() else None
-    cs_out = str(cs).strip() if isinstance(cs, str) and cs.strip() else None
+    pb_out = pb.strip() if isinstance(pb, str) and pb.strip() else None
+    cs_out = cs.strip() if isinstance(cs, str) and cs.strip() else None
     return pb_out, cs_out
 
 
@@ -272,8 +212,8 @@ def _resolve_table_routing_setting(
     if rule_patch_value is not None:
         return TableRoutingSettingAudit(value=bool(rule_patch_value), source="rule_pipeline_patch")
     if dataset_default is not None:
-        return TableRoutingSettingAudit(value=bool(dataset_default), source="dataset_pipeline_default")
-    return TableRoutingSettingAudit(value=bool(global_default), source="global_default")
+        return TableRoutingSettingAudit(value=dataset_default, source="dataset_pipeline_default")
+    return TableRoutingSettingAudit(value=global_default, source="global_default")
 
 
 _TABLE_ROUTING_KEYS = (
@@ -283,103 +223,32 @@ _TABLE_ROUTING_KEYS = (
 )
 
 
-def _dataset_table_routing_defaults(
-    dataset_opts: PipelineOptions,
-) -> tuple[dict[str, bool], dict[str, bool]]:
-    dataset_defaults = {
-        "table_store_enabled": (
-            bool(dataset_opts.table_store_enabled) if dataset_opts.table_store_enabled is not None else False
-        ),
-        "table_store_auto_route": (
-            bool(dataset_opts.table_store_auto_route) if dataset_opts.table_store_auto_route is not None else False
-        ),
-        "table_store_sidecar_exclusive_routing": (
-            bool(dataset_opts.table_store_sidecar_exclusive_routing)
-            if dataset_opts.table_store_sidecar_exclusive_routing is not None
-            else False
-        ),
-    }
-    dataset_default_presence = {
-        "table_store_enabled": dataset_opts.table_store_enabled is not None,
-        "table_store_auto_route": dataset_opts.table_store_auto_route is not None,
-        "table_store_sidecar_exclusive_routing": dataset_opts.table_store_sidecar_exclusive_routing is not None,
-    }
-    return dataset_defaults, dataset_default_presence
-
-
-def _global_table_routing_defaults() -> dict[str, bool]:
-    return {
-        "table_store_enabled": bool(getattr(settings, "TABLE_STORE_ENABLED", False)),
-        "table_store_auto_route": bool(getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)),
-        "table_store_sidecar_exclusive_routing": bool(
-            getattr(settings, "TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", False)
-        ),
-    }
-
-
-def _normalized_rule_extensions(rule: Any) -> list[str]:
-    exts: list[str] = []
-    for ext in (rule.match.extensions if rule.match is not None else []) or []:
-        sval = str(ext or "").strip().lower()
-        if not sval:
-            continue
-        exts.append(sval if sval.startswith(".") else "." + sval)
-    return exts
-
-
-def _dataset_default_for_table_key(
-    dataset_defaults: dict[str, bool],
-    dataset_default_presence: dict[str, bool],
-    key: str,
-) -> bool | None:
-    if not dataset_default_presence[key]:
-        return None
-    return dataset_defaults[key]
-
-
 def _table_routing_rule_audit(
-    rule: Any,
+    rule: IngestionRule,
     *,
-    dataset_defaults: dict[str, bool],
-    dataset_default_presence: dict[str, bool],
+    dataset_defaults: dict[str, bool | None],
     global_defaults: dict[str, bool],
 ) -> IngestionRuleTableRoutingAudit:
-    patch = rule.pipeline_patch if isinstance(rule.pipeline_patch, dict) else {}
-    exts = _normalized_rule_extensions(rule)
+    patch = rule.pipeline_patch
+    exts = []
+    for extension in rule.match.extensions:
+        extension = extension.strip().lower()
+        if extension:
+            exts.append(extension if extension.startswith(".") else "." + extension)
     patch_has_table_keys = any(k in patch for k in _TABLE_ROUTING_KEYS)
+    routing_settings = {
+        key: _resolve_table_routing_setting(
+            rule_patch_value=patch.get(key), dataset_default=dataset_defaults[key], global_default=global_defaults[key]
+        )
+        for key in _TABLE_ROUTING_KEYS
+    }
     return IngestionRuleTableRoutingAudit(
-        rule_id=str(rule.id),
-        rule_name=str(rule.name),
-        enabled=bool(rule.enabled),
+        rule_id=rule.id,
+        rule_name=rule.name,
+        enabled=rule.enabled,
         match_extensions=exts,
         table_rule_match=bool(set(exts) & _TABLE_ROUTING_EXTENSIONS) or patch_has_table_keys,
-        table_store_enabled=_resolve_table_routing_setting(
-            rule_patch_value=patch.get("table_store_enabled"),
-            dataset_default=_dataset_default_for_table_key(
-                dataset_defaults,
-                dataset_default_presence,
-                "table_store_enabled",
-            ),
-            global_default=global_defaults["table_store_enabled"],
-        ),
-        table_store_auto_route=_resolve_table_routing_setting(
-            rule_patch_value=patch.get("table_store_auto_route"),
-            dataset_default=_dataset_default_for_table_key(
-                dataset_defaults,
-                dataset_default_presence,
-                "table_store_auto_route",
-            ),
-            global_default=global_defaults["table_store_auto_route"],
-        ),
-        table_store_sidecar_exclusive_routing=_resolve_table_routing_setting(
-            rule_patch_value=patch.get("table_store_sidecar_exclusive_routing"),
-            dataset_default=_dataset_default_for_table_key(
-                dataset_defaults,
-                dataset_default_presence,
-                "table_store_sidecar_exclusive_routing",
-            ),
-            global_default=global_defaults["table_store_sidecar_exclusive_routing"],
-        ),
+        **routing_settings,
     )
 
 
@@ -389,29 +258,36 @@ def _build_table_routing_policy_audit(
     policy: IngestionPolicy,
 ) -> DatasetTableRoutingPolicyAudit:
     dataset_opts = parse_pipeline_from_metadata(meta)
-    dataset_defaults, dataset_default_presence = _dataset_table_routing_defaults(dataset_opts)
-    global_defaults = _global_table_routing_defaults()
+    dataset_defaults = {
+        "table_store_enabled": dataset_opts.table_store_enabled,
+        "table_store_auto_route": dataset_opts.table_store_auto_route,
+        "table_store_sidecar_exclusive_routing": dataset_opts.table_store_sidecar_exclusive_routing,
+    }
+    global_defaults = {
+        "table_store_enabled": settings.TABLE_STORE_ENABLED,
+        "table_store_auto_route": settings.TABLE_STORE_AUTO_ROUTE,
+        "table_store_sidecar_exclusive_routing": settings.TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING,
+    }
     rule_audits = [
         _table_routing_rule_audit(
             rule,
             dataset_defaults=dataset_defaults,
-            dataset_default_presence=dataset_default_presence,
             global_defaults=global_defaults,
         )
-        for rule in policy.rules or []
+        for rule in policy.rules
     ]
 
     return DatasetTableRoutingPolicyAudit(
         version="1",
         table_extensions=sorted(_TABLE_ROUTING_EXTENSIONS),
         global_defaults=global_defaults,
-        dataset_pipeline_defaults=dataset_defaults,
+        dataset_pipeline_defaults={key: bool(value) for key, value in dataset_defaults.items()},
         rules=rule_audits,
     )
 
 
 def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("rag_defaults")
@@ -420,7 +296,7 @@ def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
     try:
         # DatasetRAGDefaults is small and extra="ignore"; safe to parse best-effort.
         parsed = DatasetRAGDefaults(**raw)
-    except Exception:
+    except ValueError:
         return None
     # Hide empty objects for cleaner API responses.
     if not parsed.model_dump(exclude_none=True):
@@ -429,7 +305,7 @@ def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
 
 
 def _dataset_embedding_defaults_out(ds: Dataset) -> DatasetEmbeddingDefaults | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("embedding_defaults")
@@ -437,7 +313,7 @@ def _dataset_embedding_defaults_out(ds: Dataset) -> DatasetEmbeddingDefaults | N
         return None
     try:
         parsed = DatasetEmbeddingDefaults(**raw)
-    except Exception:
+    except ValueError:
         return None
     if not parsed.model_dump(exclude_none=True):
         return None
@@ -458,26 +334,19 @@ def _upsert_dataset_embedding_defaults_metadata(
         return False
 
     data = defaults.model_dump(exclude_none=True)
-    normalized: dict[str, str] = {}
-    for key in ("provider", "model", "api_base"):
-        raw = data.get(key)
-        value = str(raw or "").strip()
-        if value:
-            normalized[key] = value
-
-    if normalized:
+    if data:
         try:
-            resolve_dataset_embedding_runtime({"embedding_defaults": normalized})
+            resolve_dataset_embedding_runtime({"embedding_defaults": data})
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        meta["embedding_defaults"] = normalized
+        meta["embedding_defaults"] = data
     else:
         meta.pop("embedding_defaults", None)
     return True
 
 
 def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None, None
 
@@ -486,7 +355,7 @@ def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None,
     if isinstance(raw_id, str) and raw_id.strip():
         try:
             template_id = UUID(raw_id.strip())
-        except Exception:
+        except ValueError:
             template_id = None
 
     raw_key = meta.get("default_rag_config_template_key")
@@ -499,7 +368,7 @@ def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None,
 
 
 def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None, None
 
@@ -508,7 +377,7 @@ def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, 
     if isinstance(raw_id, str) and raw_id.strip():
         try:
             prompt_id = UUID(raw_id.strip())
-        except Exception:
+        except ValueError:
             prompt_id = None
 
     raw_key = meta.get("default_prompt_template_key")
@@ -521,7 +390,7 @@ def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, 
 
 
 def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("chunk_targets_v2")
@@ -529,7 +398,7 @@ def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
         return None
     try:
         parsed = DatasetChunkTargetsV2(**raw)
-    except Exception:
+    except ValueError:
         return None
     # Hide empty objects for cleaner API responses.
     if not parsed.model_dump(exclude_none=True):
@@ -545,18 +414,37 @@ def _dataset_partial_permissions(
     if ds.permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
         return None, None
     return (
-        DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, ds.id),
-        DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, ds.id),
+        dataset_service.get_dataset_partial_member_list(db, tenant_id, ds.id),
+        dataset_service.get_dataset_partial_group_list(db, tenant_id, ds.id),
     )
 
 
-def _dataset_out(db: Session, tenant_id: UUID, ds: Dataset) -> DatasetOut:
-    partial_list, partial_groups = _dataset_partial_permissions(db, tenant_id, ds)
+def _dataset_default_fields(ds: Dataset) -> dict[str, Any]:
+    """Project shared configuration without parsing export-only policy fields."""
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
     rag_config_template_id, rag_config_template_key, rag_config_ab_experiment_key = (
         _dataset_rag_config_template_defaults_out(ds)
     )
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
+    return {
+        "default_parser_backend": default_parser_backend,
+        "default_chunk_strategy": default_chunk_strategy,
+        "rag_defaults": _dataset_rag_defaults_out(ds),
+        "embedding_defaults": _dataset_embedding_defaults_out(ds),
+        "default_rag_config_template_id": rag_config_template_id,
+        "default_rag_config_template_key": rag_config_template_key,
+        "default_rag_config_ab_experiment_key": rag_config_ab_experiment_key,
+        "default_prompt_template_id": prompt_template_id,
+        "default_prompt_template_key": prompt_template_key,
+        "default_prompt_ab_experiment_key": prompt_ab_experiment_key,
+        "chunk_targets_v2": _dataset_chunk_targets_v2_out(ds),
+        "pipeline": _dataset_pipeline_out(ds),
+        "retention_policy": parse_retention_policy_from_metadata(ds.dataset_metadata),
+    }
+
+
+def _dataset_out(db: Session, tenant_id: UUID, ds: Dataset) -> DatasetOut:
+    partial_list, partial_groups = _dataset_partial_permissions(db, tenant_id, ds)
     return DatasetOut(
         id=ds.id,
         tenant_id=ds.tenant_id,
@@ -566,26 +454,13 @@ def _dataset_out(db: Session, tenant_id: UUID, ds: Dataset) -> DatasetOut:
         owner_id=ds.owner_id,
         partial_member_list=partial_list,
         partial_group_list=partial_groups,
-        default_parser_backend=default_parser_backend,
-        default_chunk_strategy=default_chunk_strategy,
-        rag_defaults=_dataset_rag_defaults_out(ds),
-        embedding_defaults=_dataset_embedding_defaults_out(ds),
-        default_rag_config_template_id=rag_config_template_id,
-        default_rag_config_template_key=rag_config_template_key,
-        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
-        default_prompt_template_id=prompt_template_id,
-        default_prompt_template_key=prompt_template_key,
-        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
-        chunk_targets_v2=_dataset_chunk_targets_v2_out(ds),
-        pipeline=_dataset_pipeline_out(ds),
-        retention_policy=_dataset_retention_policy_out(ds),
+        **_dataset_default_fields(ds),
     )
 
 
 @router.get(
     "/{dataset_id}/ingestion/stats",
     response_model=DatasetIngestionStats,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_ingestion_stats(
     dataset_id: UUID,
@@ -593,7 +468,7 @@ def get_dataset_ingestion_stats(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetIngestionStats:
     """
     Lightweight dataset ingestion stats (documents/chunks/chars/status breakdown).
 
@@ -601,9 +476,9 @@ def get_dataset_ingestion_stats(
     - Enforces dataset read permission.
     - Applies document-level ACL filtering for non-owners ("security trimming").
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,
@@ -622,9 +497,9 @@ def get_dataset_ingestion_stats(
         func.coalesce(func.sum(DBDocument.total_characters), 0),
         func.max(DBDocument.processed_at),
     ).one()
-    total_chunks = int(sums[0] or 0)
-    total_size = int(sums[1] or 0)
-    total_chars = int(sums[2] or 0)
+    total_chunks = int(sums[0])
+    total_size = int(sums[1])
+    total_chars = int(sums[2])
     last_processed_at = sums[3]
 
     return DatasetIngestionStats(
@@ -639,37 +514,31 @@ def get_dataset_ingestion_stats(
 
 
 def _apply_dataset_category_filter(
-    query,
+    query: ORMQuery[Dataset],
     *,
     db: Session,
     tenant_id: UUID,
     category_id: UUID | None,
     include_descendants: bool,
-):  # noqa: ANN201
+) -> ORMQuery[Dataset]:
     if category_id is None:
         return query
-    try:
-        rows = (
-            db.query(DatasetCategory.id, DatasetCategory.parent_id).filter(DatasetCategory.tenant_id == tenant_id).all()
+    rows = db.query(DatasetCategory.id, DatasetCategory.parent_id).filter(DatasetCategory.tenant_id == tenant_id).all()
+    parent_by_id = dict(rows)
+    category_ids = (
+        dataset_category_service.collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
+        if include_descendants
+        else {category_id}
+    )
+    ds_ids_subq = (
+        db.query(DatasetCategoryMembership.dataset_id)
+        .filter(
+            DatasetCategoryMembership.tenant_id == tenant_id,
+            DatasetCategoryMembership.category_id.in_(list(category_ids)),
         )
-        parent_by_id = {cid: pid for cid, pid in rows if cid is not None}
-        category_ids = (
-            collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
-            if bool(include_descendants)
-            else {category_id}
-        )
-        ds_ids_subq = (
-            db.query(DatasetCategoryMembership.dataset_id)
-            .filter(
-                DatasetCategoryMembership.tenant_id == tenant_id,
-                DatasetCategoryMembership.category_id.in_(list(category_ids)),
-            )
-            .subquery()
-        )
-        return query.filter(Dataset.id.in_(ds_ids_subq))
-    except Exception as exc:
-        logger.debug("Dataset category filter failed; listing without category filter: %s", exc)
-        return query
+        .subquery()
+    )
+    return query.filter(Dataset.id.in_(ds_ids_subq))
 
 
 def _dataset_doc_stats_subquery(
@@ -678,8 +547,8 @@ def _dataset_doc_stats_subquery(
     tenant_id: UUID,
     account_id: str,
     dataset_ids: list[UUID] | None = None,
-    dataset_ids_subquery=None,  # noqa: ANN001
-):
+    dataset_ids_subquery: Subquery | None = None,
+) -> Subquery:
     query = (
         db.query(
             DBDocument.dataset_id.label("dataset_id"),
@@ -729,11 +598,11 @@ def _dataset_doc_stats_subquery(
     return query.group_by(DBDocument.dataset_id).subquery()
 
 
-def _dataset_testing_expr():
+def _dataset_testing_expr() -> ColumnElement[bool]:
     return func.lower(func.coalesce(Dataset.dataset_metadata["operational_status"].as_string(), "")) == "testing"
 
 
-def _dataset_operational_status_expr(stats_subq):
+def _dataset_operational_status_expr(stats_subq: Subquery) -> ColumnElement[str]:
     anomaly_count = func.coalesce(stats_subq.c.failed_documents, 0) + func.coalesce(
         stats_subq.c.quarantined_documents, 0
     )
@@ -748,31 +617,31 @@ def _dataset_operational_status_expr(stats_subq):
     )
 
 
-def _dataset_list_summary_from_row(row: Any) -> DatasetListIngestionSummary:
+def _dataset_list_summary_from_row(row: Row[tuple[Any, ...]]) -> DatasetListIngestionSummary:
     by_status = {
         status: int(count or 0)
         for status, count in {
-            "pending": getattr(row, "pending_documents", 0),
-            "processing": getattr(row, "processing_documents", 0),
-            "failed": getattr(row, "failed_documents", 0),
-            "quarantined": getattr(row, "quarantined_documents", 0),
-            "completed": getattr(row, "completed_documents", 0),
-            "cancelled": getattr(row, "cancelled_documents", 0),
+            "pending": row.pending_documents,
+            "processing": row.processing_documents,
+            "failed": row.failed_documents,
+            "quarantined": row.quarantined_documents,
+            "completed": row.completed_documents,
+            "cancelled": row.cancelled_documents,
         }.items()
         if int(count or 0) > 0
     }
     return DatasetListIngestionSummary(
-        total_documents=int(getattr(row, "total_documents", 0) or 0),
+        total_documents=int(row.total_documents or 0),
         by_status=by_status,
-        total_chunks=int(getattr(row, "total_chunks", 0) or 0),
-        total_size=int(getattr(row, "total_size", 0) or 0),
-        total_characters=int(getattr(row, "total_characters", 0) or 0),
-        last_processed_at=getattr(row, "last_processed_at", None),
+        total_chunks=int(row.total_chunks or 0),
+        total_size=int(row.total_size or 0),
+        total_characters=int(row.total_characters or 0),
+        last_processed_at=row.last_processed_at,
     )
 
 
-def _dataset_id_search_expr(term: str):
-    normalized_term = str(term or "").strip().lower().replace("-", "")
+def _dataset_id_search_expr(term: str) -> ColumnElement[bool] | None:
+    normalized_term = term.strip().lower().replace("-", "")
     if not normalized_term:
         return None
     normalized_id = func.lower(func.replace(cast(Dataset.id, String), "-", ""))
@@ -789,7 +658,7 @@ def _normalize_dataset_default_parser_backend(value: str) -> str:
     Note: availability is not validated here (depends on deployment config); we only validate
     that the identifier is known to the backend.
     """
-    normalized = normalize_parser_backend(value) or ""
+    normalized = normalize_parser_backend(value)
     if not normalized:
         return ""
     if normalized not in _ALLOWED_PARSER_DEFAULTS:
@@ -809,25 +678,7 @@ def _normalize_dataset_default_chunk_strategy(value: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _set_string_metadata(
-    meta: dict[str, Any],
-    key: str,
-    value: Any,
-    *,
-    normalizer=None,
-    lowercase: bool = False,
-) -> bool:
-    raw = str(value or "").strip()
-    if lowercase:
-        raw = raw.lower()
-    if raw:
-        meta[key] = normalizer(raw) if normalizer is not None else raw
-    else:
-        meta.pop(key, None)
-    return True
-
-
-def _set_model_metadata(meta: dict[str, Any], key: str, value: Any) -> bool:
+def _set_model_metadata(meta: dict[str, Any], key: str, value: BaseModel | None) -> bool:
     data = value.model_dump(exclude_none=True) if value is not None else {}
     if data:
         meta[key] = data
@@ -836,15 +687,9 @@ def _set_model_metadata(meta: dict[str, Any], key: str, value: Any) -> bool:
     return True
 
 
-def _set_uuid_metadata(meta: dict[str, Any], key: str, value: UUID | None) -> bool:
-    if value is not None:
-        meta[key] = str(value)
-    else:
-        meta.pop(key, None)
-    return True
-
-
-def _apply_pipeline_metadata(meta: dict[str, Any], value: Any, *, replace: bool = False) -> bool:
+def _apply_pipeline_metadata(
+    meta: dict[str, Any], value: DocumentPipelineOptions | None, *, replace: bool = False
+) -> bool:
     if value is not None:
         options = PipelineOptions(**value.model_dump(exclude_none=True))
         return upsert_pipeline_metadata(meta, options=options)
@@ -855,177 +700,78 @@ def _apply_pipeline_metadata(meta: dict[str, Any], value: Any, *, replace: bool 
     return False
 
 
-def _apply_ingestion_defaults_metadata(
-    meta: dict[str, Any],
-    *,
-    default_parser_backend: Any,
-    default_chunk_strategy: Any,
-    apply_parser: bool,
-    apply_strategy: bool,
-) -> bool:
-    changed = False
-    if apply_parser:
-        changed = (
-            _set_string_metadata(
-                meta,
-                "default_parser_backend",
-                default_parser_backend,
-                normalizer=_normalize_dataset_default_parser_backend,
-            )
-            or changed
-        )
-    if apply_strategy:
-        changed = (
-            _set_string_metadata(
-                meta,
-                "default_chunk_strategy",
-                default_chunk_strategy,
-                normalizer=_normalize_dataset_default_chunk_strategy,
-            )
-            or changed
-        )
-    return changed
+_INGESTION_DEFAULT_FIELDS = {"default_parser_backend", "default_chunk_strategy"}
+_REFERENCE_DEFAULT_FIELDS = {
+    "default_rag_config_template_id",
+    "default_rag_config_template_key",
+    "default_rag_config_ab_experiment_key",
+    "default_prompt_template_id",
+    "default_prompt_template_key",
+    "default_prompt_ab_experiment_key",
+}
 
 
-def _apply_rag_config_template_metadata(
-    meta: dict[str, Any],
-    *,
-    template_id: UUID | None,
-    template_key: Any,
-    ab_experiment_key: Any,
-    apply_id: bool,
-    apply_key: bool,
-    apply_ab: bool,
-) -> bool:
-    changed = False
-    if apply_id:
-        changed = _set_uuid_metadata(meta, "default_rag_config_template_id", template_id) or changed
-    if apply_key:
-        changed = _set_string_metadata(meta, "default_rag_config_template_key", template_key, lowercase=True) or changed
-    if apply_ab:
-        changed = _set_string_metadata(meta, "default_rag_config_ab_experiment_key", ab_experiment_key) or changed
-    return changed
+def _apply_ingestion_defaults_metadata(meta: dict[str, Any], values: dict[str, str | None]) -> bool:
+    for key, value in values.items():
+        if value is None or not value.strip():
+            meta.pop(key, None)
+            continue
+        raw = value.strip()
+        if key == "default_parser_backend":
+            meta[key] = _normalize_dataset_default_parser_backend(raw)
+        else:
+            meta[key] = _normalize_dataset_default_chunk_strategy(raw)
+    return bool(values)
 
 
-def _apply_prompt_defaults_metadata(
-    meta: dict[str, Any],
-    *,
-    template_id: UUID | None,
-    template_key: Any,
-    ab_experiment_key: Any,
-    apply_id: bool,
-    apply_key: bool,
-    apply_ab: bool,
-) -> bool:
-    changed = False
-    if apply_id:
-        changed = _set_uuid_metadata(meta, "default_prompt_template_id", template_id) or changed
-    if apply_key:
-        changed = _set_string_metadata(meta, "default_prompt_template_key", template_key, lowercase=True) or changed
-    if apply_ab:
-        changed = _set_string_metadata(meta, "default_prompt_ab_experiment_key", ab_experiment_key) or changed
-    return changed
+def _apply_reference_defaults_metadata(meta: dict[str, Any], values: dict[str, str | UUID | None]) -> bool:
+    for key, value in values.items():
+        raw = str(value).strip() if value is not None else ""
+        if not raw:
+            meta.pop(key, None)
+        elif key in {"default_rag_config_template_key", "default_prompt_template_key"}:
+            meta[key] = raw.lower()
+        else:
+            meta[key] = raw
+    return bool(values)
 
 
 def _apply_create_dataset_metadata_defaults(meta: dict[str, Any], payload: DatasetCreate) -> bool:
     changed = _apply_pipeline_metadata(meta, payload.pipeline)
-    changed = (
-        _apply_ingestion_defaults_metadata(
-            meta,
-            default_parser_backend=payload.default_parser_backend,
-            default_chunk_strategy=payload.default_chunk_strategy,
-            apply_parser=payload.default_parser_backend is not None,
-            apply_strategy=payload.default_chunk_strategy is not None,
-        )
-        or changed
+    changed |= _apply_ingestion_defaults_metadata(
+        meta, payload.model_dump(include=_INGESTION_DEFAULT_FIELDS, exclude_none=True)
     )
     if payload.rag_defaults is not None:
-        changed = _set_model_metadata(meta, "rag_defaults", payload.rag_defaults) or changed
+        changed |= _set_model_metadata(meta, "rag_defaults", payload.rag_defaults)
     if payload.embedding_defaults is not None:
-        changed = _upsert_dataset_embedding_defaults_metadata(meta, defaults=payload.embedding_defaults) or changed
-    changed = (
-        _apply_rag_config_template_metadata(
-            meta,
-            template_id=payload.default_rag_config_template_id,
-            template_key=payload.default_rag_config_template_key,
-            ab_experiment_key=payload.default_rag_config_ab_experiment_key,
-            apply_id=payload.default_rag_config_template_id is not None,
-            apply_key=payload.default_rag_config_template_key is not None,
-            apply_ab=payload.default_rag_config_ab_experiment_key is not None,
-        )
-        or changed
-    )
-    changed = (
-        _apply_prompt_defaults_metadata(
-            meta,
-            template_id=payload.default_prompt_template_id,
-            template_key=payload.default_prompt_template_key,
-            ab_experiment_key=payload.default_prompt_ab_experiment_key,
-            apply_id=payload.default_prompt_template_id is not None,
-            apply_key=payload.default_prompt_template_key is not None,
-            apply_ab=payload.default_prompt_ab_experiment_key is not None,
-        )
-        or changed
+        changed |= _upsert_dataset_embedding_defaults_metadata(meta, defaults=payload.embedding_defaults)
+    changed |= _apply_reference_defaults_metadata(
+        meta, payload.model_dump(include=_REFERENCE_DEFAULT_FIELDS, exclude_none=True)
     )
     if payload.chunk_targets_v2 is not None:
-        changed = _set_model_metadata(meta, "chunk_targets_v2", payload.chunk_targets_v2) or changed
+        changed |= _set_model_metadata(meta, "chunk_targets_v2", payload.chunk_targets_v2)
     if payload.retention_policy is not None:
-        changed = _set_model_metadata(meta, "retention_policy", payload.retention_policy) or changed
+        changed |= _set_model_metadata(meta, "retention_policy", payload.retention_policy)
     return changed
 
 
 def _apply_update_dataset_metadata_defaults(meta: dict[str, Any], payload: DatasetUpdate) -> bool:
     fields = payload.model_fields_set
     changed = _apply_pipeline_metadata(meta, payload.pipeline)
-    changed = (
-        _apply_ingestion_defaults_metadata(
-            meta,
-            default_parser_backend=payload.default_parser_backend,
-            default_chunk_strategy=payload.default_chunk_strategy,
-            apply_parser=payload.default_parser_backend is not None,
-            apply_strategy=payload.default_chunk_strategy is not None,
-        )
-        or changed
+    changed |= _apply_ingestion_defaults_metadata(
+        meta, payload.model_dump(include=_INGESTION_DEFAULT_FIELDS, exclude_none=True)
     )
     if payload.rag_defaults is not None:
-        changed = _set_model_metadata(meta, "rag_defaults", payload.rag_defaults) or changed
+        changed |= _set_model_metadata(meta, "rag_defaults", payload.rag_defaults)
     if "embedding_defaults" in fields:
-        changed = (
-            _upsert_dataset_embedding_defaults_metadata(
-                meta,
-                defaults=payload.embedding_defaults,
-                replace=True,
-            )
-            or changed
-        )
-    changed = (
-        _apply_rag_config_template_metadata(
-            meta,
-            template_id=payload.default_rag_config_template_id,
-            template_key=payload.default_rag_config_template_key,
-            ab_experiment_key=payload.default_rag_config_ab_experiment_key,
-            apply_id="default_rag_config_template_id" in fields,
-            apply_key="default_rag_config_template_key" in fields,
-            apply_ab="default_rag_config_ab_experiment_key" in fields,
-        )
-        or changed
-    )
-    changed = (
-        _apply_prompt_defaults_metadata(
-            meta,
-            template_id=payload.default_prompt_template_id,
-            template_key=payload.default_prompt_template_key,
-            ab_experiment_key=payload.default_prompt_ab_experiment_key,
-            apply_id="default_prompt_template_id" in fields,
-            apply_key="default_prompt_template_key" in fields,
-            apply_ab="default_prompt_ab_experiment_key" in fields,
-        )
-        or changed
+        changed |= _upsert_dataset_embedding_defaults_metadata(meta, defaults=payload.embedding_defaults, replace=True)
+    changed |= _apply_reference_defaults_metadata(
+        meta, payload.model_dump(include=_REFERENCE_DEFAULT_FIELDS, exclude_unset=True)
     )
     if payload.chunk_targets_v2 is not None:
-        changed = _set_model_metadata(meta, "chunk_targets_v2", payload.chunk_targets_v2) or changed
+        changed |= _set_model_metadata(meta, "chunk_targets_v2", payload.chunk_targets_v2)
     if "retention_policy" in fields:
-        changed = upsert_retention_policy_metadata(meta, policy=payload.retention_policy, replace=True) or changed
+        changed |= upsert_retention_policy_metadata(meta, policy=payload.retention_policy, replace=True)
     return changed
 
 
@@ -1034,7 +780,7 @@ def _apply_policy_bundle_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle
     if replace or cfg.ingestion_policy is not None:
         if cfg.ingestion_policy is not None:
             normalized = validate_and_normalize_ingestion_policy(cfg.ingestion_policy)
-            meta["ingestion_policy"] = normalized.model_dump()
+            _apply_ingestion_policy_metadata(meta, normalized)
         else:
             meta.pop("ingestion_policy", None)
         changed = True
@@ -1054,85 +800,41 @@ def _apply_policy_bundle_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle
     return changed
 
 
-def _apply_config_import_core_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle, *, replace: bool) -> bool:
+def _apply_config_import_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle, *, replace: bool) -> bool:
+    validate_dataset_execution(cfg.embedding_defaults, cfg.rag_defaults, cfg.pipeline, cfg.default_parser_backend)
+    if cfg.ingestion_policy is not None:
+        validate_ingestion_policy_execution(cfg.ingestion_policy)
     changed = _apply_pipeline_metadata(meta, cfg.pipeline, replace=replace)
-    changed = (
-        _apply_ingestion_defaults_metadata(
-            meta,
-            default_parser_backend=cfg.default_parser_backend,
-            default_chunk_strategy=cfg.default_chunk_strategy,
-            apply_parser=replace or cfg.default_parser_backend is not None,
-            apply_strategy=replace or cfg.default_chunk_strategy is not None,
-        )
-        or changed
+    changed |= _apply_ingestion_defaults_metadata(
+        meta, cfg.model_dump(include=_INGESTION_DEFAULT_FIELDS, exclude_none=not replace)
     )
     if replace or cfg.rag_defaults is not None:
-        changed = _set_model_metadata(meta, "rag_defaults", cfg.rag_defaults) or changed
+        changed |= _set_model_metadata(meta, "rag_defaults", cfg.rag_defaults)
     if replace or cfg.embedding_defaults is not None:
-        changed = (
-            _upsert_dataset_embedding_defaults_metadata(
-                meta,
-                defaults=cfg.embedding_defaults,
-                replace=replace,
-            )
-            or changed
-        )
-    return changed
-
-
-def _apply_config_import_reference_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle, *, replace: bool) -> bool:
-    changed = _apply_rag_config_template_metadata(
-        meta,
-        template_id=cfg.default_rag_config_template_id,
-        template_key=cfg.default_rag_config_template_key,
-        ab_experiment_key=cfg.default_rag_config_ab_experiment_key,
-        apply_id=replace or cfg.default_rag_config_template_id is not None,
-        apply_key=replace or cfg.default_rag_config_template_key is not None,
-        apply_ab=replace or cfg.default_rag_config_ab_experiment_key is not None,
+        changed |= _upsert_dataset_embedding_defaults_metadata(meta, defaults=cfg.embedding_defaults, replace=replace)
+    changed |= _apply_reference_defaults_metadata(
+        meta, cfg.model_dump(include=_REFERENCE_DEFAULT_FIELDS, exclude_none=not replace)
     )
-    return (
-        _apply_prompt_defaults_metadata(
-            meta,
-            template_id=cfg.default_prompt_template_id,
-            template_key=cfg.default_prompt_template_key,
-            ab_experiment_key=cfg.default_prompt_ab_experiment_key,
-            apply_id=replace or cfg.default_prompt_template_id is not None,
-            apply_key=replace or cfg.default_prompt_template_key is not None,
-            apply_ab=replace or cfg.default_prompt_ab_experiment_key is not None,
-        )
-        or changed
-    )
-
-
-def _apply_config_import_lifecycle_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle, *, replace: bool) -> bool:
-    changed = False
     if replace or cfg.chunk_targets_v2 is not None:
-        changed = _set_model_metadata(meta, "chunk_targets_v2", cfg.chunk_targets_v2) or changed
+        changed |= _set_model_metadata(meta, "chunk_targets_v2", cfg.chunk_targets_v2)
     if replace or cfg.retention_policy is not None:
-        changed = upsert_retention_policy_metadata(meta, policy=cfg.retention_policy, replace=True) or changed
-    return changed
-
-
-def _apply_config_import_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle, *, replace: bool) -> bool:
-    changed = _apply_config_import_core_metadata(meta, cfg, replace=replace)
-    changed = _apply_config_import_reference_metadata(meta, cfg, replace=replace) or changed
-    changed = _apply_config_import_lifecycle_metadata(meta, cfg, replace=replace) or changed
+        changed |= upsert_retention_policy_metadata(meta, policy=cfg.retention_policy, replace=True)
     return _apply_policy_bundle_metadata(meta, cfg, replace=replace) or changed
 
 
-@router.post("/", response_model=DatasetOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/", response_model=DatasetOut, status_code=201)
 def create_dataset(
     payload: DatasetCreate,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    DatasetService._assert_edit_role(member)
+) -> DatasetOut:
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset_service._assert_edit_role(member)
     meta: dict[str, Any] = {}
     metadata_changed = _apply_create_dataset_metadata_defaults(meta, payload)
-    dataset = DatasetService.create_dataset(
+    dataset = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
         name=payload.name,
@@ -1145,27 +847,22 @@ def create_dataset(
     )
 
     # Best-effort audit log (commit separately; never block response).
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.create",
-        resource_type="dataset",
-        resource_id=str(dataset.id),
+        dataset_id=dataset.id,
         details={
-            "name": str(dataset.name or "")[:255],
-            "permission": str(dataset.permission or ""),
+            "name": dataset.name[:255],
+            "permission": dataset.permission,
         },
     )
-    try:
-        db.commit()
-    except Exception as exc:
-        logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return _dataset_out(db, tenant_id, dataset)
 
 
-@router.get("/", response_model=DatasetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/", response_model=DatasetListResponse)
 def list_datasets(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
@@ -1179,8 +876,8 @@ def list_datasets(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+) -> DatasetListResponse:
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     scope_query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
     scope_query = scope_query.filter(build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id))
@@ -1193,7 +890,7 @@ def list_datasets(
     )
 
     filtered_query = scope_query
-    term = str(q or "").strip()
+    term = q.strip() if q is not None else None
     if term:
         id_search_expr = _dataset_id_search_expr(term)
         filtered_query = filtered_query.filter(
@@ -1204,8 +901,8 @@ def list_datasets(
             )
         )
 
-    scope_total = int(scope_query.count())
-    filtered_total = int(filtered_query.count())
+    scope_total = scope_query.count()
+    filtered_total = filtered_query.count()
 
     filtered_dataset_ids_subq = filtered_query.with_entities(Dataset.id.label("dataset_id")).subquery()
     filtered_stats_subq = _dataset_doc_stats_subquery(
@@ -1232,7 +929,7 @@ def list_datasets(
         total = filtered_total
     else:
         page_query = page_query.filter(operational_status_expr == operational_status)
-        total = int(status_counts.get(operational_status, 0))
+        total = status_counts[operational_status]
 
     if order_by == "name":
         order_col = func.lower(Dataset.name)
@@ -1254,7 +951,7 @@ def list_datasets(
     )
     page_dataset_ids = [row[0] for row in page_dataset_rows]
     page_operational_status_by_id = {row[0]: row[1] for row in page_dataset_rows}
-    page_rows: list[tuple[Any, ...]] = []
+    page_rows: list[Row[tuple[Any, ...]]] = []
     if page_dataset_ids:
         page_stats_subq = _dataset_doc_stats_subquery(
             db=db,
@@ -1282,8 +979,8 @@ def list_datasets(
             .all()
         )
 
-    dataset_by_id = {row[0].id: row[0] for row in page_rows}
-    datasets = [dataset_by_id[dataset_id] for dataset_id in page_dataset_ids if dataset_id in dataset_by_id]
+    row_by_dataset_id = {row[0].id: row for row in page_rows}
+    datasets = [row_by_dataset_id[dataset_id][0] for dataset_id in page_dataset_ids if dataset_id in row_by_dataset_id]
 
     partial_member_map, partial_group_map = _dataset_partial_permission_maps(
         db,
@@ -1291,34 +988,28 @@ def list_datasets(
         datasets=datasets,
     )
 
-    row_by_dataset_id = {row[0].id: row for row in page_rows}
     results = [
         _dataset_list_item_out(
             ds,
-            row=row_by_dataset_id.get(ds.id),
+            row=row_by_dataset_id[ds.id],
             partial_member_map=partial_member_map,
             partial_group_map=partial_group_map,
             page_operational_status_by_id=page_operational_status_by_id,
         )
         for ds in datasets
     ]
-    return {
-        "total": total,
-        "items": results,
-        "facets": DatasetListFacets(
+    return DatasetListResponse(
+        total=total,
+        items=results,
+        facets=DatasetListFacets(
             scope_total=scope_total,
             filtered_total=filtered_total,
-            status_counts={
-                "active": int(status_counts["active"]),
-                "anomaly": int(status_counts["anomaly"]),
-                "pending": int(status_counts["pending"]),
-                "testing": int(status_counts["testing"]),
-            },
+            status_counts=status_counts,
         ),
-    }
+    )
 
 
-def _dataset_operational_status_counts(status_rows: list[tuple[Any, Any]]) -> dict[str, int]:
+def _dataset_operational_status_counts(status_rows: list[tuple[str, int]]) -> dict[str, int]:
     counts = {
         "active": 0,
         "anomaly": 0,
@@ -1326,9 +1017,7 @@ def _dataset_operational_status_counts(status_rows: list[tuple[Any, Any]]) -> di
         "testing": 0,
     }
     for status_value, count in status_rows:
-        key = str(status_value or "").strip().lower()
-        if key in counts:
-            counts[key] = int(count or 0)
+        counts[status_value] = count
     return counts
 
 
@@ -1341,8 +1030,6 @@ def _dataset_partial_permission_maps(
     partial_ids = [ds.id for ds in datasets if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS]
     if not partial_ids:
         return {}, {}
-
-    from collections import defaultdict
 
     member_rows = (
         db.query(DatasetPermission)
@@ -1374,7 +1061,7 @@ def _dataset_partial_permission_maps(
 def _dataset_list_item_out(
     ds: Dataset,
     *,
-    row: tuple[Any, ...] | None,
+    row: Row[tuple[Any, ...]],
     partial_member_map: dict[UUID, list[str]],
     partial_group_map: dict[UUID, list[UUID]],
     page_operational_status_by_id: dict[UUID, Any],
@@ -1385,17 +1072,6 @@ def _dataset_list_item_out(
         partial_list = partial_member_map.get(ds.id, [])
         partial_groups = partial_group_map.get(ds.id, [])
 
-    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
-    (
-        rag_config_template_id,
-        rag_config_template_key,
-        rag_config_ab_experiment_key,
-    ) = _dataset_rag_config_template_defaults_out(ds)
-    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
-    operational_status = None
-    if ds.id in page_operational_status_by_id:
-        operational_status = str(page_operational_status_by_id.get(ds.id) or "")
-
     return DatasetOut(
         id=ds.id,
         tenant_id=ds.tenant_id,
@@ -1405,77 +1081,28 @@ def _dataset_list_item_out(
         owner_id=ds.owner_id,
         partial_member_list=partial_list,
         partial_group_list=partial_groups,
-        default_parser_backend=default_parser_backend,
-        default_chunk_strategy=default_chunk_strategy,
-        rag_defaults=_dataset_rag_defaults_out(ds),
-        embedding_defaults=_dataset_embedding_defaults_out(ds),
-        default_rag_config_template_id=rag_config_template_id,
-        default_rag_config_template_key=rag_config_template_key,
-        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
-        default_prompt_template_id=prompt_template_id,
-        default_prompt_template_key=prompt_template_key,
-        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
-        chunk_targets_v2=_dataset_chunk_targets_v2_out(ds),
-        pipeline=_dataset_pipeline_out(ds),
-        retention_policy=_dataset_retention_policy_out(ds),
-        ingestion_summary=_dataset_list_summary_from_row(row) if row is not None else None,
-        operational_status=operational_status,
+        **_dataset_default_fields(ds),
+        ingestion_summary=_dataset_list_summary_from_row(row),
+        operational_status=page_operational_status_by_id[ds.id],
     )
 
 
-@router.get("/{dataset_id}", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(
     dataset_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-    partial_list = None
-    partial_groups = None
-    if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-        partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
-        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset_id)
-    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
-    (
-        rag_config_template_id,
-        rag_config_template_key,
-        rag_config_ab_experiment_key,
-    ) = _dataset_rag_config_template_defaults_out(dataset)
-    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
-    chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
-    retention_policy = _dataset_retention_policy_out(dataset)
-    return DatasetOut(
-        id=dataset.id,
-        tenant_id=dataset.tenant_id,
-        name=dataset.name,
-        description=dataset.description,
-        permission=dataset.permission,
-        owner_id=dataset.owner_id,
-        partial_member_list=partial_list,
-        partial_group_list=partial_groups,
-        default_parser_backend=default_parser_backend,
-        default_chunk_strategy=default_chunk_strategy,
-        rag_defaults=_dataset_rag_defaults_out(dataset),
-        embedding_defaults=_dataset_embedding_defaults_out(dataset),
-        default_rag_config_template_id=rag_config_template_id,
-        default_rag_config_template_key=rag_config_template_key,
-        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
-        default_prompt_template_id=prompt_template_id,
-        default_prompt_template_key=prompt_template_key,
-        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
-        chunk_targets_v2=chunk_targets_v2,
-        pipeline=_dataset_pipeline_out(dataset),
-        retention_policy=retention_policy,
-    )
+) -> DatasetOut:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    return _dataset_out(db, tenant_id, dataset)
 
 
 @router.get(
     "/{dataset_id}/categories",
     response_model=DatasetCategoryAssignmentResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_categories(
     dataset_id: UUID,
@@ -1483,8 +1110,8 @@ def get_dataset_categories(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    category_ids = DatasetCategoryService.list_dataset_category_ids(
+) -> DatasetCategoryAssignmentResponse:
+    category_ids = dataset_category_service.list_dataset_category_ids(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -1496,7 +1123,6 @@ def get_dataset_categories(
 @router.put(
     "/{dataset_id}/categories",
     response_model=DatasetCategoryAssignmentResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def set_dataset_categories(
     dataset_id: UUID,
@@ -1505,18 +1131,18 @@ def set_dataset_categories(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    category_ids = DatasetCategoryService.set_dataset_categories(
+) -> DatasetCategoryAssignmentResponse:
+    category_ids = dataset_category_service.set_dataset_categories(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=dataset_id,
-        category_ids=payload.category_ids or [],
+        category_ids=payload.category_ids,
     )
     return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
 
 
-@router.patch("/{dataset_id}", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.patch("/{dataset_id}", response_model=DatasetOut)
 def update_dataset(
     dataset_id: UUID,
     payload: DatasetUpdate,
@@ -1524,14 +1150,14 @@ def update_dataset(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+) -> DatasetOut:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     metadata_changed = _apply_update_dataset_metadata_defaults(meta, payload)
 
-    updated = DatasetService.update_dataset(
+    updated = dataset_service.update_dataset(
         db=db,
         dataset=dataset,
         updater_id=account_id,
@@ -1543,38 +1169,25 @@ def update_dataset(
         dataset_metadata=meta if metadata_changed else None,
     )
 
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.update",
-        resource_type="dataset",
-        resource_id=str(updated.id),
+        dataset_id=updated.id,
         details={
             "changed": bool(payload.model_fields_set),
-            "name": str(updated.name or "")[:255],
-            "permission": str(updated.permission or ""),
+            "name": updated.name[:255],
+            "permission": updated.permission,
         },
     )
-    try:
-        db.commit()
-    except Exception as exc:
-        logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return _dataset_out(db, tenant_id, updated)
 
 
 def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
-
-    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
-    (
-        rag_config_template_id,
-        rag_config_template_key,
-        rag_config_ab_experiment_key,
-    ) = _dataset_rag_config_template_defaults_out(ds)
-    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
 
     ingestion_policy = None
     if "ingestion_policy" in meta_dict:
@@ -1584,22 +1197,10 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
     if "fls_policy" in meta_dict:
         fls_policy = parse_fls_policy_from_metadata(meta_dict)
 
-    workflow_layout = meta_dict.get("workflow_layout") if isinstance(meta_dict.get("workflow_layout"), dict) else None
+    workflow_layout = meta_dict.get("workflow_layout")
 
     return DatasetConfigBundle(
-        default_parser_backend=default_parser_backend,
-        default_chunk_strategy=default_chunk_strategy,
-        rag_defaults=_dataset_rag_defaults_out(ds),
-        embedding_defaults=_dataset_embedding_defaults_out(ds),
-        default_rag_config_template_id=rag_config_template_id,
-        default_rag_config_template_key=rag_config_template_key,
-        default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
-        default_prompt_template_id=prompt_template_id,
-        default_prompt_template_key=prompt_template_key,
-        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
-        chunk_targets_v2=_dataset_chunk_targets_v2_out(ds),
-        pipeline=_dataset_pipeline_out(ds),
-        retention_policy=_dataset_retention_policy_out(ds),
+        **_dataset_default_fields(ds),
         ingestion_policy=ingestion_policy,
         fls_policy=fls_policy,
         workflow_layout=dict(workflow_layout) if isinstance(workflow_layout, dict) else None,
@@ -1609,7 +1210,6 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
 @router.get(
     "/{dataset_id}/config/export",
     response_model=DatasetConfigExport,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def export_dataset_config(
     dataset_id: UUID,
@@ -1617,22 +1217,22 @@ def export_dataset_config(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetConfigExport:
     """Export a portable dataset config bundle (JSON)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     return DatasetConfigExport(
         version="1",
         dataset_id=ds.id,
-        name=str(ds.name or ""),
-        exported_at=datetime.now(timezone.utc),
+        name=ds.name,
+        exported_at=datetime.now(UTC),
         config=_build_dataset_config_bundle(ds),
     )
 
 
-@router.post("/{dataset_id}/config/import", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/{dataset_id}/config/import", response_model=DatasetOut)
 def import_dataset_config(
     dataset_id: UUID,
     payload: DatasetConfigImportRequest,
@@ -1640,7 +1240,7 @@ def import_dataset_config(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetOut:
     """
     Import a dataset config bundle.
 
@@ -1648,13 +1248,13 @@ def import_dataset_config(
     - replace=false (default): apply only non-null fields in the bundle (no clearing).
     - replace=true: overwrite/clear supported config keys based on bundle content.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
-    replace = bool(payload.replace)
+    replace = payload.replace
     cfg = payload.config
-    meta = dict(getattr(ds, "dataset_metadata", None) or {})
+    meta = dict(ds.dataset_metadata or {})
     changed = _apply_config_import_metadata(meta, cfg, replace=replace)
 
     if changed:
@@ -1662,17 +1262,14 @@ def import_dataset_config(
         db.commit()
         db.refresh(ds)
 
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.config.import",
-        resource_type="dataset",
-        resource_id=str(ds.id),
-        details={"replace": bool(replace)},
+        dataset_id=ds.id,
+        details={"replace": replace},
     )
-    with contextlib.suppress(Exception):
-        db.commit()
 
     return _dataset_out(db, tenant_id, ds)
 
@@ -1681,7 +1278,6 @@ def import_dataset_config(
     "/{dataset_id}/retrieval-audit",
     response_model=DatasetRetrievalAuditOut,
     response_model_exclude_none=True,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def put_dataset_retrieval_audit(
     dataset_id: UUID,
@@ -1690,38 +1286,35 @@ def put_dataset_retrieval_audit(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetRetrievalAuditOut:
     """Persist a sanitized retrieval audit snapshot for dataset reports."""
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     try:
         audit = sanitize_retrieval_audit_snapshot(payload.model_dump(mode="json"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     meta["retrieval_audit"] = audit.model_dump(mode="json")
     dataset.dataset_metadata = meta
     db.commit()
     db.refresh(dataset)
 
-    with contextlib.suppress(Exception):
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.retrieval_audit.put",
-            resource_type="dataset",
-            resource_id=str(dataset.id),
-            details={
-                "status": str(audit.status or ""),
-                "gate_count": len(audit.gates),
-                "plugin_ref_count": len(audit.plugin_refs),
-                "failure_categories": dict(audit.failure_categories or {}),
-            },
-        )
-        db.commit()
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.retrieval_audit.put",
+        dataset_id=dataset.id,
+        details={
+            "status": audit.status,
+            "gate_count": len(audit.gates),
+            "plugin_ref_count": len(audit.plugin_refs),
+            "failure_categories": dict(audit.failure_categories or {}),
+        },
+    )
 
     return audit
 
@@ -1730,7 +1323,6 @@ def put_dataset_retrieval_audit(
     "/{dataset_id}/clone",
     response_model=DatasetOut,
     status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def clone_dataset(
     dataset_id: UUID,
@@ -1739,18 +1331,18 @@ def clone_dataset(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetOut:
     """Clone an existing dataset (config + optional permission/members)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    src = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, src, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    src = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, src, account_id)
 
     permission = src.permission if payload.copy_permission else DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_members: list[str] = []
     partial_groups: list[UUID] = []
     if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and payload.copy_partial_members:
-        partial_members = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, src.id) or []
-        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, src.id) or []
+        partial_members = dataset_service.get_dataset_partial_member_list(db, tenant_id, src.id)
+        partial_groups = dataset_service.get_dataset_partial_group_list(db, tenant_id, src.id)
 
     clone_cfg = _build_dataset_config_bundle(src)
     if clone_cfg.embedding_defaults is not None:
@@ -1763,11 +1355,11 @@ def clone_dataset(
     copied_metadata: dict[str, Any] = {}
     _apply_config_import_metadata(copied_metadata, clone_cfg, replace=True)
 
-    created = DatasetService.create_dataset(
+    created = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
-        name=str(payload.name or "").strip(),
-        description=str(payload.description or "").strip() or None,
+        name=payload.name.strip(),
+        description=payload.description,
         permission=permission,
         owner_id=account_id,
         partial_members=partial_members,
@@ -1775,17 +1367,14 @@ def clone_dataset(
         dataset_metadata=copied_metadata,
     )
 
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.clone",
-        resource_type="dataset",
-        resource_id=str(created.id),
+        dataset_id=created.id,
         details={"source_dataset_id": str(src.id)},
     )
-    with contextlib.suppress(Exception):
-        db.commit()
 
     return _dataset_out(db, tenant_id, created)
 
@@ -1809,7 +1398,7 @@ def _active_dataset_scan_counts(db: Session, tenant_id: UUID, dataset_id: UUID) 
         )
         .count()
     )
-    return int(active_profile_scans or 0), int(active_precheck_scans or 0)
+    return active_profile_scans, active_precheck_scans
 
 
 def _assert_no_active_dataset_scans(db: Session, tenant_id: UUID, dataset_id: UUID) -> None:
@@ -1821,18 +1410,28 @@ def _assert_no_active_dataset_scans(db: Session, tenant_id: UUID, dataset_id: UU
         )
 
 
-async def _reconcile_stale_dataset_scan_runs(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> tuple[int, int]:
-    from app.api.v1.dataset_precheck import _expire_stale_precheck_scan_runs
-
-    expired_profile = await _expire_stale_dataset_profile_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
-    expired_precheck = await _expire_stale_precheck_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+async def _reconcile_stale_dataset_scan_runs(
+    transaction: ScanTransaction, *, tenant_id: UUID, dataset_id: UUID
+) -> tuple[int, int]:
+    expired_profile = await _expire_stale_dataset_profile_scan_runs(
+        transaction, tenant_id=tenant_id, dataset_id=dataset_id
+    )
+    expired_precheck = await expire_stale_scan_runs(
+        transaction,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        now=datetime.now(UTC),
+        kind="precheck",
+        queue_enabled=settings.TASK_QUEUE_ENABLED,
+        get_job_status=get_task_job_status,
+    )
     return expired_profile, expired_precheck
 
 
 def _reconcile_stale_dataset_scan_runs_sync(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> tuple[int, int]:
     return run_coroutine_sync(
         lambda: _reconcile_stale_dataset_scan_runs(
-            db,
+            CurrentThreadScanSession(db),
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
@@ -1845,14 +1444,14 @@ def _precheck_run_ids_for_dataset(db: Session, tenant_id: UUID, dataset_id: UUID
         .filter(DBDatasetPrecheckScanRun.tenant_id == tenant_id, DBDatasetPrecheckScanRun.dataset_id == dataset_id)
         .all()
     )
-    return [row[0] for row in rows if row and row[0] is not None]
+    return [row[0] for row in rows]
 
 
 def _cleanup_dataset_table_store(tenant_id: UUID, dataset_id: UUID) -> None:
     try:
         from app.services.path_safety import resolve_under_base
 
-        root = Path(str(getattr(settings, "TABLE_STORE_DIR", "./uploads/table_store") or "./uploads/table_store"))
+        root = Path(settings.TABLE_STORE_DIR)
         ds_dir = (root / str(tenant_id) / str(dataset_id)).resolve(strict=False)
         safe_dir = resolve_under_base(ds_dir, base=root)
         if safe_dir is not None and safe_dir.exists():
@@ -1865,7 +1464,7 @@ def _cleanup_dataset_precheck_artifacts(tenant_id: UUID, precheck_run_ids: list[
     try:
         from app.services.path_safety import resolve_under_base
 
-        upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+        upload_root = Path(settings.UPLOAD_DIR)
         tenant_root = upload_root / str(tenant_id)
         for run_id in precheck_run_ids:
             with contextlib.suppress(Exception):
@@ -1882,10 +1481,10 @@ def _dataset_document_ids_for_purge(db: Session, tenant_id: UUID, dataset_id: UU
         db.query(DBDocument.id)
         .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
         .order_by(DBDocument.created_at.asc(), DBDocument.id.asc())
-        .limit(int(max_delete or 0))
+        .limit(max_delete)
         .all()
     )
-    return [row[0] for row in rows if row and row[0] is not None]
+    return [row[0] for row in rows]
 
 
 async def _delete_dataset_document_ids(
@@ -1895,7 +1494,7 @@ async def _delete_dataset_document_ids(
     account_id: str,
     db: Session,
 ) -> dict[str, int]:
-    from app.api.v1.documents import _delete_document_lifecycle
+    from app.services.document_lifecycle_service import _delete_document_lifecycle
 
     counts = {"deleted": 0, "not_found": 0, "denied": 0, "conflicts": 0, "errors": 0}
     for document_id in document_ids:
@@ -1933,55 +1532,31 @@ def _record_dataset_purge_audit(
     eligible: int,
     counts: dict[str, int],
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.purge",
-            resource_type="dataset",
-            resource_id=str(dataset_id),
-            details={
-                "dry_run": bool(dry_run),
-                "max_delete": int(max_delete or 0),
-                "eligible": int(eligible or 0),
-                "deleted": int(counts.get("deleted", 0)),
-                "not_found": int(counts.get("not_found", 0)),
-                "denied": int(counts.get("denied", 0)),
-                "conflicts": int(counts.get("conflicts", 0)),
-                "errors": int(counts.get("errors", 0)),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
-
-def _dataset_purge_response(dataset_id: UUID, dry_run: bool, max_delete: int, eligible: int, counts: dict[str, int]):
-    return DatasetPurgeResponse(
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.purge",
         dataset_id=dataset_id,
-        dry_run=bool(dry_run),
-        max_delete=int(max_delete or 0),
-        eligible=int(eligible or 0),
-        deleted=int(counts.get("deleted", 0)),
-        not_found=int(counts.get("not_found", 0)),
-        denied=int(counts.get("denied", 0)),
-        conflicts=int(counts.get("conflicts", 0)),
-        errors=int(counts.get("errors", 0)),
+        details={
+            "dry_run": dry_run,
+            "max_delete": max_delete,
+            "eligible": eligible,
+            **counts,
+        },
     )
 
 
-@router.delete("/{dataset_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete("/{dataset_id}", status_code=204)
 def delete_dataset(
     dataset_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+) -> None:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     # Prevent deleting non-empty datasets. The DB also enforces tenant-safe
     # dataset references; keep the API check for a friendly 409.
@@ -2015,7 +1590,7 @@ def delete_dataset(
     return None
 
 
-@router.post("/{dataset_id}/purge", response_model=DatasetPurgeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/{dataset_id}/purge", response_model=DatasetPurgeResponse)
 async def purge_dataset_documents(
     dataset_id: UUID,
     max_delete: Annotated[int, Query(ge=1, le=10000, description="Max documents to delete in this call")] = 1000,
@@ -2024,7 +1599,7 @@ async def purge_dataset_documents(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetPurgeResponse:
     """
     Purge documents within a dataset (bounded, best-effort).
 
@@ -2034,48 +1609,43 @@ async def purge_dataset_documents(
     - Default is dry-run for safety.
     - Uses the existing document delete lifecycle to ensure artifacts (vectors/KG/object storage) are removed.
     """
-    ensure_tenant_permission(
-        db,
-        tenant_id,
-        account_id,
-        TenantPermissions.LIFECYCLE_MANAGE,
-        detail="No permission to purge dataset documents",
-    )
+    async with DatasetScanSession(SessionLocal) as transaction:
 
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+        def authorize(worker_db: Session) -> None:
+            ensure_tenant_permission(
+                worker_db,
+                tenant_id,
+                account_id,
+                TenantPermissions.LIFECYCLE_MANAGE,
+                detail="No permission to purge dataset documents",
+            )
+            dataset_service.get_dataset(worker_db, tenant_id, dataset_id)
 
-    # Reconcile stale profile/precheck runs before the active-run guard so
-    # worker crashes do not strand purge requests behind 409s.
-    await _reconcile_stale_dataset_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
-
-    # Avoid purging while long-running dataset scans are still active.
-    _assert_no_active_dataset_scans(db, tenant_id, dataset_id)
-
-    # Plan eligible documents for this call (bounded).
-    document_ids = _dataset_document_ids_for_purge(db, tenant_id, dataset_id, int(max_delete or 0))
-    eligible = len(document_ids)
-
-    counts = {"deleted": 0, "not_found": 0, "denied": 0, "conflicts": 0, "errors": 0}
-    if not bool(dry_run):
-        counts = await _delete_dataset_document_ids(
-            document_ids,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            db=db,
+        await transaction.run(authorize)
+        await _reconcile_stale_dataset_scan_runs(transaction, tenant_id=tenant_id, dataset_id=dataset_id)
+        await transaction.run(lambda worker_db: _assert_no_active_dataset_scans(worker_db, tenant_id, dataset_id))
+        document_ids = await transaction.run(
+            lambda worker_db: _dataset_document_ids_for_purge(worker_db, tenant_id, dataset_id, max_delete)
         )
-
-    # Best-effort audit log (commit separately; never block response).
-    _record_dataset_purge_audit(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-        dry_run=bool(dry_run),
-        max_delete=int(max_delete or 0),
-        eligible=eligible,
-        counts=counts,
-    )
-    return _dataset_purge_response(dataset_id, bool(dry_run), int(max_delete or 0), eligible, counts)
+        eligible = len(document_ids)
+        counts = {"deleted": 0, "not_found": 0, "denied": 0, "conflicts": 0, "errors": 0}
+        if not dry_run:
+            counts = await _delete_dataset_document_ids(document_ids, tenant_id=tenant_id, account_id=account_id, db=db)
+        await transaction.run(
+            lambda worker_db: _record_dataset_purge_audit(
+                worker_db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                dry_run=dry_run,
+                max_delete=max_delete,
+                eligible=eligible,
+                counts=counts,
+            )
+        )
+        return DatasetPurgeResponse(
+            dataset_id=dataset_id, dry_run=dry_run, max_delete=max_delete, eligible=eligible, **counts
+        )
 
 
 _INGESTION_POLICY_VERSIONS_KEY = "ingestion_policy_versions"
@@ -2084,7 +1654,7 @@ _MAX_INGESTION_POLICY_VERSIONS = 50
 
 
 def _append_ingestion_policy_version(
-    meta: dict,
+    meta: dict[str, Any],
     *,
     policy: IngestionPolicy,
     account_id: str,
@@ -2092,28 +1662,25 @@ def _append_ingestion_policy_version(
     note: str | None = None,
     rollback_from_version_id: str | None = None,
     rollback_to_version_id: str | None = None,
-) -> tuple[dict, str]:
-    versions_raw = meta.get(_INGESTION_POLICY_VERSIONS_KEY)
-    versions: list[dict] = [v for v in versions_raw if isinstance(v, dict)] if isinstance(versions_raw, list) else []
+) -> tuple[dict[str, Any], str]:
+    versions = _ingestion_policy_version_items(meta)
 
     version_id = uuid.uuid4().hex
     item: dict[str, object] = {
         "id": version_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": str(account_id or "").strip() or None,
-        "source": str(source or "put"),
+        "created_at": datetime.now(UTC).isoformat(),
+        "created_by": account_id,
+        "source": source,
         "policy": policy.model_dump(),
     }
-    if isinstance(note, str) and note.strip():
+    if note is not None and note.strip():
         item["note"] = note.strip()[:200]
     if rollback_from_version_id:
         item["rollback_from_version_id"] = str(rollback_from_version_id)
     if rollback_to_version_id:
         item["rollback_to_version_id"] = str(rollback_to_version_id)
 
-    versions = [item] + versions
-    if len(versions) > _MAX_INGESTION_POLICY_VERSIONS:
-        versions = versions[:_MAX_INGESTION_POLICY_VERSIONS]
+    versions = [item, *versions][:_MAX_INGESTION_POLICY_VERSIONS]
 
     meta[_INGESTION_POLICY_VERSIONS_KEY] = versions
     meta[_INGESTION_POLICY_CURRENT_VERSION_ID_KEY] = version_id
@@ -2123,7 +1690,6 @@ def _append_ingestion_policy_version(
 @router.get(
     "/{dataset_id}/ingestion-policy",
     response_model=IngestionPolicyWithAudit,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_ingestion_policy(
     dataset_id: UUID,
@@ -2131,10 +1697,10 @@ def get_dataset_ingestion_policy(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-    meta = getattr(dataset, "dataset_metadata", None)
+) -> IngestionPolicyWithAudit:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    meta = dataset.dataset_metadata
     meta_obj = meta if isinstance(meta, dict) else {}
     policy = parse_ingestion_policy_from_metadata(meta_obj) or IngestionPolicy(version="1", rules=[])
     audit = _build_table_routing_policy_audit(meta=meta_obj, policy=policy)
@@ -2148,7 +1714,6 @@ def get_dataset_ingestion_policy(
 @router.get(
     "/{dataset_id}/ingestion-policy/versions",
     response_model=IngestionPolicyVersionListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_ingestion_policy_versions(
     dataset_id: UUID,
@@ -2156,40 +1721,38 @@ def list_dataset_ingestion_policy_versions(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> IngestionPolicyVersionListResponse:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     current_id = meta.get(_INGESTION_POLICY_CURRENT_VERSION_ID_KEY)
     current_id = str(current_id) if isinstance(current_id, str) and current_id.strip() else None
 
-    items_raw = meta.get(_INGESTION_POLICY_VERSIONS_KEY)
-    items = items_raw if isinstance(items_raw, list) else []
     # Keep stable order: newest first (we always prepend).
     return IngestionPolicyVersionListResponse(
         current_version_id=current_id,
-        items=[it for it in items if isinstance(it, dict)],
+        items=_ingestion_policy_version_items(meta),
     )
 
 
-def _ingestion_policy_version_items(meta: dict[str, Any]) -> list[dict]:
+def _ingestion_policy_version_items(meta: dict[str, Any]) -> list[dict[str, Any]]:
     items_raw = meta.get(_INGESTION_POLICY_VERSIONS_KEY)
     items = items_raw if isinstance(items_raw, list) else []
     return [item for item in items if isinstance(item, dict)]
 
 
-def _require_ingestion_policy_version(meta: dict[str, Any], version_id: Any) -> tuple[str, dict]:
-    target_id = str(version_id or "").strip()
+def _require_ingestion_policy_version(meta: dict[str, Any], version_id: str) -> tuple[str, dict[str, Any]]:
+    target_id = version_id.strip()
     if not target_id:
         raise HTTPException(status_code=400, detail="version_id is required")
     for item in _ingestion_policy_version_items(meta):
-        if str(item.get("id") or "").strip() == target_id:
+        if item["id"].strip() == target_id:
             return target_id, item
     raise HTTPException(status_code=404, detail="policy version not found")
 
 
-def _normalized_stored_ingestion_policy(target: dict) -> IngestionPolicy:
+def _normalized_stored_ingestion_policy(target: dict[str, Any]) -> IngestionPolicy:
     raw_policy = target.get("policy")
     if not isinstance(raw_policy, dict):
         raise HTTPException(status_code=400, detail="invalid stored policy version")
@@ -2201,6 +1764,7 @@ def _normalized_stored_ingestion_policy(target: dict) -> IngestionPolicy:
 
 
 def _apply_ingestion_policy_metadata(meta: dict[str, Any], policy: IngestionPolicy) -> None:
+    validate_ingestion_policy_execution(policy)
     if policy.rules:
         meta["ingestion_policy"] = policy.model_dump()
     else:
@@ -2210,7 +1774,6 @@ def _apply_ingestion_policy_metadata(meta: dict[str, Any], policy: IngestionPoli
 @router.post(
     "/{dataset_id}/ingestion-policy/rollback",
     response_model=IngestionPolicy,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def rollback_dataset_ingestion_policy(
     dataset_id: UUID,
@@ -2219,11 +1782,11 @@ def rollback_dataset_ingestion_policy(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+) -> IngestionPolicy:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     target_id, target = _require_ingestion_policy_version(meta, body.version_id)
     normalized = _normalized_stored_ingestion_policy(target)
 
@@ -2250,7 +1813,6 @@ def rollback_dataset_ingestion_policy(
 @router.put(
     "/{dataset_id}/ingestion-policy",
     response_model=IngestionPolicy,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def put_dataset_ingestion_policy(
     dataset_id: UUID,
@@ -2259,16 +1821,13 @@ def put_dataset_ingestion_policy(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+) -> IngestionPolicy:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     normalized = validate_and_normalize_ingestion_policy(payload)
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
-    if normalized.rules:
-        meta["ingestion_policy"] = normalized.model_dump()
-    else:
-        meta.pop("ingestion_policy", None)
+    meta = dict(dataset.dataset_metadata or {})
+    _apply_ingestion_policy_metadata(meta, normalized)
     meta, _vid = _append_ingestion_policy_version(meta, policy=normalized, account_id=account_id, source="put")
     dataset.dataset_metadata = meta
     db.commit()
@@ -2279,9 +1838,8 @@ def put_dataset_ingestion_policy(
 @router.post(
     "/{dataset_id}/ingestion-policy/import",
     response_model=IngestionPolicyImportResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def import_dataset_ingestion_policy(
+def import_dataset_ingestion_policy(
     dataset_id: UUID,
     file: Annotated[UploadFile, File(...)],
     replace: Annotated[bool, Form()] = True,
@@ -2289,12 +1847,12 @@ async def import_dataset_ingestion_policy(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+) -> IngestionPolicyImportResponse:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     max_bytes = 256 * 1024
-    raw = await file.read(max_bytes + 1)
+    raw = file.file.read(max_bytes + 1)
     if len(raw) > max_bytes:
         raise HTTPException(status_code=400, detail="policy file too large (max 256KB)")
     try:
@@ -2308,14 +1866,11 @@ async def import_dataset_ingestion_policy(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"invalid ingestion policy: {str(exc)[:200]}") from exc
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     if not replace and "ingestion_policy" in meta:
         # Best-effort: do not merge in v1 (explicit by design).
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
-    if normalized.rules:
-        meta["ingestion_policy"] = normalized.model_dump()
-    else:
-        meta.pop("ingestion_policy", None)
+    _apply_ingestion_policy_metadata(meta, normalized)
     meta, _vid = _append_ingestion_policy_version(meta, policy=normalized, account_id=account_id, source="import")
     dataset.dataset_metadata = meta
     db.commit()
@@ -2323,53 +1878,38 @@ async def import_dataset_ingestion_policy(
     return IngestionPolicyImportResponse(replaced=True, rule_count=len(normalized.rules))
 
 
-@router.get("/{dataset_id}/ingestion-policy/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/ingestion-policy/export")
 def export_dataset_ingestion_policy(
     dataset_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-    meta = getattr(dataset, "dataset_metadata", None)
+) -> Response:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    meta = dataset.dataset_metadata
     policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(
         version="1", rules=[]
     )
 
     content = export_policy_json(policy)
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _safe_dataset_export_name(dataset)
     filename = f"{safe}.ingestion-policy.json"
     return Response(
         content=content,
         media_type=_APPLICATION_JSON_MEDIA_TYPE,
-        headers=download_response_headers(filename),
+        headers=file_response_headers(filename),
     )
 
 
-def _scan_run_out_from_row(row: DBDatasetProfileScanRun) -> DatasetProfileScanRunOut:
-    cfg = getattr(row, "config", None)
-    if not isinstance(cfg, dict):
-        cfg = {}
-    summary = getattr(row, "summary", None)
-    if not isinstance(summary, dict):
-        summary = {}
-    return DatasetProfileScanRunOut(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        dataset_id=row.dataset_id,
-        requested_by=getattr(row, "requested_by", None),
-        kind=str(getattr(row, "kind", "") or "deep"),
-        status=str(getattr(row, "status", "") or "pending"),
-        progress=int(getattr(row, "progress", 0) or 0),
-        config=cfg,
-        summary=summary,
-        error_message=getattr(row, "error_message", None),
-        started_at=getattr(row, "started_at", None),
-        finished_at=getattr(row, "finished_at", None),
-        created_at=getattr(row, "created_at", None),
-        updated_at=getattr(row, "updated_at", None),
+def _profile_scan_run_query(
+    db: Session, *, tenant_id: UUID, dataset_id: UUID, scan_run_id: UUID
+) -> ORMQuery[DBDatasetProfileScanRun]:
+    return db.query(DBDatasetProfileScanRun).filter(
+        DBDatasetProfileScanRun.id == scan_run_id,
+        DBDatasetProfileScanRun.tenant_id == tenant_id,
+        DBDatasetProfileScanRun.dataset_id == dataset_id,
     )
 
 
@@ -2381,58 +1921,43 @@ def _run_deep_scan_background(
     scan_run_id: UUID,
 ) -> None:
     """
-    BackgroundTasks wrapper for deep scan when the queue is disabled.
+    Local executor worker for deep scan when the queue is disabled.
 
     Uses a dedicated DB session and marks the run as failed on exception.
     """
-    db = SessionLocal()
-    from app.tasks.queue import register_local_scan_run_active, unregister_local_scan_run_active
-
-    register_local_scan_run_active(
-        kind="profile",
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        scan_run_id=scan_run_id,
-    )
-    try:
-        run_dataset_profile_deep_scan(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_id,
-            scan_run_id=scan_run_id,
+    with SessionLocal() as db:
+        register_local_scan_run_active(
+            kind="profile", tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
         )
-    except Exception as exc:  # noqa: BLE001
         try:
-            row = (
-                db.query(DBDatasetProfileScanRun)
-                .filter(
-                    DBDatasetProfileScanRun.id == scan_run_id,
-                    DBDatasetProfileScanRun.tenant_id == tenant_id,
-                    DBDatasetProfileScanRun.dataset_id == dataset_id,
-                )
-                .first()
+            run_dataset_profile_deep_scan(
+                db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id, scan_run_id=scan_run_id
             )
-            if row is not None:
-                row.status = "failed"
-                row.error_message = str(exc)[:200]
-                db.commit()
         except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
-    finally:
-        unregister_local_scan_run_active(
-            kind="profile",
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            scan_run_id=scan_run_id,
-        )
-        db.close()
+            logger.exception("Dataset profile scan failed: scan_run_id=%s", scan_run_id)
+            db.rollback()
+            try:
+                row = _profile_scan_run_query(
+                    db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
+                ).first()
+                if row is not None:
+                    row.status = "failed"
+                    row.error_message = str(exc)[:200]
+                    db.commit()
+            except Exception:
+                db.rollback()
+                logger.warning(
+                    "Failed to persist profile scan failure state: scan_run_id=%s", scan_run_id, exc_info=True
+                )
+        finally:
+            unregister_local_scan_run_active(
+                kind="profile", tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id
+            )
 
 
 @router.get(
     "/{dataset_id}/profile/summary",
     response_model=DatasetProfileSummary,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_profile_summary(
     dataset_id: UUID,
@@ -2440,24 +1965,23 @@ def get_dataset_profile_summary(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    summary = compute_dataset_profile_summary(
+) -> DatasetProfileSummary:
+    return compute_dataset_profile_summary(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=dataset_id,
     )
-    return summary
 
 
-@router.get("/{dataset_id}/health", response_model=DatasetHealthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/health", response_model=DatasetHealthResponse)
 def get_dataset_health(
     dataset_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetHealthResponse:
     """
     Dataset health dashboard v1.
 
@@ -2470,22 +1994,22 @@ def get_dataset_health(
         dataset_id=dataset_id,
     )
 
-    by_status = {str(k): int(v or 0) for k, v in (getattr(profile, "by_status", None) or {}).items()}
+    by_status = profile.by_status
 
     ingestion = DatasetHealthIngestionSummary(
-        total_documents=int(getattr(profile, "total_documents", 0) or 0),
+        total_documents=profile.total_documents,
         by_status=by_status,
-        pending=int(by_status.get("pending", 0) or 0),
-        processing=int(by_status.get("processing", 0) or 0),
-        completed=int(by_status.get("completed", 0) or 0),
-        failed=int(by_status.get("failed", 0) or 0),
-        quarantined=int(by_status.get("quarantined", 0) or 0),
-        cancelled=int(by_status.get("cancelled", 0) or 0),
+        pending=by_status.get("pending", 0),
+        processing=by_status.get("processing", 0),
+        completed=by_status.get("completed", 0),
+        failed=by_status.get("failed", 0),
+        quarantined=by_status.get("quarantined", 0),
+        cancelled=by_status.get("cancelled", 0),
     )
 
     return DatasetHealthResponse(
         dataset_id=dataset_id,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         profile=profile,
         ingestion=ingestion,
     )
@@ -2494,7 +2018,6 @@ def get_dataset_health(
 @router.get(
     "/{dataset_id}/profile/findings/{finding_key}",
     response_model=DatasetProfileFindingListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_profile_finding_documents(
     dataset_id: UUID,
@@ -2505,7 +2028,7 @@ def list_dataset_profile_finding_documents(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetProfileFindingListResponse:
     try:
         return list_finding_documents(
             db,
@@ -2513,8 +2036,8 @@ def list_dataset_profile_finding_documents(
             account_id=account_id,
             dataset_id=dataset_id,
             finding_key=finding_key,
-            skip=int(skip or 0),
-            limit=int(limit or 50),
+            skip=skip,
+            limit=limit,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
@@ -2523,7 +2046,6 @@ def list_dataset_profile_finding_documents(
 @router.get(
     "/{dataset_id}/profile/buckets/documents",
     response_model=DatasetProfileDocumentListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_profile_bucket_documents(
     dataset_id: UUID,
@@ -2537,7 +2059,7 @@ def list_dataset_profile_bucket_documents(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetProfileDocumentListResponse:
     try:
         return list_bucket_documents(
             db,
@@ -2546,40 +2068,33 @@ def list_dataset_profile_bucket_documents(
             dataset_id=dataset_id,
             dimension=dimension,
             bucket=bucket,
-            skip=int(skip or 0),
-            limit=int(limit or 50),
-            include_preview=bool(include_preview),
-            preview_max_chars=int(preview_max_chars or 0),
+            skip=skip,
+            limit=limit,
+            include_preview=include_preview,
+            preview_max_chars=preview_max_chars,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
 
 
-@router.post(
-    "/{dataset_id}/profile/scan-runs",
-    response_model=DatasetProfileScanRunOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
-async def create_dataset_profile_scan_run(
-    dataset_id: UUID,
-    body: DatasetProfileScanRunCreateRequest,
-    background_tasks: BackgroundTasks,
+async def _prepare_profile_scan_run(
+    transaction: ScanTransaction,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+    body: DatasetProfileScanRunCreateRequest,
+) -> tuple[UUID, DatasetProfileScanRunOut]:
+    def authorize(db: Session) -> None:
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    # Clear stale pending rows before the active-run check so queue failures or
-    # crashed requests do not leave the dataset permanently blocked.
-    expired = await _expire_stale_dataset_profile_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    await transaction.run(authorize)
+    expired = await _expire_stale_dataset_profile_scan_runs(transaction, tenant_id=tenant_id, dataset_id=dataset_id)
     if expired:
-        db.commit()
+        await transaction.run(lambda db: db.commit())
 
-    def _active_profile_scan():  # noqa: ANN202
+    def has_active_run(db: Session) -> bool:
         return (
             db.query(DBDatasetProfileScanRun)
             .filter(
@@ -2589,73 +2104,135 @@ async def create_dataset_profile_scan_run(
             )
             .order_by(DBDatasetProfileScanRun.created_at.desc())
             .first()
+            is not None
         )
 
-    existing = _active_profile_scan()
-    if existing is not None:
+    if await transaction.run(has_active_run):
         raise HTTPException(status_code=409, detail="A scan run is already pending/running for this dataset")
 
-    cfg = body.model_dump(exclude_none=True)
-    row = DBDatasetProfileScanRun(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        requested_by=account_id,
-        kind="deep",
-        status="pending",
-        progress=0,
-        config=cfg,
-        summary={},
-    )
-    db.add(row)
-    try:
+    await transaction.run(lambda db: db.rollback())
+    transaction.raise_if_cancelled()
+
+    def insert_run(db: Session) -> tuple[UUID, DatasetProfileScanRunOut]:
+        row = DBDatasetProfileScanRun(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            requested_by=account_id,
+            kind="deep",
+            status="pending",
+            progress=0,
+            config=body.model_dump(exclude_none=True),
+            summary={},
+        )
+        db.add(row)
         db.commit()
+        db.refresh(row)
+        return row.id, DatasetProfileScanRunOut.model_validate(row, from_attributes=True)
+
+    try:
+        return await prepare_managed_handoff(
+            insert_run,
+            recover_cancelled=lambda worker_db, prepared: fail_unhanded_scan_run(
+                worker_db,
+                kind="profile",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=prepared[0],
+                error_message="scan_request_cancelled_before_handoff",
+            ),
+        )
     except IntegrityError as exc:
-        db.rollback()
+        await transaction.run(lambda db: db.rollback())
         expired_after_conflict = await _expire_stale_dataset_profile_scan_runs(
-            db, tenant_id=tenant_id, dataset_id=dataset_id
+            transaction, tenant_id=tenant_id, dataset_id=dataset_id
         )
         if expired_after_conflict:
-            db.commit()
-        if _active_profile_scan() is not None:
+            await transaction.run(lambda db: db.commit())
+        if await transaction.run(has_active_run):
             raise HTTPException(
-                status_code=409,
-                detail="A scan run is already pending/running for this dataset",
+                status_code=409, detail="A scan run is already pending/running for this dataset"
             ) from exc
         raise
-    db.refresh(row)
 
-    job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
-    try:
-        task_id = await enqueue_dataset_profile_scan(
+
+@router.post(
+    "/{dataset_id}/profile/scan-runs",
+    response_model=DatasetProfileScanRunOut,
+    status_code=201,
+)
+async def create_dataset_profile_scan_run(
+    dataset_id: UUID,
+    body: DatasetProfileScanRunCreateRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+) -> DatasetProfileScanRunOut:
+    async with DatasetScanSession(SessionLocal) as transaction:
+        scan_run_id, result = await _prepare_profile_scan_run(
+            transaction,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
-            scan_run_id=row.id,
-            requested_by=account_id,
-            job_id=job_id,
-        )
-    except TaskEnqueueRejectedError as exc:
-        _mark_dataset_profile_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {exc}")
-        raise HTTPException(status_code=503, detail="Failed to enqueue dataset profile scan job") from exc
-    except Exception as exc:  # noqa: BLE001
-        _mark_dataset_profile_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {str(exc)[:160]}")
-        raise HTTPException(status_code=503, detail="Failed to enqueue dataset profile scan job") from exc
-    if not task_id:
-        # Queue disabled; run in-process after response.
-        background_tasks.add_task(
-            _run_deep_scan_background,
-            tenant_id=tenant_id,
             account_id=account_id,
-            dataset_id=dataset_id,
-            scan_run_id=row.id,
+            body=body,
         )
-
-    return _scan_run_out_from_row(row)
+        job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{scan_run_id}"
+        enqueue_task = asyncio.create_task(
+            enqueue_dataset_profile_scan(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+                requested_by=account_id,
+                job_id=job_id,
+            )
+        )
+        try:
+            task_id = await settle_scan_enqueue(
+                enqueue_task,
+                kind="profile",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Failed to enqueue dataset profile scan job") from exc
+        if task_id is None:
+            try:
+                submit_local_scan_run(
+                    partial(
+                        _run_deep_scan_background,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=dataset_id,
+                        scan_run_id=scan_run_id,
+                    ),
+                    kind="profile",
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    scan_run_id=scan_run_id,
+                )
+            except Exception as exc:
+                try:
+                    await persist_scan_handoff_update(
+                        partial(
+                            fail_unhanded_scan_run,
+                            kind="profile",
+                            tenant_id=tenant_id,
+                            dataset_id=dataset_id,
+                            scan_run_id=scan_run_id,
+                            error_message=f"local_scan_submit_failed: {str(exc)[:160]}",
+                        )
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to record local scan submission failure: scan_run_id=%s", scan_run_id, exc_info=True
+                    )
+                raise HTTPException(status_code=503, detail="Failed to enqueue dataset profile scan job") from exc
+        return result
 
 
 @router.get(
     "/{dataset_id}/profile/scan-runs",
     response_model=DatasetProfileScanRunListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_profile_scan_runs(
     dataset_id: UUID,
@@ -2665,22 +2242,23 @@ def list_dataset_profile_scan_runs(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> DatasetProfileScanRunListResponse:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     q = db.query(DBDatasetProfileScanRun).filter(
         DBDatasetProfileScanRun.tenant_id == tenant_id, DBDatasetProfileScanRun.dataset_id == dataset_id
     )
-    total = int(q.count())
-    rows = q.order_by(DBDatasetProfileScanRun.created_at.desc()).offset(int(skip or 0)).limit(int(limit or 20)).all()
-    return DatasetProfileScanRunListResponse(total=total, items=[_scan_run_out_from_row(r) for r in rows])
+    total = q.count()
+    rows = q.order_by(DBDatasetProfileScanRun.created_at.desc()).offset(skip).limit(limit).all()
+    return DatasetProfileScanRunListResponse(
+        total=total, items=[DatasetProfileScanRunOut.model_validate(row, from_attributes=True) for row in rows]
+    )
 
 
 @router.get(
     "/{dataset_id}/profile/scan-runs/{scan_run_id}",
     response_model=DatasetProfileScanRunOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_profile_scan_run(
     dataset_id: UUID,
@@ -2689,34 +2267,26 @@ def get_dataset_profile_scan_run(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> DatasetProfileScanRunOut:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    row = (
-        db.query(DBDatasetProfileScanRun)
-        .filter(
-            DBDatasetProfileScanRun.id == scan_run_id,
-            DBDatasetProfileScanRun.tenant_id == tenant_id,
-            DBDatasetProfileScanRun.dataset_id == dataset_id,
-        )
-        .first()
-    )
+    row = _profile_scan_run_query(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Scan run not found")
-    return _scan_run_out_from_row(row)
+    return DatasetProfileScanRunOut.model_validate(row, from_attributes=True)
 
 
-@router.get("/{dataset_id}/profile/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/profile/export")
 def export_dataset_profile_summary(
     dataset_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> Response:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     summary = compute_dataset_profile_summary(
         db,
@@ -2724,18 +2294,17 @@ def export_dataset_profile_summary(
         account_id=account_id,
         dataset_id=dataset_id,
     )
-    # Use JSON mode so UUID/datetime serialize correctly.
-    content = json.dumps(summary.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    content = summary.model_dump_json()
+    safe = _safe_dataset_export_name(dataset)
     filename = f"{safe}.profile.json"
     return Response(
         content=content,
         media_type=_APPLICATION_JSON_MEDIA_TYPE,
-        headers=download_response_headers(filename),
+        headers=file_response_headers(filename),
     )
 
 
-@router.get("/{dataset_id}/profile/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/profile/export-html")
 def export_dataset_profile_html_report(
     dataset_id: UUID,
     redact: Annotated[bool, Query(description="Whether to redact dataset name/id for sharing")] = True,
@@ -2743,9 +2312,9 @@ def export_dataset_profile_html_report(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> Response:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     summary = compute_dataset_profile_summary(
         db,
@@ -2756,51 +2325,34 @@ def export_dataset_profile_html_report(
 
     html = render_dataset_profile_html(
         title="MimirQ · 数据画像报告",
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=dataset.name,
         dataset_id=str(dataset_id),
         generated_at=summary.generated_at,
         summary=summary.model_dump(),
-        redact=bool(redact),
+        redact=redact,
     )
 
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _safe_dataset_export_name(dataset)
     filename = f"{safe}.profile.html"
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers=download_response_headers(filename),
+        headers=file_response_headers(filename),
     )
 
 
 def _iter_gzip_chunks(chunks: Iterator[bytes], *, flush_bytes: int = 64 * 1024) -> Iterator[bytes]:
-    """
-    Streaming gzip wrapper for byte iterators.
-
-    Keeps memory bounded for large NDJSON exports.
-    """
+    """Compress export chunks and close gzip on failure or early iterator exit."""
     buffer = io.BytesIO()
-    gz = gzip_lib.GzipFile(fileobj=buffer, mode="wb")
-    try:
+    with gzip_lib.GzipFile(fileobj=buffer, mode="wb") as compressor:
         for chunk in chunks:
-            if not chunk:
-                continue
-            gz.write(chunk)
-            if buffer.tell() >= int(flush_bytes or 0):
-                gz.flush()
-                data = buffer.getvalue()
-                if data:
-                    yield data
+            compressor.write(chunk)
+            if buffer.tell() >= flush_bytes:
+                compressor.flush()
+                yield buffer.getvalue()
                 buffer.seek(0)
                 buffer.truncate(0)
-        gz.close()
-        data = buffer.getvalue()
-        if data:
-            yield data
-    finally:
-        try:
-            gz.close()
-        except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+    yield buffer.getvalue()
 
 
 def _summarize_document_metadata(meta: Any, *, max_keys_sample: int = 20) -> dict[str, Any] | None:
@@ -2816,69 +2368,43 @@ def _summarize_document_metadata(meta: Any, *, max_keys_sample: int = 20) -> dic
         if isinstance(k, str) and k.strip():
             keys.append(k.strip())
     keys_sorted = sorted(set(keys))
-    max_keys_sample = max(0, int(max_keys_sample or 0))
     return {
-        "keys_count": int(len(keys_sorted)),
-        "keys_sample": keys_sorted[:max_keys_sample],
+        "keys_count": len(keys_sorted),
+        "keys_sample": keys_sorted[: max(0, max_keys_sample)],
     }
 
 
-def _dt_to_json(v: Any) -> str | None:
-    """
-    Serialize datetime-like objects for JSON outputs.
-
-    We prefer the "Z" suffix for UTC to avoid "+" being interpreted as a space in
-    query strings when callers reuse exported cursors.
-    """
-    if v is None:
+def _dt_to_json(value: datetime | None) -> str | None:
+    """Keep UTC cursors URL-friendly while preserving naive timestamps and other offsets."""
+    if value is None:
         return None
-    if not isinstance(v, datetime):
-        return None
-    try:
-        s = v.isoformat()
-    except Exception:
-        return None
-    # Align with Pydantic's common JSON encoding for UTC.
-    if s.endswith("+00:00"):
-        s = s[:-6] + "Z"
-    return s
-
-
-def _trimmed_metadata_str(
-    meta: dict[str, Any],
-    key: str,
-    *,
-    lowercase: bool = False,
-    max_length: int | None = None,
-) -> str | None:
-    value = str(meta.get(key) or "").strip()
-    if lowercase:
-        value = value.lower()
-    if max_length is not None and len(value) > max_length:
-        value = value[:max_length]
-    return value or None
+    serialized = value.isoformat()
+    return serialized[:-6] + "Z" if serialized.endswith("+00:00") else serialized
 
 
 def _document_pipeline_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
     active_hash = get_active_pipeline_hash(meta)
     return {
-        "file_sha256": _trimmed_metadata_str(meta, "file_sha256", lowercase=True),
+        "file_sha256": meta.get("file_sha256"),
         "doc_pipeline_key": build_doc_pipeline_key(doc.id, active_hash) if active_hash else None,
-        "pipeline_hash": _trimmed_metadata_str(meta, "pipeline_hash"),
-        "active_pipeline_hash": _trimmed_metadata_str(meta, "active_pipeline_hash"),
+        "pipeline_hash": meta.get("pipeline_hash"),
+        "active_pipeline_hash": meta.get("active_pipeline_hash"),
     }
 
 
 def _document_source_export_fields(meta: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
-    source_url = _trimmed_metadata_str(meta, "source_url")
-    source_path = _trimmed_metadata_str(meta, "source_path")
+    source_url = meta.get("source_url")
+    source_path = meta.get("source_path")
+    source_etag = meta.get("source_etag")
+    if source_etag is not None:
+        source_etag = source_etag[:500]
     return {
         "source_url_hash": (stable_hash(source_url, length=16) if source_url and not include_sensitive else None),
         "source_path_hash": (stable_hash(source_path, length=16) if source_path and not include_sensitive else None),
-        "source_last_modified_at": _trimmed_metadata_str(meta, "source_last_modified_at"),
-        "source_last_modified_source": _trimmed_metadata_str(meta, "source_last_modified_source"),
-        "source_fetched_at": _trimmed_metadata_str(meta, "source_fetched_at"),
-        "source_etag": _trimmed_metadata_str(meta, "source_etag", max_length=500),
+        "source_last_modified_at": meta.get("source_last_modified_at"),
+        "source_last_modified_source": meta.get("source_last_modified_source"),
+        "source_fetched_at": meta.get("source_fetched_at"),
+        "source_etag": source_etag,
     }
 
 
@@ -2887,24 +2413,22 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
         "schema": "mimirq.dataset_document_export.v1",
         "id": str(doc.id),
         "tenant_id": str(doc.tenant_id),
-        "dataset_id": (str(doc.dataset_id) if getattr(doc, "dataset_id", None) is not None else None),
-        "status": str(getattr(doc, "status", "") or ""),
-        "file_type": str(getattr(doc, "file_type", "") or ""),
-        "file_size": int(getattr(doc, "file_size", 0) or 0),
-        "chunk_count": int(getattr(doc, "chunk_count", 0) or 0),
-        "total_characters": int(getattr(doc, "total_characters", 0) or 0),
-        "created_at": _dt_to_json(getattr(doc, "created_at", None)),
-        "updated_at": _dt_to_json(getattr(doc, "updated_at", None)),
-        "processed_at": _dt_to_json(getattr(doc, "processed_at", None)),
-        "archived_at": _dt_to_json(getattr(doc, "archived_at", None)),
-        "disabled_at": _dt_to_json(getattr(doc, "disabled_at", None)),
+        "dataset_id": doc.dataset_id,
+        "status": doc.status,
+        "file_type": doc.file_type,
+        "file_size": doc.file_size,
+        "chunk_count": doc.chunk_count,
+        "total_characters": doc.total_characters,
+        "created_at": _dt_to_json(doc.created_at),
+        "updated_at": _dt_to_json(doc.updated_at),
+        "processed_at": _dt_to_json(doc.processed_at),
+        "archived_at": _dt_to_json(doc.archived_at),
+        "disabled_at": _dt_to_json(doc.disabled_at),
         # Lifecycle / governance workflow signals (PII-safe by default).
         "lifecycle_owner_hash": None,
-        "review_due_at": _dt_to_json(getattr(doc, "review_due_at", None)),
-        "authority_level": (
-            int(getattr(doc, "authority_level", 0) or 0) if getattr(doc, "authority_level", None) is not None else None
-        ),
-        "supersedes_document_id": (str(getattr(doc, "supersedes_document_id", "") or "") or None),
+        "review_due_at": _dt_to_json(doc.review_due_at),
+        "authority_level": doc.authority_level,
+        "supersedes_document_id": doc.supersedes_document_id,
         **_document_pipeline_export_fields(doc, meta),
         **_document_source_export_fields(meta, include_sensitive=include_sensitive),
     }
@@ -2912,22 +2436,22 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
 
 def _document_sensitive_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
     return {
-        "filename": str(getattr(doc, "filename", "") or ""),
-        "file_path": str(getattr(doc, "file_path", "") or ""),
-        "owner_id": (str(getattr(doc, "owner_id", "") or "") or None),
-        "access_mode": (str(getattr(doc, "access_mode", "") or "") or None),
-        "lifecycle_owner": (str(getattr(doc, "lifecycle_owner", "") or "") or None),
-        "error_message": (str(getattr(doc, "error_message", "") or "") or None),
+        "filename": doc.filename,
+        "file_path": doc.file_path,
+        "owner_id": doc.owner_id,
+        "access_mode": doc.access_mode,
+        "lifecycle_owner": doc.lifecycle_owner,
+        "error_message": doc.error_message,
         "doc_metadata": meta,
     }
 
 
 def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
-    filename = str(getattr(doc, "filename", "") or "").strip()
-    file_path = str(getattr(doc, "file_path", "") or "").strip()
-    owner_id = str(getattr(doc, "owner_id", "") or "").strip()
-    lifecycle_owner = str(getattr(doc, "lifecycle_owner", "") or "").strip()
-    error_message = str(getattr(doc, "error_message", "") or "").strip()
+    filename = doc.filename.strip()
+    file_path = doc.file_path.strip()
+    owner_id = doc.owner_id.strip() if doc.owner_id is not None else None
+    lifecycle_owner = doc.lifecycle_owner.strip() if doc.lifecycle_owner is not None else None
+    error_message = doc.error_message.strip() if doc.error_message is not None else None
     return {
         "filename_hash": (stable_hash(filename, length=16) if filename else None),
         "file_path_hash": (stable_hash(file_path, length=16) if file_path else None),
@@ -2939,33 +2463,13 @@ def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> d
 
 
 def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[str, Any]:
-    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
     out = _document_base_export_row(doc, meta, include_sensitive=include_sensitive)
     if include_sensitive:
         out.update(_document_sensitive_export_fields(doc, meta))
     else:
         out.update(_document_redacted_export_fields(doc, meta))
     return out
-
-
-def _dataset_documents_query(db: Session, tenant_id: UUID, dataset_id: UUID):
-    return db.query(DBDocument).filter(
-        DBDocument.tenant_id == tenant_id,
-        DBDocument.dataset_id == dataset_id,
-    )
-
-
-def _apply_dataset_documents_cursor(query, after_created_at: datetime | None, after_id: UUID | None):  # noqa: ANN001
-    if after_created_at is None:
-        return query
-    if after_id is None:
-        return query.filter(DBDocument.created_at > after_created_at)
-    return query.filter(
-        or_(
-            DBDocument.created_at > after_created_at,
-            and_(DBDocument.created_at == after_created_at, DBDocument.id > after_id),
-        )
-    )
 
 
 def _dataset_documents_page(
@@ -2977,8 +2481,17 @@ def _dataset_documents_page(
     after_created_at: datetime | None = None,
     after_id: UUID | None = None,
 ) -> list[DBDocument]:
-    query = _dataset_documents_query(db, tenant_id, dataset_id)
-    query = _apply_dataset_documents_cursor(query, after_created_at, after_id)
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+    if after_created_at is not None:
+        if after_id is None:
+            query = query.filter(DBDocument.created_at > after_created_at)
+        else:
+            query = query.filter(
+                or_(
+                    DBDocument.created_at > after_created_at,
+                    and_(DBDocument.created_at == after_created_at, DBDocument.id > after_id),
+                )
+            )
     return query.order_by(DBDocument.created_at.asc(), DBDocument.id.asc()).limit(limit).all()
 
 
@@ -2996,37 +2509,29 @@ def _record_dataset_documents_export_audit(
     export_format: str,
     gzip: bool,
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.documents.export",
-            resource_type="dataset",
-            resource_id=str(dataset_id),
-            details={
-                "limit": int(limit or 0),
-                "returned": int(rows_count),
-                "cursor_after_created_at": (after_created_at.isoformat() if after_created_at else None),
-                "cursor_after_id": (str(after_id) if after_id else None),
-                "include_sensitive": bool(include_sensitive),
-                "export_format": export_format,
-                "gzip": bool(gzip),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.documents.export",
+        dataset_id=dataset_id,
+        details={
+            "limit": limit,
+            "returned": rows_count,
+            "cursor_after_created_at": (after_created_at.isoformat() if after_created_at else None),
+            "cursor_after_id": (str(after_id) if after_id else None),
+            "include_sensitive": include_sensitive,
+            "export_format": export_format,
+            "gzip": gzip,
+        },
+    )
 
 
 def _safe_dataset_export_name(ds: Dataset) -> str:
-    return _DATASET_SAFE_NAME_RE.sub("_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    return _DATASET_SAFE_NAME_RE.sub("_", str(ds.name or "dataset"))[:64]
 
 
-def _next_documents_cursor(rows: list[DBDocument]) -> dict[str, str] | None:
+def _next_documents_cursor(rows: list[DBDocument]) -> dict[str, str | None] | None:
     if not rows:
         return None
     last = rows[-1]
@@ -3046,21 +2551,21 @@ def _documents_json_export_response(
     safe_name: str,
     headers: dict[str, str],
 ) -> Response:
-    items = [_export_document_row(row, include_sensitive=bool(include_sensitive)) for row in rows]
+    items = [_export_document_row(row, include_sensitive=include_sensitive) for row in rows]
     payload = {
         "schema": "mimirq.dataset_document_export_page.v1",
         "dataset_id": str(dataset_id),
-        "limit": int(limit or 0),
-        "returned": int(len(items)),
+        "limit": limit,
+        "returned": len(items),
         "next_cursor": _next_documents_cursor(rows),
         "items": items,
     }
     content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
     filename = f"{safe_name}.documents.json"
-    set_download_content_disposition(headers, filename)
+    set_content_disposition(headers, filename)
     if gzip:
         headers["Content-Encoding"] = "gzip"
-        set_download_content_disposition(headers, f"{filename}.gz")
+        set_content_disposition(headers, f"{filename}.gz")
         content = gzip_lib.compress(content)
     return Response(content=content, media_type=_APPLICATION_JSON_MEDIA_TYPE, headers=headers)
 
@@ -3075,16 +2580,16 @@ def _documents_ndjson_export_response(
 ) -> StreamingResponse:
     def _iter_lines() -> Iterator[bytes]:
         for row in rows:
-            payload = _export_document_row(row, include_sensitive=bool(include_sensitive))
+            payload = _export_document_row(row, include_sensitive=include_sensitive)
             line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
             yield line.encode("utf-8")
 
     body_iter: Iterator[bytes] = _iter_lines()
     filename = f"{safe_name}.documents.ndjson"
-    set_download_content_disposition(headers, filename)
+    set_content_disposition(headers, filename)
     if gzip:
         headers["Content-Encoding"] = "gzip"
-        set_download_content_disposition(headers, f"{filename}.gz")
+        set_content_disposition(headers, f"{filename}.gz")
         body_iter = _iter_gzip_chunks(body_iter)
     return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
 
@@ -3100,27 +2605,19 @@ def _record_dataset_bundle_export_audit(
     include_sensitive: bool,
     exported_at: datetime,
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.export_bundle",
-            resource_type="dataset",
-            resource_id=str(dataset_id),
-            details={
-                "limit": int(limit or 0),
-                "returned": int(docs_count),
-                "include_sensitive": bool(include_sensitive),
-                "exported_at": exported_at.isoformat(),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.export_bundle",
+        dataset_id=dataset_id,
+        details={
+            "limit": limit,
+            "returned": docs_count,
+            "include_sensitive": include_sensitive,
+            "exported_at": exported_at.isoformat(),
+        },
+    )
 
 
 def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: datetime) -> dict[str, Any]:
@@ -3129,13 +2626,13 @@ def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: d
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset": {
-            "id": str(getattr(ds, "id", "")),
-            "name": str(getattr(ds, "name", "") or ""),
-            "description": str(getattr(ds, "description", "") or ""),
-            "permission": str(getattr(ds, "permission", "") or ""),
-            "owner_id": (str(getattr(ds, "owner_id", "") or "") or None),
-            "created_at": _dt_to_json(getattr(ds, "created_at", None)),
-            "updated_at": _dt_to_json(getattr(ds, "updated_at", None)),
+            "id": str(ds.id),
+            "name": ds.name,
+            "description": ds.description,
+            "permission": ds.permission,
+            "owner_id": ds.owner_id,
+            "created_at": _dt_to_json(ds.created_at),
+            "updated_at": _dt_to_json(ds.updated_at),
         },
     }
 
@@ -3144,10 +2641,10 @@ def _dataset_bundle_config_payload(ds: Dataset, exported_at: datetime) -> dict[s
     return {
         "schema": "mimirq.dataset_config_export.v1",
         "version": "1",
-        "dataset_id": getattr(ds, "id", None),
-        "name": str(getattr(ds, "name", "") or ""),
+        "dataset_id": ds.id,
+        "name": ds.name,
         "exported_at": exported_at,
-        "config": _build_dataset_config_bundle(ds),
+        "config": _build_dataset_config_bundle(ds).model_dump(mode="json"),
     }
 
 
@@ -3172,15 +2669,15 @@ def _document_storage_manifest(raw_path: str, *, include_sensitive: bool) -> dic
 
 
 def _document_artifact_manifest(doc: DBDocument, row: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
-    raw_path = str(getattr(doc, "file_path", "") or "").strip()
+    raw_path = doc.file_path.strip()
     return {
-        "document_id": str(getattr(doc, "id", "")),
-        "doc_pipeline_key": row.get("doc_pipeline_key"),
-        "pipeline_hash": row.get("pipeline_hash"),
-        "active_pipeline_hash": row.get("active_pipeline_hash"),
-        "file_type": row.get("file_type"),
-        "file_size": row.get("file_size"),
-        "chunk_count": row.get("chunk_count"),
+        "document_id": str(doc.id),
+        "doc_pipeline_key": row["doc_pipeline_key"],
+        "pipeline_hash": row["pipeline_hash"],
+        "active_pipeline_hash": row["active_pipeline_hash"],
+        "file_type": row["file_type"],
+        "file_size": row["file_size"],
+        "chunk_count": row["chunk_count"],
         "storage": _document_storage_manifest(raw_path, include_sensitive=include_sensitive),
     }
 
@@ -3193,20 +2690,19 @@ def _dataset_bundle_document_payloads(
     doc_lines: list[str] = []
     artifacts_docs: list[dict[str, Any]] = []
     for doc in docs:
-        row = _export_document_row(doc, include_sensitive=bool(include_sensitive))
+        row = _export_document_row(doc, include_sensitive=include_sensitive)
         doc_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
-        artifacts_docs.append(_document_artifact_manifest(doc, row, include_sensitive=bool(include_sensitive)))
+        artifacts_docs.append(_document_artifact_manifest(doc, row, include_sensitive=include_sensitive))
     return doc_lines, artifacts_docs
 
 
 def _dataset_bundle_kg_stats(db: Session, tenant_id: UUID, docs: list[DBDocument]) -> dict[str, Any]:
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not settings.KG_ENABLED:
         return {}
     try:
         from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
 
-        doc_ids = [getattr(doc, "id", None) for doc in docs]
-        doc_ids = [doc_id for doc_id in doc_ids if doc_id is not None]
+        doc_ids = [doc.id for doc in docs]
         events = (
             db.query(KgSourceEvent)
             .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(doc_ids))
@@ -3214,7 +2710,7 @@ def _dataset_bundle_kg_stats(db: Session, tenant_id: UUID, docs: list[DBDocument
             if doc_ids
             else 0
         )
-        return {"kg_stats": {"events": int(events or 0)}}
+        return {"kg_stats": {"events": events}}
     except Exception:
         return {"kg_stats": {"events": None, "error": "kg_stats_unavailable"}}
 
@@ -3233,25 +2729,12 @@ def _dataset_bundle_artifacts_payload(
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
-        "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-        "kg_enabled": bool(getattr(settings, "KG_ENABLED", False)),
+        "vector_backend": settings.VECTOR_BACKEND,
+        "kg_enabled": settings.KG_ENABLED,
         "documents": artifacts_docs,
     }
     payload.update(_dataset_bundle_kg_stats(db, tenant_id, docs))
     return payload
-
-
-def _dataset_bundle_readme() -> str:
-    return (
-        "MimirQ Dataset Export Bundle\n\n"
-        "- dataset.json: dataset summary (safe)\n"
-        "- config.json: portable dataset config bundle\n"
-        "- documents.ndjson: document inventory (PII-safe by default)\n"
-        "- artifacts.json: compliance-oriented artifact manifest (indexes/storage refs; redacted by default)\n"
-        "\n"
-        "Security:\n"
-        "- include_sensitive=false (default) omits raw filenames/paths and doc_metadata values.\n"
-    )
 
 
 def _write_dataset_bundle_zip(
@@ -3263,24 +2746,8 @@ def _write_dataset_bundle_zip(
 ) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(
-            "dataset.json",
-            json.dumps(
-                dataset_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                default=str,
-            ),
-        )
-        zf.writestr(
-            "config.json",
-            json.dumps(
-                config_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                default=str,
-            ),
-        )
+        for filename, payload in (("dataset.json", dataset_payload), ("config.json", config_payload)):
+            zf.writestr(filename, json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str))
         zf.writestr(
             "documents.ndjson",
             ("\n".join(doc_lines) + ("\n" if doc_lines else "")).encode("utf-8"),
@@ -3294,11 +2761,21 @@ def _write_dataset_bundle_zip(
                 default=str,
             ),
         )
-        zf.writestr("README.txt", _dataset_bundle_readme())
+        zf.writestr(
+            "README.txt",
+            "MimirQ Dataset Export Bundle\n\n"
+            "- dataset.json: dataset summary (safe)\n"
+            "- config.json: portable dataset config bundle\n"
+            "- documents.ndjson: document inventory (PII-safe by default)\n"
+            "- artifacts.json: compliance-oriented artifact manifest (indexes/storage refs; redacted by default)\n"
+            "\n"
+            "Security:\n"
+            "- include_sensitive=false (default) omits raw filenames/paths and doc_metadata values.\n",
+        )
     return buf.getvalue()
 
 
-@router.get("/{dataset_id}/documents/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/documents/export")
 def export_dataset_documents_ndjson(
     dataset_id: UUID,
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
@@ -3311,7 +2788,7 @@ def export_dataset_documents_ndjson(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Response:
     """
     Export dataset documents as NDJSON (JSON Lines) for compliance / lifecycle workflows.
 
@@ -3327,7 +2804,7 @@ def export_dataset_documents_ndjson(
         detail="No permission to export dataset documents",
     )
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
     fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
     if fmt not in {"ndjson", "json"}:
         raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
@@ -3351,9 +2828,9 @@ def export_dataset_documents_ndjson(
         rows_count=len(rows),
         after_created_at=after_created_at,
         after_id=after_id,
-        include_sensitive=bool(include_sensitive),
+        include_sensitive=include_sensitive,
         export_format=fmt,
-        gzip=bool(gzip),
+        gzip=gzip,
     )
 
     safe = _safe_dataset_export_name(ds)
@@ -3364,22 +2841,22 @@ def export_dataset_documents_ndjson(
             rows=rows,
             dataset_id=dataset_id,
             limit=limit,
-            include_sensitive=bool(include_sensitive),
-            gzip=bool(gzip),
+            include_sensitive=include_sensitive,
+            gzip=gzip,
             safe_name=safe,
             headers=headers,
         )
 
     return _documents_ndjson_export_response(
         rows=rows,
-        include_sensitive=bool(include_sensitive),
-        gzip=bool(gzip),
+        include_sensitive=include_sensitive,
+        gzip=gzip,
         safe_name=safe,
         headers=headers,
     )
 
 
-@router.get("/{dataset_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{dataset_id}/export")
 def export_dataset_bundle_zip(
     dataset_id: UUID,
     limit: Annotated[int, Query(ge=1, le=10000, description="Max documents to include in the bundle")] = 2000,
@@ -3388,7 +2865,7 @@ def export_dataset_bundle_zip(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Response:
     """
     Export a dataset "bundle" as a single ZIP archive.
 
@@ -3404,9 +2881,9 @@ def export_dataset_bundle_zip(
         detail="No permission to export dataset bundle",
     )
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    docs = _dataset_documents_page(db, tenant_id, dataset_id, limit=int(limit or 0))
-    exported_at = datetime.now(timezone.utc)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    docs = _dataset_documents_page(db, tenant_id, dataset_id, limit=limit)
+    exported_at = datetime.now(UTC)
 
     # Best-effort audit log (PII-safe).
     _record_dataset_bundle_export_audit(
@@ -3414,13 +2891,13 @@ def export_dataset_bundle_zip(
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=dataset_id,
-        limit=int(limit or 0),
+        limit=limit,
         docs_count=len(docs),
-        include_sensitive=bool(include_sensitive),
+        include_sensitive=include_sensitive,
         exported_at=exported_at,
     )
 
-    doc_lines, artifacts_docs = _dataset_bundle_document_payloads(docs, include_sensitive=bool(include_sensitive))
+    doc_lines, artifacts_docs = _dataset_bundle_document_payloads(docs, include_sensitive=include_sensitive)
     raw = _write_dataset_bundle_zip(
         dataset_payload=_dataset_bundle_summary_payload(ds, tenant_id, exported_at),
         config_payload=_dataset_bundle_config_payload(ds, exported_at),
@@ -3439,5 +2916,5 @@ def export_dataset_bundle_zip(
     return Response(
         content=raw,
         media_type="application/zip",
-        headers=download_response_headers(filename),
+        headers=file_response_headers(filename),
     )

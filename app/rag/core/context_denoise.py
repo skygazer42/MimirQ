@@ -9,7 +9,6 @@ Rules:
 - conservative cleaning (boilerplate removal is heading/code-fence aware)
 """
 
-
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -27,7 +26,7 @@ _JACCARD_TOKEN_RE = re.compile(r"\w+", flags=re.UNICODE)
 
 
 def _normalize_for_signature(text: str) -> str:
-    norm = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
+    norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
     # Keep newlines, but normalize whitespace so "exact duplicates" are caught.
     norm = _WS_RE.sub(" ", norm)
     norm = _BLANK_LINES_RE.sub("\n\n", norm)
@@ -102,7 +101,7 @@ def _apply_exact_dedup(docs: list[Document]) -> list[Document]:
     seen: set[str] = set()
     out: list[Document] = []
     for d in docs:
-        sig = _normalize_for_signature(d.page_content or "")
+        sig = _normalize_for_signature(d.page_content)
         key = sig.casefold() if sig.isascii() else sig
         if key and key in seen:
             continue
@@ -129,7 +128,7 @@ def _apply_jaccard_dedup(
     out: list[Document] = []
     compare_sets: list[set[str]] = []
     for d in docs:
-        tokens = _tokenize_for_jaccard(d.page_content or "")
+        tokens = _tokenize_for_jaccard(d.page_content)
         if not tokens:
             out.append(d)
             compare_sets.append(tokens)
@@ -169,10 +168,10 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
     out: list[Document] = []
     used = 0
     for doc in docs:
-        content = str(getattr(doc, "page_content", "") or "").strip()
+        content = doc.page_content.strip()
         if not content:
             continue
-        n = int(num_tokens_from_string(content) or 0)
+        n = num_tokens_from_string(content)
         if out and (used + n) > cap:
             break
         out.append(doc)
@@ -180,7 +179,7 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
     return out
 
 
-def _compress_text_with_llm(*, text: str, query: str, target_ratio: float) -> str:
+def _compress_text_with_llm(*, text: str, query: str) -> str:
     if not text or not query:
         return text
 
@@ -193,10 +192,6 @@ def _compress_text_with_llm(*, text: str, query: str, target_ratio: float) -> st
     llm = engine.models.get("fast") or engine.models.get("default")
     if llm is None:
         return text
-
-    ratio = float(target_ratio or 0.0)
-    if ratio <= 0.0:
-        ratio = 0.5
 
     prompt = ChatPromptTemplate.from_template(
         """Extract only the information relevant to the query from the following text.
@@ -213,7 +208,7 @@ Relevant information:"""
         out = chain.invoke({"query": query, "text": text})
     except Exception:
         return text
-    compressed = str(out or "").strip()
+    compressed = out.strip()
     if not compressed:
         return text
     return compressed
@@ -226,25 +221,22 @@ def compress_context_docs_with_llm(
 ) -> list[Document]:
     if not docs:
         return []
-    if not bool(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_ENABLED", False)):
+    if not settings.RAG_CONTEXT_LLM_COMPRESSION_ENABLED:
         return list(docs)
 
     query_text = str(query or "").strip()
     if not query_text:
         return list(docs)
 
-    ratio = float(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO", 0.5) or 0.5)
-    ratio = min(max(ratio, 0.1), 1.0)
-
     out: list[Document] = []
     for doc in docs:
         if doc is None:
             continue
-        text = str(getattr(doc, "page_content", "") or "").strip()
+        text = doc.page_content.strip()
         if not text:
             continue
-        compressed = _compress_text_with_llm(text=text, query=query_text, target_ratio=ratio)
-        out.append(Document(page_content=compressed, metadata=dict(doc.metadata or {}), id=getattr(doc, "id", None)))
+        compressed = _compress_text_with_llm(text=text, query=query_text)
+        out.append(Document(page_content=compressed, metadata=dict(doc.metadata or {}), id=doc.id))
     return out
 
 
@@ -266,10 +258,10 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     for d in docs:
         if d is None:
             continue
-        text = _clean_chunk_text(getattr(d, "page_content", "") or "")
+        text = _clean_chunk_text(d.page_content)
         if not text:
             continue
-        cleaned.append(Document(page_content=text, metadata=dict(d.metadata or {}), id=getattr(d, "id", None)))
+        cleaned.append(Document(page_content=text, metadata=dict(d.metadata or {}), id=d.id))
 
     if not cleaned:
         return []
@@ -277,27 +269,27 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     # 2) Drop duplicates before applying caps so we don't "waste" per-doc budget on repeats.
     cleaned = _apply_exact_dedup(cleaned)
 
-    dedup_enabled = bool(getattr(settings, "RETRIEVAL_DEDUP_ENABLED", False))
+    dedup_enabled = settings.RETRIEVAL_DEDUP_ENABLED
     if dedup_enabled:
         cleaned = _apply_jaccard_dedup(
             cleaned,
-            threshold=float(getattr(settings, "RETRIEVAL_DEDUP_JACCARD_THRESHOLD", 0.0) or 0.0),
-            max_compare=int(getattr(settings, "RETRIEVAL_DEDUP_MAX_COMPARE", 0) or 0),
+            threshold=settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD,
+            max_compare=settings.RETRIEVAL_DEDUP_MAX_COMPARE,
         )
 
     # 3) Per-doc cap (reuse retrieval knob; prompt context needs the same diversity guard after injections).
-    max_per_doc = int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0)
+    max_per_doc = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
     cleaned = _apply_per_doc_cap(cleaned, max_per_doc=max_per_doc)
 
     # 4) Optional lost-in-middle mitigation via deterministic interleaving.
-    if bool(getattr(settings, "RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED", False)):
+    if settings.RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED:
         cleaned = _apply_lost_in_middle_reorder(cleaned)
 
     # 5) Optional token-budget-aware trim for pre-prompt context packing.
-    if bool(getattr(settings, "RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED", False)):
+    if settings.RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED:
         cleaned = _apply_token_budget_trim(
             cleaned,
-            max_total_tokens=int(getattr(settings, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS", 0) or 0),
+            max_total_tokens=settings.RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS,
         )
 
     return cleaned

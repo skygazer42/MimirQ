@@ -9,7 +9,6 @@ Targets `git log` / `git show` like text with repeated commit headers:
 The chunker splits by commit blocks and preserves offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -46,7 +45,7 @@ _HEADER_VALUE_CHAR_LIMIT = 200
 
 
 def _extract_commit_header_value(line: str, *, prefix: str) -> str | None:
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     if not stripped:
         return None
     prefix_norm = prefix.casefold()
@@ -70,17 +69,13 @@ def _scan_commit_headers(chunk: str) -> tuple[str | None, str | None]:
 
 
 def _iter_commits(text: str) -> list[_Commit]:
-    starts = [m.start() for m in _COMMIT_RE.finditer(text or "")]
-    if not starts:
-        return []
+    matches = list(_COMMIT_RE.finditer(text))
     commits: list[_Commit] = []
-    for idx, start in enumerate(starts):
-        end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
-        chunk = (text or "")[start:end]
-        m = _COMMIT_RE.search(chunk)
-        if not m:
-            continue
-        sha = (m.group("sha") or "").strip()
+    for idx, m in enumerate(matches):
+        start = m.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        chunk = (text)[start:end]
+        sha = m.group("sha")
         author, date = _scan_commit_headers(chunk)
         commits.append(_Commit(start=start, end=end, index=len(commits), sha=sha, author=author, date=date))
     return commits
@@ -94,11 +89,8 @@ def _build_sections(text: str, commits: list[_Commit]) -> list[_Section]:
     first = commits[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, commit=None))
-    for idx, c in enumerate(commits):
-        start = c.start
-        end = commits[idx + 1].start if idx + 1 < len(commits) else len(text)
-        end = max(end, c.end)
-        sections.append(_Section(start=start, end=end, commit=c))
+    for c in commits:
+        sections.append(_Section(start=c.start, end=c.end, commit=c))
     return sections
 
 
@@ -146,7 +138,7 @@ def _split_commit_section_docs(
 
 
 class GitCommitLogChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -172,7 +164,7 @@ class GitCommitLogChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

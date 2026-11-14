@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 提示词布局对比",
+  "round": "提示词 01",
+  "nativeViewport": "1600x1000",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，保留完整 Ragvia 导航。五版共用 34 个模板的设计数据：33 个内置模板来自本地模板库，另有 1 个个人模板用于排版；31 个启用、3 个停用以及使用次数和时间属于设计状态，不是本地保存记录。正文预览只读，不运行模型、不填入变量。只比较首屏构图，按钮和筛选未接入；选定后再实施正式页。当前真实空页面另作参照。",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 管理宽表",
+      "source": "a-table.html",
+      "concept": "将模板用途、变量、来源和启停状态放在对齐的连续宽表中，便于筛选与批量管理。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#75658F", "#31754D", "#805E18"],
+      "traits": ["连续宽表", "跨场景比较", "紧凑批量管理"]
+    },
+    {
+      "id": "b-workbench",
+      "name": "B · 模板工作台",
+      "source": "b-workbench.html",
+      "concept": "模板列表与正文并排，选中后直接阅读内容、核对变量，再复制复用。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#75658F", "#31754D", "#805E18"],
+      "traits": ["列表与正文双栏", "就地阅读", "变量持续可见"]
+    },
+    {
+      "id": "c-library",
+      "name": "C · 场景资料库",
+      "source": "c-library.html",
+      "concept": "以模板用途和简短说明组织三列资料网格，适合先浏览再挑选。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#75658F", "#31754D", "#805E18"],
+      "traits": ["三列模板资料", "用途优先", "场景色区分"]
+    },
+    {
+      "id": "d-split",
+      "name": "D · 上下双窗",
+      "source": "d-split.html",
+      "concept": "上方筛选模板，下方保留宽正文；列表与当前内容同时可见。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#75658F", "#31754D", "#805E18"],
+      "traits": ["上下分屏", "表格与正文联读", "横向宽阅读区"]
+    },
+    {
+      "id": "e-groups",
+      "name": "E · 场景分组",
+      "source": "e-groups.html",
+      "concept": "把用途相同的模板收成连续分组目录，按场景定位并逐组查看。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#75658F", "#31754D", "#805E18"],
+      "traits": ["场景分组清单", "常用场景展开", "少一层导航"]
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "source": "current.png",
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1280x720",
+      "concept": "当前真实页面尚无模板。仅比较容器、控件与信息层级，不把候选的设计数据当成已保存记录。",
+      "traits": ["真实运行页面", "原有空状态", "1280×720 基线"]
+    }
+  ]
+}

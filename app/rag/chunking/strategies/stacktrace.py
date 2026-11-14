@@ -7,7 +7,6 @@ exception block together. For timestamped application logs, prefer log_events.
 Offsets are preserved.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -16,13 +15,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -40,19 +34,6 @@ _FRAME_RE = re.compile(r"^\s*(?:File \"|File '|at\s+|\tat\s+)")
 _CAUSED_BY_RE = re.compile(r"^\s*Caused by:\s+")
 _PY_EXCEPTION_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_.]*)(?:Error|Exception)\b.*")
 _JS_EXCEPTION_RE = re.compile(r"^\s*(Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError)\b.*")
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _has_frames(lines: list[_Line], i: int) -> bool:
@@ -75,7 +56,7 @@ def _is_block_start(lines: list[_Line], i: int) -> bool:
 
 
 def _infer_kind(block_text: str) -> str:
-    lowered = (block_text or "").lower()
+    lowered = (block_text).lower()
     if "traceback (most recent call last)" in lowered:
         return "python"
     if "\tat " in block_text or re.search(r"(?m)^\s*at\s+\S+", block_text):
@@ -92,14 +73,14 @@ def _infer_exception(lines: list[_Line], start: int, end: int) -> str | None:
             continue
         m = _JS_EXCEPTION_RE.match(p)
         if m:
-            return (m.group(0) or "").strip()[:160] or None
+            return m.group(0).strip()[:160]
         m = _PY_EXCEPTION_RE.match(p)
         if m:
-            return p[:160] or None
+            return p[:160]
         if p.lower().startswith("caused by:"):
-            return p[:160] or None
+            return p[:160]
         if "exception" in p.lower() or "error" in p.lower():
-            return p[:160] or None
+            return p[:160]
     return None
 
 
@@ -115,8 +96,6 @@ def _build_blocks(text: str) -> list[_Block]:
     if not text:
         return []
     lines = _iter_lines(text)
-    if not lines:
-        return []
 
     starts: list[int] = []
     for i in range(len(lines)):
@@ -130,7 +109,7 @@ def _build_blocks(text: str) -> list[_Block]:
     for idx, i in enumerate(starts):
         j = starts[idx + 1] if idx + 1 < len(starts) else len(lines)
         start_pos = lines[i].start
-        end_pos = lines[j - 1].end if j - 1 >= i else lines[i].end
+        end_pos = lines[j - 1].end
         block_text = text[start_pos:end_pos]
         kind = _infer_kind(block_text)
         exc = _infer_exception(lines, i, j)
@@ -145,7 +124,7 @@ def looks_like_stacktrace(text: str) -> bool:
         return False
     if _PY_START_RE.search(text):
         return True
-    head_lines = (text or "").splitlines()[:200]
+    head_lines = (text).splitlines()[:200]
     frame_lines = 0
     exc_lines = 0
     for ln in head_lines:
@@ -157,7 +136,7 @@ def looks_like_stacktrace(text: str) -> bool:
 
 
 class StackTraceChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -173,7 +152,7 @@ class StackTraceChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue
@@ -198,7 +177,7 @@ class StackTraceChunker(BaseChunker):
                     meta.setdefault("doc_type_kwd", "stacktrace")
 
                     meta["stacktrace_kind"] = b.kind
-                    meta["stacktrace_frame_count"] = int(b.frame_count)
+                    meta["stacktrace_frame_count"] = b.frame_count
                     if b.exception:
                         meta["stacktrace_exception"] = b.exception
 

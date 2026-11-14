@@ -49,9 +49,7 @@ def verify_model_snapshot(model_dir: str | Path) -> int:
 
         actual = _sha256(candidate)
         if actual != expected:
-            raise RuntimeError(
-                f"model checksum mismatch: {relative_name} expected={expected} actual={actual}"
-            )
+            raise RuntimeError(f"model checksum mismatch: {relative_name} expected={expected} actual={actual}")
         verified += 1
 
     if verified == 0:

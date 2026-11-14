@@ -26,10 +26,8 @@ class _Block:
     end: int
     kind: str
     title: str | None
-    level: int
 
 
-_SERVER_OPEN_RE = re.compile(r"(?m)^\s*server\s*\{")
 _BLOCK_OPEN_RE = re.compile(
     r"(?m)^\s*(?P<kind>http|server|location|upstream|map|events)\b(?P<rest>[^;{]*)\{\s*(?:#.*)?$"
 )
@@ -43,8 +41,8 @@ def _extract_directive_value(text: str, directive: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(text or "")
-    d = str(directive or "").strip()
+    raw = text
+    d = directive.strip()
     if not raw or not d:
         return None
     d_cf = d.casefold()
@@ -94,15 +92,15 @@ def _find_matching_brace(text: str, start: int) -> int | None:
 def _iter_named_blocks(text: str, kind: str) -> list[_Block]:
     blocks: list[_Block] = []
     for m in _BLOCK_OPEN_RE.finditer(text):
-        if (m.group("kind") or "").strip().lower() != kind:
+        if (m.group("kind")).strip().lower() != kind:
             continue
         start = m.start()
         end = _find_matching_brace(text, start)
         if end is None:
             continue
-        rest = (m.group("rest") or "").strip()
+        rest = (m.group("rest")).strip()
         title = rest if rest else None
-        blocks.append(_Block(start=start, end=end, kind=kind, title=title, level=1))
+        blocks.append(_Block(start=start, end=end, kind=kind, title=title))
     return blocks
 
 
@@ -113,7 +111,6 @@ def _build_blocks(text: str) -> list[_Block]:
     server_blocks = _iter_named_blocks(text, "server")
     if server_blocks:
         # Ensure stable ordering and no overlaps.
-        server_blocks = sorted(server_blocks, key=lambda b: b.start)
         dedup: list[_Block] = []
         last_end = -1
         for b in server_blocks:
@@ -127,10 +124,9 @@ def _build_blocks(text: str) -> list[_Block]:
     for k in ("http", "upstream", "location", "events", "map"):
         blocks = _iter_named_blocks(text, k)
         if blocks:
-            blocks = sorted(blocks, key=lambda b: b.start)
             return blocks
 
-    return [_Block(start=0, end=len(text), kind="nginx", title=None, level=0)]
+    return [_Block(start=0, end=len(text), kind="nginx", title=None)]
 
 
 def looks_like_nginx_config(text: str) -> bool:
@@ -147,7 +143,7 @@ def looks_like_nginx_config(text: str) -> bool:
 
 
 class NginxConfigChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -195,8 +191,8 @@ class NginxConfigChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

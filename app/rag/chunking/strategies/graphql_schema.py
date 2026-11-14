@@ -7,7 +7,6 @@ Targets .graphql/.gql schema files and splits by top-level definitions such as:
 Offsets are preserved.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +14,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ _KINDS = frozenset({"type", "input", "enum", "interface", "union", "scalar", "di
 
 
 def _take_name_token(text: str) -> str | None:
-    s = str(text or "").lstrip()
+    s = text.lstrip()
     if not s:
         return None
     first = s[0]
@@ -46,7 +46,7 @@ def _take_name_token(text: str) -> str | None:
     i = 1
     while i < len(s) and (s[i].isalnum() or s[i] == "_"):
         i += 1
-    return s[:i] if i > 0 else None
+    return s[:i]
 
 
 def _parse_def_line(line: str) -> tuple[str, str | None] | None:
@@ -55,13 +55,11 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").strip()
+    raw = line.strip()
     if not raw or raw.startswith("#"):
         return None
 
     parts = raw.split(None, 1)
-    if not parts:
-        return None
     first = parts[0].casefold()
     rest = parts[1] if len(parts) > 1 else ""
 
@@ -83,38 +81,27 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
         at = rest.find("@")
         if at >= 0:
             name = _take_name_token(rest[at + 1 :])
-    return kind, (name or None)
+    return kind, name
 
 
 def _iter_defs(text: str) -> list[_Def]:
     defs: list[_Def] = []
-    offset = 0
-    for raw_line in (text or "").splitlines(keepends=True):
-        line_start = offset
-        offset += len(raw_line)
-        plain = raw_line.rstrip("\r\n")
-        parsed = _parse_def_line(plain)
+    for ln in _iter_lines(text):
+        parsed = _parse_def_line(ln.plain)
         if not parsed:
             continue
         kind, name = parsed
         defs.append(
             _Def(
-                start=int(line_start),
-                end=int(line_start + len(raw_line)),
-                kind=str(kind),
+                start=ln.start,
+                end=ln.end,
+                kind=kind,
                 name=name,
                 index=len(defs),
             )
         )
 
-    deduped: list[_Def] = []
-    last_start = -1
-    for d in defs:
-        if d.start == last_start:
-            continue
-        deduped.append(d)
-        last_start = d.start
-    return deduped
+    return defs
 
 
 def _build_sections(text: str, defs: list[_Def]) -> list[_Section]:
@@ -139,13 +126,13 @@ def looks_like_graphql_schema(text: str) -> bool:
     if len(defs) >= 3:
         return True
     # Heuristic: at least 2 defs + GraphQL-ish punctuation.
-    if len(defs) >= 2 and ("type " in (text or "").lower() or "schema {" in (text or "").lower()):
+    if len(defs) >= 2 and ("type " in (text).lower() or "schema {" in (text).lower()):
         return True
     return False
 
 
 class GraphQLSchemaChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -161,7 +148,7 @@ class GraphQLSchemaChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

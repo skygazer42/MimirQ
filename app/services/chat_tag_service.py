@@ -29,7 +29,7 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.rag.policy.must_recall import normalize_source_keys
 from app.services.table_sql_fingerprint import fingerprint_sql
-from app.services.table_store_service import run_table_query
+from app.services.table_store_service import TablePlannerExecutionMismatch, TableQueryResult, run_table_query
 from app.services.table_tag_service import (
     generate_sql_for_table,
     generate_sql_for_table_with_metadata,
@@ -72,7 +72,7 @@ class _TableQueryLimits:
 
 
 def _normalize_source_hint(text: str) -> str:
-    s = str(text or "").strip()
+    s = text.strip()
     if not s:
         return ""
     s = s.strip("'\"`“”")
@@ -86,7 +86,16 @@ def _source_key_match(expected_key: str, candidate_value: str) -> bool:
         return False
     ek_fold = ek.casefold()
     cv_fold = cv.casefold()
-    return bool(ek_fold == cv_fold or ek_fold in cv_fold or cv_fold in ek_fold)
+    return ek_fold == cv_fold or ek_fold in cv_fold or cv_fold in ek_fold
+
+
+def _candidate_aliases(candidate: _TableCandidate) -> list[str]:
+    aliases = [candidate.table_id, candidate.filename]
+    if candidate.sheet_name is not None:
+        sheet_name = candidate.sheet_name.strip()
+        if sheet_name:
+            aliases.append(sheet_name)
+    return aliases
 
 
 def _candidate_source_keys(candidate: _TableCandidate) -> list[str]:
@@ -98,12 +107,14 @@ def _candidate_source_keys(candidate: _TableCandidate) -> list[str]:
         candidate.filename,
         str(candidate.document_id),
     ):
-        s = _normalize_source_hint(str(raw or ""))
+        if raw is None:
+            continue
+        s = _normalize_source_hint(raw)
         if not s:
             continue
         if s not in out:
             out.append(s)
-    filename = _normalize_source_hint(str(candidate.filename or ""))
+    filename = _normalize_source_hint(candidate.filename)
     if filename and "." in filename:
         stem = filename.rsplit(".", 1)[0].strip()
         if stem and stem not in out:
@@ -112,7 +123,7 @@ def _candidate_source_keys(candidate: _TableCandidate) -> list[str]:
 
 
 def _candidate_matches_source_keys(candidate: _TableCandidate, expected_source_keys: list[str]) -> bool:
-    expected = [s for s in expected_source_keys if str(s or "").strip()]
+    expected = [s for s in expected_source_keys if s.strip()]
     if not expected:
         return True
     values = _candidate_source_keys(candidate)
@@ -125,30 +136,28 @@ def _candidate_matches_source_keys(candidate: _TableCandidate, expected_source_k
 
 
 def _enabled_reason() -> tuple[bool, str]:
-    if not bool(getattr(settings, "CHAT_TAG_ENABLED", False)):
+    if not settings.CHAT_TAG_ENABLED:
         return False, "CHAT_TAG_ENABLED=false"
-    if not bool(getattr(settings, "TABLE_NL2SQL_ENABLED", False)):
+    if not settings.TABLE_NL2SQL_ENABLED:
         return False, "TABLE_NL2SQL_ENABLED=false"
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+    if not settings.TABLE_LLM_ALLOW_RESULT_EGRESS:
         # Chat will inject query results into the LLM context; treat this as "result egress".
         return False, "TABLE_LLM_ALLOW_RESULT_EGRESS=false"
-    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
-    deterministic_ok = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False)) or bool(
-        getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True)
-    )
+    has_llm_key = bool((settings.LLM_API_KEY).strip())
+    deterministic_ok = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY or settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
     if not has_llm_key and not deterministic_ok:
         return False, "LLM_API_KEY is not configured"
     return True, "ok"
 
 
 def _extract_terms(text: str, *, max_terms: int = 12) -> list[str]:
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return []
     out: list[str] = []
     seen: set[str] = set()
     for m in _TERM_RE.finditer(raw):
-        t = (m.group(0) or "").strip()
+        t = m.group(0).strip()
         if not t:
             continue
         key = t.casefold() if t.isascii() else t
@@ -179,13 +188,15 @@ def _score_candidate(
 ) -> int:
     if not terms:
         return 0
+    if sheet_name is not None:
+        sheet_name = sheet_name.strip()
     sample_blob = _sample_value_blob(sample_rows)
-    col_names = [str(c.get("name") or "") for c in (columns or []) if isinstance(c, dict)]
+    col_names = [c["name"] for c in (columns or []) if isinstance(c, dict)]
     return sum(
         _score_candidate_term(
             term,
-            filename=filename or "",
-            sheet_name=sheet_name or "",
+            filename=filename,
+            sheet_name=sheet_name,
             col_names=col_names,
             sample_blob=sample_blob,
         )
@@ -214,7 +225,7 @@ def _score_candidate_term(
     term: str,
     *,
     filename: str,
-    sheet_name: str,
+    sheet_name: str | None,
     col_names: list[str],
     sample_blob: str,
 ) -> int:
@@ -243,7 +254,7 @@ def _tag_doc_uuid(table_id: str) -> UUID:
 
     Reason: chat API citations require UUID chunk_id; TAG context docs are not real chunks.
     """
-    return uuid5(UUID("00000000-0000-0000-0000-000000000000"), f"mimirq:tag:{str(table_id or '').strip()}")
+    return uuid5(UUID("00000000-0000-0000-0000-000000000000"), f"mimirq:tag:{table_id.strip()}")
 
 
 def build_chat_tag_context_docs(
@@ -260,7 +271,7 @@ def build_chat_tag_context_docs(
     Returns: (docs, meta)
     """
     enabled, reason = _enabled_reason()
-    meta: dict[str, Any] = {"enabled": bool(enabled), "reason": reason, "used": False}
+    meta: dict[str, Any] = {"enabled": enabled, "reason": reason, "used": False}
     if not enabled:
         return [], meta
     if db is None or tenant_id is None:
@@ -272,14 +283,14 @@ def build_chat_tag_context_docs(
         meta["reason"] = "no_document_ids"
         return [], meta
 
-    max_doc_ids = int(getattr(settings, "CHAT_TAG_MAX_DOC_IDS", 1000) or 1000)
+    max_doc_ids = settings.CHAT_TAG_MAX_DOC_IDS or 1000
     if max_doc_ids > 0 and len(doc_ids) > max_doc_ids:
         meta["reason"] = f"too_many_document_ids (max {max_doc_ids})"
         meta["document_ids"] = len(doc_ids)
         return [], meta
 
-    intent = bool(_TABLE_INTENT_RE.search(question or ""))
-    terms = _extract_terms(question or "", max_terms=12)
+    intent = bool(_TABLE_INTENT_RE.search(question))
+    terms = _extract_terms(question, max_terms=12)
     candidates = _load_table_candidates(db, tenant_id=tenant_id, doc_ids=doc_ids, terms=terms)
     if not candidates:
         meta["reason"] = "no_table_assets"
@@ -346,20 +357,20 @@ def _load_table_candidates(
     return candidates
 
 
-def _table_candidates_from_document(document: Any, *, terms: list[str]) -> list[_TableCandidate]:
-    dataset_id = getattr(document, "dataset_id", None)
+def _table_candidates_from_document(document: DBDocument, *, terms: list[str]) -> list[_TableCandidate]:
+    dataset_id = document.dataset_id
     if dataset_id is None:
         return []
 
-    filename = str(getattr(document, "filename", "") or "").strip()
-    file_type = str(getattr(document, "file_type", "") or "").strip().lower()
-    metadata = getattr(document, "doc_metadata", None) or {}
+    filename = (document.filename).strip()
+    file_type = (document.file_type).strip().lower()
+    metadata = document.doc_metadata or {}
     metadata = metadata if isinstance(metadata, dict) else {}
     store = metadata.get("table_store")
     if not isinstance(store, dict):
         return []
 
-    source_ext = str(store.get("source_ext") or "").strip().lower() or None
+    source_ext = store.get("source_ext")
     tables = store.get("tables")
     if not isinstance(tables, list):
         return []
@@ -382,7 +393,7 @@ def _table_candidates_from_document(document: Any, *, terms: list[str]) -> list[
 
 def _table_candidate_from_store_entry(
     *,
-    document: Any,
+    document: DBDocument,
     dataset_id: UUID,
     filename: str,
     file_type: str,
@@ -393,7 +404,10 @@ def _table_candidate_from_store_entry(
     if not isinstance(table, dict):
         return None
 
-    table_id = str(table.get("table_id") or "").strip()
+    table_id = table.get("table_id")
+    if table_id is None:
+        return None
+    table_id = table_id.strip()
     if not table_id:
         return None
 
@@ -401,7 +415,7 @@ def _table_candidate_from_store_entry(
     samples = table.get("sample_rows")
     columns = [col for col in cols if isinstance(col, dict)] if isinstance(cols, list) else []
     sample_rows = [row for row in samples if isinstance(row, dict)] if isinstance(samples, list) else []
-    sheet_name = _optional_str(table.get("sheet_name"))
+    sheet_name = table.get("sheet_name")
     return _TableCandidate(
         document_id=document.id,
         dataset_id=dataset_id,
@@ -415,9 +429,9 @@ def _table_candidate_from_store_entry(
         col_count=_safe_int(table.get("col_count")),
         columns=columns,
         sample_rows=sample_rows,
-        row_source_table=_optional_str(table.get("row_source_table")),
-        row_source_sync_token=_optional_str(table.get("row_source_sync_token")),
-        row_source_pk_hash_col=_optional_str(table.get("row_source_pk_hash_col")),
+        row_source_table=table.get("row_source_table"),
+        row_source_sync_token=table.get("row_source_sync_token"),
+        row_source_pk_hash_col=table.get("row_source_pk_hash_col"),
         score=_score_candidate(
             terms=terms,
             filename=filename,
@@ -435,11 +449,6 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-def _optional_str(value: Any) -> str | None:
-    text = str(value).strip() if value is not None else ""
-    return text or None
-
-
 def _apply_source_key_match(
     candidates: list[_TableCandidate],
     *,
@@ -447,8 +456,8 @@ def _apply_source_key_match(
     meta: dict[str, Any],
 ) -> tuple[list[_TableCandidate], list[str]]:
     expected_source_keys = normalize_source_keys(must_recall_expected_source_keys)
-    source_key_match_enabled = bool(getattr(settings, "CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH", True))
-    meta["must_recall_source_key_match_enabled"] = bool(source_key_match_enabled)
+    source_key_match_enabled = settings.CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH
+    meta["must_recall_source_key_match_enabled"] = source_key_match_enabled
     if expected_source_keys:
         meta["must_recall_expected_source_keys"] = expected_source_keys[:20]
     if not source_key_match_enabled or not expected_source_keys:
@@ -459,8 +468,8 @@ def _apply_source_key_match(
         candidate for candidate in candidates if _candidate_matches_source_keys(candidate, expected_source_keys)
     ]
     meta["must_recall_source_key_match_applied"] = True
-    meta["must_recall_source_key_match_candidates_before"] = int(pre_filter_count)
-    meta["must_recall_source_key_match_candidates_after"] = int(len(filtered))
+    meta["must_recall_source_key_match_candidates_before"] = pre_filter_count
+    meta["must_recall_source_key_match_candidates_after"] = len(filtered)
     if filtered:
         return filtered, expected_source_keys
 
@@ -476,13 +485,13 @@ def _pick_candidates(
     intent: bool,
     meta: dict[str, Any],
 ) -> list[_TableCandidate]:
-    min_score = int(getattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1) or 1)
+    min_score = settings.CHAT_TAG_MIN_MATCH_SCORE or 1
     best_score = max((candidate.score for candidate in candidates), default=0)
     if not _passes_match_threshold(candidates, doc_ids=doc_ids, best_score=best_score, intent=intent, meta=meta):
         return []
 
     complex_query = bool(
-        re.search(r"(?i)\b(join|group\s+by|by|per|across|between)\b|按|分组|关联|维度|同比|环比", str(question or ""))
+        re.search(r"(?i)\b(join|group\s+by|by|per|across|between)\b|按|分组|关联|维度|同比|环比", question)
     )
     effective_max_tables, table_pick_policy = _table_pick_policy(
         candidates,
@@ -493,10 +502,10 @@ def _pick_candidates(
     ordered = sorted(
         candidates,
         key=lambda candidate: (
-            -int(candidate.score),
-            -int(candidate.row_count),
-            str(candidate.filename),
-            str(candidate.table_id),
+            -candidate.score,
+            -candidate.row_count,
+            candidate.filename,
+            candidate.table_id,
         ),
     )
     picked = ordered[:effective_max_tables] if effective_max_tables > 0 else []
@@ -505,7 +514,7 @@ def _pick_candidates(
         return []
 
     meta["table_pick_policy"] = table_pick_policy
-    meta["effective_max_tables"] = int(effective_max_tables)
+    meta["effective_max_tables"] = effective_max_tables
     return picked
 
 
@@ -517,10 +526,10 @@ def _passes_match_threshold(
     intent: bool,
     meta: dict[str, Any],
 ) -> bool:
-    min_score = int(getattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1) or 1)
+    min_score = settings.CHAT_TAG_MIN_MATCH_SCORE or 1
     if not intent and best_score < min_score:
         meta["reason"] = "no_intent_and_no_match"
-        meta["best_score"] = int(best_score)
+        meta["best_score"] = best_score
         return False
     if not intent or best_score >= min_score:
         return True
@@ -535,13 +544,13 @@ def _intent_match_fallback(
     meta: dict[str, Any],
 ) -> bool:
     unique_doc_ids = {candidate.document_id for candidate in candidates}
-    if len(doc_ids) == 1 or len(candidates) == 1 or (len(unique_doc_ids) == 1 and len(doc_ids) == 1):
+    if len(doc_ids) == 1 or len(candidates) == 1:
         meta["selection_fallback"] = "single_document" if len(doc_ids) == 1 else "single_table"
         return True
     meta["reason"] = "intent_no_match_ambiguous"
-    meta["best_score"] = int(best_score)
-    meta["candidates"] = int(len(candidates))
-    meta["documents_with_tables"] = int(len(unique_doc_ids))
+    meta["best_score"] = best_score
+    meta["candidates"] = len(candidates)
+    meta["documents_with_tables"] = len(unique_doc_ids)
     return False
 
 
@@ -552,20 +561,20 @@ def _table_pick_policy(
     intent: bool,
     complex_query: bool,
 ) -> tuple[int, str]:
-    max_tables = int(getattr(settings, "CHAT_TAG_MAX_TABLES", 2) or 2)
+    max_tables = settings.CHAT_TAG_MAX_TABLES or 2
     max_tables = max(0, min(max_tables, 5))
-    high_conf = [candidate for candidate in candidates if int(candidate.score) >= int(min_score)]
+    high_conf = [candidate for candidate in candidates if candidate.score >= min_score]
     if max_tables > 1 and complex_query and len(candidates) >= 2 and intent:
         return min(max_tables, 2), "complexity_schema_link_multi_table"
     if not intent or len(high_conf) <= 1:
         return min(max_tables, 1), "single_table_low_complexity"
-    return int(max_tables), "default_cap"
+    return max_tables, "default_cap"
 
 
 def _query_limits() -> _TableQueryLimits:
-    max_rows = int(getattr(settings, "CHAT_TAG_MAX_ROWS", 50) or 50)
-    max_cols = int(getattr(settings, "CHAT_TAG_MAX_COLS", 30) or 30)
-    max_bytes = int(getattr(settings, "CHAT_TAG_MAX_BYTES", 200_000) or 200_000)
+    max_rows = settings.CHAT_TAG_MAX_ROWS or 50
+    max_cols = settings.CHAT_TAG_MAX_COLS or 30
+    max_bytes = settings.CHAT_TAG_MAX_BYTES or 200_000
     if max_rows <= 0:
         max_rows = 50
     if max_cols <= 0:
@@ -624,8 +633,8 @@ def _build_multi_table_docs(
     limits: _TableQueryLimits,
 ) -> tuple[list[Document], dict[str, Any]]:
     join_inputs, by_sql_table = _join_inputs_for_candidates(picked)
-    join_plan = plan_join_query_for_tables(question=str(question or ""), tables=join_inputs, max_rows=limits.max_rows)
-    join_sql = str(join_plan.get("sql") or "").strip()
+    join_plan = plan_join_query_for_tables(question=question, tables=join_inputs, max_rows=limits.max_rows)
+    join_sql = join_plan["sql"].strip()
     planner_diagnostics = _planner_dict(join_plan.get("planner") if isinstance(join_plan, dict) else None)
     join_provenance = planner_diagnostics.get("joins")
     if not isinstance(join_provenance, list):
@@ -648,7 +657,7 @@ def _build_multi_table_docs(
         planner_diagnostics=planner_diagnostics,
         expected_sql_fingerprint=sql_fingerprint,
     )
-    planner_execution_mismatch = _planner_execution_mismatch(result)
+    planner_execution_mismatch = result["planner_execution_mismatch"]
     _raise_for_strict_planner_mismatch(planner_execution_mismatch)
     source_key_match = _candidate_matches_source_keys(primary, expected_source_keys)
     payload = _build_multi_table_payload(
@@ -683,9 +692,9 @@ def _build_multi_table_docs(
     meta.update(
         {
             "used": True,
-            "intent": bool(intent),
-            "candidates": int(len(candidates)),
-            "picked": int(len(selected_candidates)),
+            "intent": intent,
+            "candidates": len(candidates),
+            "picked": len(selected_candidates),
             "returned": 1,
             "multi_table": True,
             "errors": [],
@@ -700,14 +709,14 @@ def _join_inputs_for_candidates(
     join_inputs: list[dict[str, Any]] = []
     by_sql_table: dict[str, _TableCandidate] = {}
     for candidate in picked:
-        sql_table = f"sheet_{int(candidate.sheet_index)}"
+        sql_table = f"sheet_{candidate.sheet_index}"
         by_sql_table[sql_table] = candidate
         join_inputs.append(
             {
                 "table_name": sql_table,
-                "table_aliases": [candidate.table_id, candidate.filename, str(candidate.sheet_name or "")],
+                "table_aliases": _candidate_aliases(candidate),
                 "columns": candidate.columns,
-                "row_count": int(candidate.row_count),
+                "row_count": candidate.row_count,
                 "sample_rows": candidate.sample_rows,
             }
         )
@@ -724,7 +733,10 @@ def _join_plan_risk(planner_diagnostics: dict[str, Any]) -> dict[str, Any] | Non
 
 
 def _sql_fingerprint_from_planner(planner_diagnostics: dict[str, Any], sql: str) -> str:
-    return str(planner_diagnostics.get("sql_fingerprint") or "").strip() or fingerprint_sql(sql, length=16)
+    fingerprint = planner_diagnostics.get("sql_fingerprint")
+    if fingerprint is not None:
+        fingerprint = fingerprint.strip()
+    return fingerprint or fingerprint_sql(sql, length=16)
 
 
 def _selected_sql_tables(
@@ -757,16 +769,16 @@ def _merged_join_schema_link(
     score_values: list[float] = []
     for candidate in selected_candidates:
         diagnostics = score_schema_link_diagnostics(
-            question=str(question or ""),
-            sql_table=f"sheet_{int(candidate.sheet_index)}",
+            question=question,
+            sql_table=f"sheet_{candidate.sheet_index}",
             columns=candidate.columns,
             sample_rows=candidate.sample_rows,
-            table_aliases=[candidate.table_id, candidate.filename, str(candidate.sheet_name or "")],
+            table_aliases=_candidate_aliases(candidate),
         )
-        _extend_unique_strings(matched_columns, diagnostics.get("matched_columns"))
-        _extend_unique_strings(matched_values, diagnostics.get("matched_values"))
-        _extend_unique_strings(matched_tables, diagnostics.get("matched_tables"))
-        score_values.append(_safe_float(diagnostics.get("score")))
+        _extend_unique_strings(matched_columns, diagnostics["matched_columns"])
+        _extend_unique_strings(matched_values, diagnostics["matched_values"])
+        _extend_unique_strings(matched_tables, diagnostics["matched_tables"])
+        score_values.append(diagnostics["score"])
     return {
         "score": round(max(score_values) if score_values else 0.0, 3),
         "strategy": "multi_table_join",
@@ -781,26 +793,14 @@ def _extend_unique_strings(values: list[str], raw_values: Any) -> None:
     if not isinstance(raw_values, list):
         return
     for raw in raw_values:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if text and text not in values:
             values.append(text)
 
 
-def _safe_float(value: Any) -> float:
-    try:
-        return float(value or 0.0)
-    except Exception:
-        return 0.0
-
-
-def _planner_execution_mismatch(result: dict[str, Any]) -> dict[str, Any] | None:
-    mismatch = result.get("planner_execution_mismatch")
-    return mismatch if isinstance(mismatch, dict) else None
-
-
-def _raise_for_strict_planner_mismatch(planner_execution_mismatch: dict[str, Any] | None) -> None:
-    mismatch_strict = bool(getattr(settings, "TABLE_TAG_PLANNER_MISMATCH_STRICT", False))
-    if mismatch_strict and planner_execution_mismatch and bool(planner_execution_mismatch.get("mismatch")):
+def _raise_for_strict_planner_mismatch(planner_execution_mismatch: TablePlannerExecutionMismatch | None) -> None:
+    mismatch_strict = settings.TABLE_TAG_PLANNER_MISMATCH_STRICT
+    if mismatch_strict and planner_execution_mismatch and planner_execution_mismatch["mismatch"]:
         raise ValueError("planner_execution_mismatch")
 
 
@@ -808,12 +808,12 @@ def _build_multi_table_payload(
     *,
     primary: _TableCandidate,
     join_sql: str,
-    result: dict[str, Any],
+    result: TableQueryResult,
     sql_fingerprint: str,
     schema_link_diagnostics: dict[str, Any],
     planner_diagnostics: dict[str, Any],
     join_plan_risk: dict[str, Any] | None,
-    planner_execution_mismatch: dict[str, Any] | None,
+    planner_execution_mismatch: TablePlannerExecutionMismatch | None,
     join_provenance: list[Any],
     selected_candidates: list[_TableCandidate],
     selected_sql_tables: list[str],
@@ -824,11 +824,11 @@ def _build_multi_table_payload(
         "kind": "tag_table_store",
         "document": primary.filename,
         "table_id": primary.table_id,
-        "sheet_index": int(primary.sheet_index),
+        "sheet_index": primary.sheet_index,
         "sheet_name": primary.sheet_name,
-        "row_count": int(primary.row_count),
-        "col_count": int(primary.col_count),
-        "sql": str(result.get("sql") or join_sql),
+        "row_count": primary.row_count,
+        "col_count": primary.col_count,
+        "sql": result["sql"] or join_sql,
         "sql_fingerprint": sql_fingerprint,
         "sql_generation_mode": "deterministic_join",
         "schema_link": schema_link_diagnostics,
@@ -838,11 +838,11 @@ def _build_multi_table_payload(
         "join_provenance": join_provenance,
         "join_table_ids": [candidate.table_id for candidate in selected_candidates],
         "join_sql_tables": selected_sql_tables,
-        "must_recall_source_key_match": bool(source_key_match),
+        "must_recall_source_key_match": source_key_match,
         "must_recall_expected_source_keys": expected_source_keys[:20],
-        "columns": result.get("columns") if isinstance(result.get("columns"), list) else [],
-        "rows": result.get("rows") if isinstance(result.get("rows"), list) else [],
-        "truncated": bool(result.get("truncated")),
+        "columns": result["columns"],
+        "rows": result["rows"],
+        "truncated": result["truncated"],
     }
     return _bounded_payload_text(payload)[1]
 
@@ -855,7 +855,7 @@ def _multi_table_document(
     schema_link_diagnostics: dict[str, Any],
     planner_diagnostics: dict[str, Any],
     join_plan_risk: dict[str, Any] | None,
-    planner_execution_mismatch: dict[str, Any] | None,
+    planner_execution_mismatch: TablePlannerExecutionMismatch | None,
     join_provenance: list[Any],
     selected_candidates: list[_TableCandidate],
     selected_sql_tables: list[str],
@@ -872,7 +872,7 @@ def _multi_table_document(
             "chunk_strategy": "tag",
             "chunk_role": "tag_sql_result",
             "table_id": primary.table_id,
-            "sheet_index": int(primary.sheet_index),
+            "sheet_index": primary.sheet_index,
             "sheet_name": primary.sheet_name,
             "sql_fingerprint": sql_fingerprint,
             "sql_generation_mode": "deterministic_join",
@@ -888,7 +888,7 @@ def _multi_table_document(
             "join_provenance": join_provenance,
             "join_table_ids": [candidate.table_id for candidate in selected_candidates],
             "join_sql_tables": selected_sql_tables,
-            "must_recall_source_key_match": bool(source_key_match),
+            "must_recall_source_key_match": source_key_match,
             "must_recall_expected_source_keys": expected_source_keys[:20],
             "score": 1.0,
             "retrieval_score": 1.0,
@@ -926,10 +926,10 @@ def _build_single_table_docs(
     meta.update(
         {
             "used": bool(out_docs),
-            "intent": bool(intent),
-            "candidates": int(len(candidates)),
-            "picked": int(len(picked)),
-            "returned": int(len(out_docs)),
+            "intent": intent,
+            "candidates": len(candidates),
+            "picked": len(picked),
+            "returned": len(out_docs),
             "errors": errors[:5],
         }
     )
@@ -944,13 +944,13 @@ def _single_table_document(
     expected_source_keys: list[str],
     limits: _TableQueryLimits,
 ) -> Document:
-    sql_table = f"sheet_{int(candidate.sheet_index)}"
+    sql_table = f"sheet_{candidate.sheet_index}"
     schema_link_diagnostics = score_schema_link_diagnostics(
-        question=str(question or ""),
+        question=question,
         sql_table=sql_table,
         columns=candidate.columns,
         sample_rows=candidate.sample_rows,
-        table_aliases=[candidate.table_id, candidate.filename, str(candidate.sheet_name or "")],
+        table_aliases=_candidate_aliases(candidate),
     )
     sql, sql_generation_mode, sql_fingerprint, planner_diagnostics, schema_link_diagnostics = _single_table_sql_plan(
         candidate=candidate,
@@ -971,7 +971,7 @@ def _single_table_document(
         planner_diagnostics=planner_diagnostics,
         expected_sql_fingerprint=sql_fingerprint,
     )
-    planner_execution_mismatch = _planner_execution_mismatch(result)
+    planner_execution_mismatch = result["planner_execution_mismatch"]
     _raise_for_strict_planner_mismatch(planner_execution_mismatch)
     source_key_match = _candidate_matches_source_keys(candidate, expected_source_keys)
     payload = _single_table_payload(
@@ -1012,21 +1012,19 @@ def _single_table_sql_plan(
     planner_diagnostics: dict[str, Any] | None = None
     sql_generation_mode = "llm"
     sql_fingerprint = ""
-    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
-    deterministic_only = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False))
-    deterministic_fallback = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True))
-    dbrows_sql_first = bool(
-        getattr(settings, "CHAT_TAG_DBROWS_SQL_FIRST_ENABLED", True) and _is_dbrows_candidate(candidate)
-    )
+    has_llm_key = bool((settings.LLM_API_KEY).strip())
+    deterministic_only = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY
+    deterministic_fallback = settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
+    dbrows_sql_first = settings.CHAT_TAG_DBROWS_SQL_FIRST_ENABLED and _is_dbrows_candidate(candidate)
 
     if deterministic_only or dbrows_sql_first or (not has_llm_key and deterministic_fallback):
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
-            question=str(question or ""),
+            question=question,
             sql_table=sql_table,
             columns=candidate.columns,
             max_rows=limits.max_rows,
             sample_rows=candidate.sample_rows,
-            table_aliases=[candidate.table_id, candidate.filename, str(candidate.sheet_name or "")],
+            table_aliases=_candidate_aliases(candidate),
         )
         planner_diagnostics, schema_link_diagnostics, sql_fingerprint = _sql_plan_metadata(
             sql_meta,
@@ -1034,7 +1032,7 @@ def _single_table_sql_plan(
         )
     else:
         sql = generate_sql_for_table(
-            question=str(question or ""),
+            question=question,
             sql_table=sql_table,
             columns=candidate.columns,
             max_rows=limits.max_rows,
@@ -1050,10 +1048,13 @@ def _single_table_sql_plan(
 
 
 def _is_dbrows_candidate(candidate: _TableCandidate) -> bool:
-    return bool(
-        str(candidate.file_type or "").strip().lower() == "dbrows"
-        or str(candidate.source_ext or "").strip().lower() == ".dbrows"
-        or str(candidate.filename or "").strip().lower().endswith(".dbrows")
+    source_ext = candidate.source_ext
+    if source_ext is not None:
+        source_ext = source_ext.strip().lower()
+    return (
+        (candidate.file_type).strip().lower() == "dbrows"
+        or source_ext == ".dbrows"
+        or (candidate.filename).strip().lower().endswith(".dbrows")
     )
 
 
@@ -1061,18 +1062,24 @@ def _sql_plan_metadata(
     sql_meta: Any,
     *,
     schema_link_diagnostics: dict[str, Any],
-) -> tuple[dict[str, Any] | None, dict[str, Any], str]:
+) -> tuple[dict[str, Any] | None, dict[str, Any], str | None]:
     if not isinstance(sql_meta, dict):
-        return None, schema_link_diagnostics, ""
+        return None, schema_link_diagnostics, None
     linked = sql_meta.get("schema_link")
     if isinstance(linked, dict):
         schema_link_diagnostics = linked
     planner = sql_meta.get("planner")
     planner_diagnostics = planner if isinstance(planner, dict) else None
-    planner_fp = ""
+    planner_fp = None
     if isinstance(planner_diagnostics, dict):
-        planner_fp = str(planner_diagnostics.get("sql_fingerprint") or "").strip()
-    sql_fingerprint = str(sql_meta.get("sql_fingerprint") or planner_fp or "").strip()
+        planner_fp = planner_diagnostics.get("sql_fingerprint")
+        if planner_fp is not None:
+            planner_fp = planner_fp.strip()
+    sql_fingerprint = sql_meta.get("sql_fingerprint")
+    if sql_fingerprint is not None:
+        sql_fingerprint = sql_fingerprint.strip()
+    if not sql_fingerprint:
+        sql_fingerprint = planner_fp
     return planner_diagnostics, schema_link_diagnostics, sql_fingerprint
 
 
@@ -1080,13 +1087,13 @@ def _single_table_payload(
     *,
     candidate: _TableCandidate,
     sql: str,
-    result: dict[str, Any],
+    result: TableQueryResult,
     sql_fingerprint: str,
     sql_generation_mode: str,
     schema_link_diagnostics: dict[str, Any],
     planner_diagnostics: dict[str, Any] | None,
     join_plan_risk: dict[str, Any] | None,
-    planner_execution_mismatch: dict[str, Any] | None,
+    planner_execution_mismatch: TablePlannerExecutionMismatch | None,
     source_key_match: bool,
     expected_source_keys: list[str],
 ) -> dict[str, Any]:
@@ -1094,22 +1101,22 @@ def _single_table_payload(
         "kind": "tag_table_store",
         "document": candidate.filename,
         "table_id": candidate.table_id,
-        "sheet_index": int(candidate.sheet_index),
+        "sheet_index": candidate.sheet_index,
         "sheet_name": candidate.sheet_name,
-        "row_count": int(candidate.row_count),
-        "col_count": int(candidate.col_count),
-        "sql": str(result.get("sql") or sql),
+        "row_count": candidate.row_count,
+        "col_count": candidate.col_count,
+        "sql": result["sql"] or sql,
         "sql_fingerprint": sql_fingerprint,
         "sql_generation_mode": sql_generation_mode,
         "schema_link": schema_link_diagnostics,
         "planner": planner_diagnostics,
         "join_plan_risk": join_plan_risk,
         "planner_execution_mismatch": planner_execution_mismatch,
-        "must_recall_source_key_match": bool(source_key_match),
+        "must_recall_source_key_match": source_key_match,
         "must_recall_expected_source_keys": expected_source_keys[:20],
-        "columns": result.get("columns") if isinstance(result.get("columns"), list) else [],
-        "rows": result.get("rows") if isinstance(result.get("rows"), list) else [],
-        "truncated": bool(result.get("truncated")),
+        "columns": result["columns"],
+        "rows": result["rows"],
+        "truncated": result["truncated"],
     }
     row_source = _row_source_payload(candidate, payload)
     if row_source:
@@ -1133,7 +1140,7 @@ def _row_source_payload(candidate: _TableCandidate, payload: dict[str, Any]) -> 
 
 
 def _row_source_pk_hashes(candidate: _TableCandidate, payload: dict[str, Any]) -> list[str]:
-    pk_hash_col = str(candidate.row_source_pk_hash_col or "__row_pk_hash").strip() or "__row_pk_hash"
+    pk_hash_col = (candidate.row_source_pk_hash_col or "__row_pk_hash").strip() or "__row_pk_hash"
     column_names = payload.get("columns") if isinstance(payload.get("columns"), list) else []
     rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
     if pk_hash_col not in column_names or not rows:
@@ -1143,7 +1150,10 @@ def _row_source_pk_hashes(candidate: _TableCandidate, payload: dict[str, Any]) -
     for row in rows:
         if not isinstance(row, list) or idx_pk >= len(row):
             continue
-        value = str(row[idx_pk] or "").strip()
+        value = row[idx_pk]
+        if value is None:
+            continue
+        value = value.strip()
         if not value or value in pk_hashes:
             continue
         pk_hashes.append(value)
@@ -1161,7 +1171,7 @@ def _single_table_payload_document(
     schema_link_diagnostics: dict[str, Any],
     planner_diagnostics: dict[str, Any] | None,
     join_plan_risk: dict[str, Any] | None,
-    planner_execution_mismatch: dict[str, Any] | None,
+    planner_execution_mismatch: TablePlannerExecutionMismatch | None,
     source_key_match: bool,
     expected_source_keys: list[str],
 ) -> Document:
@@ -1176,7 +1186,7 @@ def _single_table_payload_document(
             "chunk_strategy": "tag",
             "chunk_role": "tag_sql_result",
             "table_id": candidate.table_id,
-            "sheet_index": int(candidate.sheet_index),
+            "sheet_index": candidate.sheet_index,
             "sheet_name": candidate.sheet_name,
             "sql_fingerprint": sql_fingerprint,
             "sql_generation_mode": sql_generation_mode,
@@ -1195,7 +1205,7 @@ def _single_table_payload_document(
             "join_plan_risk_fanout_explosive": bool((join_plan_risk or {}).get("fanout_explosive")),
             "join_plan_risk_selectivity_unknown": bool((join_plan_risk or {}).get("selectivity_unknown")),
             "planner_execution_mismatch": planner_execution_mismatch,
-            "must_recall_source_key_match": bool(source_key_match),
+            "must_recall_source_key_match": source_key_match,
             "must_recall_expected_source_keys": expected_source_keys[:20],
             "row_source_table": row_source.get("table") if isinstance(row_source, dict) else candidate.row_source_table,
             "row_source_sync_token": (

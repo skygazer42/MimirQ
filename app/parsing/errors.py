@@ -23,7 +23,7 @@ class ParsingError(RuntimeError):
         super().__init__(message)
         self.code = str(code or "unknown")
         self.details: dict[str, Any] = dict(details or {})
-        self.log_tail = str(log_tail or "")
+        self.log_tail = log_tail
         self.retryable = bool(retryable)
 
 
@@ -61,7 +61,7 @@ def classify_parser_subprocess_error(exc: Exception) -> ParsingError:
     log_tail_raw = getattr(exc, "log_tail", "")
     log_tail = log_tail_raw if isinstance(log_tail_raw, str) else str(log_tail_raw)
 
-    norm = message.lower().strip()
+    norm = message.lower()
 
     if norm == "worker_timeout":
         return ParsingTimeoutError(message, details=details, log_tail=log_tail)

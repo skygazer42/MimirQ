@@ -278,12 +278,15 @@ async def test_kg_enqueue_response_rejects_duplicate_job_handoff(monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("legacy_hash", [None, "legacy-version"])
+async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(
+    monkeypatch: pytest.MonkeyPatch, legacy_hash
+) -> None:
     from app.rag.kg.api import routes
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
-    document = SimpleNamespace(doc_metadata={})
+    document = SimpleNamespace(doc_metadata={"pipeline_hash": legacy_hash})
     captured: dict[str, object] = {}
 
     async def _enqueue(**kwargs):  # noqa: ANN003, ANN202
@@ -327,7 +330,7 @@ async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(monkeypatch
 async def test_record_chunk_index_drift_only_enqueues_document_scoped_bm25_reconcile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import documents
+    from app.api.v1 import document_chunks_write
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -346,14 +349,14 @@ async def test_record_chunk_index_drift_only_enqueues_document_scoped_bm25_recon
     def _record_index_drift_item(*, marker, reconcile_task_id=None, **_kwargs):  # noqa: ANN003, ANN202
         recorded.append((str(marker.get("channel") or ""), reconcile_task_id))
 
-    monkeypatch.setattr(documents, "_enqueue_index_drift_reconcile", _enqueue, raising=True)
+    monkeypatch.setattr(document_chunks_write, "_enqueue_index_drift_reconcile", _enqueue, raising=True)
     monkeypatch.setattr(
         "app.services.index_audit_service.record_index_drift_item",
         _record_index_drift_item,
         raising=True,
     )
 
-    operation_result, _markers, reconcile_task_id = await documents._record_chunk_index_drift(
+    operation_result, _markers, reconcile_task_id = await document_chunks_write._record_chunk_index_drift(
         db=db,
         document=document,
         chunk=chunk,
@@ -374,7 +377,7 @@ async def test_record_chunk_index_drift_only_enqueues_document_scoped_bm25_recon
     assert recorded == [("vector", None), ("bm25", None)]
 
     recorded.clear()
-    operation_result, _markers, reconcile_task_id = await documents._record_chunk_index_drift(
+    operation_result, _markers, reconcile_task_id = await document_chunks_write._record_chunk_index_drift(
         db=db,
         document=document,
         chunk=chunk,
@@ -402,9 +405,9 @@ async def test_record_chunk_index_drift_only_enqueues_document_scoped_bm25_recon
 
     recorded.clear()
     enqueue_calls.clear()
-    monkeypatch.setattr(documents, "_enqueue_index_drift_reconcile", _not_enqueued, raising=True)
+    monkeypatch.setattr(document_chunks_write, "_enqueue_index_drift_reconcile", _not_enqueued, raising=True)
 
-    operation_result, _markers, reconcile_task_id = await documents._record_chunk_index_drift(
+    operation_result, _markers, reconcile_task_id = await document_chunks_write._record_chunk_index_drift(
         db=db,
         document=document,
         chunk=chunk,

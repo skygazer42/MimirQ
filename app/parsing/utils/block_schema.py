@@ -1,7 +1,9 @@
-
 import re
+from collections.abc import Mapping
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 from app.rag.core.logging import get_logger
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
@@ -25,31 +27,46 @@ _KIND_ALIASES = {
 }
 
 
-def clean_position_tags(text: Any) -> str:
-    return POSITION_TAG_RE.sub("", str(text or "")).strip()
+def block_bbox_value(element: Mapping[str, Any], key: str) -> float | None:
+    bbox = element.get("bbox")
+    if isinstance(bbox, Mapping):
+        return _coerce_float(bbox.get(key))
+    return None
+
+
+def block_page(element: Mapping[str, Any]) -> int | None:
+    page = _coerce_int(element.get("page"))
+    if page is not None and page > 0:
+        return page
+    pages = element.get("pages")
+    if isinstance(pages, list) and pages:
+        first = _coerce_int(pages[0])
+        if first is not None and first > 0:
+            return first
+    return None
+
+
+def block_text(element: Mapping[str, Any]) -> str:
+    value = element.get("text")
+    if value is None:
+        value = element.get("element_text")
+    return str(value).strip() if value is not None else ""
+
+
+def clean_position_tags(text: str) -> str:
+    return POSITION_TAG_RE.sub("", text).strip()
 
 
 def normalize_block_kind(kind: Any) -> str:
-    return _KIND_ALIASES.get(str(kind or "").strip().lower(), "paragraph")
+    key = kind.strip().lower() if isinstance(kind, str) else None
+    return _KIND_ALIASES.get(key, "paragraph")
 
 
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        number = float(value)
-        if number != number:
-            return None
-        return float(number)
-    except Exception:
-        return None
-
-
-def parse_position_tags(text: Any) -> list[dict[str, Any]]:
+def parse_position_tags(text: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for match in POSITION_TAG_RE.finditer(str(text or "")):
+    for match in POSITION_TAG_RE.finditer(text):
         pages: list[int] = []
-        for token in str(match.group(1) or "").split("-"):
+        for token in match.group(1).split("-"):
             try:
                 page = int(token)
             except Exception:
@@ -81,7 +98,7 @@ def parse_position_tags(text: Any) -> list[dict[str, Any]]:
 
 def build_block_element(
     *,
-    text: Any,
+    text: str,
     kind: Any,
     source_backend: str,
     source_element_id: str,
@@ -91,7 +108,8 @@ def build_block_element(
     normalized_kind = normalize_block_kind(kind)
     positions = parse_position_tags(text)
     first_position = positions[0] if positions else {}
-    native_kind = str(kind or "").strip().lower() or normalized_kind
+    raw_kind = kind.strip().lower() if isinstance(kind, str) else None
+    native_kind = raw_kind or normalized_kind
     merged_attributes: dict[str, Any] = {
         "source_backend": source_backend,
         "source_element_id": source_element_id,
@@ -122,12 +140,15 @@ def build_block_element(
         confidence_value = merged_attributes.get("ocr_confidence")
     confidence = _coerce_float(confidence_value)
     if confidence is not None:
-        element["confidence"] = max(0.0, min(1.0, float(confidence)))
+        element["confidence"] = max(0.0, min(1.0, confidence))
     return {key: value for key, value in element.items() if value not in (None, "", [])}
 
 
 __all__ = [
     "POSITION_TAG_RE",
+    "block_bbox_value",
+    "block_page",
+    "block_text",
     "build_block_element",
     "clean_position_tags",
     "normalize_block_kind",

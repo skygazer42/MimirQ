@@ -23,14 +23,10 @@ logger = get_logger("rag.chunking.strategies.markdown")
 
 
 def _find_chunk_position(text: str, chunk_text: str, *, search_pos: int) -> tuple[int, int]:
-    start = text.find(chunk_text, max(0, int(search_pos)))
+    start = text.find(chunk_text, max(0, search_pos))
     if start < 0:
-        start = max(0, min(int(search_pos), len(text)))
+        start = max(0, min(search_pos, len(text)))
     return start, min(len(text), start + len(chunk_text))
-
-
-def _is_list_item_start(pattern: re.Pattern[str], line: str) -> bool:
-    return bool(pattern.match(line or ""))
 
 
 def _is_list_continuation(line: str) -> bool:
@@ -45,7 +41,7 @@ def _list_item_end(lines: list[str], *, start: int, pattern: re.Pattern[str]) ->
     index = start + 1
     while index < len(lines):
         line = lines[index]
-        if _is_list_item_start(pattern, line):
+        if pattern.match(line):
             break
         if not line.strip():
             next_nonempty = index + 1
@@ -90,7 +86,7 @@ class MarkdownHeaderChunker(BaseChunker):
         headers_to_split_on: list[tuple[str, str]] | None = None,
         strip_headers: bool = False,
         return_each_line: bool = False,
-    ):
+    ) -> None:
         """
         Initialize the Markdown header chunker.
 
@@ -210,7 +206,7 @@ class MarkdownHeaderChunker(BaseChunker):
         return max(end_pos - self.chunk_overlap, start_pos + 1)
 
     def _split_markdown_document(self, doc: Document, all_chunks: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
         if not self._is_markdown(text):
@@ -266,19 +262,19 @@ class MarkdownHeaderChunker(BaseChunker):
 
     def _build_header_path(self, metadata: dict[str, Any]) -> str:
         """Build a header path from metadata."""
-        parts = []
+        parts: list[str] = []
         for _, meta_key in self.headers_to_split_on:
             if meta_key in metadata:
                 parts.append(str(metadata[meta_key]))
-        return " > ".join(parts) if parts else ""
+        return " > ".join(parts)
 
     def _fallback_split(self, doc: Document) -> list[Document]:
         """Split document using fallback splitter."""
-        text = doc.page_content or ""
+        text = doc.page_content
         original_metadata = dict(doc.metadata or {})
 
         chunks = self._fallback_splitter.split_text(text)
-        result = []
+        result: list[Document] = []
 
         current_pos = 0
         for chunk_idx, chunk_text in enumerate(chunks):
@@ -326,7 +322,7 @@ class MarkdownAwareChunker(BaseChunker):
         preserve_code_blocks: bool = True,
         preserve_lists: bool = True,
         max_header_depth: int = 4,
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.preserve_code_blocks = preserve_code_blocks
@@ -338,7 +334,7 @@ class MarkdownAwareChunker(BaseChunker):
 
     def _build_separators(self) -> None:
         """Build the separator hierarchy for splitting."""
-        separators = []
+        separators: list[str] = []
 
         # Add header separators
         for i in range(1, self.max_header_depth + 1):
@@ -370,7 +366,7 @@ class MarkdownAwareChunker(BaseChunker):
         all_chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             original_metadata = dict(doc.metadata or {})
 
             if not text.strip():
@@ -391,14 +387,14 @@ class MarkdownAwareChunker(BaseChunker):
                 restored_text = self._restore_placeholders(restored_text, code_blocks)
 
                 # Calculate positions
-                pos = text.find(restored_text, max(0, int(search_pos)))
+                pos = text.find(restored_text, max(0, search_pos))
                 if pos < 0:
-                    probe = (restored_text or "").strip()
+                    probe = (restored_text).strip()
                     if probe:
                         probe = probe[: min(120, len(probe))]
-                        pos = text.find(probe, max(0, int(search_pos)))
+                        pos = text.find(probe, max(0, search_pos))
                 if pos < 0:
-                    pos = max(0, min(int(search_pos), len(text)))
+                    pos = max(0, min(search_pos, len(text)))
                 end_pos = min(len(text), pos + len(restored_text))
 
                 chunk_metadata = {
@@ -428,10 +424,10 @@ class MarkdownAwareChunker(BaseChunker):
 
     def _protect_code_blocks(self, text: str) -> tuple[str, dict[str, str]]:
         """Replace code blocks with placeholders."""
-        code_blocks = {}
+        code_blocks: dict[str, str] = {}
         placeholder_idx = 0
 
-        def replace_block(match):
+        def replace_block(match: re.Match[str]) -> str:
             nonlocal placeholder_idx
             placeholder = f"__CODE_BLOCK_{placeholder_idx}__"
             code_blocks[placeholder] = match.group(0)
@@ -467,10 +463,7 @@ class MarkdownAwareChunker(BaseChunker):
         if not self.preserve_lists:
             return text, {}
 
-        lines = (text or "").splitlines(keepends=True)
-        if not lines:
-            return text, {}
-
+        lines = (text).splitlines(keepends=True)
         items: dict[str, str] = {}
         out: list[str] = []
         idx = 0
@@ -479,7 +472,7 @@ class MarkdownAwareChunker(BaseChunker):
 
         while idx < len(lines):
             line = lines[idx]
-            if not _is_list_item_start(self._LIST_ITEM_RE, line):
+            if not self._LIST_ITEM_RE.match(line):
                 out.append(line)
                 idx += 1
                 continue
@@ -501,8 +494,6 @@ class MarkdownAwareChunker(BaseChunker):
 
     def _restore_placeholders(self, text: str, mapping: dict[str, str]) -> str:
         """Restore placeholders from a mapping (best-effort)."""
-        if not mapping:
-            return text
         out = text
         for placeholder, value in mapping.items():
             out = out.replace(placeholder, value)
@@ -513,7 +504,7 @@ class MarkdownAwareChunker(BaseChunker):
         if not full_text:
             return None
 
-        pos = max(0, min(int(position or 0), len(full_text)))
+        pos = max(0, min(position or 0, len(full_text)))
         line_start = full_text.rfind("\n", 0, pos) + 1
         line_end = full_text.find("\n", line_start)
         if line_end < 0:

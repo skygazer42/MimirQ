@@ -259,7 +259,7 @@ def _add_entities(*, db: Any, tenant_id: UUID, entities: list[dict[str, Any]]) -
                 name=name,
                 type=_normalize_type(type_raw) if type_raw else "unknown",
                 normalized_name=str(ent.get("normalized_name") or "").strip() or _normalize_name(name),
-                description=(str(ent.get("description") or "").strip() or None),
+                description=(ent.get("description")),
                 vector=ent.get("vector"),
                 extra_data=ent.get("extra_data") if isinstance(ent.get("extra_data"), dict) else None,
             )
@@ -278,7 +278,7 @@ def _add_aliases(*, db: Any, tenant_id: UUID, account_id: str, aliases: list[dic
                 canonical_entity_id=UUID(str(alias_row.get("canonical_entity_id") or "").strip()),
                 alias=alias,
                 normalized_alias=str(alias_row.get("normalized_alias") or "").strip() or _normalize_name(alias),
-                created_by=str(alias_row.get("created_by") or account_id or "").strip() or None,
+                created_by=(alias_row.get("created_by", account_id)),
                 extra_data=alias_row.get("extra_data") if isinstance(alias_row.get("extra_data"), dict) else None,
             )
         )
@@ -298,7 +298,7 @@ def _add_events(*, db: Any, tenant_id: UUID, events: list[dict[str, Any]]) -> No
             KgSourceEvent(
                 id=UUID(str(event.get("id") or "").strip()),
                 tenant_id=tenant_id,
-                pipeline_hash=str(event.get("pipeline_hash") or "").strip() or None,
+                pipeline_hash=(event.get("pipeline_hash")),
                 document_id=UUID(doc_id_raw) if doc_id_raw else None,
                 chunk_id=UUID(chunk_id_raw) if chunk_id_raw else None,
                 title=title,
@@ -318,8 +318,8 @@ def _add_event_links(*, db: Any, event_entities: list[dict[str, Any]]) -> None:
                 id=UUID(str(link.get("id") or "").strip()),
                 event_id=UUID(str(link.get("event_id") or "").strip()),
                 entity_id=UUID(str(link.get("entity_id") or "").strip()),
-                weight=float(link.get("weight", 1.0) or 1.0),
-                role=str(link.get("role") or "").strip() or None,
+                weight=float(link.get("weight", 1.0)),
+                role=(link.get("role")),
                 extra_data=link.get("extra_data") if isinstance(link.get("extra_data"), dict) else None,
             )
         )
@@ -334,15 +334,15 @@ def _add_relations(*, db: Any, tenant_id: UUID, relations: list[dict[str, Any]])
             KgRelation(
                 id=UUID(str(relation.get("id") or "").strip()),
                 tenant_id=tenant_id,
-                pipeline_hash=str(relation.get("pipeline_hash") or "").strip() or None,
+                pipeline_hash=(relation.get("pipeline_hash")),
                 document_id=UUID(str(doc_id)) if doc_id else None,
                 chunk_id=UUID(str(chunk_id)) if chunk_id else None,
                 event_id=UUID(str(event_id)) if event_id else None,
                 subject_entity_id=UUID(str(relation.get("subject_entity_id") or "").strip()),
                 predicate=str(relation.get("predicate") or "").strip() or "related_to",
-                predicate_raw=str(relation.get("predicate_raw") or "").strip() or None,
+                predicate_raw=(relation.get("predicate_raw")),
                 object_entity_id=UUID(str(relation.get("object_entity_id") or "").strip()),
-                confidence=float(relation.get("confidence", 0.5) or 0.5),
+                confidence=float(relation.get("confidence", 0.5)),
                 qualifiers=relation.get("qualifiers") if isinstance(relation.get("qualifiers"), dict) else None,
                 references=relation.get("references") if isinstance(relation.get("references"), dict) else None,
                 extra_data=relation.get("extra_data") if isinstance(relation.get("extra_data"), dict) else None,
@@ -350,7 +350,7 @@ def _add_relations(*, db: Any, tenant_id: UUID, relations: list[dict[str, Any]])
         )
 
 
-def _seed_kg_rows(*, db, tenant_id: UUID, account_id: str, fixture: dict[str, Any]) -> None:
+def _seed_kg_rows(*, db: Any, tenant_id: UUID, account_id: str, fixture: dict[str, Any]) -> None:
     _ensure_app_imports()
     kg = fixture.get("kg") if isinstance(fixture.get("kg"), dict) else {}
     if not kg:
@@ -461,11 +461,11 @@ def _upsert_document(
         "dataset_id": dataset_id,
         "filename": filename,
         "file_type": file_type,
-        "file_size": int(total_chars),
+        "file_size": total_chars,
         "file_path": f"ci://{filename}",
         "status": "completed",
         "chunk_count": len(chunks),
-        "total_characters": int(total_chars),
+        "total_characters": total_chars,
         "doc_metadata": dict(doc_meta),
     }
     if row is None:
@@ -513,7 +513,7 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
     ds_obj = fixture.get("dataset") if isinstance(fixture.get("dataset"), dict) else {}
     dataset_id = UUID(str(ds_obj.get("id") or "").strip())
     dataset_name = str(ds_obj.get("name") or "CI KG Search Regression Fixture").strip()
-    dataset_desc = str(ds_obj.get("description") or "").strip() or None
+    dataset_desc = ds_obj.get("description")
     documents = _require_documents(fixture)
     _ensure_schema_ready()
 

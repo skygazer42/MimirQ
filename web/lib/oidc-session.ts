@@ -1,6 +1,7 @@
 'use client'
 
 import type { AuthToken } from '@/types'
+import { getAccessToken, getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
 type RefreshResponse = {
@@ -16,16 +17,26 @@ function normalizeTokenType(raw: unknown): string {
   return t ? t.toLowerCase() : 'bearer'
 }
 
-let inFlight: Promise<AuthToken | null> | null = null
+let inFlight: {
+  sessionRevision: number
+  scope: string
+  token: string | null
+  promise: Promise<AuthToken | null>
+} | null = null
 
 export function __resetOidcRefreshForTests() {
   inFlight = null
 }
 
 export async function tryRefreshOidcAccessToken(): Promise<AuthToken | null> {
-  if (inFlight) return inFlight
+  const sessionRevision = getAuthSessionRevision()
+  const scope = getAuthCacheScope()
+  const token = getAccessToken()
+  if (inFlight?.sessionRevision === sessionRevision && inFlight.scope === scope && inFlight.token === token) {
+    return inFlight.promise
+  }
 
-  inFlight = (async () => {
+  const promise = (async () => {
     try {
       const res = await fetch('/api/oidc/refresh', {
         method: 'POST',
@@ -47,10 +58,11 @@ export async function tryRefreshOidcAccessToken(): Promise<AuthToken | null> {
       }
     } catch {
       return null
-    } finally {
-      inFlight = null
     }
-  })()
+  })().finally(() => {
+    if (inFlight?.promise === promise) inFlight = null
+  })
 
-  return inFlight
+  inFlight = { sessionRevision, scope, token, promise }
+  return promise
 }

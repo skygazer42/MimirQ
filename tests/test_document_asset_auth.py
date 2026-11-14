@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from app.api.v1 import document_assets
 from app.core.database import get_db
 
 
@@ -62,7 +63,10 @@ class _DBByModel:
 
 
 def _build_request(*, query: str = "", headers: dict[str, str] | None = None) -> Request:
-    raw_headers = [(name.lower().encode("latin-1"), value.encode("latin-1")) for name, value in (headers or {}).items()]
+    raw_headers = [
+        (name.lower().encode("latin-1"), value.encode("latin-1"))
+        for name, value in (headers if headers is not None else {}).items()
+    ]
     scope = {
         "type": "http",
         "method": "GET",
@@ -128,7 +132,7 @@ def test_asset_request_rejects_query_bearer_promotion(monkeypatch, query_key):  
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -136,10 +140,10 @@ def test_asset_request_rejects_query_bearer_promotion(monkeypatch, query_key):  
     request = _build_request(query=f"tenant_id={tenant_id}&{query_key}=jwt-from-url")
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
 
     with pytest.raises(documents_module.HTTPException) as excinfo:
-        asyncio.run(documents_module._resolve_account_id_for_asset_request(request, tenant_id=tenant_id))
+        asyncio.run(document_assets._resolve_account_id_for_asset_request(request, tenant_id=tenant_id))
 
     assert excinfo.value.status_code == 401
     assert auth_calls == []
@@ -156,14 +160,13 @@ def test_asset_request_header_auth_requires_user_id_by_default(monkeypatch):  # 
     monkeypatch.setattr(settings, "ASSET_HEADER_AUTH_ALLOW_ANONYMOUS", False, raising=False)
 
     with pytest.raises(documents_module.HTTPException) as excinfo:
-        asyncio.run(documents_module._resolve_account_id_for_asset_request(request, tenant_id=tenant_id))
+        asyncio.run(document_assets._resolve_account_id_for_asset_request(request, tenant_id=tenant_id))
 
     assert excinfo.value.status_code == 401
     assert excinfo.value.detail == "X-User-ID header required"
 
 
 def test_asset_request_header_auth_allows_explicit_anonymous_opt_in(monkeypatch):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
 
     tenant_id = uuid.uuid4()
@@ -172,7 +175,7 @@ def test_asset_request_header_auth_allows_explicit_anonymous_opt_in(monkeypatch)
     monkeypatch.setattr(settings, "AUTH_MODE", "header", raising=False)
     monkeypatch.setattr(settings, "ASSET_HEADER_AUTH_ALLOW_ANONYMOUS", True, raising=False)
 
-    assert asyncio.run(documents_module._resolve_account_id_for_asset_request(request, tenant_id=tenant_id)) is None
+    assert asyncio.run(document_assets._resolve_account_id_for_asset_request(request, tenant_id=tenant_id)) is None
 
 
 @pytest.mark.parametrize(
@@ -186,9 +189,8 @@ def test_asset_request_header_auth_allows_explicit_anonymous_opt_in(monkeypatch)
     ],
 )
 def test_download_document_forces_attachment_for_active_content(monkeypatch, tmp_path, filename, payload):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -203,9 +205,9 @@ def test_download_document_forces_attachment_for_active_content(monkeypatch, tmp
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_download_client(
         SimpleNamespace(
@@ -230,9 +232,8 @@ def test_download_document_forces_attachment_for_active_content(monkeypatch, tmp
 
 
 def test_download_document_keeps_inline_for_safe_image_preview(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -247,9 +248,9 @@ def test_download_document_keeps_inline_for_safe_image_preview(monkeypatch, tmp_
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_download_client(
         SimpleNamespace(
@@ -273,9 +274,8 @@ def test_download_document_keeps_inline_for_safe_image_preview(monkeypatch, tmp_
 
 
 def test_download_document_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -286,16 +286,16 @@ def test_download_document_uses_header_auth_and_no_store_cache(monkeypatch, tmp_
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_download_client(
         SimpleNamespace(
@@ -330,7 +330,7 @@ def test_download_document_uses_header_auth_and_no_store_cache(monkeypatch, tmp_
 def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  # noqa: ANN001
     import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -348,7 +348,7 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
     auth_calls: list[dict[str, Any]] = []
     acl_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -358,8 +358,8 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     dataset = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, owner_id="owner-1")
     document = SimpleNamespace(
         id=document_id,
@@ -368,7 +368,7 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
         access_mode="inherit",
         owner_id="owner-1",
     )
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True
     )
@@ -396,9 +396,8 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
 
 
 def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exists(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     jwt_tenant_id = uuid.uuid4()
     spoofed_tenant_id = uuid.uuid4()
@@ -410,7 +409,7 @@ def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tena
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -420,10 +419,10 @@ def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tena
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(documents_module, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(document_assets, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_download_client(
         SimpleNamespace(
@@ -450,9 +449,8 @@ def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tena
 
 
 def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exists(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     jwt_tenant_id = uuid.uuid4()
     spoofed_tenant_id = uuid.uuid4()
@@ -464,7 +462,7 @@ def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exist
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -474,9 +472,9 @@ def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exist
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(documents_module, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(document_assets, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_image_client()
 
@@ -494,9 +492,8 @@ def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exist
 
 
 def test_get_image_fails_closed_without_preview_ownership_metadata(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     image_id = uuid.uuid4()
@@ -509,8 +506,8 @@ def test_get_image_fails_closed_without_preview_ownership_metadata(monkeypatch, 
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_image_client()
     response = client.get(
@@ -523,9 +520,8 @@ def test_get_image_fails_closed_without_preview_ownership_metadata(monkeypatch, 
 
 def test_get_image_skips_legacy_lookup_when_preview_file_is_missing(monkeypatch, tmp_path):  # noqa: ANN001
     import app.api.v1.document_assets as document_assets
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     image_id = uuid.uuid4()
@@ -535,8 +531,8 @@ def test_get_image_skips_legacy_lookup_when_preview_file_is_missing(monkeypatch,
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         document_assets,
         "find_legacy_preview_document_ids",
@@ -557,9 +553,8 @@ def test_get_image_recovers_legacy_binding_through_document_acl(monkeypatch, tmp
     import json
 
     import app.api.v1.document_assets as document_assets
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -584,12 +579,12 @@ def test_get_image_recovers_legacy_binding_through_document_acl(monkeypatch, tmp
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_acl_readable",
+        document_assets,
+        "assert_document_acl_readable",
         lambda *_args, **_kwargs: acl_calls.append("checked"),
         raising=True,
     )
@@ -619,9 +614,8 @@ def test_get_image_recovers_from_malformed_sidecar_via_exact_legacy_acl(monkeypa
     import json
 
     import app.api.v1.document_assets as document_assets
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -650,12 +644,12 @@ def test_get_image_recovers_from_malformed_sidecar_via_exact_legacy_acl(monkeypa
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_acl_readable",
+        document_assets,
+        "assert_document_acl_readable",
         lambda *_args, **_kwargs: acl_calls.append("checked"),
         raising=True,
     )
@@ -687,9 +681,8 @@ def test_get_image_selects_safe_multi_candidate_without_persisting_binding(monke
     from fastapi import HTTPException
 
     import app.api.v1.document_assets as document_assets
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     denied_dataset_id = uuid.uuid4()
@@ -730,12 +723,12 @@ def test_get_image_selects_safe_multi_candidate_without_persisting_binding(monke
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", _fake_assert_dataset_readable, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", _fake_assert_dataset_readable, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_acl_readable",
+        document_assets,
+        "assert_document_acl_readable",
         lambda *_args, **kwargs: acl_calls.append(kwargs["document"].id),
         raising=True,
     )
@@ -769,7 +762,7 @@ def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(
 
     import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -792,7 +785,7 @@ def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(
     auth_calls: list[dict[str, Any]] = []
     acl_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -810,10 +803,10 @@ def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_args, **_kwargs: dataset, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_args, **_kwargs: dataset, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True
     )
@@ -843,9 +836,8 @@ def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(
 def test_get_image_allows_only_the_account_that_created_an_ephemeral_preview(monkeypatch, tmp_path):  # noqa: ANN001
     import json
 
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     image_id = uuid.uuid4()
@@ -864,8 +856,8 @@ def test_get_image_allows_only_the_account_that_created_an_ephemeral_preview(mon
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     client = _build_image_client()
     url = f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}"
@@ -880,7 +872,7 @@ def test_get_image_url_hides_object_storage_errors(monkeypatch):  # noqa: ANN001
     import app.api.v1.document_assets as document_assets
     import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -893,15 +885,15 @@ def test_get_image_url_hides_object_storage_errors(monkeypatch):  # noqa: ANN001
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        DatasetService,
+        dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,
     )
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module.minio_service,
         "stat_object",
@@ -922,12 +914,11 @@ def test_get_image_url_hides_object_storage_errors(monkeypatch):  # noqa: ANN001
     )
 
     assert response.status_code == 404
-    assert response.json() == {"detail": documents_module.IMAGE_NOT_FOUND_DETAIL}
+    assert response.json() == {"detail": document_assets.IMAGE_NOT_FOUND_DETAIL}
     assert logged
 
 
 def test_get_image_url_rejects_img_tenant_that_conflicts_with_verified_jwt_tenant(monkeypatch):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
 
     jwt_tenant_id = uuid.uuid4()
@@ -936,7 +927,7 @@ def test_get_image_url_rejects_img_tenant_that_conflicts_with_verified_jwt_tenan
     document_id = uuid.uuid4()
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -945,8 +936,8 @@ def test_get_image_url_rejects_img_tenant_that_conflicts_with_verified_jwt_tenan
 
     monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
-    monkeypatch.setattr(documents_module, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(document_assets, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
 
     client = _build_image_url_client()
     response = client.get(
@@ -963,7 +954,7 @@ def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: AN
     import app.api.v1.document_assets as document_assets
     import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -982,8 +973,8 @@ def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: AN
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "MINIO_BUCKET_NAME", "bucket", raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module.minio_service,
         "stat_object",
@@ -1015,7 +1006,7 @@ def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: AN
     )
 
     assert response.status_code == 404
-    assert response.json() == {"detail": documents_module.DOCUMENT_FILE_NOT_FOUND_DETAIL}
+    assert response.json() == {"detail": document_assets.DOCUMENT_FILE_NOT_FOUND_DETAIL}
     assert logged
     assert logged[0][0] == "Document asset stat failed for %r: %r"
     assert logged[0][1] == expected_object[:200]
@@ -1024,9 +1015,8 @@ def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: AN
 
 def test_download_document_supports_generic_object_storage_uri(monkeypatch):  # noqa: ANN001
     import app.api.v1.document_assets as document_assets
-    import app.api.v1.documents as documents_module
     from app.core.config import settings
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -1043,16 +1033,16 @@ def test_download_document_supports_generic_object_storage_uri(monkeypatch):  # 
             yield b"hello"
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
-    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        DatasetService,
+        dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,
     )
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_assets, "assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         document_assets,
         "resolve_document_object_reference",

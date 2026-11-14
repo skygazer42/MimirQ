@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.evidence_expectations import evaluate_evidence_anchor_expectations

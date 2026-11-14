@@ -1,11 +1,14 @@
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.rag.core.filters import match_metadata_filter
 from app.rag.embedding import create_langchain_embeddings_from_config
+
+if TYPE_CHECKING:
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
 
 class QdrantVectorStore:
@@ -18,31 +21,31 @@ class QdrantVectorStore:
     - can later be swapped to a real qdrant-client implementation
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         provider = EmbeddingProviders.PROVIDER_MAP.get(
             (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
         )
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
+        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
         self.emb = create_langchain_embeddings_from_config(
             provider=provider,
             model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
+            api_key=api_key,
+            base_url=base_url,
             dimension=None,
         )
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        texts = [d.get("content", "") for d in docs]
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
+        texts = [d["content"] for d in docs]
         vectors = self.emb.embed_documents(texts)
         ids: list[str] = []
         for idx, (vec, doc) in enumerate(zip(vectors, docs, strict=False)):
             meta = dict(doc.get("metadata") or {})
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
-            meta.setdefault("content", doc.get("content", ""))
+            meta.setdefault("content", doc["content"])
             cid = str(meta.get("chunk_id") or f"{document_id}_qdrant_{idx}")
             meta["chunk_id"] = cid
             self.storage.append((vec, meta))
@@ -71,9 +74,9 @@ class QdrantVectorStore:
 
         out: list[dict[str, Any]] = []
         for vec, meta in self.storage:
-            if allowed_tenant and str(meta.get("tenant_id") or "") != allowed_tenant:
+            if allowed_tenant and meta["tenant_id"] != allowed_tenant:
                 continue
-            if allowed_ids and str(meta.get("document_id") or "") not in allowed_ids:
+            if allowed_ids and meta["document_id"] not in allowed_ids:
                 continue
             if metadata_filter and not match_metadata_filter(meta, metadata_filter):
                 continue
@@ -83,13 +86,13 @@ class QdrantVectorStore:
             out.append(
                 {
                     "chunk_id": meta.get("chunk_id"),
-                    "content": meta.get("content") or "",
+                    "content": meta["content"],
                     "metadata": meta,
                     "score": score,
                     "vector_score": score,
                 }
             )
-        out.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
+        out.sort(key=lambda row: row["score"], reverse=True)
         return out[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
@@ -98,10 +101,7 @@ class QdrantVectorStore:
         self.storage = [
             (vec, meta)
             for vec, meta in self.storage
-            if not (
-                str(meta.get("document_id") or "") == doc_id
-                and (tenant is None or str(meta.get("tenant_id") or "") == tenant)
-            )
+            if not (meta["document_id"] == doc_id and (tenant is None or meta["tenant_id"] == tenant))
         ]
 
     def delete_by_document_id_and_filter(
@@ -117,11 +117,11 @@ class QdrantVectorStore:
             (vec, meta)
             for vec, meta in self.storage
             if not (
-                str(meta.get("document_id") or "") == doc_id
-                and (tenant is None or str(meta.get("tenant_id") or "") == tenant)
+                meta["document_id"] == doc_id
+                and (tenant is None or meta["tenant_id"] == tenant)
                 and match_metadata_filter(meta, metadata_filter)
             )
         ]
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return self.emb

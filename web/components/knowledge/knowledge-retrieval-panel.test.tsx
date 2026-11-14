@@ -27,8 +27,7 @@ const hookState = vi.hoisted(() => ({
 }))
 
 vi.mock('@/hooks/use-index-audit', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@/hooks/use-index-audit')>()
+  const actual = await importOriginal<typeof import('@/hooks/use-index-audit')>()
   return {
     ...actual,
     useIndexAudit: () => hookState,
@@ -43,7 +42,8 @@ vi.mock('framer-motion', async () => {
     motion: new Proxy(
       {},
       {
-        get: (_target, tag: string) =>
+        get:
+          (_target, tag: string) =>
           ({
             children,
             ...props
@@ -53,15 +53,12 @@ vi.mock('framer-motion', async () => {
             delete props.whileHover
             return React.createElement(tag, props, children)
           },
-      }
+      },
     ),
   }
 })
 
-import {
-  buildIndexAuditReconcilePayload,
-  pollIndexAuditReconcileStatus,
-} from '@/hooks/use-index-audit'
+import { buildIndexAuditReconcilePayload, pollIndexAuditReconcileStatus } from '@/hooks/use-index-audit'
 
 import { KnowledgeRetrievalPanel } from './knowledge-retrieval-panel'
 
@@ -134,7 +131,7 @@ describe('KnowledgeRetrievalPanel', () => {
           selectedDatasetId: 'dataset-1',
           selectedDocumentIds: ['doc-1'],
           compact: true,
-        })
+        }),
       )
     })
 
@@ -150,9 +147,9 @@ describe('KnowledgeRetrievalPanel', () => {
     expect(container.textContent).toContain('已提交索引修复任务')
     expect(container.textContent).toContain('[ready]')
 
-    const reconcileButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('Reconcile'))
+    const reconcileButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('Reconcile'),
+    )
     expect(reconcileButton).not.toBeUndefined()
 
     await act(async () => {
@@ -217,7 +214,7 @@ describe('KnowledgeRetrievalPanel', () => {
           aggregateDocuments: 2,
           aggregateChunks: 8,
           compact: true,
-        })
+        }),
       )
     })
 

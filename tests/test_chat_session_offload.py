@@ -337,16 +337,17 @@ async def test_retrieval_explain_replaces_request_session_before_offload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.retrieval_explain as explain
+    from app.api.v1 import rag as rag_api
 
     events: list[str] = []
     request_db = SimpleNamespace(rollback=lambda: events.append("request_rollback"))
     worker_db = object()
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(explain.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(explain.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(explain.DatasetService, "assert_dataset_readable", lambda *_args: None)
-    monkeypatch.setattr(explain, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(explain.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(explain.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(explain.dataset_service, "assert_dataset_readable", lambda *_args: None)
+    monkeypatch.setattr(rag_api, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(explain, "build_rag_state", lambda **kwargs: dict(kwargs))
 
     def fake_retrieval(state):  # noqa: ANN001, ANN202
@@ -385,16 +386,17 @@ async def test_retrieval_explain_uses_chat_rag_defaults_when_rag_config_omitted(
 ) -> None:
     import app.api.v1.retrieval_explain as explain
     from app.api.schemas.chat import ChatRAGConfig
+    from app.api.v1 import rag as rag_api
 
     captured: dict[str, object] = {}
     request_db = SimpleNamespace(rollback=lambda: None)
     worker_db = object()
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(explain.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(explain.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(explain.DatasetService, "assert_dataset_readable", lambda *_args: None)
-    monkeypatch.setattr(explain, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(explain.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(explain.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(explain.dataset_service, "assert_dataset_readable", lambda *_args: None)
+    monkeypatch.setattr(rag_api, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
 
     def fake_build_rag_state(**kwargs):  # noqa: ANN001, ANN202
         captured.update(kwargs)

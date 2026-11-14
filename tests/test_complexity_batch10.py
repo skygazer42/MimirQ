@@ -39,7 +39,7 @@ class _Field:
         return ("in", self.name, values)
 
 
-def test_event_processor_template_fallback_and_entity_merge() -> None:
+def test_event_processor_template_fallback_and_entity_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.rag.kg.extraction.processor import EventProcessor
 
     prompts: list[str] = []
@@ -80,9 +80,11 @@ def test_event_processor_template_fallback_and_entity_merge() -> None:
             }
 
     processor = EventProcessor(_LLM(), prompt_template="Use template {missing_key}")
-    processor.parser = SimpleNamespace(
-        normalize_name=lambda value: str(value).strip().lower(),
-        normalize_type=lambda value: str(value).strip().lower(),
+    monkeypatch.setattr(
+        "app.rag.kg.extraction.processor.normalize_entity_name", lambda value: str(value).strip().lower()
+    )
+    monkeypatch.setattr(
+        "app.rag.kg.extraction.processor.normalize_entity_type", lambda value: str(value).strip().lower()
     )
     sections = [
         SimpleNamespace(id=uuid4(), content="Primary chunk", page_number=3),
@@ -130,8 +132,10 @@ def test_event_processor_template_fallback_and_entity_merge() -> None:
     ]
 
 
-def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_orders_memory_context(
+@pytest.mark.parametrize("dataset_read_fails", [True, False], ids=["authority-read-failure", "known-empty-defaults"])
+def test_prepare_chat_request_runtime_requires_dataset_defaults_and_orders_memory_context(
     monkeypatch: pytest.MonkeyPatch,
+    dataset_read_fails: bool,
 ) -> None:
     import app.services.chat_bootstrap_runtime as runtime
 
@@ -151,9 +155,12 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
         enable_structured_memory=True,
     )
 
-    monkeypatch.setattr(
-        runtime, "load_dataset_metadata", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
-    )
+    def load_dataset_metadata(*_args, **_kwargs):
+        if dataset_read_fails:
+            raise RuntimeError("boom")
+        return {}
+
+    monkeypatch.setattr(runtime, "load_dataset_metadata", load_dataset_metadata)
     monkeypatch.setattr(
         runtime,
         "merge_prompt_defaults_with_dataset",
@@ -169,7 +176,7 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
     monkeypatch.setattr(runtime, "build_structured_memory_context", lambda **_kwargs: "STRUCTURED")
     monkeypatch.setattr(runtime.settings, "STRUCTURED_MEMORY_ENABLED", True, raising=False)
 
-    prepared = runtime.prepare_chat_request_runtime(
+    options = dict(
         db=object(),
         tenant_id=uuid4(),
         account_id="acct",
@@ -180,6 +187,13 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
         long_term_messages=[{"role": "assistant", "content": "memory"}],
         request_id="req-1",
     )
+
+    if dataset_read_fails:
+        with pytest.raises(RuntimeError, match="boom"):
+            runtime.prepare_chat_request_runtime(**options)
+        return
+
+    prepared = runtime.prepare_chat_request_runtime(**options)
 
     assert prepared.dataset_id_used == scope_dataset_id
     assert prepared.dataset_rag_defaults_applied_fields == []

@@ -8,11 +8,13 @@ _REFUSAL_RE = re.compile(
 
 
 def _normalize(text: Any) -> str:
-    return " ".join(str(text or "").strip().split()).casefold()
+    if text is None:
+        return ""
+    return " ".join(str(text).strip().split()).casefold()
 
 
 def _tokenize(text: str) -> list[str]:
-    return [token for token in re.findall(r"[A-Za-z0-9]+|[\u4e00-\u9fff]", text) if token]
+    return re.findall(r"[A-Za-z0-9]+|[\u4e00-\u9fff]", text)
 
 
 def evaluate_answer_deterministic(
@@ -34,7 +36,7 @@ def evaluate_answer_deterministic(
         recall = overlap / len(set(gold_tokens))
         answer_f1 = 0.0 if precision + recall == 0 else round(2 * precision * recall / (precision + recall), 4)
     else:
-        answer_f1 = float(answer_em)
+        answer_f1 = answer_em
 
     refusal = bool(_REFUSAL_RE.search(norm_answer))
     refusal_correct = refusal if is_unanswerable else None
@@ -44,9 +46,9 @@ def evaluate_answer_deterministic(
     )
 
     return {
-        "question": str(question or ""),
-        "answer_em": float(answer_em),
-        "answer_f1": float(answer_f1),
+        "question": question,
+        "answer_em": answer_em,
+        "answer_f1": answer_f1,
         "refusal_correct": refusal_correct,
         "obvious_hallucination": obvious_hallucination,
     }

@@ -4,98 +4,20 @@ RAG Conversation Engine
 
 import hashlib
 import json
-import sys
 import threading
 import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Any
-from uuid import UUID
 
 from langchain_core.documents import Document
-from langchain_core.output_parsers import StrOutputParser as StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-from app.api.schemas.chat import ChatRAGConfig
+from app.api.schemas.conversations import ChatRAGConfig
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
-from app.core.pii_redaction import pii_redaction_enabled as pii_redaction_enabled
-from app.core.pii_redaction import redact_text as redact_text
-from app.core.token_utils import num_tokens_from_string as num_tokens_from_string
-from app.core.token_utils import truncate as truncate
-from app.core.utils import parse_csv as parse_csv
-from app.rag.core.citations import build_citations_from_docs as build_citations_from_docs
-from app.rag.core.claim_evidence import build_claim_evidence_map as build_claim_evidence_map
-from app.rag.core.confidence import compute_confidence_score as compute_confidence_score
-from app.rag.core.context_cliff import compute_context_cliff_metrics as compute_context_cliff_metrics
-from app.rag.core.conversation import format_history_text as format_history_text
-from app.rag.core.faithfulness import compute_faithfulness_score as compute_faithfulness_score
 from app.rag.core.logging import get_logger
-from app.rag.core.query_rewrite_strategy import (
-    build_query_rewrite_strategy_spec as build_query_rewrite_strategy_spec,
-)
-from app.rag.core.query_rewrite_strategy import (
-    get_query_rewrite_prompt_template as get_query_rewrite_prompt_template,
-)
-from app.rag.core.retrieval_profiles import (
-    apply_retrieval_profile_overrides as apply_retrieval_profile_overrides,
-)
-from app.rag.core.retrieval_profiles import is_recall_first_profile as is_recall_first_profile
-from app.rag.core.sentence_citations import (
-    render_sentence_citations_inline as render_sentence_citations_inline,
-)
-from app.rag.core.sentence_citations import (
-    render_sentence_citations_markdown as render_sentence_citations_markdown,
-)
-from app.rag.core.temporal import apply_recency_boost as apply_recency_boost
-from app.rag.core.temporal import detect_temporal_intent as detect_temporal_intent
-from app.rag.core.temporal import fetch_document_updated_ts as fetch_document_updated_ts
-from app.rag.core.text import (
-    build_abstain_answer_message as build_abstain_answer_message,
-)
-from app.rag.core.text import (
-    build_abstain_followup as build_abstain_followup,
-)
-from app.rag.core.text import (
-    derive_followup_questions as derive_followup_questions,
-)
-from app.rag.core.text import (
-    extract_evidence_text as extract_evidence_text,
-)
-from app.rag.core.text import (
-    guess_recall_bucket as guess_recall_bucket,
-)
-from app.rag.core.text import (
-    guess_retrieval_mode as guess_retrieval_mode,
-)
-from app.rag.core.text import (
-    normalize_retrieval_mode as normalize_retrieval_mode,
-)
-from app.rag.core.text import (
-    parse_json_from_text as parse_json_from_text,
-)
-from app.rag.core.text import (
-    scrub_structured_output_visible_evidence_only as scrub_structured_output_visible_evidence_only,
-)
-from app.rag.core.text import (
-    should_rewrite_query as should_rewrite_query,
-)
-from app.rag.core.text import split_into_claims as split_into_claims
-from app.rag.core.text import verify_claim_with_fallback as verify_claim_with_fallback
-from app.rag.core.vision_reader import build_vision_image_blocks as build_vision_image_blocks
-from app.rag.core.vision_reader import (
-    build_vision_reader_context_docs as build_vision_reader_context_docs,
-)
-from app.rag.core.vision_reader import (
-    stream_vision_chat_completions_tokens as stream_vision_chat_completions_tokens,
-)
-from app.rag.engine_support.common import (
-    _RAG_ENGINE_FALLBACK_LOG_MESSAGE as _RAG_ENGINE_FALLBACK_LOG_MESSAGE,
-)
-from app.rag.engine_support.common import (
-    _UNABLE_TO_ANSWER_MESSAGE as _UNABLE_TO_ANSWER_MESSAGE,
-)
+from app.rag.core.pipeline_scope import apply_active_pipeline_metadata_filter
 from app.rag.engine_support.common import (
     RAGChatContext,
     RAGPromptSelection,
@@ -103,52 +25,10 @@ from app.rag.engine_support.common import (
     _resolve_stream_chat_inputs,
     _retrieval_error_from_debug,
 )
-from app.rag.engine_support.common import (
-    _release_request_session as _release_request_session,
-)
 from app.rag.engine_support.doc_utils import DocUtilsMixin
 from app.rag.engine_support.llm_routing import LlmRoutingMixin
 from app.rag.engine_support.standard_stream import StandardStreamExecutor, StandardStreamInputs
-from app.rag.kg.pipeline import kg_search as kg_search
-from app.rag.llm.structured_output import (
-    build_structured_abstain_payload as build_structured_abstain_payload,
-)
-from app.rag.llm.structured_output import (
-    build_structured_output_instructions as build_structured_output_instructions,
-)
-from app.rag.llm.structured_output import (
-    parse_and_repair_structured_output as parse_and_repair_structured_output,
-)
-from app.rag.policy.intent_router import route_retrieval_preset as route_retrieval_preset
-from app.rag.policy.out_of_scope_live_gate import (
-    maybe_apply_out_of_scope_live_guard as maybe_apply_out_of_scope_live_guard,
-)
-from app.rag.policy.out_of_scope_live_gate import (
-    run_default_out_of_scope_live_guard as run_default_out_of_scope_live_guard,
-)
-from app.rag.policy.query_expansion import (
-    build_clause_fastlane_queries as build_clause_fastlane_queries,
-)
-from app.rag.policy.query_expansion import (
-    build_lightweight_subquery_queries as build_lightweight_subquery_queries,
-)
-from app.rag.query_expansion import generate_alias_queries as generate_alias_queries
-from app.rag.reranker.factory import describe_reranker_provider as describe_reranker_provider
-from app.rag.retrieval.contract import resolve_retrieval_contract_policy as resolve_retrieval_contract_policy
-from app.rag.retrieval.orchestrator import _apply_kg_chunk_boost as _apply_kg_chunk_boost
-from app.rag.retrieval.orchestrator import (
-    _fetch_document_chunks_for_kg_injection as _fetch_document_chunks_for_kg_injection,
-)
-from app.rag.retrieval.orchestrator import (
-    _merge_kg_docs_preserving_main as _merge_kg_docs_preserving_main,
-)
-from app.rag.retrieval.orchestrator import _resolve_kg_scope as _resolve_kg_scope
-from app.rag.retrieval.source_labels import (
-    maybe_build_source_identification_answer as maybe_build_source_identification_answer,
-)
-from app.rag.retriever import hybrid_retriever as hybrid_retriever
 from app.services.metrics_logger import log_metrics
-from app.services.prompt_resolver import resolve_prompt_template as resolve_prompt_template
 from app.services.rag_runtime_limiter import (
     RetrievalAdmissionTimeoutError,
     run_blocking_retrieval_call,
@@ -157,59 +37,10 @@ from app.services.rag_runtime_limiter import (
 logger = get_logger("rag.engine")
 
 
-def get_agentic_runner(*, engine: "RAGEngine | None" = None) -> Any:
-    from app.rag.agents.rag_agent import get_agentic_runner as _get_agentic_runner
-
-    return _get_agentic_runner(engine=engine)
-
-
 class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
     """RAG Conversation Engine"""
 
-    @staticmethod
-    def _active_pipeline_hash(*, status: Any, meta: Any) -> str | None:
-        metadata = meta if isinstance(meta, dict) else {}
-        ready = (
-            bool(metadata.get("active_pipeline_ready"))
-            if "active_pipeline_ready" in metadata
-            else (str(status or "").lower() == "completed")
-        )
-        if not ready:
-            return None
-        active_hash = str(metadata.get("active_pipeline_hash") or metadata.get("pipeline_hash") or "").strip()
-        return active_hash or None
-
-    def _apply_active_pipeline_metadata_filter(
-        self,
-        *,
-        db: Any,
-        tenant_id: UUID | None,
-        document_ids: list[UUID] | None,
-        metadata_filter: dict[str, Any] | None,
-    ) -> dict[str, Any] | None:
-        if db is None or tenant_id is None or not document_ids:
-            return metadata_filter
-        try:
-            from app.models.document import Document as DBDocument
-
-            rows = (
-                db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
-                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
-                .all()
-            )
-            active_keys = [
-                f"{did}:{active_hash}"
-                for did, status, meta in rows
-                if (active_hash := self._active_pipeline_hash(status=status, meta=meta))
-            ]
-            if not active_keys:
-                return metadata_filter
-            scoped_filter = dict(metadata_filter or {})
-            scoped_filter["doc_pipeline_key"] = {"$in": set(active_keys)}
-            return scoped_filter
-        except Exception as exc:
-            logger.debug("Failed to constrain retrieval by active document pipeline hash: %s", exc)
-            return metadata_filter
+    _apply_active_pipeline_metadata_filter = staticmethod(apply_active_pipeline_metadata_filter)
 
     async def _run_stream_retrieval_query(
         self,
@@ -240,20 +71,20 @@ class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
         self.http_async_client = pool.get_external_async_client()
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
-        default_model_name = settings.LLM_MODEL or "gpt-5.4-mini"
+        default_model_name = settings.LLM_MODEL
         self.models: dict[str, Any] = {}
-        self.models["default"] = self._build_llm(ChatOpenAI, default_model_name)
+        self.models["default"] = self._build_llm(default_model_name)
         if settings.ENABLE_DYNAMIC_MODEL_ROUTING:
             if self._is_route_model_compatible(
                 route_model_name=settings.LLM_MODEL_FAST,
                 default_model_name=default_model_name,
             ):
-                self.models["fast"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_FAST or default_model_name)
+                self.models["fast"] = self._build_llm(settings.LLM_MODEL_FAST or default_model_name)
             if self._is_route_model_compatible(
                 route_model_name=settings.LLM_MODEL_HEAVY,
                 default_model_name=default_model_name,
             ):
-                self.models["heavy"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_HEAVY or default_model_name)
+                self.models["heavy"] = self._build_llm(settings.LLM_MODEL_HEAVY or default_model_name)
 
         # Prompt templates (support chat history).
         self.prompt_template = ChatPromptTemplate.from_template(
@@ -396,7 +227,7 @@ Requirements:
         attempt: int | None = None,
         max_attempts: int | None = None,
     ) -> dict[str, Any] | None:
-        if not bool(getattr(settings, "RAG_STREAM_STATUS_EVENTS_ENABLED", False)):
+        if not bool(settings.RAG_STREAM_STATUS_EVENTS_ENABLED):
             return None
 
         data: dict[str, Any] = {"stage": str(stage), "state": str(state)}
@@ -418,7 +249,7 @@ Requirements:
         abstain_triggered: bool,
         retrieval_profile: str | None,
     ) -> dict[str, Any] | None:
-        if not bool(getattr(settings, "RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED", False)):
+        if not bool(settings.RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED):
             return None
 
         return {
@@ -429,9 +260,7 @@ Requirements:
                 "docs_count": int(docs_count),
                 "citations_count": int(citations_count),
                 "abstain_triggered": bool(abstain_triggered),
-                "retrieval_profile": (str(retrieval_profile).strip().lower() or None)
-                if retrieval_profile is not None
-                else None,
+                "retrieval_profile": (retrieval_profile) if retrieval_profile is not None else None,
             },
         }
 
@@ -512,8 +341,8 @@ Requirements:
         must_recall_required_anchor_fields = rag_config.must_recall_required_anchor_fields
         intent_router = rag_config.intent_router
         intent_router_policy = rag_config.intent_router_policy
-        industry_rules_enabled = getattr(rag_config, "industry_rules_enabled", None)
-        industry_rules_rulesets = getattr(rag_config, "industry_rules_rulesets", None)
+        industry_rules_enabled = rag_config.industry_rules_enabled
+        industry_rules_rulesets = rag_config.industry_rules_rulesets
         enable_query_alias_expansion = rag_config.enable_query_alias_expansion
         query_aliases = rag_config.query_aliases
         query_alias_max_queries = rag_config.query_alias_max_queries
@@ -523,28 +352,20 @@ Requirements:
         multi_query_max_chars = rag_config.multi_query_max_chars
         enable_hyde = rag_config.enable_hyde
         enable_query_decomposition = rag_config.enable_query_decomposition
-        enable_kg_query_expansion = getattr(rag_config, "enable_kg_query_expansion", None)
-        enable_kg_chunk_injection = getattr(rag_config, "enable_kg_chunk_injection", None)
-        kg_chunk_injection_max_chunks = getattr(rag_config, "kg_chunk_injection_max_chunks", None)
-        enable_kg_chunk_boost = getattr(rag_config, "enable_kg_chunk_boost", None)
-        kg_chunk_boost_weight = getattr(rag_config, "kg_chunk_boost_weight", None)
-        kg_chunk_boost_max_promoted = getattr(rag_config, "kg_chunk_boost_max_promoted", None)
-        lexical_db_hybrid_metadata_exact_fallback_enabled = getattr(
-            rag_config,
-            "lexical_db_hybrid_metadata_exact_fallback_enabled",
-            None,
-        )
-        lexical_db_hybrid_fallback_only = getattr(
-            rag_config,
-            "lexical_db_hybrid_fallback_only",
-            None,
-        )
-        metadata_exact_db_fallback_enabled = getattr(rag_config, "metadata_exact_db_fallback_enabled", None)
+        enable_kg_query_expansion = rag_config.enable_kg_query_expansion
+        enable_kg_chunk_injection = rag_config.enable_kg_chunk_injection
+        kg_chunk_injection_max_chunks = rag_config.kg_chunk_injection_max_chunks
+        enable_kg_chunk_boost = rag_config.enable_kg_chunk_boost
+        kg_chunk_boost_weight = rag_config.kg_chunk_boost_weight
+        kg_chunk_boost_max_promoted = rag_config.kg_chunk_boost_max_promoted
+        lexical_db_hybrid_metadata_exact_fallback_enabled = rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
+        lexical_db_hybrid_fallback_only = rag_config.lexical_db_hybrid_fallback_only
+        metadata_exact_db_fallback_enabled = rag_config.metadata_exact_db_fallback_enabled
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = (
             rag_config.hierarchy_family_collapse
             if rag_config.hierarchy_family_collapse is not None
-            else bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", True))
+            else bool(settings.HIERARCHY_RECALL_FAMILY_COLLAPSE)
         )
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
         hierarchy_tree_dedup = rag_config.hierarchy_tree_dedup
@@ -556,10 +377,10 @@ Requirements:
         fusion_budgets = rag_config.fusion_budgets
         fusion_min_scores = rag_config.fusion_min_scores
         fusion_weights = rag_config.fusion_weights
-        retrieval_overfetch_multiplier = getattr(rag_config, "retrieval_overfetch_multiplier", None)
-        retrieval_overfetch_max_k = getattr(rag_config, "retrieval_overfetch_max_k", None)
-        sparse_retrieval_enabled = getattr(rag_config, "sparse_retrieval_enabled", None)
-        sparse_retrieval_provider = getattr(rag_config, "sparse_retrieval_provider", None)
+        retrieval_overfetch_multiplier = rag_config.retrieval_overfetch_multiplier
+        retrieval_overfetch_max_k = rag_config.retrieval_overfetch_max_k
+        sparse_retrieval_enabled = rag_config.sparse_retrieval_enabled
+        sparse_retrieval_provider = rag_config.sparse_retrieval_provider
         enable_weight_rerank = rag_config.enable_weight_rerank
         vector_weight = rag_config.vector_weight
         keyword_weight = rag_config.keyword_weight
@@ -567,7 +388,7 @@ Requirements:
         enable_reranker = rag_config.enable_reranker
         reranker_provider = rag_config.reranker_provider
         reranker_top_n = rag_config.reranker_top_n
-        generation_max_tokens = max(0, int(getattr(rag_config, "max_tokens", 0) or 0))
+        generation_max_tokens = max(0, int(rag_config.max_tokens or 0))
 
         structured_output = response_options.structured_output
         structured_preset = response_options.structured_preset
@@ -579,7 +400,7 @@ Requirements:
         ab_user_key = prompt_selection.ab_user_key
 
         input_guard_result: dict[str, Any] = {
-            "enabled": bool(getattr(settings, "INPUT_GUARD_ENABLED", False)),
+            "enabled": bool(settings.INPUT_GUARD_ENABLED),
             "action": "allow",
             "score": 0.0,
             "matched_rules": [],
@@ -591,7 +412,7 @@ Requirements:
             "blocked_docs": 0,
             "masked_docs": 0,
         }
-        output_guard_enabled = bool(getattr(settings, "OUTPUT_GUARD_ENABLED", False))
+        output_guard_enabled = bool(settings.OUTPUT_GUARD_ENABLED)
         output_guard_result: dict[str, Any] = {
             "enabled": bool(output_guard_enabled),
             "action": "allow",
@@ -599,7 +420,7 @@ Requirements:
             "matched_rules": [],
         }
 
-        if bool(getattr(settings, "INPUT_GUARD_ENABLED", False)):
+        if bool(settings.INPUT_GUARD_ENABLED):
             try:
                 from app.rag.safety import get_input_guard
 
@@ -626,72 +447,89 @@ Requirements:
 
         try:
             complexity_score = self._score_question_complexity(question, history)
-            agentic_threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
-            if bool(getattr(settings, "RAG_AGENTIC_MODE_ENABLED", False)) and complexity_score >= agentic_threshold:
+            agentic_threshold = float(settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD)
+            if bool(settings.RAG_AGENTIC_MODE_ENABLED) and complexity_score >= agentic_threshold:
+                from app.rag.agents.rag_agent import get_agentic_runner
+
                 runner = get_agentic_runner(engine=self)
-                async for event in runner.stream(
-                    question=question,
-                    history=history,
-                    conversation_id=conversation_id,
-                    document_ids=document_ids,
-                    dataset_ids=dataset_ids,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=dataset_id,
-                    top_k=top_k,
-                    score_threshold=score_threshold,
-                    retrieval_mode=retrieval_mode,
-                    retrieval_profile=retrieval_profile,
-                    retrieval_contract_mode=retrieval_contract_mode,
-                    must_recall=must_recall,
-                    must_recall_expected_source_keys=must_recall_expected_source_keys,
-                    must_recall_required_anchor_fields=must_recall_required_anchor_fields,
-                    intent_router=intent_router,
-                    intent_router_policy=intent_router_policy,
-                    industry_rules_enabled=industry_rules_enabled,
-                    industry_rules_rulesets=industry_rules_rulesets,
-                    enable_query_alias_expansion=enable_query_alias_expansion,
-                    query_aliases=query_aliases,
-                    query_alias_max_queries=query_alias_max_queries,
-                    enable_multi_query=enable_multi_query,
-                    multi_query_count=multi_query_count,
-                    multi_query_temperature=multi_query_temperature,
-                    multi_query_max_chars=multi_query_max_chars,
-                    enable_hierarchy_recall=enable_hierarchy_recall,
-                    hierarchy_family_collapse=hierarchy_family_collapse,
-                    hierarchy_family_aggregation=hierarchy_family_aggregation,
-                    hierarchy_tree_dedup=hierarchy_tree_dedup,
-                    hierarchy_parent_depth=hierarchy_parent_depth,
-                    hierarchy_sibling_window=hierarchy_sibling_window,
-                    hierarchy_overfetch_factor=hierarchy_overfetch_factor,
-                    alpha=alpha,
-                    fusion_strategy=fusion_strategy,
-                    fusion_budgets=fusion_budgets,
-                    fusion_min_scores=fusion_min_scores,
-                    fusion_weights=fusion_weights,
-                    retrieval_overfetch_multiplier=retrieval_overfetch_multiplier,
-                    retrieval_overfetch_max_k=retrieval_overfetch_max_k,
-                    sparse_retrieval_enabled=sparse_retrieval_enabled,
-                    sparse_retrieval_provider=sparse_retrieval_provider,
-                    enable_weight_rerank=enable_weight_rerank,
-                    vector_weight=vector_weight,
-                    keyword_weight=keyword_weight,
-                    mmr_lambda=mmr_lambda,
-                    enable_reranker=enable_reranker,
-                    reranker_provider=reranker_provider,
-                    reranker_top_n=reranker_top_n,
-                    metadata_filter=metadata_filter,
-                    structured_output=structured_output,
-                    structured_preset=structured_preset,
-                    visible_evidence_only=visible_evidence_only,
-                    prompt_template_id=prompt_template_id,
-                    prompt_template_key=prompt_template_key,
-                    prompt_ab_experiment_key=prompt_ab_experiment_key,
-                    ab_user_key=ab_user_key,
-                    request_id=request_id,
-                    db=db,
-                ):
-                    yield event
+                async with aclosing(
+                    runner.stream(
+                        question=question,
+                        history=history,
+                        conversation_id=conversation_id,
+                        document_ids=document_ids,
+                        dataset_ids=dataset_ids,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=dataset_id,
+                        top_k=top_k,
+                        score_threshold=score_threshold,
+                        retrieval_mode=retrieval_mode,
+                        retrieval_profile=retrieval_profile,
+                        retrieval_contract_mode=retrieval_contract_mode,
+                        must_recall=must_recall,
+                        must_recall_expected_source_keys=must_recall_expected_source_keys,
+                        must_recall_required_anchor_fields=must_recall_required_anchor_fields,
+                        intent_router=intent_router,
+                        intent_router_policy=intent_router_policy,
+                        industry_rules_enabled=industry_rules_enabled,
+                        industry_rules_rulesets=industry_rules_rulesets,
+                        enable_query_alias_expansion=enable_query_alias_expansion,
+                        query_aliases=query_aliases,
+                        query_alias_max_queries=query_alias_max_queries,
+                        enable_multi_query=enable_multi_query,
+                        multi_query_count=multi_query_count,
+                        multi_query_temperature=multi_query_temperature,
+                        multi_query_max_chars=multi_query_max_chars,
+                        enable_hyde=enable_hyde,
+                        enable_query_decomposition=enable_query_decomposition,
+                        enable_kg_query_expansion=enable_kg_query_expansion,
+                        enable_kg_chunk_injection=enable_kg_chunk_injection,
+                        kg_chunk_injection_max_chunks=kg_chunk_injection_max_chunks,
+                        enable_kg_chunk_boost=enable_kg_chunk_boost,
+                        kg_chunk_boost_weight=kg_chunk_boost_weight,
+                        kg_chunk_boost_max_promoted=kg_chunk_boost_max_promoted,
+                        lexical_db_hybrid_metadata_exact_fallback_enabled=lexical_db_hybrid_metadata_exact_fallback_enabled,
+                        lexical_db_hybrid_fallback_only=lexical_db_hybrid_fallback_only,
+                        metadata_exact_db_fallback_enabled=metadata_exact_db_fallback_enabled,
+                        enable_hierarchy_recall=enable_hierarchy_recall,
+                        hierarchy_family_collapse=hierarchy_family_collapse,
+                        hierarchy_family_aggregation=hierarchy_family_aggregation,
+                        hierarchy_tree_dedup=hierarchy_tree_dedup,
+                        hierarchy_parent_depth=hierarchy_parent_depth,
+                        hierarchy_sibling_window=hierarchy_sibling_window,
+                        hierarchy_overfetch_factor=hierarchy_overfetch_factor,
+                        alpha=alpha,
+                        fusion_strategy=fusion_strategy,
+                        fusion_budgets=fusion_budgets,
+                        fusion_min_scores=fusion_min_scores,
+                        fusion_weights=fusion_weights,
+                        retrieval_overfetch_multiplier=retrieval_overfetch_multiplier,
+                        retrieval_overfetch_max_k=retrieval_overfetch_max_k,
+                        sparse_retrieval_enabled=sparse_retrieval_enabled,
+                        sparse_retrieval_provider=sparse_retrieval_provider,
+                        enable_weight_rerank=enable_weight_rerank,
+                        vector_weight=vector_weight,
+                        keyword_weight=keyword_weight,
+                        mmr_lambda=mmr_lambda,
+                        enable_reranker=enable_reranker,
+                        reranker_provider=reranker_provider,
+                        reranker_top_n=reranker_top_n,
+                        metadata_filter=metadata_filter,
+                        max_tokens=rag_config.max_tokens,
+                        structured_output=structured_output,
+                        structured_preset=structured_preset,
+                        visible_evidence_only=visible_evidence_only,
+                        prompt_template_id=prompt_template_id,
+                        prompt_template_key=prompt_template_key,
+                        prompt_ab_experiment_key=prompt_ab_experiment_key,
+                        ab_user_key=ab_user_key,
+                        request_id=request_id,
+                        db=db,
+                    )
+                ) as stream_events:
+                    async for event in stream_events:
+                        yield event
                 return
             state = locals().copy()
             async with aclosing(self._stream_chat_standard_impl(state=state)) as events:
@@ -720,7 +558,6 @@ Requirements:
     ) -> AsyncGenerator[dict[str, Any], None]:
         executor = StandardStreamExecutor(
             engine=self,
-            module=sys.modules[__name__],
             inputs=StandardStreamInputs.from_state(state),
         )
         async with aclosing(executor.stream()) as events:
@@ -735,23 +572,23 @@ _rag_engine_lock: threading.Lock = threading.Lock()
 
 def _rag_engine_settings_signature() -> str:
     """Return a PII-safe signature for runtime settings captured by RAGEngine."""
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+    api_key = str(settings.LLM_API_KEY).strip()
     api_key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     payload = {
-        "llm_api_base": str(getattr(settings, "LLM_API_BASE", "") or "").strip(),
-        "llm_model": str(getattr(settings, "LLM_MODEL", "") or "").strip(),
-        "llm_model_fast": str(getattr(settings, "LLM_MODEL_FAST", "") or "").strip(),
-        "llm_model_heavy": str(getattr(settings, "LLM_MODEL_HEAVY", "") or "").strip(),
+        "llm_api_base": str(settings.LLM_API_BASE).strip(),
+        "llm_model": str(settings.LLM_MODEL).strip(),
+        "llm_model_fast": str(settings.LLM_MODEL_FAST or "").strip(),
+        "llm_model_heavy": str(settings.LLM_MODEL_HEAVY or "").strip(),
         "llm_api_key_hash": api_key_hash,
-        "llm_temperature": float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0),
-        "llm_timeout": float(getattr(settings, "LLM_TIMEOUT", 0.0) or 0.0),
-        "llm_max_retries": int(getattr(settings, "LLM_MAX_RETRIES", 0) or 0),
-        "llm_pooled_async_http_client": bool(getattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", False)),
-        "llm_fallback_enabled": bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)),
-        "llm_fallback_models": str(getattr(settings, "LLM_FALLBACK_MODELS", "") or "").strip(),
-        "llm_mock_enabled": bool(getattr(settings, "LLM_MOCK_ENABLED", False)),
-        "llm_mock_response": str(getattr(settings, "LLM_MOCK_RESPONSE", "") or ""),
-        "dynamic_model_routing": bool(getattr(settings, "ENABLE_DYNAMIC_MODEL_ROUTING", False)),
+        "llm_temperature": float(settings.LLM_TEMPERATURE),
+        "llm_timeout": float(settings.LLM_TIMEOUT),
+        "llm_max_retries": int(settings.LLM_MAX_RETRIES),
+        "llm_pooled_async_http_client": bool(settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT),
+        "llm_fallback_enabled": bool(settings.LLM_FALLBACK_ENABLED),
+        "llm_fallback_models": str(settings.LLM_FALLBACK_MODELS).strip(),
+        "llm_mock_enabled": bool(settings.LLM_MOCK_ENABLED),
+        "llm_mock_response": str(settings.LLM_MOCK_RESPONSE),
+        "dynamic_model_routing": bool(settings.ENABLE_DYNAMIC_MODEL_ROUTING),
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 

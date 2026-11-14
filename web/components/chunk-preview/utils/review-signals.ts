@@ -182,7 +182,7 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
 
 export function computeCoverageSignals(
   chunks: ChunkPreviewItem[],
-  options?: { strategy?: string }
+  options?: { strategy?: string },
 ): {
   basis: 'all' | 'child'
   gapIndices: Set<number>

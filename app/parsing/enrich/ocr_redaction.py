@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
@@ -6,7 +5,9 @@ from app.rag.preprocessing.secrets import redact_secrets
 
 
 def _normalize_mode(raw: Any, *, allowed: set[str], default: str) -> str:
-    mode = str(raw or "").strip().lower()
+    if not isinstance(raw, str):
+        return default
+    mode = raw.strip().lower()
     return mode if mode in allowed else default
 
 
@@ -29,7 +30,7 @@ def redact_ocr_text(
     Returns:
       (redacted_text, pii_hits, secrets_hits)
     """
-    s = str(text or "")
+    s = text
     if not s:
         return s, {}, {}
 
@@ -43,8 +44,7 @@ def redact_ocr_text(
         mode=secrets_mode_norm,
         mask=str(secrets_mask or "[SECRET]"),
     )
-    return sec_res.text, dict(pii_res.hits or {}), dict(sec_res.hits or {})
+    return sec_res.text, dict(pii_res.hits), dict(sec_res.hits)
 
 
 __all__ = ["redact_ocr_text"]
-
