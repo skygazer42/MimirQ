@@ -43,10 +43,7 @@ def _normalize_lexical_text(text: str) -> str:
     raw = (text).strip()
     if not raw:
         return ""
-    try:
-        return unicodedata.normalize("NFKC", raw)
-    except Exception:
-        return raw
+    return unicodedata.normalize("NFKC", raw)
 
 
 def _keep_token(norm: str) -> bool:

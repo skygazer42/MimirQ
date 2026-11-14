@@ -1,6 +1,6 @@
 # 全项目代码风格统一重构计划
 
-> 执行方式：继续在本会话按 `superpowers:executing-plans` 逐项实施；已确认的分支和执行方式沿用。
+> 执行方式：继续在本会话按文件复核；用户于2026-11-12要求尽可能多子智能体并行，采用 `superpowers:dispatching-parallel-agents` 与任务独立复核。每位实现者逐文件处理，不重叠写入，共享导出与台账由主智能体维护。
 
 **目标：** 同类业务采用一致、直观的写法，读入口即可追踪数据、依赖和失败路径；减少重复实现与无依据防御，不以拆文件数量或复杂度分数作为完成标准。
 
@@ -12,13 +12,14 @@
 
 ## 1. 当前进度与执行位置
 
-- 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
+- 主工作区：`E:/MimirQ`；当前分支：`feat/ragvia-ui`。按用户最新约定，所有实现继续在此分支，保持既有改动／暂存／未跟踪内容，不新建分支或worktree、不自动暂存／提交／推送；早期并行分支记录只作历史。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
 - 当前覆盖表逐路径对应 Git 跟踪文件；实际数量和各项状态以 `docs/maintenance/style-unification/coverage.csv` 为准。纯排版结果另记，不能据此关闭语义审核；Python 测试暂缓范围登记为保留，不计为已完成语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 后续并行分支按连接器、RAG 策略、前端 API／类型等完整类别处理；主线使用 squash 合入类别源码与对应覆盖、验证记录，不再为单个函数或文件重复建立提交。现有提交历史保持原样。
+- 早期并行分支按连接器、RAG 策略、前端 API／类型等完整类别处理，曾采用squash整合；这些提交历史保持原样，当前同分支并行不再创建或整合新分支。
+- 当前并行批次按独立路由及其领域schema划定写入范围，用户最新要求覆盖此前串行执行／分支整合方式；不重建早期分支。实际进度以app-review.csv及api-v1-review.csv为准。Ruling：不能让两个worker同时改同一公共包入口或CSV，定义文件先落盘、公共导出后发布；完成源码与仅局部支持的schema分别登记。
 - 已完成并合并的并行类别分支：Task 5 dataset route planning/query contracts/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion/hierarchy owner/rerank cache/retrieval policy/trace diagnostics、Task 3 chat runtime/turn persistence/memory/dataset profile/precheck、Task 4 batch ingestion/document dispatch/identity-lifecycle/parser models/parser backends/parser structure/table rendering/OCR enrichment、Task 6 settings API/settings sections/settings controls/system/auth/access/documents/chat APIs/common/feedback types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准

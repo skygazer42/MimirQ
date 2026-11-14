@@ -8,6 +8,8 @@ Supported providers:
 - `simple`: lightweight regex-based fallback
 """
 
+from __future__ import annotations
+
 import re
 from collections import Counter
 from operator import itemgetter
@@ -29,7 +31,7 @@ UnsupportedKeywordProvider = UnsupportedKeywordProviderError
 KeywordProviderUnavailable = KeywordProviderUnavailableError
 
 
-_extractor_cache: dict[str, object] = {}
+_extractor_cache: dict[str, JiebaKeywordTableHandler | JiebaTextRankKeywordExtractor | SimpleKeywordExtractor] = {}
 _STOPWORDS_CASEFOLD = {str(s).casefold() for s in STOPWORDS if isinstance(s, str) and s.strip()}
 
 
@@ -46,7 +48,9 @@ def _expand_tokens_with_subtokens(tokens: set[str]) -> set[str]:
     return results
 
 
-def get_keyword_extractor(provider: str | None = None) -> object:
+def get_keyword_extractor(
+    provider: str | None = None,
+) -> JiebaKeywordTableHandler | JiebaTextRankKeywordExtractor | SimpleKeywordExtractor:
     key = ("jieba" if provider is None else provider).lower().strip()
     reject_retired_provider(key, capability="keyword")
     cached = _extractor_cache.get(key)
@@ -72,10 +76,8 @@ def extract_keywords(
     **kwargs: Any,
 ) -> list[str]:
     extractor = get_keyword_extractor(provider)
-    if not hasattr(extractor, "extract_keywords"):
-        raise KeywordProviderUnavailableError(f"Invalid keyword extractor for provider={provider!r}")
     keywords = extractor.extract_keywords(text, max_keywords_per_chunk=top_k, **kwargs)
-    return sorted({str(k).strip() for k in (keywords or []) if str(k).strip()})
+    return sorted({str(k).strip() for k in keywords if str(k).strip()})
 
 
 class JiebaKeywordTableHandler:

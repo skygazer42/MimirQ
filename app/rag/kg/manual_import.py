@@ -145,7 +145,7 @@ class _NormalizedImport:
 
     def stats(self) -> KGManualImportStats:
         relation_entity_keys = {rel.subject_key for rel in self.relations} | {rel.object_key for rel in self.relations}
-        isolated_entities = max(0, len([ent for ent in self.entities if ent.key not in relation_entity_keys]))
+        isolated_entities = len([ent for ent in self.entities if ent.key not in relation_entity_keys])
         registry_events = (isolated_entities + REGISTRY_EVENT_ENTITY_BATCH - 1) // REGISTRY_EVENT_ENTITY_BATCH
         events = len(self.relations) + registry_events
         return KGManualImportStats(
@@ -258,7 +258,7 @@ def _normalize_entity_input(
         )
         return None
 
-    aliases = [_norm(alias) for alias in item.aliases if _norm(alias)]
+    aliases = [normalized for alias in item.aliases if (normalized := _norm(alias))]
     return (
         key,
         (ent_type, _normalized_key(ent_name)),

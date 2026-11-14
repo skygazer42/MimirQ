@@ -123,16 +123,15 @@ def _bounded_content(content: str, *, max_content_chars: int) -> str:
 
 
 def _collect_drift_sample_items(
-    rows: list[tuple[object, object, object]],
+    rows: list[tuple[str | None, str, object]],
     *,
     max_content_chars: int,
 ) -> tuple[list[_DriftSampleItem], Counter[str]]:
     items: list[_DriftSampleItem] = []
     stored_space_counts: Counter[str] = Counter()
-    for row in rows:
-        if not row or len(row) < 3:
+    for vector_id_raw, content_raw, meta_raw in rows:
+        if vector_id_raw is None:
             continue
-        vector_id_raw, content_raw, meta_raw = row
         vector_id = vector_id_raw.strip()
         if not vector_id:
             continue

@@ -43,7 +43,7 @@ class LangChainRecursiveChunker(BaseChunker):
         for chunk in docs:
             start_index = chunk.metadata.pop("start_index", None)
             metadata = dict(base_metadata)
-            metadata.update(chunk.metadata or {})
+            metadata.update(chunk.metadata)
             if start_index is not None:
                 abs_start = offset + int(start_index)
                 metadata["start_char"] = abs_start
@@ -52,24 +52,12 @@ class LangChainRecursiveChunker(BaseChunker):
             out.append(Document(page_content=chunk.page_content, metadata=metadata))
         return out
 
-    @staticmethod
-    def _table_chunk(*, table_text: str, base_metadata: dict[str, Any], start: int, end: int) -> Document | None:
-        if not table_text.strip():
-            return None
-
-        metadata = dict(base_metadata)
-        metadata["start_char"] = start
-        metadata["end_char"] = end
-        metadata["chunk_strategy"] = "langchain_recursive"
-        metadata.setdefault("doc_type_kwd", "table")
-        return Document(page_content=table_text, metadata=metadata)
-
     def _split_document(self, doc: Document) -> list[Document]:
         text = doc.page_content
         if not text.strip():
             return []
 
-        base_metadata = dict(doc.metadata or {})
+        base_metadata = dict(doc.metadata)
         matches = list(self._HTML_TABLE_RE.finditer(text))
         if not matches:
             return self._split_text_segment(text=text, base_metadata=base_metadata)
@@ -83,14 +71,12 @@ class LangChainRecursiveChunker(BaseChunker):
             if prefix.strip():
                 chunks.extend(self._split_text_segment(text=prefix, base_metadata=base_metadata, offset=cursor))
 
-            table_doc = self._table_chunk(
-                table_text=text[start:end],
-                base_metadata=base_metadata,
-                start=start,
-                end=end,
-            )
-            if table_doc is not None:
-                chunks.append(table_doc)
+            metadata = dict(base_metadata)
+            metadata["start_char"] = start
+            metadata["end_char"] = end
+            metadata["chunk_strategy"] = "langchain_recursive"
+            metadata.setdefault("doc_type_kwd", "table")
+            chunks.append(Document(page_content=text[start:end], metadata=metadata))
             cursor = end
 
         tail = text[cursor:]

@@ -7,7 +7,7 @@ This derives a folder hierarchy from document metadata `source_path` values
 
 from collections.abc import Iterable
 
-from app.api.schemas.document_folders import DocumentFolderNode
+from app.api.schemas.documents import DocumentFolderNode
 
 
 def build_document_folder_tree(

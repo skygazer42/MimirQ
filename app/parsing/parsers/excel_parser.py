@@ -141,16 +141,14 @@ class ExcelParser:
         max_cols = self.max_cols if self.max_cols > 0 else int(getattr(ws, "max_column", 0) or 0)
         return max(0, max_rows), max(0, max_cols)
 
-    def _markdown_rows(self, grid: list[list[object]]) -> tuple[list[list[str]], int]:
+    def _markdown_rows(self, grid: list[list[object]]) -> list[list[str]]:
         rows_md: list[list[str]] = []
-        emitted_rows = 0
         for row in grid:
             cells = [_escape_md_cell(_safe_cell(value, max_chars=self.max_cell_chars)) for value in row]
             if not any(cells):
                 continue
-            emitted_rows += 1
             rows_md.append(cells)
-        return rows_md, emitted_rows
+        return rows_md
 
     def _sheet_markdown(self, ws: Any) -> tuple[str, int, bool]:
         max_rows, max_cols = self._sheet_limits(ws)
@@ -163,7 +161,7 @@ class ExcelParser:
         if not grid:
             return _EMPTY_SHEET_MARKDOWN, 0, False
 
-        rows_md, emitted_rows = self._markdown_rows(grid)
+        rows_md = self._markdown_rows(grid)
         if not rows_md:
             return _EMPTY_SHEET_MARKDOWN, 0, False
 
@@ -174,7 +172,7 @@ class ExcelParser:
         except Exception as exc:
             logger.debug("Ignoring Excel truncation metadata failure: %s", exc)
             truncated = False
-        return _md_table(rows_md) + "\n\n", emitted_rows, truncated
+        return _md_table(rows_md) + "\n\n", len(rows_md), truncated
 
     def _parse_xlsx(self, file_path: Path) -> list[Document]:
         from openpyxl import load_workbook  # type: ignore
@@ -238,7 +236,7 @@ class ExcelParser:
         if cols:
             rows_md.append([_escape_md_cell(_safe_cell(c, max_chars=self.max_cell_chars)) for c in cols])
         for row in df.itertuples(index=False, name=None):
-            values = [_escape_md_cell(_safe_cell(v, max_chars=self.max_cell_chars)) for v in (row or ())]
+            values = [_escape_md_cell(_safe_cell(v, max_chars=self.max_cell_chars)) for v in row]
             if any(values):
                 rows_md.append(values)
 
@@ -249,12 +247,6 @@ class ExcelParser:
             out.write("\n")
         else:
             out.write("_Empty sheet._\n")
-
-        cols: list[str] | None = None
-        try:
-            cols = [str(c) for c in df.columns]
-        except Exception:
-            cols = None
 
         metadata = {
             "source": str(file_path.name),

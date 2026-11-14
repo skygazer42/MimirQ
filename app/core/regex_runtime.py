@@ -12,6 +12,7 @@ Notes:
 """
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from app.core.optional_deps import optional_import
@@ -42,7 +43,7 @@ class RegexSubstitutionTimeoutError(RuntimeError):
 def safe_subn(
     *,
     pattern: str,
-    repl: object,
+    repl: str | Callable[[re.Match[str]], str],
     text: str,
     flags: int = 0,
     timeout_ms: int | None = None,
@@ -58,10 +59,10 @@ def safe_subn(
     timeout = DEFAULT_REGEX_TIMEOUT_MS if timeout_ms is None else timeout_ms
     timeout = max(0, timeout)
     if timeout <= 0 or _regex is None or callable(repl):
-        return re.subn(pattern, repl, text, flags=flags or 0)
+        return re.subn(pattern, repl, text, flags=flags)
 
     try:
-        return _regex.subn(pattern, str(repl), text, flags=flags or 0, timeout=timeout / 1000.0)
+        return _regex.subn(pattern, repl, text, flags=flags, timeout=timeout / 1000.0)
     except TimeoutError as exc:
         raise RegexSubstitutionTimeoutError(rule_index=rule_index, pattern=pattern, timeout_ms=timeout) from exc
 

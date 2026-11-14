@@ -18,7 +18,6 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
-from app.rag.core.logging import get_logger
 
 
 @dataclass(frozen=True)
@@ -52,29 +51,18 @@ def _iter_headings(text: str) -> list[HtmlHeading]:
 
     headings: list[HtmlHeading] = []
     for m in _H_TAG_RE.finditer(text):
-        try:
-            level = int(m.group("level"))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
+        level = int(m.group("level"))
         title = _clean_heading_text(m.group("body"))
         headings.append(
             HtmlHeading(
                 start=m.start(),
                 end=m.end(),
-                level=max(1, min(6, level)),
+                level=level,
                 title=title or f"h{level}",
             )
         )
 
-    deduped: list[HtmlHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[HtmlHeading]) -> list[_Section]:

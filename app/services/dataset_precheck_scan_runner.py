@@ -312,7 +312,7 @@ def _simhash64(text: str, *, max_tokens: int = 2000) -> int:
 
 
 def _hamming_distance64(a: int, b: int) -> int:
-    return int((int(a) ^ int(b)).bit_count())
+    return (a ^ b).bit_count()
 
 
 def _bucket_file_size_label(size: int) -> str:
@@ -474,9 +474,7 @@ def _build_representative_samples(
         if len(rep) >= target_size:
             return target_size, rep
 
-    remaining = [
-        item for items in type_groups.values() for item in items if item["name"] not in picked_names
-    ]
+    remaining = [item for items in type_groups.values() for item in items if item["name"] not in picked_names]
     remaining.sort(key=lambda o: (_stable_sample_key(o, salt="ratio-fill"), o["name"]))
     for item in remaining:
         name = item["name"]
@@ -1008,12 +1006,12 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
     else:
         sample_size_override = None
 
-    pii_context_chars = max(0, min(safe_int(cfg.get("pii_context_chars") or 50, default=50), 500))
-    pii_max_samples_per_file = max(0, min(safe_int(cfg.get("pii_max_samples_per_file") or 5, default=5), 50))
-    secrets_context_chars = max(0, min(safe_int(cfg.get("secrets_context_chars") or 50, default=50), 500))
-    secrets_max_samples_per_file = max(0, min(safe_int(cfg.get("secrets_max_samples_per_file") or 5, default=5), 50))
-    near_dup_hamming_threshold = max(0, min(safe_int(cfg.get("near_dup_hamming_threshold") or 5, default=5), 32))
-    near_dup_max_pairs = max(0, min(safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000), 200_000))
+    pii_context_chars = max(0, min(safe_int(cfg.get("pii_context_chars"), default=50), 500))
+    pii_max_samples_per_file = max(0, min(safe_int(cfg.get("pii_max_samples_per_file"), default=5), 50))
+    secrets_context_chars = max(0, min(safe_int(cfg.get("secrets_context_chars"), default=50), 500))
+    secrets_max_samples_per_file = max(0, min(safe_int(cfg.get("secrets_max_samples_per_file"), default=5), 50))
+    near_dup_hamming_threshold = max(0, min(safe_int(cfg.get("near_dup_hamming_threshold"), default=5), 32))
+    near_dup_max_pairs = max(0, min(safe_int(cfg.get("near_dup_max_pairs"), default=5000), 200_000))
     spreadsheet_merged_ratio_threshold = _clamp_unit_ratio(
         float(settings.PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD or 0.15)
     )
@@ -1247,6 +1245,14 @@ def _load_previous_records(
         return {}
     if options.redact_paths:
         logger.info("Skip reuse_unchanged_files in redact_paths mode")
+        return {}
+
+    # Older runs may contain samples produced before zero-valued settings were honored.
+    if (options.enable_pii_samples and (options.pii_context_chars == 0 or options.pii_max_samples_per_file == 0)) or (
+        options.enable_secrets_samples
+        and (options.secrets_context_chars == 0 or options.secrets_max_samples_per_file == 0)
+    ):
+        logger.info("Skip reuse_unchanged_files for zero-valued sample settings; rescan required")
         return {}
 
     prev_run = _query_previous_scan_run(
@@ -2021,7 +2027,7 @@ def _process_candidate(
 
 
 def _count_exact_duplicates(sha_counts: dict[str, int]) -> int:
-    return sum(int(cnt) for cnt in sha_counts.values() if int(cnt) > 1)
+    return sum(count for count in sha_counts.values() if count > 1)
 
 
 def _find_union_root(parent: list[int], x: int) -> int:
@@ -2197,8 +2203,8 @@ def _build_file_type_stats(by_type: dict[str, int], bytes_by_type: dict[str, int
     ]
     stats.sort(
         key=lambda o: (
-            -int(o.get("count") or 0),
-            -int(o.get("total_size_bytes") or 0),
+            -o["count"],
+            -o["total_size_bytes"],
             o["file_type"],
         )
     )
@@ -2226,8 +2232,8 @@ def _build_directory_items(directory_stats: dict[str, dict[str, Any]], *, limit:
         items.append(item)
     items.sort(
         key=lambda o: (
-            -int(o.get("risky_files") or 0),
-            -int(o.get("total_files") or 0),
+            -o["risky_files"],
+            -o["total_files"],
             o["path"],
         )
     )

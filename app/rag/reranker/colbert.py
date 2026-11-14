@@ -32,9 +32,7 @@ def _tokenize(text: str) -> list[str]:
         return []
     toks: list[str] = []
     for m in _TOKEN_RE.finditer(raw):
-        t = (m.group(0)).strip()
-        if not t:
-            continue
+        t = m.group(0)
         toks.append(t.casefold() if t.isascii() else t)
     return toks
 
@@ -189,7 +187,7 @@ class ColBERTReranker(BaseReranker):
         score_map = {cid: s for cid, s in scores}
         if top_n:
             ordered_ids = ordered_ids[:top_n]
-            score_map = {cid: score_map[cid] for cid in ordered_ids if cid in score_map}
+            score_map = {cid: score_map[cid] for cid in ordered_ids}
         return RerankResult(
             ordered_ids=ordered_ids,
             score_map=score_map,

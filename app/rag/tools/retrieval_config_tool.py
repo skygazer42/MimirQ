@@ -33,13 +33,13 @@ def configure_retrieval(
 
     return {
         "schema": _SCHEMA,
-        "retrieval_profile": applied.get("retrieval_profile"),
-        "retrieval_mode": applied.get("retrieval_mode"),
-        "top_k": int(applied.get("top_k") or requested_top_k),
-        "reranker_top_n": int(applied.get("reranker_top_n") or requested_reranker_top_n),
-        "reranker_provider": applied.get("reranker_provider"),
-        "enable_reranker": applied.get("enable_reranker"),
-        "score_threshold": float(applied.get("score_threshold") or 0.0),
+        "retrieval_profile": applied["retrieval_profile"],
+        "retrieval_mode": applied["retrieval_mode"],
+        "top_k": applied["top_k"],
+        "reranker_top_n": applied["reranker_top_n"],
+        "reranker_provider": applied["reranker_provider"],
+        "enable_reranker": applied["enable_reranker"],
+        "score_threshold": applied["score_threshold"] or 0.0,
     }
 
 

@@ -219,12 +219,12 @@ def _build_case_risk(
     for row in ranked_hard_cases:
         hard_cases.append(
             {
-                "id": str(row.get("id") or "").strip(),
-                "question": _clip_text(row.get("question"), max_len=160),
-                "hit_at_k": round(_as_float(row.get("hit_at_k"), 0.0), 6),
-                "reciprocal_rank": round(_as_float(row.get("reciprocal_rank"), 0.0), 6),
-                "ndcg_at_k": round(_as_float(row.get("ndcg_at_k"), 0.0), 6),
-                "latency_ms": round(_as_float(row.get("latency_ms"), 0.0), 3),
+                "id": row["id"],
+                "question": row["question"],
+                "hit_at_k": round(row["hit_at_k"], 6),
+                "reciprocal_rank": round(row["reciprocal_rank"], 6),
+                "ndcg_at_k": round(row["ndcg_at_k"], 6),
+                "latency_ms": round(row["latency_ms"], 3),
             }
         )
 
@@ -279,13 +279,13 @@ def build_queryset_health_snapshot(
             p95_latency_ms, _as_float(prev_metrics.get("p95_latency_ms"), p95_latency_ms), 3
         ),
         "miss_rate_delta": _metric_delta(
-            _as_float(risk.get("miss_rate"), 0.0),
-            _as_float(prev_risk.get("miss_rate"), _as_float(risk.get("miss_rate"), 0.0)),
+            risk["miss_rate"],
+            _as_float(prev_risk.get("miss_rate"), risk["miss_rate"]),
             6,
         ),
         "weak_hit_rate_delta": _metric_delta(
-            _as_float(risk.get("weak_hit_rate"), 0.0),
-            _as_float(prev_risk.get("weak_hit_rate"), _as_float(risk.get("weak_hit_rate"), 0.0)),
+            risk["weak_hit_rate"],
+            _as_float(prev_risk.get("weak_hit_rate"), risk["weak_hit_rate"]),
             6,
         ),
         "policy_changed": bool(prev_policy_hash and prev_policy_hash != policy_hash),

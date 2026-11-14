@@ -9,10 +9,26 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.pii_redaction import pii_redaction_enabled, redact_text
+from app.core.token_utils import num_tokens_from_string
+from app.rag.core.logging import get_logger
+from app.rag.core.vision_reader import build_vision_reader_context_docs
+from app.rag.engine_support.common import _release_request_session
+from app.rag.engine_support.doc_utils import fuse_doc_lists
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.kg.pipeline import kg_search
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _apply_kg_chunk_boost,
+    _fetch_document_chunks_for_kg_injection,
+    _merge_kg_docs_preserving_main,
+    _resolve_kg_scope,
+)
+from app.rag.retriever import hybrid_retriever
+
+logger = get_logger("rag.engine")
 
 
 async def build_retriever_and_base_queries(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
@@ -30,14 +46,12 @@ async def build_retriever_and_base_queries(runtime: StandardStreamState) -> Asyn
         yield runtime.data.status_event
     plan = runtime.data.query_plan
     runtime.data.retriever_update = dict(plan.retriever_options)
-    runtime.data.retriever = runtime.module.hybrid_retriever.model_copy(update=runtime.data.retriever_update)
+    runtime.data.retriever = hybrid_retriever.model_copy(update=runtime.data.retriever_update)
     runtime.data.retrieval_queries_base = [query for query in plan.queries if query[0] != "mq"]
     runtime.data.retrieval_queries = list(plan.queries)
 
 
 async def extend_queries_and_prepare_plan(runtime: StandardStreamState) -> None:
-    runtime.data.retrieval_queries_base = [query for query in runtime.data.query_plan.queries if query[0] != "mq"]
-    runtime.data.retrieval_queries = list(runtime.data.query_plan.queries)
     runtime.data.docs_by_query: list[list[Document]] = []
     runtime.data.docs_by_query_kinds: list[str] = []
     runtime.data.t_retrieval_start = time.time()
@@ -91,7 +105,7 @@ async def execute_retrieval_plan(runtime: StandardStreamState) -> AsyncGenerator
                 {
                     "kind": runtime.data.kind,
                     "query_chars": len(runtime.data.q),
-                    "query_tokens": runtime.module.num_tokens_from_string(runtime.data.q),
+                    "query_tokens": num_tokens_from_string(runtime.data.q),
                     "elapsed_sec": round(runtime.data.elapsed_i, 3),
                     "ok": runtime.data.err is None,
                     "retriever_debug": runtime.data.dbg,
@@ -126,7 +140,7 @@ async def execute_retrieval_plan(runtime: StandardStreamState) -> AsyncGenerator
                 {
                     "kind": runtime.data.kind,
                     "query_chars": len(runtime.data.q),
-                    "query_tokens": runtime.module.num_tokens_from_string(runtime.data.q),
+                    "query_tokens": num_tokens_from_string(runtime.data.q),
                     "elapsed_sec": round(runtime.data.elapsed_i, 3),
                     "ok": runtime.data.err is None,
                     "retriever_debug": runtime.data.dbg,
@@ -168,25 +182,15 @@ def _partition_retrieval_docs(runtime: StandardStreamState) -> None:
             runtime.data.non_mq_lists.append(docs or [])
 
 
-def _fuse_doc_lists(runtime: StandardStreamState, doc_lists: list[list[Document]]) -> list[Document]:
-    if len(doc_lists) == 1:
-        return doc_lists[0] or []
-    return runtime.engine.fuse_docs_rrf(
-        doc_lists,
-        rrf_k=settings.RETRIEVAL_RRF_K,
-        meta_prefix="query_expansion",
-    )
-
-
 def _select_non_mq_docs(runtime: StandardStreamState) -> None:
     for doc in runtime.data.docs_non_mq:
+        if len(runtime.data.selected) >= runtime.data.want_non_mq:
+            break
         key = runtime.engine._doc_key(doc)
         if key in runtime.data.selected_keys:
             continue
         runtime.data.selected_keys.add(key)
         runtime.data.selected.append(doc)
-        if len(runtime.data.selected) >= runtime.data.want_non_mq:
-            break
     runtime.data.mq_diversify_selected_non_mq = len(runtime.data.selected)
 
 
@@ -220,7 +224,11 @@ async def fuse_retrieval_results(runtime: StandardStreamState) -> None:
     if len(runtime.data.docs_by_query) <= 1:
         runtime.data.docs = runtime.data.docs_by_query[0] if runtime.data.docs_by_query else []
         return
-    runtime.data.docs_fused_all = _fuse_doc_lists(runtime, runtime.data.docs_by_query)
+    runtime.data.docs_fused_all = fuse_doc_lists(
+        runtime.data.docs_by_query,
+        fuse_docs_rrf=runtime.engine.fuse_docs_rrf,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+    )
     if not (runtime.data.mq_diversify_enabled and runtime.data.mq_diversify_budget > 0):
         runtime.data.docs = runtime.data.docs_fused_all
         return
@@ -229,8 +237,16 @@ async def fuse_retrieval_results(runtime: StandardStreamState) -> None:
         runtime.data.docs = runtime.data.docs_fused_all
         return
     runtime.data.mq_diversify_used = True
-    runtime.data.docs_non_mq = _fuse_doc_lists(runtime, runtime.data.non_mq_lists)
-    runtime.data.docs_mq = _fuse_doc_lists(runtime, runtime.data.mq_lists)
+    runtime.data.docs_non_mq = fuse_doc_lists(
+        runtime.data.non_mq_lists,
+        fuse_docs_rrf=runtime.engine.fuse_docs_rrf,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+    )
+    runtime.data.docs_mq = fuse_doc_lists(
+        runtime.data.mq_lists,
+        fuse_docs_rrf=runtime.engine.fuse_docs_rrf,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+    )
     runtime.data.want_non_mq = max(0, int(runtime.data.top_k or 0) - runtime.data.mq_diversify_budget)
     runtime.data.want_mq = runtime.data.mq_diversify_budget
     runtime.data.selected = []
@@ -274,6 +290,7 @@ def _kg_chunk_injection_allowed(runtime: StandardStreamState) -> bool:
     )
     return bool(
         runtime.data.kg_chunk_injection_enabled
+        and runtime.data.kg_chunk_injection_max_chunks_i > 0
         and settings.KG_ENABLED
         and settings.KG_CHAT_ENABLED
         and runtime.data.db is not None
@@ -293,7 +310,7 @@ def _collect_kg_chunk_candidates(runtime: StandardStreamState) -> None:
         try:
             chunk_id = UUID(str(event.get("chunk_id")))
         except Exception:
-            runtime.module.logger.debug("Skipping item after non-critical exception", exc_info=True)
+            logger.debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if chunk_id in runtime.data.seen_chunk_ids:
             continue
@@ -341,7 +358,7 @@ def _kg_document_from_chunk(runtime: StandardStreamState, chunk_id: UUID, chunk:
         score = float(runtime.data.score_by_chunk.get(str(chunk_id), 0.0) or 0.0)
         metadata.setdefault("retrieval_score", score)
         metadata.setdefault("score", score)
-    return runtime.module.Document(
+    return Document(
         page_content=chunk.content,
         metadata=metadata,
         id=str(chunk_id),
@@ -362,7 +379,7 @@ async def inject_kg_chunks(runtime: StandardStreamState) -> None:
         runtime.data.kg_document_ids,
         runtime.data.kg_dataset_id,
         runtime.data.kg_dataset_ids,
-    ) = runtime.module._resolve_kg_scope(
+    ) = _resolve_kg_scope(
         {
             "document_ids": runtime.data.document_ids,
             "dataset_id": runtime.data.dataset_id,
@@ -381,24 +398,22 @@ async def inject_kg_chunks(runtime: StandardStreamState) -> None:
     if runtime.data.kg_dataset_ids:
         runtime.data.kg_kwargs["dataset_ids"] = runtime.data.kg_dataset_ids
     try:
-        runtime.data.kg_result_cached = runtime.data.kg_result_cached or await runtime.module.kg_search(
-            **runtime.data.kg_kwargs
-        )
+        runtime.data.kg_result_cached = runtime.data.kg_result_cached or await kg_search(**runtime.data.kg_kwargs)
     except Exception:
-        runtime.module.logger.debug("Optional KG chunk search failed", exc_info=True)
+        logger.debug("Optional KG chunk search failed", exc_info=True)
         runtime.data.kg_result_cached = None
         runtime.data.kg_chunks_injected = 0
         return
     runtime.data.kg_events = (runtime.data.kg_result_cached or {}).get("events") or []
-    runtime.data.max_chunks = int(runtime.data.kg_chunk_injection_max_chunks_i or 0) or 5
+    runtime.data.max_chunks = int(runtime.data.kg_chunk_injection_max_chunks_i or 0)
     _collect_kg_chunk_candidates(runtime)
     if not runtime.data.chunk_ids:
         return
-    rows = runtime.module._fetch_document_chunks_for_kg_injection(**_kg_injection_fetch_kwargs(runtime))
+    rows = _fetch_document_chunks_for_kg_injection(**_kg_injection_fetch_kwargs(runtime))
     runtime.data.chunk_by_id = {chunk.id: chunk for chunk in rows}
     runtime.data.kg_docs = _build_kg_injection_docs(runtime)
     if runtime.data.kg_docs:
-        runtime.data.docs = runtime.module._merge_kg_docs_preserving_main(
+        runtime.data.docs = _merge_kg_docs_preserving_main(
             runtime.data.docs,
             runtime.data.kg_docs,
         )
@@ -423,8 +438,8 @@ async def boost_kg_and_select_images(runtime: StandardStreamState) -> None:
             if runtime.data.kg_chunk_boost_max_promoted is None
             else int(runtime.data.kg_chunk_boost_max_promoted or 0)
         )
-        runtime.data.docs, runtime.data.kg_chunk_boost_meta = runtime.module._apply_kg_chunk_boost(
-            [d for d in (runtime.data.docs or []) if isinstance(d, runtime.module.Document)],
+        runtime.data.docs, runtime.data.kg_chunk_boost_meta = _apply_kg_chunk_boost(
+            [d for d in (runtime.data.docs or []) if isinstance(d, Document)],
             enabled=bool(runtime.data.kg_boost_enabled),
             weight=max(0.0, min(float(runtime.data.kg_boost_weight), 1.0)),
             max_promoted=max(0, min(int(runtime.data.kg_boost_max_promoted), 20)),
@@ -452,7 +467,7 @@ async def boost_kg_and_select_images(runtime: StandardStreamState) -> None:
                 max_images=max(settings.VISION_RAG_READER_MAX_IMAGES, settings.VISION_RAG_GENERATION_MAX_IMAGES),
             )
         finally:
-            runtime.module._release_request_session(db)
+            _release_request_session(db)
     runtime.data.image_meta = {
         "enabled": False,
         "used": bool(runtime.data.image_docs),
@@ -473,16 +488,14 @@ async def read_images_and_initialize_tag(runtime: StandardStreamState) -> AsyncG
                     yield {"type": "event", "data": {"message": "正在使用视觉模型读取图片证据（VLM-as-Reader）..."}}
                 # Reuse the same privacy knob as the main generation: if PII redaction is enabled,
                 # avoid sending raw identifiers to external vision providers.
-                runtime.data.pii_on_for_vision = bool(runtime.module.pii_redaction_enabled())
+                runtime.data.pii_on_for_vision = bool(pii_redaction_enabled())
                 runtime.data.q_for_vision = (
-                    runtime.module.redact_text(runtime.data.question)
-                    if runtime.data.pii_on_for_vision
-                    else (runtime.data.question)
+                    redact_text(runtime.data.question) if runtime.data.pii_on_for_vision else (runtime.data.question)
                 )
                 (
                     runtime.data.vision_reader_docs,
                     runtime.data.vision_reader_meta,
-                ) = await runtime.module.build_vision_reader_context_docs(
+                ) = await build_vision_reader_context_docs(
                     image_docs=runtime.data.image_docs,
                     question=runtime.data.q_for_vision,
                     tenant_id=runtime.data.tenant_id,
@@ -550,7 +563,7 @@ async def retrieve_tag_context(runtime: StandardStreamState) -> AsyncGenerator[d
     # KG/image/TAG enrichment can reopen the request transaction. No later
     # engine stage needs that transaction, so return its connection before
     # corrective retrieval or answer-generation awaits.
-    runtime.module._release_request_session(runtime.data.db)
+    _release_request_session(runtime.data.db)
 
     if runtime.data.tag_docs:
         runtime.data.docs = (runtime.data.tag_docs or []) + (runtime.data.docs or [])

@@ -89,14 +89,12 @@ def _edge_counts(event_entities: dict[str, list[str]], *, max_entities_per_event
     for ents in (event_entities or {}).values():
         dedup = _dedupe_event_entities(ents, max_entities=max_entities_per_event)
         for key in _iter_entity_pairs(dedup):
-            counts[key] = float(counts.get(key, 0.0) or 0.0) + 1.0
+            counts[key] = counts.get(key, 0.0) + 1.0
     return counts
 
 
 def _community_edges_from_counts(counts: dict[tuple[str, str], float], *, min_weight: float) -> list[CommunityEdge]:
-    edges = [
-        CommunityEdge(a=a, b=b, w=float(weight)) for (a, b), weight in counts.items() if float(weight) >= min_weight
-    ]
+    edges = [CommunityEdge(a=a, b=b, w=weight) for (a, b), weight in counts.items() if weight >= min_weight]
     edges.sort(key=lambda edge: (-edge.w, _stable_sig(edge.a), _stable_sig(edge.b), edge.a, edge.b))
     return edges
 
@@ -225,7 +223,7 @@ def _neighbor_label_scores(neighbors: list[tuple[str, float]], label: dict[str, 
     scores: dict[str, float] = {}
     for neighbor, weight in neighbors:
         current_label = label.get(neighbor, neighbor)
-        scores[current_label] = float(scores.get(current_label, 0.0) or 0.0) + float(weight)
+        scores[current_label] = scores.get(current_label, 0.0) + weight
     return scores
 
 
@@ -302,7 +300,7 @@ def _event_community_scores(
         label = entity_to_label.get(entity_id)
         if label:
             weight = float(entity_weights.get(entity_id, 1.0) or 1.0)
-            scores[label] = float(scores.get(label, 0.0) or 0.0) + weight
+            scores[label] = scores.get(label, 0.0) + weight
     return scores
 
 
@@ -383,8 +381,8 @@ def _ranked_community_labels(
     labels = sorted(
         community_entities.keys(),
         key=lambda label: (
-            -len(community_events.get(label, []) or []),
-            -len(community_entities.get(label, []) or []),
+            -len(community_events.get(label, [])),
+            -len(community_entities[label]),
             _stable_sig(label),
             label,
         ),
@@ -546,8 +544,8 @@ def build_community_reports(
             _build_community_report(
                 idx=idx,
                 label=lb,
-                entity_ids=comm_entities.get(lb, []) or [],
-                event_ids=comm_events.get(lb, []) or [],
+                entity_ids=comm_entities[lb],
+                event_ids=comm_events.get(lb, []),
                 ent_info=ent_info,
                 ev_info=ev_info,
                 max_entities_per_community=max_entities_per_community,

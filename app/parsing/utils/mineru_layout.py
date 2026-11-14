@@ -9,6 +9,10 @@ from app.parsing.utils.scalars import coerce_int as _as_int
 from app.rag.core.logging import get_logger
 
 
+def _layout_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
 def _as_lines(value: Any) -> list[str]:
     if isinstance(value, str):
         text = value.strip()
@@ -17,7 +21,7 @@ def _as_lines(value: Any) -> list[str]:
         return []
     out: list[str] = []
     for item in value:
-        text = str(item or "").strip()
+        text = _layout_text(item)
         if text:
             out.append(text)
     return out
@@ -137,14 +141,14 @@ def _build_position_tag(
 
 
 def _extract_block_text(item: dict[str, Any]) -> str:
-    text = str(item.get("text") or "").strip()
+    text = _layout_text(item.get("text"))
     if text:
         return text
 
     item_type = str(item.get("type") or "").strip().lower()
     if item_type == "table":
         parts = _as_lines(item.get("table_caption"))
-        body = str(item.get("table_body") or "").strip()
+        body = _layout_text(item.get("table_body"))
         if body:
             parts.append(body)
         parts.extend(_as_lines(item.get("table_footnote")))
@@ -161,7 +165,7 @@ def _extract_block_text(item: dict[str, Any]) -> str:
 
     if item_type == "code":
         parts = _as_lines(item.get("code_caption"))
-        body = str(item.get("code_body") or "").strip()
+        body = _layout_text(item.get("code_body"))
         if body:
             parts.insert(0, body)
         return "\n".join(parts).strip()

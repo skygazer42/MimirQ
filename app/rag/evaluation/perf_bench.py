@@ -17,8 +17,8 @@ def percentile(sorted_values: list[float], p: float) -> float | None:
 
     n = len(sorted_values)
     pos = (p / 100.0) * (n - 1)
-    lo = int(math.floor(pos))
-    hi = int(math.ceil(pos))
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
     if lo == hi:
         return float(sorted_values[lo])
     frac = pos - lo

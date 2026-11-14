@@ -85,10 +85,6 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
-def _tenant_quota_fail_closed_enabled() -> bool:
-    return settings.TENANT_QUOTA_FAIL_CLOSED
-
-
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -197,7 +193,7 @@ def _enforce_embedding_quota_gate(
     except TenantQuotaExceededError:
         raise
     except Exception as exc:
-        closed = _tenant_quota_fail_closed_enabled()
+        closed = settings.TENANT_QUOTA_FAIL_CLOSED
         outcome = "closed" if closed else "degraded"
         reason = "tenant_quota_gate_unavailable"
         details = {
@@ -266,76 +262,6 @@ def _metadata_flag_enabled(value: Any) -> bool:
     if value is None:
         return False
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
-
-
-_UNRESOLVED_ROW_VALUE = object()
-
-
-def _mapping_row_value(row: Any, key: str) -> Any:
-    mapping = getattr(row, "_mapping", None)
-    if mapping is None:
-        return _UNRESOLVED_ROW_VALUE
-    if key in mapping:
-        return mapping[key]
-    metadata = mapping.get("metadata")
-    if isinstance(metadata, dict) and key in metadata:
-        return metadata.get(key)
-    return _UNRESOLVED_ROW_VALUE
-
-
-def _dict_row_value(row: Any, key: str) -> Any:
-    if not isinstance(row, dict):
-        return _UNRESOLVED_ROW_VALUE
-    if key in row:
-        return row.get(key)
-    metadata = row.get("metadata")
-    if isinstance(metadata, dict) and key in metadata:
-        return metadata.get(key)
-    return _UNRESOLVED_ROW_VALUE
-
-
-def _sequence_row_value(row: Any, key: str) -> Any:
-    if not isinstance(row, (tuple, list)):
-        return _UNRESOLVED_ROW_VALUE
-    value = row[0] if row else None
-    if isinstance(value, dict):
-        return value.get(key)
-    return value
-
-
-def _indexed_row_value(row: Any, key: str) -> Any:
-    try:
-        value = row[key]
-        if isinstance(value, dict):
-            return value.get(key)
-        return value
-    except (IndexError, KeyError, TypeError):
-        return row
-
-
-def _row_named_value(row: Any, key: str) -> Any:
-    if row is None:
-        return None
-    for resolver in (_mapping_row_value, _dict_row_value):
-        value = resolver(row, key)
-        if value is not _UNRESOLVED_ROW_VALUE:
-            return value
-    if hasattr(row, key):
-        return getattr(row, key)
-    sequence_value = _sequence_row_value(row, key)
-    if sequence_value is not _UNRESOLVED_ROW_VALUE:
-        return sequence_value
-    return _indexed_row_value(row, key)
-
-
-def _iter_query_rows(query: Query[Any], *, batch_size: int) -> Iterable[Any]:
-    if hasattr(query, "yield_per"):
-        query = query.yield_per(batch_size)
-    if hasattr(query, "__iter__"):
-        return query
-    if hasattr(query, "all"):
-        return query.all()
-    return ()
 
 
 def _safe_uuid(value: Any) -> UUID | None:
@@ -1123,19 +1049,17 @@ class Indexer:
 
         collections: set[str] = set()
         derived_spaces: set[str] = set()
-        for row in _iter_query_rows(rows, batch_size=_CHUNK_METADATA_SCAN_BATCH_SIZE):
-            collection_name = _row_named_value(row, "vector_collection_name")
+        for collection_name, space_hash, dataset_scoped in rows.yield_per(_CHUNK_METADATA_SCAN_BATCH_SIZE):
             if collection_name is not None:
                 collection_name = collection_name.strip()
             if collection_name:
                 collections.add(collection_name)
                 continue
-            space_hash = _row_named_value(row, "embedding_space_hash")
             if space_hash is not None:
                 space_hash = space_hash.strip()
             if not space_hash:
                 continue
-            if assume_dataset_scoped or _metadata_flag_enabled(_row_named_value(row, "dataset_scoped")):
+            if assume_dataset_scoped or _metadata_flag_enabled(dataset_scoped):
                 derived_spaces.add(space_hash)
                 continue
             if space_hash != default_runtime.embedding_space_hash:
@@ -1272,7 +1196,9 @@ class Indexer:
             "metadata": {
                 "tenant_id": str(tenant_id),
                 "dataset_id": str(meta["dataset_id"]) if meta.get("dataset_id") is not None else "",
-                "embedding_space_hash": str(meta["embedding_space_hash"]) if meta.get("embedding_space_hash") is not None else "",
+                "embedding_space_hash": str(meta["embedding_space_hash"])
+                if meta.get("embedding_space_hash") is not None
+                else "",
                 "document_id": str(document_id),
                 "chunk_index": int(meta.get("chunk_index", index) or 0),
                 "chunk_id": str(chunk_id) if chunk_id else "",

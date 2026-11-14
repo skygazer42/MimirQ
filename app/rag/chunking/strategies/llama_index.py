@@ -169,11 +169,11 @@ class LlamaIndexChunker(BaseChunker):
             li_doc = LlamaDocument(text=doc.page_content, metadata={})
             nodes = self.splitter.get_nodes_from_documents([li_doc])
             for node in nodes:
-                metadata = dict(doc.metadata or {})
+                metadata = dict(doc.metadata)
                 metadata.update(node.metadata or {})
-                node_id = getattr(node, "node_id", None) or getattr(node, "id_", None)
-                if node_id:
-                    metadata["node_id"] = str(node_id)
+                node_id = _node_id(node)
+                if node_id is not None:
+                    metadata["node_id"] = node_id
                 start_idx = getattr(node, "start_char_idx", None)
                 end_idx = getattr(node, "end_char_idx", None)
                 if start_idx is not None:
@@ -242,7 +242,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                         page_content=node.get_content(),
                         metadata=_hierarchical_node_metadata(
                             node,
-                            base_metadata=dict(doc.metadata or {}),
+                            base_metadata=dict(doc.metadata),
                             child_counts=child_counts,
                             resolve_level=resolve_level,
                             parent_key=NodeRelationship.PARENT,

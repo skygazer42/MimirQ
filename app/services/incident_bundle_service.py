@@ -84,12 +84,12 @@ def write_incident_bundle_zip(
         "base_url": bundle.base_url,
         "tenant_id": bundle.tenant_id,
         "files": {
-            "meta": bool(bundle.meta),
-            "health_ready": bool(bundle.health_ready),
-            "config_snapshot": bool(bundle.config_snapshot),
-            "trace_bundle": bool(bundle.trace_bundle),
-            "access_graph_summary": bool(bundle.access_graph_summary),
-            "periodic_job_freshness": bool(bundle.periodic_job_freshness),
+            "meta": bundle.meta is not None,
+            "health_ready": bundle.health_ready is not None,
+            "config_snapshot": bundle.config_snapshot is not None,
+            "trace_bundle": bundle.trace_bundle is not None,
+            "access_graph_summary": bundle.access_graph_summary is not None,
+            "periodic_job_freshness": bundle.periodic_job_freshness is not None,
         },
     }
 

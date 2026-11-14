@@ -18,18 +18,18 @@ def emit_db_catalog_sync_completed(
     run_id: str,
     connector_id: str,
     elapsed_sec: float,
-    result: Mapping[str, Any] | None,
+    result: Mapping[str, Any],
 ) -> None:
     log_metrics(
         {
             "event": "db_catalog.sync.completed",
             "success": True,
-            "tenant_id": str(tenant_id),
-            "dataset_id": str(dataset_id),
-            "run_id": str(run_id),
-            "connector_id": str(connector_id),
-            "elapsed_sec": float(elapsed_sec or 0.0),
-            "result": dict(result or {}),
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "run_id": run_id,
+            "connector_id": connector_id,
+            "elapsed_sec": elapsed_sec,
+            "result": dict(result),
         }
     )
 
@@ -47,11 +47,11 @@ def emit_db_catalog_sync_failed(
         {
             "event": "db_catalog.sync.failed",
             "success": False,
-            "tenant_id": str(tenant_id),
+            "tenant_id": tenant_id,
             "dataset_id": dataset_id,
-            "run_id": str(run_id),
+            "run_id": run_id,
             "connector_id": connector_id,
-            "elapsed_sec": float(elapsed_sec or 0.0),
+            "elapsed_sec": elapsed_sec,
             "error": error[:500],
         }
     )
@@ -74,11 +74,11 @@ def emit_db_catalog_schema_doc_completed(
         {
             "event": "db_catalog.schema_doc.completed",
             "success": True,
-            "tenant_id": str(tenant_id),
-            "dataset_id": str(dataset_id),
-            "run_id": str(run_id),
-            "connector_id": str(connector_id),
-            "elapsed_sec": float(elapsed_sec or 0.0),
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "run_id": run_id,
+            "connector_id": connector_id,
+            "elapsed_sec": elapsed_sec,
             "document_id": str(document_id),
             "chunks": int(chunks or 0),
             "tables": int(tables or 0),

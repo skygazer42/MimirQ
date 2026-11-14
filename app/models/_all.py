@@ -4,8 +4,8 @@ Alembic autogeneration relies on `Base.metadata` to contain *every* table. In th
 codebase, not all model modules are imported from `app.models.__init__`, so Alembic
 must import them explicitly.
 
-This module should only be imported by tooling (e.g. Alembic) or test code. Importing
-it in request paths is discouraged to avoid eager loading side effects.
+Import this module at application startup and in Alembic tooling, where complete
+metadata is required. Request helpers should import the model they use directly.
 """
 
 # Import each module for side effects: table registration into Base.metadata.

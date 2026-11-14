@@ -82,7 +82,7 @@ def _detail_items(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
 
 
 def _detail_index(snapshot: dict[str, Any], key: str) -> dict[str, dict[str, Any]]:
-    return {str(item.get("id")): item for item in _detail_items(snapshot, key)}
+    return {item["id"]: item for item in _detail_items(snapshot, key)}
 
 
 def _sample(items: list[dict[str, Any]], limit: int = KG_SNAPSHOT_DIFF_SAMPLE_LIMIT) -> list[dict[str, Any]]:

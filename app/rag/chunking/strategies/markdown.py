@@ -29,10 +29,6 @@ def _find_chunk_position(text: str, chunk_text: str, *, search_pos: int) -> tupl
     return start, min(len(text), start + len(chunk_text))
 
 
-def _is_list_item_start(pattern: re.Pattern[str], line: str) -> bool:
-    return bool(pattern.match(line))
-
-
 def _is_list_continuation(line: str) -> bool:
     if not line:
         return False
@@ -45,7 +41,7 @@ def _list_item_end(lines: list[str], *, start: int, pattern: re.Pattern[str]) ->
     index = start + 1
     while index < len(lines):
         line = lines[index]
-        if _is_list_item_start(pattern, line):
+        if pattern.match(line):
             break
         if not line.strip():
             next_nonempty = index + 1
@@ -270,7 +266,7 @@ class MarkdownHeaderChunker(BaseChunker):
         for _, meta_key in self.headers_to_split_on:
             if meta_key in metadata:
                 parts.append(str(metadata[meta_key]))
-        return " > ".join(parts) if parts else ""
+        return " > ".join(parts)
 
     def _fallback_split(self, doc: Document) -> list[Document]:
         """Split document using fallback splitter."""
@@ -468,9 +464,6 @@ class MarkdownAwareChunker(BaseChunker):
             return text, {}
 
         lines = (text).splitlines(keepends=True)
-        if not lines:
-            return text, {}
-
         items: dict[str, str] = {}
         out: list[str] = []
         idx = 0
@@ -479,7 +472,7 @@ class MarkdownAwareChunker(BaseChunker):
 
         while idx < len(lines):
             line = lines[idx]
-            if not _is_list_item_start(self._LIST_ITEM_RE, line):
+            if not self._LIST_ITEM_RE.match(line):
                 out.append(line)
                 idx += 1
                 continue
@@ -501,8 +494,6 @@ class MarkdownAwareChunker(BaseChunker):
 
     def _restore_placeholders(self, text: str, mapping: dict[str, str]) -> str:
         """Restore placeholders from a mapping (best-effort)."""
-        if not mapping:
-            return text
         out = text
         for placeholder, value in mapping.items():
             out = out.replace(placeholder, value)

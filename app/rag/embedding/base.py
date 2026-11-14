@@ -175,7 +175,6 @@ class BaseEmbeddingModel(ABC):
         if not messages:
             return []
 
-        data = []
         task_id = None
 
         if len(messages) > batch_size:
@@ -206,13 +205,22 @@ class BaseEmbeddingModel(ABC):
                     self.embed_state[task_id]["progress"] = min(idx + len(group_msg), len(messages))
                 return result
 
-        tasks = [encode_batch_with_limit(batch) for batch in batches]
+        tasks: list[asyncio.Task[list[list[float]]]] = []
         try:
+            for batch in batches:
+                batch_coro = encode_batch_with_limit(batch)
+                try:
+                    tasks.append(asyncio.create_task(batch_coro))
+                except BaseException:
+                    batch_coro.close()
+                    raise
             results = await asyncio.gather(*tasks)
-        except Exception:
-            # A failed batch fails the whole call (results must stay aligned);
-            # mark the task failed instead of leaving it stuck at "in-progress".
-            if task_id:
+        except BaseException as exc:
+            for task in tasks:
+                if not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if isinstance(exc, Exception) and task_id:
                 self.embed_state[task_id]["status"] = "failed"
             raise
         finally:
@@ -221,10 +229,7 @@ class BaseEmbeddingModel(ABC):
             if task_id:
                 self.embed_state.pop(task_id, None)
 
-        for res in results:
-            data.extend(res)
-
-        return data
+        return [vector for batch_result in results for vector in batch_result]
 
     async def test_connection(self) -> tuple[bool, str]:
         """Test the embedding model connection.

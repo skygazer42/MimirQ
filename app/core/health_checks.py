@@ -1,6 +1,5 @@
 """
 Shared health/readiness probe helpers.
-
 This module keeps checks best-effort and dependency-light:
 - Avoid importing optional deps (redis/minio/milvus) unless the feature is enabled.
 - Return structured status dicts instead of raising, so endpoints can decide 200 vs 503.
@@ -12,23 +11,25 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from redis import Redis
     from sqlalchemy.orm import Session
+
+    from app.core.config import Settings
 
 HealthMode = Literal["ready", "health"]
 
 
-def redis_usage_flags(settings: object) -> dict[str, bool]:
+def redis_usage_flags(settings: "Settings") -> dict[str, bool]:
     singleflight_redis_enabled = (
-        bool(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True))
-        and len(str(settings.SECRET_KEY).strip()) >= 32
+        settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED and len(settings.SECRET_KEY.strip()) >= 32
     )
     return {
-        "task_queue": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-        "embedding_cache": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
-        "chat_response_cache": bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)),
+        "task_queue": settings.TASK_QUEUE_ENABLED,
+        "embedding_cache": settings.EMBEDDING_CACHE_ENABLED,
+        "chat_response_cache": settings.CHAT_RESPONSE_CACHE_ENABLED,
         "retrieval_candidate_singleflight": singleflight_redis_enabled,
-        "retrieval_candidate_cache": bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)),
-        "semantic_cache": bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)),
+        "retrieval_candidate_cache": settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED,
+        "semantic_cache": settings.SEMANTIC_CACHE_ENABLED,
     }
 
 
@@ -52,57 +53,49 @@ def check_database(
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
 
-    ok = True
     db_status: dict[str, Any] = {"status": "disconnected"}
-    db = session_local()
     try:
-        db.execute(text("SELECT 1"))
-        db_status["status"] = "connected"
-        if require_schema_current:
-            try:
-                expected_revisions = _expected_alembic_heads()
-                current_revisions = frozenset(
-                    str(row[0]) for row in db.execute(text("SELECT version_num FROM alembic_version"))
-                )
-            except SQLAlchemyError:
-                current_revisions = frozenset()
-            except Exception as exc:  # noqa: BLE001
-                ok = False
+        with session_local() as db:
+            db.execute(text("SELECT 1"))
+            db_status["status"] = "connected"
+            if require_schema_current:
+                try:
+                    expected_revisions = _expected_alembic_heads()
+                    current_revisions = frozenset(
+                        str(row[0]) for row in db.execute(text("SELECT version_num FROM alembic_version"))
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    db_status.update(
+                        {
+                            "status": "schema_check_failed",
+                            "schema_current": False,
+                            "error": f"database schema revision check failed: {str(exc)[:120]}",
+                        }
+                    )
+                    return db_status, False
+
+                schema_current = bool(expected_revisions) and current_revisions == expected_revisions
                 db_status.update(
                     {
-                        "status": "schema_check_failed",
-                        "schema_current": False,
-                        "error": f"database schema revision check failed: {str(exc)[:120]}",
+                        "schema_current": schema_current,
+                        "current_revisions": sorted(current_revisions),
+                        "expected_revisions": sorted(expected_revisions),
                     }
                 )
-                return db_status, ok
-
-            schema_current = bool(expected_revisions) and current_revisions == expected_revisions
-            db_status.update(
-                {
-                    "schema_current": schema_current,
-                    "current_revisions": sorted(current_revisions),
-                    "expected_revisions": sorted(expected_revisions),
-                }
-            )
-            if not schema_current:
-                ok = False
-                db_status["status"] = "schema_outdated"
-                db_status["error"] = "database schema is not at the expected Alembic head"
+                if not schema_current:
+                    db_status["status"] = "schema_outdated"
+                    db_status["error"] = "database schema is not at the expected Alembic head"
+                    return db_status, False
     except SQLAlchemyError as exc:
-        ok = False
+        db_status["status"] = "disconnected"
         db_status["error"] = str(exc)[:200]
-    finally:
-        try:
-            db.close()
-        except SQLAlchemyError:
-            pass
+        return db_status, False
 
-    return db_status, ok
+    return db_status, True
 
 
 def check_vector(
-    settings: object,
+    settings: "Settings",
     *,
     mode: HealthMode,
     milvus_get_collection_count: Callable[[], int] | None = None,
@@ -114,7 +107,7 @@ def check_vector(
     - `milvus_status` is meaningful in `mode="health"` (detailed endpoint) to keep
       backward-compatible response fields.
     """
-    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    vector_backend = settings.VECTOR_BACKEND.lower()
     vector_status: dict[str, Any] = {"backend": vector_backend, "status": "unknown"}
     milvus_status: dict[str, Any] = {"status": "not_configured", "count": None}
     ok = True
@@ -136,10 +129,10 @@ def check_vector(
             return vector_status, milvus_status, ok
 
         try:
-            count = milvus_get_collection_count()
+            count = int(milvus_get_collection_count())
             milvus_status["status"] = "connected"
             if mode == "health":
-                milvus_status["count"] = int(count) if count is not None else None
+                milvus_status["count"] = count
             vector_status["status"] = "connected"
         except Exception as exc:  # noqa: BLE001
             ok = False
@@ -165,9 +158,9 @@ def check_vector(
 
 
 def check_redis(
-    settings: object,
+    settings: "Settings",
     *,
-    get_client: Callable[[], Any] | None = None,
+    get_client: Callable[[], "Redis | None"],
 ) -> tuple[dict[str, Any], bool, bool]:
     """
     Return (redis_status, ok, should_reset_client).
@@ -196,17 +189,7 @@ def check_redis(
         return redis_status, ok, should_reset_client
 
     try:
-        if get_client is not None:
-            client = get_client()
-        else:
-            import redis  # type: ignore
-
-            client = redis.Redis.from_url(
-                getattr(settings, "REDIS_URL", "redis://localhost:6379/0"),
-                socket_timeout=1,
-                socket_connect_timeout=1,
-                decode_responses=True,
-            )
+        client = get_client()
         client.ping()
         redis_status["status"] = "connected"
     except Exception as exc:  # noqa: BLE001
@@ -220,46 +203,19 @@ def check_redis(
 
 
 def check_object_storage(
-    settings: object,
     *,
-    mode: HealthMode,
-    minio_health_check: Callable[[], dict[str, Any]] | None = None,
-    enabled_override: bool | None = None,
+    is_enabled: Callable[[], bool],
+    health_check: Callable[[], dict[str, Any]],
 ) -> tuple[dict[str, Any], bool]:
-    """
-    Return (storage_status, ok).
-
-    - mode="ready" returns the supplied object storage probe shape (includes `enabled`).
-    - mode="health" keeps the historical `/health` response shape (no `enabled` key).
-    """
-    enabled = enabled_override
-    if enabled is None:
-        enabled = bool(getattr(settings, "MINIO_ENABLED", False)) or (
-            bool(getattr(settings, "OBJECT_STORAGE_ENABLED", False))
-            and bool(getattr(settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False))
-        )
-    if not enabled:
-        if mode == "ready":
+    """Return object-storage readiness, including enablement/probe failures."""
+    diagnostics: dict[str, Any] = {}
+    try:
+        diagnostics["enabled"] = is_enabled()
+        if not diagnostics["enabled"]:
             return {"status": "disabled", "enabled": False}, True
-        return {"status": "disabled"}, True
+        raw = health_check()
+    except Exception as exc:  # noqa: BLE001
+        diagnostics.update({"status": "disconnected", "error": str(exc)[:200]})
+        return diagnostics, False
 
-    if minio_health_check is None:
-        ok = False
-        err = "minio client not available"
-        if mode == "ready":
-            return {"enabled": True, "status": "disconnected", "error": err}, ok
-        return {"status": "disconnected", "error": err}, ok
-
-    raw = minio_health_check()
-    ok = raw.get("status") == "connected"
-
-    if mode == "ready":
-        return raw, ok
-
-    # mode == "health": keep fields stable (status/bucket/error).
-    payload: dict[str, Any] = {"status": raw.get("status") or "unknown"}
-    if raw.get("bucket"):
-        payload["bucket"] = raw.get("bucket")
-    if raw.get("error"):
-        payload["error"] = raw.get("error")
-    return payload, ok
+    return raw, raw["status"] == "connected"

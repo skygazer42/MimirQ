@@ -145,7 +145,7 @@ def run_embedding_benchmark(
         {
             "query_id": str(case["query_id"]).strip(),
             "query": case["query"],
-            "expected_document_ids": _normalize_ids((case or {}).get("expected_document_ids")),
+            "expected_document_ids": _normalize_ids(case.get("expected_document_ids")),
         }
         for case in cases or []
         if case is not None and case.get("query_id") is not None and str(case["query_id"]).strip()

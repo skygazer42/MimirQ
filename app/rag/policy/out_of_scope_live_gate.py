@@ -20,7 +20,10 @@ def _normalize_vector_hits(rows: Sequence[dict[str, Any]] | None) -> list[dict[s
         if score is None:
             score = item.get("relevance_score")
         if score is None and isinstance(meta, dict):
-            score = meta.get("relevance_score") or meta.get("retrieval_score") or meta.get("score")
+            for key in ("relevance_score", "retrieval_score", "score"):
+                score = meta.get(key)
+                if score is not None:
+                    break
         try:
             out.append({"score": float(score or 0.0)})
         except Exception:

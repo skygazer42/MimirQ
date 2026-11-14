@@ -185,12 +185,6 @@ def _maybe_json_dump_via_method(value: Any, method_name: str) -> Any:
         return None
 
 
-def _maybe_redact(obj: Any) -> Any:
-    # Do not silently bypass redaction when enabled. The core helper is dependency-free
-    # and fails closed on unexpected errors.
-    return redact_obj(obj)
-
-
 def _hash_text(text: str) -> str:
     """
     Stable short hash for potentially sensitive strings.
@@ -497,7 +491,9 @@ class _MetricsWriter:
 
             for record in batch:
                 record = _strip_text_fields_for_metrics(record)
-                record = _maybe_redact(record)
+                # Do not silently bypass redaction when enabled. The core helper is dependency-free
+                # and fails closed on unexpected errors.
+                record = redact_obj(record)
                 to_write.append(json.dumps(record, ensure_ascii=False, default=_json_default))
             self._write_lines(to_write)
         except Exception:

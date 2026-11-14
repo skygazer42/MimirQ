@@ -14,8 +14,6 @@ from uuid import UUID
 
 from app.core.config import settings
 
-DEFAULT_TABLE_STORE_DIR = "./uploads/table_store"
-
 _TABLE_ID_RE = re.compile(r"^doc:([0-9a-fA-F-]{36}):sheet:(\d+)$")
 
 
@@ -67,10 +65,6 @@ def quote_sqlite_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _table_store_root() -> Path:
-    return Path(settings.TABLE_STORE_DIR)
-
-
 def table_store_path(*, tenant_id: UUID, dataset_id: UUID, document_id: UUID) -> Path:
     """
     Return the SQLite file path for a document-scoped table store.
@@ -78,14 +72,14 @@ def table_store_path(*, tenant_id: UUID, dataset_id: UUID, document_id: UUID) ->
     Layout:
       {TABLE_STORE_DIR}/{tenant_id}/{dataset_id}/{document_id}.sqlite3
     """
-    root = _table_store_root()
+    root = Path(settings.TABLE_STORE_DIR)
     # Avoid accidental relative traversal by always joining deterministic UUID components.
     out = root / str(tenant_id) / str(dataset_id) / f"{document_id}.sqlite3"
     return out
 
 
 def ensure_table_store_dir(*, tenant_id: UUID, dataset_id: UUID) -> Path:
-    root = _table_store_root()
+    root = Path(settings.TABLE_STORE_DIR)
     out = root / str(tenant_id) / str(dataset_id)
     out.mkdir(parents=True, exist_ok=True)
     return out

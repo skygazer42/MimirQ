@@ -27,7 +27,7 @@ class LLMGuard:
         if safety_result.action != "allow":
             triggered.append("safety_guard")
 
-        action = "block" if "prompt_screen" in triggered or "safety_guard" in triggered else "allow"
+        action = "block" if triggered else "allow"
         return LLMGuardResult(
             action=action,
             triggered_guards=triggered,

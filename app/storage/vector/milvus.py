@@ -1466,7 +1466,6 @@ class MilvusVectorStore:
         return cls._instance
 
     def __init__(self) -> None:
-        self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
         self._embedding_model = None
         self._store = None
         self._embedding_space_hash = ""
@@ -1477,10 +1476,6 @@ class MilvusVectorStore:
         from app.rag.embedding.utils import current_embedding_space_hash
 
         return current_embedding_space_hash().strip()
-
-    def _init_embedding_model(self) -> "LangChainEmbeddingsAdapter":
-        """Initialize embedding model."""
-        return _init_embedding_model()
 
     def get_embedding_model(self) -> "LangChainEmbeddingsAdapter":
         with self._store_lock:
@@ -1716,12 +1711,12 @@ class MilvusVectorStore:
         store.delete(expr=expr)
 
     def get_collection_count(self) -> int:
-        """Return document count in the vector collection."""
-        self._require_store()
-        try:
-            return int(self._store.col.num_entities)  # type: ignore[union-attr]
-        except Exception:
+        """Return the collection count; connection and RPC failures propagate."""
+        store = self._require_store()
+        # LangChain leaves col unset until the first write creates the collection.
+        if store.col is None:
             return 0
+        return int(store.col.num_entities)
 
     def fetch_existing_ids(
         self,

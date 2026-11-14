@@ -16,6 +16,10 @@ Provider 用一个本地 storageLoaded 状态表达首次读取已经结束。�
 
 能力 Provider 的 parserBackendAvailable 直接用 normalizeParserBackendName 的结果查原 Map。该生产者把空输入归为 auto，其他返回值保持非空，原本的空键分支不可达。仍可能产生空键的分块策略归一化检查保留，两个 Map 的未知值仍返回 undefined。
 
+分块名称规范化函数只消费字符串；可选的可用性查询在缺少名字时明确返回 undefined。能力响应的名称、默认项和 available 消费实际 string/boolean 字段，不重复转换为字符串或布尔。解析器与分块默认归位由已有的偏好写入/名称归一化持有，Context 消费端不重复补同一默认值。
+
+偏好 JSON 的反序列化结果使用 unknown，normalizeState 复用已有对象守卫。Effect 运行在客户端，不重复判断 window；必需 JSON 字符串直接 trim。外部 JSON 校验、损坏存储默认值与恢复阶段继续保持。
+
 ## Alternatives considered
 
 通过 useState 懒初始化直接读取 localStorage 可以避开两个 effect 的顺序，但会让客户端首次状态与 SSR 默认快照不同。因此保留原首次 render，在恢复完成后再允许写入。
@@ -31,3 +35,7 @@ Provider 用一个本地 storageLoaded 状态表达首次读取已经结束。�
 真实 ReactDOM、Provider、存储与归一化函数验证默认挂载、严格模式、后续编辑、空存储及损坏 JSON。相同最终测试在精确 b853 基线上三例通过、一例失败；修复后四例通过，与已有治理工具和父面板共 75 例通过。未模拟 storage 或归一化逻辑，没有启动浏览器或后端服务，未执行 Python 测试。PDF OffscreenCanvas 和真实 Worker 通信只核对源码、SDK 与类型，未进行浏览器运行验收。
 
 历史检索命中[治理工具操作归属](2026-11-04-governance-tool-request-ownership.md)与[治理父面板](2026-11-05-governance-parent-workflow.md)，它们持有业务请求与文件状态，不承担 Provider 初始化，本记录不替代原决定。未发现同一初始化决定或需要归档的记录。
+
+[前端入口直接消费已有输入](../simplification/2026-11-12-frontend-entry-owned-inputs.md)持有模板的 Provider 路由挂载范围；该整理沿用本记录的 SSR、严格模式及偏好恢复约束，不替代初始化决定。
+
+[管线导入错误不能替换成默认偏好](2026-11-12-pipeline-import-shape.md)持有主动导入的形状验证与失败结果；存储恢复的默认值及初始化顺序继续由本记录持有。

@@ -147,14 +147,14 @@ class ReActWorkflow(BaseWorkflow):
                 try:
                     parsed = json.loads(raw)
                     if isinstance(parsed, dict):
-                        payload = dict(parsed)
+                        payload = parsed
                 except Exception:
                     payload = {}
                     for part in raw.replace(",", " ").split():
                         if "=" not in part:
                             continue
                         key, value = part.split("=", 1)
-                        payload[str(key).strip()] = str(value).strip()
+                        payload[key.strip()] = value.strip()
 
             result = configure_retrieval(
                 top_k=payload.get("top_k", 20),
@@ -322,9 +322,7 @@ Your response:"""
         workflow_state.setdefault("tool_calls", []).append(
             {
                 "tool_name": tool_state.get("tool_name"),
-                "arguments": {
-                    "input_text_preview": tool_state["arguments"]["input_text"][:500]
-                },
+                "arguments": {"input_text_preview": tool_state["arguments"]["input_text"][:500]},
                 "success": tool_state.get("success"),
                 "error": tool_state.get("error"),
                 "metadata": tool_state.get("metadata"),

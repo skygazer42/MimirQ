@@ -1,4 +1,3 @@
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -6,6 +5,7 @@ from langchain_core.documents import Document
 from sqlalchemy import or_
 
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -220,7 +220,9 @@ def _load_doc_hierarchy_docs(
         document = chunk_document_from_row(chunk)
         if document is None:
             continue
-        node_key_s = _stringified_metadata_text(document.metadata, "hierarchy_node_key") or _stringified_metadata_text(document.metadata, "chunk_key")
+        node_key_s = _stringified_metadata_text(document.metadata, "hierarchy_node_key") or _stringified_metadata_text(
+            document.metadata, "chunk_key"
+        )
         out[(str(chunk.document_id), node_key_s)] = document
     return out
 

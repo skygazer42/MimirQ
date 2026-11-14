@@ -150,7 +150,7 @@ def get_supported_model_ids() -> list[str]:
     Returns:
         List of model_id strings in "provider/model" format
     """
-    return list(DEFAULT_EMBED_MODELS.keys())
+    return list(DEFAULT_EMBED_MODELS)
 
 
 def get_model_info(model_id: str) -> EmbedModelInfo | None:

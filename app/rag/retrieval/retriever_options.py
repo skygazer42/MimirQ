@@ -11,6 +11,17 @@ if TYPE_CHECKING:
     from app.rag.retriever import HybridRetriever
 
 
+def normalize_rerank_profile(name: str | None) -> str | None:
+    if name is None:
+        return None
+    return name.strip().lower() or None
+
+
+def resolve_rerank_search_k(*, requested_k: int, profile: str | None) -> int:
+    minimum = 20 if normalize_rerank_profile(profile) == "sweet_spot" else 1
+    return max(minimum, requested_k)
+
+
 def _dataset_scoped_runtime_lookup_error(
     *,
     tenant_id: UUID | None,

@@ -239,7 +239,7 @@ class SemanticSentenceChunker(BaseChunker):
     def _build_chunk_document(self, doc: Document, buffer: list[_Unit], effective_floor: int) -> Document:
         start_idx = buffer[0].start
         end_idx = buffer[-1].end
-        meta = dict(doc.metadata or {})
+        meta = dict(doc.metadata)
         meta["start_char"] = start_idx
         meta["end_char"] = end_idx
         meta["chunk_strategy"] = "semantic_sentence"
@@ -263,8 +263,8 @@ class SemanticSentenceChunker(BaseChunker):
             if len(tail.page_content) >= effective_floor:
                 break
             prev = merged_chunks[-2]
-            merged_meta = dict(prev.metadata or {})
-            tail_meta = dict(tail.metadata or {})
+            merged_meta = dict(prev.metadata)
+            tail_meta = dict(tail.metadata)
             start_idx = int(merged_meta.get("start_char", 0) or 0)
             end_idx = int(tail_meta.get("end_char", merged_meta.get("end_char", start_idx)) or start_idx)
             merged_meta["end_char"] = end_idx

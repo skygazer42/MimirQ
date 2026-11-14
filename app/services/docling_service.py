@@ -63,9 +63,7 @@ class DoclingServiceParser:
         session: requests.Session | None = None,
     ) -> None:
         self.enabled = bool(settings.DOCLING_ENABLED)
-        self.api_url = normalize_docling_base_url(
-            api_url if api_url is not None else settings.DOCLING_API_URL
-        )
+        self.api_url = normalize_docling_base_url(api_url if api_url is not None else settings.DOCLING_API_URL)
         self.api_key = (api_key if api_key is not None else settings.DOCLING_API_KEY).strip()
         self.request_timeout_sec = float(
             request_timeout_sec if request_timeout_sec is not None else (settings.DOCLING_REQUEST_TIMEOUT_SEC or 600)
@@ -75,7 +73,7 @@ class DoclingServiceParser:
         )
         self.trust_env = bool(settings.DOCLING_HTTP_TRUST_ENV if trust_env is None else trust_env)
         self.ocr_enabled = bool(settings.DOCLING_OCR_ENABLED if ocr_enabled is None else ocr_enabled)
-        self._session = session or requests.Session()
+        self._session = requests.Session() if session is None else session
         if session is None:
             self._session.trust_env = self.trust_env
         self.unavailable_reason = ""

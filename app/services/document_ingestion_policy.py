@@ -7,9 +7,8 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentPipelineOptions
-from app.api.schemas.document_ingestion import PipelineOptionOverrides
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
+from app.api.schemas.documents import DocumentPipelineOptions, PipelineOptionOverrides
+from app.api.schemas.sources import IngestionPolicy, IngestionRule
 from app.api.utils.document_pipeline_input import to_pipeline_options, validate_chunk_params
 from app.core.config import settings
 from app.models.dataset import Dataset

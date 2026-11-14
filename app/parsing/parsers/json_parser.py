@@ -18,21 +18,18 @@ from app.rag.core.logging import get_logger
 
 def _try_parse_jsonl(raw: str) -> list[Any] | None:
     items: list[Any] = []
-    parsed = 0
     total = 0
-    for line in (raw).splitlines():
+    for line in raw.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         total += 1
         try:
             items.append(json.loads(stripped))
-            parsed += 1
         except Exception:
             # Keep scanning; we decide based on ratio.
             get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-    if total >= 2 and parsed >= max(2, int(total * 0.7)):
+    if total >= 2 and len(items) >= max(2, int(total * 0.7)):
         return items
     return None
 

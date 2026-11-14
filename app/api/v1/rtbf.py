@@ -5,12 +5,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.utils.http_exception_responses import (
-    DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.core.async_bridge import run_blocking_in_thread
+from app.core.database import SessionLocal, get_db
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.rtbf_cascade import run_rtbf_cascade
 
@@ -30,7 +28,18 @@ class RTBFStatusResponse(BaseModel):
     note: str = "RTBF status persistence is not enabled in this scaffold"
 
 
-@router.post("/request", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _authorize_rtbf_request(tenant_id: UUID, account_id: str) -> None:
+    with SessionLocal() as db:
+        ensure_tenant_permission(
+            db,
+            tenant_id,
+            account_id,
+            TenantPermissions.LIFECYCLE_MANAGE,
+            detail="No permission to execute RTBF deletion",
+        )
+
+
+@router.post("/request")
 async def request_rtbf_cascade(
     body: RTBFRequest,
     *,
@@ -38,25 +47,19 @@ async def request_rtbf_cascade(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
-    ensure_tenant_permission(
-        db,
-        tenant_id,
-        account_id,
-        TenantPermissions.LIFECYCLE_MANAGE,
-        detail="No permission to execute RTBF deletion",
-    )
+    await run_blocking_in_thread(_authorize_rtbf_request, tenant_id, account_id)
     return await run_rtbf_cascade(
         db,
         tenant_id=tenant_id,
         subject_account_id=body.subject_account_id.strip(),
-        dry_run=bool(body.dry_run),
+        dry_run=body.dry_run,
         actor_id=account_id,
-        max_docs=int(body.max_docs or 0),
-        max_retries=int(body.max_retries or 0),
+        max_docs=body.max_docs,
+        max_retries=body.max_retries,
     )
 
 
-@router.get("/status/{ticket_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/status/{ticket_id}")
 async def get_rtbf_status(
     ticket_id: str,
     *,

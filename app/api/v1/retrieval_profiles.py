@@ -10,8 +10,10 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies import get_current_account_id
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.core.retrieval_profiles import (
@@ -22,20 +24,46 @@ from app.rag.core.retrieval_profiles import (
     normalize_retrieval_profile,
 )
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
 router = APIRouter(
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
     dependencies=[Depends(get_current_account_id)],
 )
 
 _SCHEMA = "mimirq.retrieval_profiles.v1"
+
+
+class RetrievalProfileDefinition(BaseModel):
+    name: str
+    is_recall_first: bool
+    retrieval_mode: str | None
+    top_k: int
+    score_threshold: float
+    enable_reranker: bool
+    reranker_provider: str | None
+    reranker_top_n: int
+    enable_weight_rerank: bool
+    sparse_retrieval_enabled: bool
+    sparse_retrieval_provider: str
+    retrieval_contract_mode: str | None
+    visible_evidence_only: bool
+
+
+class RetrievalProfileDefaults(BaseModel):
+    production_profile: str
+    chat_default_profile: str | None
+    request_defaults: dict[str, Any]
+    chat_default_effective: dict[str, Any]
+    production_effective: dict[str, Any]
+    runtime_defaults: dict[str, Any]
+
+
+class RetrievalProfilesResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(alias="schema", serialization_alias="schema")
+    effective_defaults: RetrievalProfileDefaults
+    profiles: list[RetrievalProfileDefinition]
+    version_hash: str
 
 
 def _runtime_baseline() -> dict[str, Any]:
@@ -88,15 +116,15 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
     }
 
 
-@router.get("/profiles", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def get_retrieval_profiles() -> dict[str, Any]:
+@router.get("/profiles")
+def get_retrieval_profiles() -> RetrievalProfilesResponse:
     baseline = _runtime_baseline()
     chat_default_profile = normalize_retrieval_profile(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE)
     request_defaults = _effective_profile(None, baseline=baseline)
     chat_default_effective = _effective_profile(chat_default_profile, baseline=baseline)
     production_effective = _effective_profile(PRODUCTION_RETRIEVAL_PROFILE, baseline=baseline)
 
-    ordered_profiles = sorted({str(p) for p in SUPPORTED_RETRIEVAL_PROFILES})
+    ordered_profiles = sorted(SUPPORTED_RETRIEVAL_PROFILES)
     profiles = [_public_profile_definition(name, baseline=baseline) for name in ordered_profiles]
 
     payload: dict[str, Any] = {
@@ -112,8 +140,9 @@ def get_retrieval_profiles() -> dict[str, Any]:
         "profiles": profiles,
     }
     payload_for_hash = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
-    payload["version_hash"] = stable_hash(payload_for_hash, length=24)
-    return payload
+    return RetrievalProfilesResponse.model_validate(
+        {**payload, "version_hash": stable_hash(payload_for_hash, length=24)}
+    )
 
 
 __all__ = ["router", "get_retrieval_profiles"]

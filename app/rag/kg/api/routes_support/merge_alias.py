@@ -25,6 +25,7 @@ from app.rag.kg.api.routes_support.schemas import KGMergeAffectedRows, KGMergeTa
 from app.rag.kg.schemas import KGEntityAliasSuggestionItem, KGEntityAliasSuggestionsResponse
 
 if TYPE_CHECKING:
+    from app.models.audit_log import AuditLog
     from app.rag.kg.models import KgEntity, KgEntityRedirect, KgEntityResolutionAction, KgEventEntity, KgRelation
 
 
@@ -41,7 +42,7 @@ def _offline_alias_suggestions(
     from sqlalchemy import and_  # noqa: WPS433
 
     norm = entity.normalized_name.strip()
-    prefix = norm[:4] if len(norm) >= 4 else norm
+    prefix = norm[:4]
     query = db.query(entity_model).filter(
         and_(
             entity_model.tenant_id == tenant_id,
@@ -65,22 +66,24 @@ def _offline_alias_suggestions(
     )
 
 
-def _score_alias_candidates(candidates: list[Any], *, norm: str, min_similarity: float) -> list[tuple[float, str, Any]]:
+def _score_alias_candidates(
+    candidates: list["KgEntity"], *, norm: str, min_similarity: float
+) -> list[tuple[float, str, "KgEntity"]]:
     from difflib import SequenceMatcher
 
-    scored: list[tuple[float, str, Any]] = []
+    scored: list[tuple[float, str, "KgEntity"]] = []
     for candidate in candidates:
         candidate_norm = candidate.normalized_name.strip()
         if not candidate_norm:
             continue
-        sim = float(SequenceMatcher(a=norm, b=candidate_norm).ratio())
+        sim = SequenceMatcher(a=norm, b=candidate_norm).ratio()
         if sim >= float(min_similarity):
             scored.append((sim, str(candidate.id), candidate))
     scored.sort(key=lambda item: (-item[0], item[1]))
     return scored
 
 
-def _alias_suggestion_item(candidate: Any, *, similarity: float, reason: str) -> KGEntityAliasSuggestionItem:
+def _alias_suggestion_item(candidate: "KgEntity", *, similarity: float, reason: str) -> KGEntityAliasSuggestionItem:
     return KGEntityAliasSuggestionItem(
         entity_id=candidate.id,
         name=candidate.name,
@@ -141,11 +144,11 @@ def _vector_alias_suggestion_item(hit: dict[str, Any]) -> KGEntityAliasSuggestio
 
 def _entity_relation_rows(
     db: Session, relation_model: type["KgRelation"], *, tenant_id: UUID, entity_id: UUID
-) -> list[Any]:
+) -> list["KgRelation"]:
     rel_rows = []
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, subject_entity_id=entity_id).all())
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, object_entity_id=entity_id).all())
-    rel_by_id: dict[str, Any] = {}
+    rel_by_id: dict[str, "KgRelation"] = {}
     for relation in rel_rows:
         relation_id = str(relation.id)
         if relation_id:
@@ -198,9 +201,7 @@ def _merge_affected_rows(
             getattr(assoc, "event_id", None) for assoc in source_assocs if getattr(assoc, "event_id", None) is not None
         },
         source_relations=source_relations,
-        source_relation_ids={
-            str(relation.id) for relation in source_relations if getattr(relation, "id", None)
-        },
+        source_relation_ids={str(relation.id) for relation in source_relations if getattr(relation, "id", None)},
         relation_snapshot_by_id={
             str(relation.id): _relation_snapshot(relation)
             for relation in source_relations
@@ -216,7 +217,7 @@ def _create_merge_action(
     account_id: str,
     targets: KGMergeTargets,
     affected: KGMergeAffectedRows,
-) -> Any:
+) -> "KgEntityResolutionAction":
     from datetime import datetime
 
     return action_model(
@@ -243,7 +244,7 @@ def _create_merge_action(
 
 def _add_resolution_audit_log(
     db: Session,
-    audit_log_model: Any,
+    audit_log_model: type["AuditLog"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -327,7 +328,7 @@ def _dedupe_merged_event_entity_edges(
     if not affected.impacted_event_ids:
         return []
     current_target_assocs = db.query(event_entity_model).filter_by(entity_id=target_id).all()
-    by_event: dict[UUID, list[Any]] = {}
+    by_event: dict[UUID, list["KgEventEntity"]] = {}
     for assoc in current_target_assocs:
         event_id = getattr(assoc, "event_id", None)
         if event_id is not None and event_id in affected.impacted_event_ids:
@@ -340,7 +341,7 @@ def _delete_duplicate_target_assocs(
     *,
     source_id: UUID,
     affected: KGMergeAffectedRows,
-    by_event: dict[UUID, list[Any]],
+    by_event: dict[UUID, list["KgEventEntity"]],
 ) -> list[dict[str, Any]]:
     deleted_assoc_rows: list[dict[str, Any]] = []
     for rows in by_event.values():
@@ -359,7 +360,7 @@ def _delete_duplicate_target_assocs(
     return deleted_assoc_rows
 
 
-def _target_assoc_to_keep(rows: list[Any], source_assoc_ids: set[str]) -> Any:
+def _target_assoc_to_keep(rows: list["KgEventEntity"], source_assoc_ids: set[str]) -> "KgEventEntity":
     for row in rows:
         row_id = str(row.id)
         if row_id and row_id not in source_assoc_ids:
@@ -367,7 +368,7 @@ def _target_assoc_to_keep(rows: list[Any], source_assoc_ids: set[str]) -> Any:
     return rows[0]
 
 
-def _merge_duplicate_assoc_fields(keep: Any, rows: list[Any]) -> None:
+def _merge_duplicate_assoc_fields(keep: "KgEventEntity", rows: list["KgEventEntity"]) -> None:
     keep_weight = float(getattr(keep, "weight", 1.0) or 1.0)
     keep_role = getattr(keep, "role", None)
     keep_extra = getattr(keep, "extra_data", None)

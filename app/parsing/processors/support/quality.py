@@ -56,40 +56,29 @@ def _is_seal_segment_metadata(meta: dict[str, Any] | None) -> bool:
     return content_type == "seal" or doc_type == "seal"
 
 
-def _seal_primary_metadata(meta: dict[str, Any]) -> dict[str, Any]:
-    primary = meta.get("seal_primary")
-    return primary if isinstance(primary, dict) else {}
-
-
-def _seal_segment_page(meta: dict[str, Any]) -> int | None:
-    page = _coerce_int(meta.get("page"))
-    return page if page is not None else _coerce_int(meta.get("page_number"))
-
-
-def _seal_segment_candidate_count(meta: dict[str, Any]) -> int:
-    candidate_count = _coerce_int(meta.get("seal_candidate_count"))
-    if candidate_count is not None:
-        return candidate_count
-    raw_candidates = meta.get("seal_candidates")
-    return len(raw_candidates) if isinstance(raw_candidates, list) else 1
-
-
 def _seal_candidate_from_document(doc: Document) -> dict[str, Any] | None:
-    meta = dict(doc.metadata or {})
+    meta = doc.metadata
     if not _is_seal_segment_metadata(meta):
         return None
 
-    primary = _seal_primary_metadata(meta)
+    raw_primary = meta.get("seal_primary")
+    primary = raw_primary if isinstance(raw_primary, dict) else {}
     score = _coerce_float(primary.get("score"))
     if score is None:
         score = _coerce_float(meta.get("seal_score"))
-    page = _seal_segment_page(meta)
+    page = _coerce_int(meta.get("page"))
+    if page is None:
+        page = _coerce_int(meta.get("page_number"))
+    candidate_count = _coerce_int(meta.get("seal_candidate_count"))
+    if candidate_count is None:
+        raw_candidates = meta.get("seal_candidates")
+        candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 1
     return {
         "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content).strip(),
         "score": score,
         "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
         "page": page,
-        "candidate_count": _seal_segment_candidate_count(meta),
+        "candidate_count": candidate_count,
     }
 
 
@@ -99,21 +88,21 @@ def _format_seal_summary(candidates: list[dict[str, Any]]) -> dict[str, Any] | N
 
     candidates.sort(
         key=lambda item: (
-            float(item.get("score") or 0.0),
-            int(item.get("candidate_count") or 0),
+            item["score"] if item["score"] is not None else 0.0,
+            item["candidate_count"],
         ),
         reverse=True,
     )
-    pages = sorted({int(item["page"]) for item in candidates if item.get("page") is not None})
+    pages = sorted({item["page"] for item in candidates if item["page"] is not None})
     primary = candidates[0]
     return {
         "detected": True,
-        "count": int(len(candidates)),
-        "candidate_count_total": int(sum(int(item.get("candidate_count") or 0) for item in candidates)),
+        "count": len(candidates),
+        "candidate_count_total": sum(item["candidate_count"] for item in candidates),
         "primary_text": primary["text"],
-        "primary_score": (float(primary["score"]) if primary.get("score") is not None else None),
-        "primary_kind": str(primary.get("kind") or "unknown"),
-        "primary_page": primary.get("page"),
+        "primary_score": primary["score"],
+        "primary_kind": primary["kind"],
+        "primary_page": primary["page"],
         "pages": pages,
     }
 
@@ -151,7 +140,9 @@ def _ocr_confidence_from_metadata(meta: dict[str, Any]) -> float | None:
 
 
 def _low_confidence_span(meta: dict[str, Any], *, text: str, confidence: float) -> dict[str, Any]:
-    element_id = next((meta[key] for key in ("id", "element_id", "source_element_id") if meta.get(key) is not None), None)
+    element_id = next(
+        (meta[key] for key in ("id", "element_id", "source_element_id") if meta.get(key) is not None), None
+    )
     return {
         "element_id": str(element_id) if element_id is not None else None,
         "text": str(meta.get("text") or text)[:160],
@@ -164,7 +155,7 @@ def _low_confidence_span(meta: dict[str, Any], *, text: str, confidence: float) 
 def _iter_ocr_quality_candidates(documents: list[Document] | None) -> list[tuple[dict[str, Any], str]]:
     candidates: list[tuple[dict[str, Any], str]] = []
     for doc in documents if documents is not None else []:
-        meta = dict(getattr(doc, "metadata", None) or {})
+        meta = dict(doc.metadata)
         derived = meta.get("derived_elements")
         if isinstance(derived, list):
             for item in derived:
@@ -172,22 +163,6 @@ def _iter_ocr_quality_candidates(documents: list[Document] | None) -> list[tuple
                     candidates.append((dict(item), str(item.get("text") or "")))
         candidates.append((meta, doc.page_content))
     return candidates
-
-
-def _append_ocr_quality_candidate(
-    *,
-    confidences: list[float],
-    low_spans: list[dict[str, Any]],
-    meta: dict[str, Any],
-    text: str,
-    low_confidence_threshold: float,
-) -> None:
-    confidence = _ocr_confidence_from_metadata(meta)
-    if confidence is None:
-        return
-    confidences.append(confidence)
-    if confidence < float(low_confidence_threshold):
-        low_spans.append(_low_confidence_span(meta, text=text, confidence=confidence))
 
 
 def _build_ocr_quality_summary(
@@ -199,17 +174,16 @@ def _build_ocr_quality_summary(
     low_spans: list[dict[str, Any]] = []
 
     for meta, text in _iter_ocr_quality_candidates(documents):
-        _append_ocr_quality_candidate(
-            confidences=confidences,
-            low_spans=low_spans,
-            meta=meta,
-            text=text,
-            low_confidence_threshold=low_confidence_threshold,
-        )
+        confidence = _ocr_confidence_from_metadata(meta)
+        if confidence is None:
+            continue
+        confidences.append(confidence)
+        if confidence < float(low_confidence_threshold):
+            low_spans.append(_low_confidence_span(meta, text=text, confidence=confidence))
 
     if not confidences:
         return None
-    avg = sum(confidences) / max(1, len(confidences))
+    avg = sum(confidences) / len(confidences)
     return {
         "schema": "mimirq.ocr_quality.v1",
         "confidence_avg": round(avg, 4),
@@ -284,7 +258,7 @@ def _aggregate_governance_quality(source_items: list[Document]) -> dict[str, Any
     content_chars = 0
 
     for doc in source_items:
-        meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+        meta = doc.metadata
         metrics = _governance_quality_from_metadata(meta)
         if metrics is None:
             metrics = _compute_governance_quality_metrics(doc.page_content)

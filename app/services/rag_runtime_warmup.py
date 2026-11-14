@@ -230,8 +230,7 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
         top_n=1,
         max_chars=128,
     )
-    ordered_ids = list(result.ordered_ids)
-    if configured_provider not in {"parent_child", "pc"} and not ordered_ids:
+    if configured_provider not in {"parent_child", "pc"} and not result.ordered_ids:
         raise RuntimeError("reranker_probe_returned_no_results")
 
     desc = describe_reranker_provider(configured_provider)
@@ -246,7 +245,7 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
         }
     )
     if result.model_used:
-        probe["model"] = str(result.model_used)
+        probe["model"] = result.model_used
     return probe
 
 

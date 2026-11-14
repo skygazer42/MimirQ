@@ -22,20 +22,12 @@ logger = get_logger("document_retrieval_hit_frequency")
 
 
 def _to_int(v: Any) -> int | None:
-    try:
-        if v is None:
-            return None
-        return int(v)
-    except Exception:
+    if v is None:
         return None
-
-
-def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
-    """
-    Return: (records, truncated)
-    `truncated=true` means we did not read the entire file, so results might be incomplete.
-    """
-    return read_jsonl_tail(path, max_bytes=max_bytes)
+    try:
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _unavailable_summary(
@@ -95,11 +87,11 @@ def _scan_trace_hits(
     unique_chunk_ids: set[str] = set()
     for record in records:
         try:
-            if record.get('event') != "rag_trace":
+            if record.get("event") != "rag_trace":
                 continue
-            if record.get('tenant_id') != tenant_id:
+            if record.get("tenant_id") != tenant_id:
                 continue
-            ts_ms = ts_ms_value if (ts_ms_value := _to_int(record.get("ts_ms"))) is not None else 0
+            ts_ms = _to_int(record.get("ts_ms"))
             if ts_ms and ts_ms < cutoff_ms:
                 continue
             traces_scanned += 1
@@ -144,7 +136,7 @@ def compute_document_retrieval_hit_frequency(
             max_bytes=max_bytes_i,
         )
 
-    raw_records, truncated = _read_jsonl_tail(path, max_bytes=max_bytes_i)
+    raw_records, truncated = read_jsonl_tail(path, max_bytes=max_bytes_i)
     traces_scanned, traces_with_hits, citations_matched, unique_chunk_ids = _scan_trace_hits(
         raw_records,
         tenant_id=str(tenant_id),

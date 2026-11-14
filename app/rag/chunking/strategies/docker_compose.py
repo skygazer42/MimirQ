@@ -26,7 +26,7 @@ class _ServiceBlock:
     index: int
 
 
-_SERVICES_RE = re.compile(r"(?m)^(?P<indent>\s*)services\s*:\s*(?:#.*)?$")
+_SERVICES_RE = re.compile(r"(?m)^(?P<indent>[ \t]*)services\s*:\s*(?:#.*)?$")
 _KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
 _IMAGE_HINT_RE = re.compile(r"(?m)^\s*(image|build|container_name|ports|depends_on)\s*:\s*")
 _VERSION_RE = re.compile(r"(?m)^\s*version\s*:\s*(?P<val>[^\s#]+)")
@@ -67,8 +67,6 @@ def _build_service_blocks(text: str) -> list[_ServiceBlock]:
         return []
 
     service_keys = _service_keys_from_candidates(candidates)
-    if not service_keys:
-        return []
 
     blocks: list[_ServiceBlock] = []
     for idx, (i, key) in enumerate(service_keys):
@@ -109,8 +107,7 @@ def _service_candidate_for_line(line: _Line, *, base_indent: int) -> tuple[int, 
     match = _KEY_RE.match(plain)
     if not match:
         return None
-    key = (match.group("key")).strip()
-    return (indent, key) if key else None
+    return indent, match.group("key")
 
 
 def _service_keys_from_candidates(candidates: list[tuple[int, int, str]]) -> list[tuple[int, str]]:
@@ -234,7 +231,7 @@ class DockerComposeChunker(BaseChunker):
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         version = _extract_version(text)
         blocks = _build_service_blocks(text)
         if not blocks:

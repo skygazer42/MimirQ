@@ -209,7 +209,7 @@ def _merge_ranked_item(
         items_by_key[key] = enriched
         return merge_order + 1
     if _kg_item_score(enriched) > _kg_item_score(current):
-        enriched["_merge_order"] = current.get("_merge_order", merge_order)
+        enriched["_merge_order"] = current["_merge_order"]
         items_by_key[key] = enriched
     return merge_order
 
@@ -263,7 +263,7 @@ def _finalize_ranked_items(
 ) -> list[dict[str, Any]]:
     items = sorted(
         items_by_key.values(),
-        key=lambda item: (-_kg_item_score(item), int(item.get("_merge_order", 0) or 0)),
+        key=lambda item: (-_kg_item_score(item), item["_merge_order"]),
     )[:limit]
     for item in items:
         item.pop("_merge_order", None)

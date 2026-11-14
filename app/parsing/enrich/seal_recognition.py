@@ -66,17 +66,16 @@ class OnnxSealRecognizer:
     def __init__(
         self, model_dir: Path, *, threshold: float = _DEFAULT_THRESHOLD, max_len: int = _DEFAULT_MAX_LEN
     ) -> None:
-        self._model_dir = model_dir
         self._threshold = float(threshold)
         self._max_len = max(1, int(max_len))
         providers = ort.get_available_providers() or ["CPUExecutionProvider"]
         self._encoder = ort.InferenceSession(str(model_dir / "encoder_model.onnx"), providers=providers)
         self._decoder = ort.InferenceSession(str(model_dir / "decoder_model.onnx"), providers=providers)
-        self._vocab, self._vocab_inv = _load_vocab(model_dir / "vocab.json")
-        self._start_id = int(self._vocab.get("<s>", 0))
-        self._end_id = int(self._vocab.get("</s>", 2))
-        self._pad_id = int(self._vocab.get("<pad>", 1))
-        self._unk_id = int(self._vocab.get("<unk>", 3))
+        vocab, self._vocab_inv = _load_vocab(model_dir / "vocab.json")
+        self._start_id = vocab.get("<s>", 0)
+        self._end_id = vocab.get("</s>", 2)
+        self._pad_id = vocab.get("<pad>", 1)
+        self._unk_id = vocab.get("<unk>", 3)
         self._decoder_input_names = {item.name for item in self._decoder.get_inputs()}
 
     def recognize(self, image: PILImage.Image) -> tuple[str, float]:
@@ -114,7 +113,7 @@ class OnnxSealRecognizer:
         for token_id in ids:
             if token_id in {self._start_id, self._end_id, self._pad_id, self._unk_id}:
                 continue
-            token = self._vocab_inv.get(int(token_id), "")
+            token = self._vocab_inv.get(token_id, "")
             if token:
                 chars.append(token)
         return "".join(chars).strip(), avg_score
@@ -131,17 +130,10 @@ def _has_required_model_files(path: Path) -> bool:
 
 
 def _resolve_model_dir(model_dir: str | None = None) -> Path | None:
-    explicit = model_dir.strip() if model_dir is not None else None
-    if explicit:
-        path = Path(explicit)
-        return path if _has_required_model_files(path) else None
-
-    configured = settings.SEAL_RECOGNITION_MODEL_DIR.strip()
-    if configured:
-        path = Path(configured)
-        return path if _has_required_model_files(path) else None
-
-    return _DEFAULT_MODEL_DIR if _has_required_model_files(_DEFAULT_MODEL_DIR) else None
+    explicit = model_dir.strip() if model_dir is not None else ""
+    configured = explicit or settings.SEAL_RECOGNITION_MODEL_DIR.strip()
+    path = Path(configured) if configured else _DEFAULT_MODEL_DIR
+    return path if _has_required_model_files(path) else None
 
 
 def _expand_bbox(
@@ -164,9 +156,9 @@ def _infer_seal_kind(bbox: tuple[int, int, int, int] | None) -> str:
     if bbox is None:
         return "unknown"
     x0, y0, x1, y1 = bbox
-    width = max(1, int(x1) - int(x0))
-    height = max(1, int(y1) - int(y0))
-    aspect = width / float(height)
+    width = max(1, x1 - x0)
+    height = max(1, y1 - y0)
+    aspect = width / height
     if aspect >= 1.6 or aspect <= 0.6:
         return "seam_stamp"
     if 0.82 <= aspect <= 1.22:
@@ -256,7 +248,7 @@ def detect_seal_regions(image: PILImage.Image, *, max_regions: int | None = None
 
         bbox = _expand_bbox((x, y, x + w, y + h), width=width, height=height)
         crop = image.crop(bbox)
-        regions.append(SealRegion(bbox=bbox, crop=crop, detection_score=float(detection_score)))
+        regions.append(SealRegion(bbox=bbox, crop=crop, detection_score=detection_score))
 
     regions.sort(
         key=lambda item: (item.detection_score, (item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])),
@@ -288,28 +280,28 @@ def _detect_and_recognize_seal_candidates(
     matches: list[SealRecognitionResult] = []
     for region in regions:
         text, score = recognizer.recognize(region.crop)
-        rank = float(score) * 0.7 + float(region.detection_score) * 0.3
+        rank = score * 0.7 + region.detection_score * 0.3
         if not text:
             continue
         matches.append(
             SealRecognitionResult(
                 present=True,
                 text=text,
-                score=float(score),
+                score=score,
                 bbox=region.bbox,
-                detection_score=float(region.detection_score),
+                detection_score=region.detection_score,
                 engine=_DEFAULT_ENGINE,
                 region_count=region_count,
                 seal_kind=_infer_seal_kind(region.bbox),
-                rank=float(rank),
+                rank=rank,
             )
         )
 
     matches.sort(
         key=lambda item: (
-            float(item.rank),
-            float(item.score),
-            float(item.detection_score),
+            item.rank,
+            item.score,
+            item.detection_score,
             float((item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])) if item.bbox is not None else 0.0,
         ),
         reverse=True,
@@ -370,7 +362,7 @@ def extract_seal_documents_from_pdf(
 
     pdf = fitz.open(str(file_path))
     try:
-        page_count = int(getattr(pdf, "page_count", 0) or 0)
+        page_count = pdf.page_count
         limit = page_count if max_pages == 0 else min(page_count, max_pages)
         for page_index in range(limit):
             page = pdf.load_page(page_index)
@@ -394,21 +386,21 @@ def extract_seal_documents_from_pdf(
                 "doc_type_kwd": "seal",
                 "element_kind": "seal",
                 "element_text": result.text,
-                "element_confidence": float(result.score),
+                "element_confidence": result.score,
                 "content_type": "seal",
                 "chunk_role": "seal",
                 "page": page_index + 1,
                 "page_number": page_index + 1,
                 "seal_present": True,
                 "seal_text": result.text,
-                "seal_score": float(result.score),
-                "seal_detection_score": float(result.detection_score),
+                "seal_score": result.score,
+                "seal_detection_score": result.detection_score,
                 "seal_engine": result.engine,
-                "seal_region_count": int(result.region_count),
-                "seal_candidate_count": int(len(candidates)),
+                "seal_region_count": result.region_count,
+                "seal_candidate_count": len(candidates),
                 "seal_kind": result.seal_kind,
-                "seal_page_index": int(page_index),
-                "element_page": int(page_index + 1),
+                "seal_page_index": page_index,
+                "element_page": page_index + 1,
                 "seal_primary": _serialize_seal_candidate(result),
                 "seal_candidates": [_serialize_seal_candidate(item) for item in candidates],
                 "seal_bbox_list": bbox_list,
@@ -422,7 +414,7 @@ def extract_seal_documents_from_pdf(
                 metadata["seal_bbox"] = bbox_payload
                 metadata["element_bbox"] = dict(bbox_payload)
                 metadata["element_attributes"]["bbox"] = dict(bbox_payload)
-            metadata["element_attributes"]["page"] = int(page_index + 1)
+            metadata["element_attributes"]["page"] = page_index + 1
             docs.append(Document(page_content=f"印章识别：{result.text}", metadata=metadata))
     finally:
         pdf.close()

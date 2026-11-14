@@ -28,8 +28,7 @@ def extract_first_code_fence(text: str, *, allowed_info_strings: Iterable[str] |
     if allowed_info_strings is not None:
         allowed = {(s).strip().lower() for s in allowed_info_strings}
 
-    lower = raw.lower()
-    start = lower.find("```")
+    start = raw.find("```")
     while start != -1:
         # Determine the opening fence's info string (until newline/end).
         line_end = raw.find("\n", start + 3)
@@ -37,11 +36,11 @@ def extract_first_code_fence(text: str, *, allowed_info_strings: Iterable[str] |
             line_end = len(raw)
         info = raw[start + 3 : line_end].strip().lower()
         if allowed is not None and info not in allowed:
-            start = lower.find("```", start + 3)
+            start = raw.find("```", start + 3)
             continue
 
         content_start = line_end + 1 if line_end < len(raw) else line_end
-        end = lower.find("```", content_start)
+        end = raw.find("```", content_start)
         if end == -1:
             return None
         inner = raw[content_start:end].strip()

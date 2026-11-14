@@ -64,10 +64,7 @@ def _iter_sheets(text: str) -> list[_Sheet]:
     sheets: list[_Sheet] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
-        name = names[idx]
-        if not name:
-            name = f"sheet_{idx + 1}"
-        sheets.append(_Sheet(start=start, end=end, index=idx, name=name))
+        sheets.append(_Sheet(start=start, end=end, index=idx, name=names[idx]))
     return sheets
 
 
@@ -102,11 +99,11 @@ class SpreadsheetSheetChunker(BaseChunker):
     ) -> None:
         split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
         for sd in split_docs:
-            local_start = sd.metadata.pop("start_index", None) or 0
-            abs_start = offset + int(local_start)
+            local_start = sd.metadata.pop("start_index")
+            abs_start = offset + local_start
             abs_end = abs_start + len(sd.page_content)
             meta: dict[str, Any] = dict(base_meta)
-            meta.update(sd.metadata or {})
+            meta.update(sd.metadata)
             meta["chunk_strategy"] = "spreadsheet_sheet"
             meta["start_char"] = abs_start
             meta["end_char"] = abs_end
@@ -118,7 +115,7 @@ class SpreadsheetSheetChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -147,8 +144,6 @@ class SpreadsheetSheetChunker(BaseChunker):
 
             for sheet in sheets:
                 sheet_text = text[sheet.start : sheet.end]
-                if not sheet_text.strip():
-                    continue
                 self._append_chunks(
                     out,
                     text=sheet_text,
@@ -158,7 +153,7 @@ class SpreadsheetSheetChunker(BaseChunker):
                 )
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

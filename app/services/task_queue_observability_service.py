@@ -359,7 +359,7 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
         heartbeat_interval_sec=hb_int,
         heartbeat_ttl_sec=hb_ttl,
         poll_interval_sec=poll_int,
-        recent_job_outcomes=list(recent_job_outcomes or []),
+        recent_job_outcomes=list(recent_job_outcomes),
         error=err,
     )
 

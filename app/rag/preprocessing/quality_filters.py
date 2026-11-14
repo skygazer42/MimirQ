@@ -113,7 +113,7 @@ def drop_if_low_density(text: str, *, threshold: float = 0.12) -> QualityDecisio
 
     non_space = sum(1 for ch in raw if not ch.isspace())
     alnum = len(_ALNUM_CJK_RE.findall(raw))
-    density = (alnum / max(1, non_space)) if non_space else 0.0
+    density = alnum / non_space
 
     metrics: dict[str, float | int] = {
         "chars_non_space": non_space,
@@ -148,18 +148,18 @@ def drop_if_high_perplexity_proxy(
             dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0}
         )
 
-    tokens = [tok.strip().casefold() for tok in _TOKEN_RE.findall(raw) if tok.strip()]
+    tokens = [tok.casefold() for tok in _TOKEN_RE.findall(raw)]
     token_count = len(tokens)
-    unique_ratio = (len(set(tokens)) / max(1, token_count)) if token_count else 0.0
-    stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / max(1, token_count)) if token_count else 0.0
-    long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / max(1, token_count)) if token_count else 0.0
+    unique_ratio = (len(set(tokens)) / token_count) if token_count else 0.0
+    stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / token_count) if token_count else 0.0
+    long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / token_count) if token_count else 0.0
     digit_token_ratio = (
-        (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / max(1, token_count)) if token_count else 0.0
+        (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / token_count) if token_count else 0.0
     )
 
     ascii_alpha_tokens = [tok for tok in tokens if tok.isascii() and any(ch.isalpha() for ch in tok)]
     ascii_letters = "".join(ch for tok in ascii_alpha_tokens for ch in tok if ch.isalpha())
-    vowel_ratio = len(_VOWEL_RE.findall(ascii_letters)) / max(1, len(ascii_letters)) if ascii_letters else 0.0
+    vowel_ratio = len(_VOWEL_RE.findall(ascii_letters)) / len(ascii_letters) if ascii_letters else 0.0
 
     proxy = 0.0
     proxy += max(0.0, unique_ratio - 0.72) * 1.6

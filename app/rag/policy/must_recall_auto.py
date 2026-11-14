@@ -15,8 +15,6 @@ def _collect_source_key_values(payload: Any, *, fields: tuple[str, ...]) -> list
         return []
     out: list[str] = []
     for key in fields:
-        if key not in payload:
-            continue
         raw = payload.get(key)
         if isinstance(raw, (list, tuple, set)):
             values = list(raw)

@@ -12,6 +12,8 @@ Status: implemented
 
 ## Decision
 
+本文关于连接器显式读取复用新鲜缓存的策略由[前端显式刷新与请求结果归属](2026-11-12-frontend-request-results.md)部分替代；下文保留原取舍，身份与操作结果归属仍有效。
+
 React Query 继续持有远程查询数据，auth-storage 继续持有当前身份。useAuth 在 profile 请求完成时检查现有查询的 cancellation signal；已经取消的查询不写入旧 profile，也不处理旧错误。401 只清除仍与该请求 token 相同的凭证。成功响应不按 token 文本是否变化来拒绝，因此同一逻辑查询中的正常 OIDC 刷新仍能保存返回的 profile。
 
 useIndexAudit 为每次数据集／单文档选择持有局部身份，并在发出 POST 之前建立 generation 和 AbortController。提交、轮询及错误处理只发布当前身份、当前 generation 的状态；离开后返回相同文档也属于新的访问。finally 只释放该操作仍持有的 controller，旧操作不能清除后续操作的资源。现有 GET signal、查询 key、缓存策略、轮询次数和提示文案保持。

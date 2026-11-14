@@ -76,9 +76,6 @@ def _coerce_channels(sample: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _weighted_rrf(channels: dict[str, list[str]], *, alpha: float, rrf_k: int, top_k: int) -> list[str]:
-    alpha = max(0.0, min(1.0, float(alpha)))
-    rrf_k = max(1, int(rrf_k or 0))
-    top_k = max(1, int(top_k or 0))
     non_vector = [key for key in channels if key != "vector"]
     non_vector_weight = (1.0 - alpha) / float(max(1, len(non_vector)))
 

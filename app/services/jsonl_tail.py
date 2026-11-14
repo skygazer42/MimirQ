@@ -16,7 +16,7 @@ def _read_tail_bytes(path: Path, *, max_bytes: int) -> tuple[bytes, bool] | None
         with path.open("rb") as file_handle:
             if start:
                 file_handle.seek(start)
-            raw = file_handle.read()
+            raw = file_handle.read(limit)
     except Exception:
         return None
     if start:

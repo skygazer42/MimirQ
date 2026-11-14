@@ -1,4 +1,3 @@
-import math
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -14,25 +13,11 @@ HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*['\"][^'\"]+['\"][^>]*>", re
 def _coerce_int(value: Any) -> int:
     if value is None:
         return 0
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return int(value)
-    if isinstance(value, float):
-        if math.isnan(value):
-            return 0
-        return int(value)
-    if isinstance(value, str):
-        s = value.strip()
-        if not s:
-            return 0
-        try:
-            return int(float(s))
-        except Exception:
-            return 0
     try:
+        if isinstance(value, str):
+            value = float(value.strip())
         return int(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
@@ -69,16 +54,15 @@ def count_markdown_images(markdown: str | None) -> int:
 
 
 def _iter_metadata(documents: Iterable[Any] | None) -> Iterable[Mapping[str, Any]]:
-    for item in documents or []:
-        meta: Any = None
+    if documents is None:
+        return
+    for item in documents:
         if isinstance(item, Mapping):
             meta = item.get("metadata")
         else:
             meta = getattr(item, "metadata", None)
         if isinstance(meta, Mapping):
             yield meta
-        else:
-            yield {}
 
 
 def compute_parsing_artifact_stats(

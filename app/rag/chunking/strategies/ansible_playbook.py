@@ -86,14 +86,6 @@ def _extract_play_field(block_text: str, *, key: str) -> str | None:
     return None
 
 
-def _extract_play_name(block_text: str) -> str | None:
-    return _extract_play_field(block_text, key="name")
-
-
-def _extract_play_hosts(block_text: str) -> str | None:
-    return _extract_play_field(block_text, key="hosts")
-
-
 def _build_play_blocks(text: str) -> list[_PlayBlock]:
     lines = _iter_lines(text)
     idxs: list[int] = []
@@ -123,8 +115,8 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
                 start=start,
                 end=end,
                 index=j,
-                name=_extract_play_name(blk_text),
-                hosts=_extract_play_hosts(blk_text),
+                name=_extract_play_field(blk_text, key="name"),
+                hosts=_extract_play_field(blk_text, key="hosts"),
             )
         )
     return blocks
@@ -150,6 +142,7 @@ def _append_split_documents(
         meta.setdefault("doc_type_kwd", "ansible")
         if extra_meta:
             meta.update(extra_meta)
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=split_doc.page_content, metadata=meta))
 
 
@@ -163,13 +156,6 @@ def _play_block_meta(block: _PlayBlock, block_count: int) -> dict[str, Any]:
     if block.hosts:
         meta["ansible_hosts"] = block.hosts
     return meta
-
-
-def _assign_chunk_indexes(chunks: list[Document]) -> None:
-    for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta["chunk_index"] = idx
-        chunk.metadata = meta
 
 
 def looks_like_ansible_playbook(text: str) -> bool:
@@ -202,7 +188,7 @@ class AnsiblePlaybookChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -231,7 +217,5 @@ class AnsiblePlaybookChunker(BaseChunker):
                     offset_base=blk.start,
                     extra_meta=_play_block_meta(blk, len(blocks)),
                 )
-
-        _assign_chunk_indexes(out)
 
         return out

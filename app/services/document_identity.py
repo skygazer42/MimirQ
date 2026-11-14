@@ -36,7 +36,7 @@ def set_content_sha256(meta: dict[str, Any], content_sha256: str | None) -> str 
         meta.pop(CONTENT_SHA256_KEY, None)
         return None
     meta[CONTENT_SHA256_KEY] = normalized
-    # Keep the legacy key for older readers/tests until the rest of the codebase flips.
+    # Duplicate and profile APIs still read file_sha256.
     meta[LEGACY_FILE_SHA256_KEY] = normalized
     return normalized
 

@@ -9,7 +9,7 @@ import httpx
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
-from app.api.schemas.chat import ChatRAGConfig, ChatRequest
+from app.api.schemas.conversations import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.http import httpx_trust_env
@@ -724,18 +724,15 @@ def _graph_tag_context_docs(
     effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any]]:
     try:
-        import inspect
-
         from app.services.chat_tag_service import build_chat_tag_context_docs
 
-        tag_kwargs: dict[str, Any] = {
-            "tenant_id": tenant_id,
-            "document_ids": doc_ids_to_use,
-            "question": request.message,
-        }
-        if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
-            tag_kwargs["must_recall_expected_source_keys"] = effective_rag_config.must_recall_expected_source_keys
-        tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
+        tag_docs, tag_meta = build_chat_tag_context_docs(
+            db,
+            tenant_id=tenant_id,
+            document_ids=doc_ids_to_use,
+            question=request.message,
+            must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        )
         return list(tag_docs or []), tag_meta
     except Exception as exc:  # noqa: BLE001
         return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
@@ -745,11 +742,8 @@ def _graph_multimodal_enrichment(
     *,
     db: Session,
     tenant_id: UUID,
-    account_id: str,
     request: ChatRequest,
     doc_ids_to_use: list[UUID],
-    dataset_id_used: UUID | None,
-    scope_dataset_id: UUID | None,
     effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     modality, multimodal_meta = _graph_modality_meta(request=request)
@@ -919,11 +913,8 @@ def execute_graph_chat_once(
     injected_docs, multimodal_meta, tag_meta, image_meta = _graph_multimodal_enrichment(
         db=db,
         tenant_id=tenant_id,
-        account_id=account_id,
         request=request,
         doc_ids_to_use=doc_ids_to_use,
-        dataset_id_used=dataset_id_used,
-        scope_dataset_id=scope_dataset_id,
         effective_rag_config=effective_rag_config,
     )
     if injected_docs:

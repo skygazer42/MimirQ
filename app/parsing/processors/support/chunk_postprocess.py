@@ -15,13 +15,6 @@ def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
     if k == 1:
         return [indices[len(indices) // 2]]
 
-    picked, seen = _initial_uniform_sample(indices, k)
-    if len(picked) < k:
-        _fill_uniform_sample(indices, picked=picked, seen=seen, k=k)
-    return picked[:k]
-
-
-def _initial_uniform_sample(indices: list[int], k: int) -> tuple[list[int], set[int]]:
     n = len(indices)
     picked: list[int] = []
     seen: set[int] = set()
@@ -33,34 +26,32 @@ def _initial_uniform_sample(indices: list[int], k: int) -> tuple[list[int], set[
             continue
         seen.add(idx)
         picked.append(idx)
-    return picked, seen
-
-
-def _fill_uniform_sample(indices: list[int], *, picked: list[int], seen: set[int], k: int) -> None:
-    for idx in indices:
-        if idx in seen:
-            continue
-        seen.add(idx)
-        picked.append(idx)
-        if len(picked) >= k:
-            break
+    if len(picked) < k:
+        for idx in indices:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            picked.append(idx)
+            if len(picked) >= k:
+                break
+    return picked[:k]
 
 
 def _chunk_asset_indices(chunks: list[Document]) -> list[int]:
     asset_indices: list[int] = []
     for idx, chunk in enumerate(chunks):
-        meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
+        meta = chunk.metadata
         if _chunk_has_asset(meta):
             asset_indices.append(idx)
     return asset_indices
 
 
 def _chunk_has_record_identity(chunk: Document) -> bool:
-    return _chunk_record_identity_key(chunk) is not None
+    return _record_identity_key(chunk.metadata) is not None
 
 
 def _should_skip_near_dedup_for_chunk(chunk: Document) -> bool:
-    meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
+    meta = chunk.metadata
     return _chunk_has_asset(meta) or _chunk_has_record_identity(chunk)
 
 
@@ -71,9 +62,7 @@ def _truncate_head_chunks(
     asset_indices: list[int],
 ) -> tuple[list[Document], dict[str, Any]]:
     kept_chunks = chunks[:max_chunks]
-    asset_kept = sum(
-        1 for c in kept_chunks if _chunk_has_asset(c.metadata if isinstance(getattr(c, "metadata", None), dict) else {})
-    )
+    asset_kept = sum(1 for chunk in kept_chunks if _chunk_has_asset(chunk.metadata))
     return kept_chunks, {
         "strategy": "head",
         "asset_total": len(asset_indices),
@@ -143,8 +132,8 @@ def _ensure_ingest_page_indices(documents: list[Document]) -> None:
     - We persist parsed markdown by joining docs; to highlight chunks reliably,
       we need global offsets (joined-text coordinates).
     """
-    for i, doc in enumerate(documents or []):
-        meta = dict(getattr(doc, "metadata", None) or {})
+    for i, doc in enumerate(documents):
+        meta = dict(doc.metadata)
         meta.setdefault("page_index", i + 1)  # 1-based (align with chunk-preview)
         doc.metadata = meta
 
@@ -157,18 +146,11 @@ def _joined_text_total_characters(
     """Return the joined-text length used for persisted parsed content offsets."""
     if not documents:
         return 0
-    sep_len = len(join_separator)
-    total = 0
-    last_index = len(documents) - 1
-    for idx, doc in enumerate(documents):
-        total += len(doc.page_content)
-        if idx < last_index:
-            total += sep_len
-    return total
+    return sum(len(doc.page_content) for doc in documents) + len(join_separator) * (len(documents) - 1)
 
 
 def _document_page_index(doc: Document, index: int) -> int:
-    meta = dict(getattr(doc, "metadata", None) or {})
+    meta = doc.metadata
     try:
         return int(meta.get("page_index") or (index + 1))
     except (TypeError, ValueError, AttributeError):
@@ -183,8 +165,7 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _chunk_page_index(chunk: Document) -> int | None:
-    meta = getattr(chunk, "metadata", None) or {}
-    return _optional_int(meta.get("page_index"))
+    return _optional_int(chunk.metadata.get("page_index"))
 
 
 def _build_page_start_offsets(
@@ -209,7 +190,7 @@ def _build_page_start_offsets(
 
 
 def _rebase_single_chunk_offsets(chunk: Document, *, page_start: dict[int, int]) -> Document:
-    meta = dict(getattr(chunk, "metadata", None) or {})
+    meta = dict(chunk.metadata)
     page_index = _optional_int(meta.get("page_index"))
     base = page_start.get(page_index, 0) if page_index is not None else 0
     start_i = _optional_int(meta.get("start_char"))
@@ -225,7 +206,7 @@ def _rebase_single_chunk_offsets(chunk: Document, *, page_start: dict[int, int])
         meta.setdefault("start_char_base", base)
 
     meta.setdefault("offsets_rebased", True)
-    return Document(page_content=chunk.page_content, metadata=meta, id=getattr(chunk, "id", None))
+    return Document(page_content=chunk.page_content, metadata=meta, id=chunk.id)
 
 
 def _rebase_chunk_offsets_by_page_index(
@@ -268,15 +249,14 @@ def _build_page_text_lookup(
 
 
 def _chunk_mergeable(chunk: Document) -> bool:
-    meta = getattr(chunk, "metadata", None) or {}
+    meta = chunk.metadata
     if _chunk_has_asset(meta):
         return False
     return not (meta.get("chunk_role") or meta.get("parent_id"))
 
 
-def _chunk_record_identity_key(chunk: Document) -> str | None:
-    meta = getattr(chunk, "metadata", None) or {}
-    record_identity = meta.get("_record_identity") if isinstance(meta, dict) else None
+def _record_identity_key(meta: dict[str, Any]) -> str | None:
+    record_identity = meta.get("_record_identity")
     if not isinstance(record_identity, dict):
         return None
     key = record_identity["key"].strip()
@@ -286,8 +266,8 @@ def _chunk_record_identity_key(chunk: Document) -> str | None:
 
 
 def _chunks_share_record_identity_boundary(first: Document, second: Document) -> bool:
-    first_key = _chunk_record_identity_key(first)
-    second_key = _chunk_record_identity_key(second)
+    first_key = _record_identity_key(first.metadata)
+    second_key = _record_identity_key(second.metadata)
     if first_key or second_key:
         return bool(first_key and second_key and first_key == second_key)
     return True
@@ -330,7 +310,7 @@ def _retrieval_text_for_merge(chunk: Document, meta: dict[str, Any]) -> str:
     retrieval_text = meta.get("_retrieval_text")
     if isinstance(retrieval_text, str) and retrieval_text.strip():
         return retrieval_text.strip()
-    return str(chunk.page_content).strip()
+    return chunk.page_content.strip()
 
 
 def _refresh_merged_chunk_content_metadata(
@@ -346,10 +326,10 @@ def _refresh_merged_chunk_content_metadata(
         meta.pop(key, None)
 
     first_has_retrieval = isinstance(first_meta.get("_retrieval_text"), str) and bool(
-        str(first_meta["_retrieval_text"]).strip()
+        first_meta["_retrieval_text"].strip()
     )
     second_has_retrieval = isinstance(second_meta.get("_retrieval_text"), str) and bool(
-        str(second_meta["_retrieval_text"]).strip()
+        second_meta["_retrieval_text"].strip()
     )
     if first_has_retrieval or second_has_retrieval:
         pieces = [
@@ -375,15 +355,13 @@ def _merge_two_small_chunks(
     page_text: dict[int, str],
     page_base: dict[int, int],
 ) -> Document | None:
-    text = page_text.get(page_index)
-    base = int(page_base.get(page_index) or 0)
-    if text is None:
-        return None
+    text = page_text[page_index]
+    base = page_base[page_index]
     if not _chunks_share_record_identity_boundary(first, second):
         return None
 
-    first_meta = dict(getattr(first, "metadata", None) or {})
-    second_meta = dict(getattr(second, "metadata", None) or {})
+    first_meta = dict(first.metadata)
+    second_meta = dict(second.metadata)
     first_range = _local_chunk_range(first_meta, base=base)
     second_range = _local_chunk_range(second_meta, base=base)
     if first_range is None or second_range is None:
@@ -409,81 +387,7 @@ def _merge_two_small_chunks(
         merged_content=merged_content,
     )
 
-    return Document(page_content=merged_content, metadata=first_meta, id=getattr(first, "id", None))
-
-
-def _merge_with_pending_small_chunk(
-    *,
-    out: list[Document],
-    pending: Document,
-    current: Document,
-    page_index: int,
-    page_text: dict[int, str],
-    page_base: dict[int, int],
-) -> None:
-    merged = _merge_two_small_chunks(
-        pending,
-        current,
-        page_index=page_index,
-        page_text=page_text,
-        page_base=page_base,
-    )
-    if merged is not None:
-        out.append(merged)
-        return
-    out.append(pending)
-    out.append(current)
-
-
-def _flush_pending_on_page_change(
-    *,
-    out: list[Document],
-    pending: Document | None,
-    pending_page: int | None,
-    page_index: int | None,
-) -> tuple[Document | None, int | None]:
-    if pending is not None and page_index != pending_page:
-        out.append(pending)
-        return None, None
-    return pending, pending_page
-
-
-def _append_unmergeable_chunk(
-    *,
-    out: list[Document],
-    chunk: Document,
-    pending: Document | None,
-) -> tuple[Document | None, int | None]:
-    if pending is not None:
-        out.append(pending)
-    out.append(chunk)
-    return None, None
-
-
-def _try_merge_with_previous_chunk(
-    *,
-    out: list[Document],
-    chunk: Document,
-    page_index: int,
-    page_text: dict[int, str],
-    page_base: dict[int, int],
-) -> bool:
-    if not out:
-        return False
-    prev = out[-1]
-    if _chunk_page_index(prev) != page_index or not _chunk_mergeable(prev):
-        return False
-    merged = _merge_two_small_chunks(
-        prev,
-        chunk,
-        page_index=page_index,
-        page_text=page_text,
-        page_base=page_base,
-    )
-    if merged is None:
-        return False
-    out[-1] = merged
-    return True
+    return Document(page_content=merged_content, metadata=first_meta, id=first.id)
 
 
 def _merge_small_chunks_by_min_chars(
@@ -511,50 +415,60 @@ def _merge_small_chunks_by_min_chars(
     pending: Document | None = None
     pending_page: int | None = None
 
-    for c in chunks:
-        page_index = _chunk_page_index(c)
-        pending, pending_page = _flush_pending_on_page_change(
-            out=out,
-            pending=pending,
-            pending_page=pending_page,
-            page_index=page_index,
-        )
+    for chunk in chunks:
+        page_index = _chunk_page_index(chunk)
+        if pending is not None and page_index != pending_page:
+            out.append(pending)
+            pending = None
+            pending_page = None
 
-        mergeable = page_index is not None and page_index in page_text and _chunk_mergeable(c)
-        content_len = len((c.page_content).strip())
+        mergeable = page_index is not None and page_index in page_text and _chunk_mergeable(chunk)
+        content_len = len(chunk.page_content.strip())
 
         if not mergeable:
-            pending, pending_page = _append_unmergeable_chunk(out=out, chunk=c, pending=pending)
+            if pending is not None:
+                out.append(pending)
+            out.append(chunk)
+            pending = None
+            pending_page = None
             continue
 
         if pending is not None:
-            _merge_with_pending_small_chunk(
-                out=out,
-                pending=pending,
-                current=c,
+            merged = _merge_two_small_chunks(
+                pending,
+                chunk,
                 page_index=page_index,
                 page_text=page_text,
                 page_base=page_base,
             )
+            if merged is not None:
+                out.append(merged)
+            else:
+                out.extend([pending, chunk])
             pending = None
             pending_page = None
             continue
 
         if content_len >= min_chars:
-            out.append(c)
+            out.append(chunk)
             continue
 
         # Small chunk: merge into previous if possible, otherwise buffer and merge into next.
-        if _try_merge_with_previous_chunk(
-            out=out,
-            chunk=c,
-            page_index=page_index,
-            page_text=page_text,
-            page_base=page_base,
-        ):
-            continue
+        if out:
+            previous = out[-1]
+            if _chunk_page_index(previous) == page_index and _chunk_mergeable(previous):
+                merged = _merge_two_small_chunks(
+                    previous,
+                    chunk,
+                    page_index=page_index,
+                    page_text=page_text,
+                    page_base=page_base,
+                )
+                if merged is not None:
+                    out[-1] = merged
+                    continue
 
-        pending = c
+        pending = chunk
         pending_page = page_index
 
     if pending is not None:

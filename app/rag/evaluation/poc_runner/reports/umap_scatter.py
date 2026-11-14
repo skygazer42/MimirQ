@@ -62,8 +62,7 @@ def _query_records(rows: list[dict[str, Any]], *, limit: int) -> list[_ScatterRe
         if not query:
             continue
         is_out_of_scope_candidate = (
-            row.get("feedback_polarity") == "negative"
-            and int(row.get("citation_count") or 0) <= 0
+            row.get("feedback_polarity") == "negative" and int(row.get("citation_count") or 0) <= 0
         )
         group = "out_of_scope_candidate" if is_out_of_scope_candidate else "query"
         out.append(

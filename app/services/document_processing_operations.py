@@ -10,8 +10,10 @@ from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentStatus
+from app.api.schemas.documents import DocumentStatus
+from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
@@ -26,7 +28,13 @@ from app.services.document_access_service import (
 from app.services.document_identity import compute_pipeline_hash, get_content_sha256, sync_pipeline_execution_identity
 from app.services.document_index_channel_service import reconcile_document_index_channels
 from app.services.document_lifecycle_service import DOC_NOT_FOUND_DETAIL, MANUAL_FILE_PATH_PREFIX
-from app.services.document_processing_dispatch import dispatch_retry_document, resolve_retry_source
+from app.services.document_processing_dispatch import (
+    RetryDocumentPlan,
+    dispatch_retry_document,
+    mark_document_processing_schedule_failed,
+    resolve_retry_source,
+)
+from app.services.managed_handoff import prepare_managed_handoff
 
 logger = get_logger("services.document_processing_operations")
 
@@ -146,37 +154,33 @@ async def cancel_document(
     - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
     """
-    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    document = _get_document(db=db, document_id=document_id, tenant_id=tenant_id)
+    def persist_cancellation() -> tuple[DocumentStatus, list[str]]:
+        with SessionLocal() as db:
+            dataset_service.ensure_member(db, tenant_id, account_id)
+            document = _get_document(db=db, document_id=document_id, tenant_id=tenant_id)
+            assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=document)
+            current_status = document.status.lower()
+            if current_status in {"completed", "failed"}:
+                raise HTTPException(status_code=409, detail=f"Cannot cancel a {current_status} document")
+            meta = dict(document.doc_metadata or {})
+            meta["cancel_requested"] = True
+            document.doc_metadata = meta
+            document.status = "cancelled"
+            document.processing_progress = 0
+            document.current_stage = "cancelled"
+            document.error_message = "cancelled"
+            db.commit()
+            db.refresh(document)
+            task_id = meta.get("task_id")
+            kg_task_id = meta.get("kg_task_id")
+            task_ids: list[str] = []
+            for raw in (task_id, kg_task_id):
+                if isinstance(raw, str) and raw.strip():
+                    task_ids.append(raw.strip())
+            return _document_status_payload(document), task_ids
 
-    assert_document_writable_for_lifecycle(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document=document,
-    )
-
-    current_status = document.status.lower()
-    if current_status in {"completed", "failed"}:
-        raise HTTPException(status_code=409, detail=f"Cannot cancel a {current_status} document")
-
-    meta = dict(document.doc_metadata or {})
-    meta["cancel_requested"] = True
-    document.doc_metadata = meta
-    document.status = "cancelled"
-    document.processing_progress = 0
-    document.current_stage = "cancelled"
-    document.error_message = "cancelled"
-    db.commit()
-    db.refresh(document)
-
-    task_id = meta.get("task_id")
-    kg_task_id = meta.get("kg_task_id")
-    task_ids: list[str] = []
-    for raw in (task_id, kg_task_id):
-        if isinstance(raw, str) and raw.strip():
-            task_ids.append(raw.strip())
+    status, task_ids = await run_blocking_in_thread(persist_cancellation)
 
     if settings.TASK_QUEUE_ENABLED and task_ids:
         from arq.jobs import Job
@@ -200,7 +204,7 @@ async def cancel_document(
                     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
                         await job.abort(timeout=0.2)
 
-    return _document_status_payload(document)
+    return status
 
 
 def _get_document(*, db: Session, document_id: UUID, tenant_id: UUID) -> DBDocument:
@@ -385,17 +389,16 @@ def _mark_retry_pending(
         logger.warning("Failed to reset document index channel diagnostics: %s", str(exc)[:200])
 
 
-async def retry_document(
+def _prepare_retry_document(
     *,
     document_id: UUID,
-    background_tasks: BackgroundTasks,
     force: bool = False,
     skip_if_unchanged: bool = False,
     parser_backend: str | None = None,
     tenant_id: UUID,
     account_id: str,
     db: Session,
-) -> DocumentStatus:
+) -> tuple[DocumentStatus, RetryDocumentPlan | None]:
     """
     Retry a failed/cancelled document processing task.
 
@@ -436,7 +439,7 @@ async def retry_document(
         skip_if_unchanged=skip_if_unchanged,
     )
     if unchanged_payload is not None:
-        return unchanged_payload
+        return unchanged_payload, None
 
     source = resolve_retry_source(document=document, raw_path=raw_path, tenant_id=tenant_id)
     meta, pipeline_hash = _prepare_retry_metadata(
@@ -450,13 +453,64 @@ async def retry_document(
         meta=meta,
         pipeline_hash=pipeline_hash,
     )
-    await dispatch_retry_document(
+    metadata = document.doc_metadata or {}
+    return _document_status_payload(document), RetryDocumentPlan(
+        document_id=document_id,
         source=source,
-        background_tasks=background_tasks,
-        document=document,
-        db=db,
-        tenant_id=tenant_id,
-        requested_by=account_id,
         pipeline_hash=pipeline_hash,
+        file_type=document.file_type,
+        parser_backend=metadata.get("parser_backend"),
+        chunk_strategy=metadata.get("chunk_strategy"),
     )
-    return _document_status_payload(document)
+
+
+def _recover_cancelled_retry(
+    db: Session, prepared: tuple[DocumentStatus, RetryDocumentPlan | None], *, tenant_id: UUID
+) -> None:
+    _status, plan = prepared
+    if plan is None:
+        return
+    document = _get_document(db=db, document_id=plan.document_id, tenant_id=tenant_id)
+    metadata = document.doc_metadata or {}
+    if (
+        document.status != "pending"
+        or document.current_stage != "queued"
+        or metadata.get("task_id")
+        or metadata.get("kg_task_id")
+        or metadata.get("pipeline_hash") != plan.pipeline_hash
+    ):
+        return
+    mark_document_processing_schedule_failed(db=db, document=document)
+
+
+async def retry_document(
+    *,
+    document_id: UUID,
+    background_tasks: BackgroundTasks,
+    force: bool = False,
+    skip_if_unchanged: bool = False,
+    parser_backend: str | None = None,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> DocumentStatus:
+    status, plan = await prepare_managed_handoff(
+        lambda worker_db: _prepare_retry_document(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            force=force,
+            skip_if_unchanged=skip_if_unchanged,
+            parser_backend=parser_backend,
+            db=worker_db,
+        ),
+        recover_cancelled=lambda worker_db, prepared: _recover_cancelled_retry(
+            worker_db, prepared, tenant_id=tenant_id
+        ),
+    )
+    if plan is None:
+        return status
+    dispatched_status = await dispatch_retry_document(
+        plan=plan, background_tasks=background_tasks, tenant_id=tenant_id, requested_by=account_id
+    )
+    return dispatched_status if dispatched_status is not None else status

@@ -690,9 +690,7 @@ def summarize_document_index_channels(
         if payload["status"].strip().lower() in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
     ]
     disabled_channels = [
-        channel
-        for channel, payload in statuses.items()
-        if payload["status"].strip().lower() == "disabled"
+        channel for channel, payload in statuses.items() if payload["status"].strip().lower() == "disabled"
     ]
     ready = not pending_channels and not error_channels
     return DocumentIndexChannelSummary(

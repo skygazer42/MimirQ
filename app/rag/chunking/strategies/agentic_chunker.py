@@ -23,15 +23,13 @@ class AgenticChunker(BaseChunker):
 
     def _signals_for_chunk(self, *, text: str, meta: dict[str, object]) -> list[str]:
         signals: list[str] = []
-        content = text
-        if "\n1." in content or "\n2." in content or "\n- " in content:
+        if "\n1." in text or "\n2." in text or "\n- " in text:
             signals.append("list_boundary")
-        if "```" in content:
+        if "```" in text:
             signals.append("code_boundary")
-        start_char = int(meta.get("start_char") or 0)
-        if start_char == 0:
+        if meta["start_char"] == 0:
             signals.append("document_start")
-        if len(content) >= max(1, self.chunk_size - 20):
+        if len(text) >= max(1, self.chunk_size - 20):
             signals.append("size_cap")
         if not signals:
             signals.append("semantic_boundary")
@@ -39,9 +37,9 @@ class AgenticChunker(BaseChunker):
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-        for doc in documents or []:
+        for doc in documents:
             for chunk in self._semantic.split_documents([doc]):
-                meta = dict(chunk.metadata or {})
+                meta = dict(chunk.metadata)
                 meta.update(
                     {
                         "chunk_strategy": "agentic_chunker",

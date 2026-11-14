@@ -38,7 +38,8 @@ def build_simhash_review_candidates(
     hamming_threshold: int = 5,
 ) -> dict[str, Any]:
     items = _normalize_simhash_items(rows)
-    pairs, groups = _group_simhash_items(items, hamming_threshold=int(hamming_threshold))
+    threshold = int(hamming_threshold)
+    pairs, groups = _group_simhash_items(items, hamming_threshold=threshold)
     clusters = _build_simhash_clusters(items, groups)
     affected_files = sum(len(cluster["members"]) for cluster in clusters)
     clusters.sort(key=lambda row: (-len(row["members"]), row["keep_candidate"]))
@@ -48,7 +49,7 @@ def build_simhash_review_candidates(
             "clusters": len(clusters),
             "affected_files": affected_files,
             "pairs": len(pairs),
-            "threshold": int(hamming_threshold),
+            "threshold": threshold,
         },
         "clusters": clusters,
         "pairs": pairs,

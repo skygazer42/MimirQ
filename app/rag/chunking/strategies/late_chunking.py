@@ -22,11 +22,11 @@ class LateChunkingChunker(BaseChunker):
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-        for doc in documents or []:
+        for doc in documents:
             doc_text = doc.page_content
             doc_len = len(doc_text)
             for chunk in self._boundary_chunker.split_documents([doc]):
-                meta = dict(chunk.metadata or {})
+                meta = dict(chunk.metadata)
                 meta.update(
                     {
                         "chunk_strategy": "late_chunking",

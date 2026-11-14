@@ -114,7 +114,7 @@ def _collect_entity_token_counts(raw: str) -> tuple[dict[str, int], dict[str, st
         if normalized is None:
             continue
         sig, tok = normalized
-        counts[sig] = (counts.get(sig, 0) or 0) + 1
+        counts[sig] = counts.get(sig, 0) + 1
         display.setdefault(sig, tok)
     return counts, display
 
@@ -234,7 +234,7 @@ def _record_memory_entity(
     if not tok or _is_pii_like(tok):
         return
     sig = _stable_sig(tok)
-    ent_counts[sig] = (ent_counts.get(sig, 0) or 0) + 1
+    ent_counts[sig] = ent_counts.get(sig, 0) + 1
     ent_surface.setdefault(sig, tok)
 
 
@@ -264,7 +264,7 @@ def _collect_structured_memory_records(
     facts: list[str] = []
     seen_fact: set[str] = set()
 
-    for rec in records or []:
+    for rec in records:
         if not isinstance(rec, dict):
             continue
         if rec.get("schema") != "mimirq.structured_memory.v1":

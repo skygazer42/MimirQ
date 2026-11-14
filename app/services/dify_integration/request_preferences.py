@@ -2,7 +2,7 @@
 
 from fastapi import HTTPException
 
-from app.api.schemas.dify import DifyRetrievalSetting
+from app.api.schemas.integrations import DifyRetrievalSetting
 from app.core.config import settings
 from app.rag.retrieval.planner import resolve_internal_candidate_top_k
 from app.services.dify_integration import anchor_strength
@@ -42,32 +42,32 @@ def _resolve_dify_kg_flags(setting: DifyRetrievalSetting) -> _DifyKGFlags:
         enable_query_expansion=(
             anchor_strength._dify_kg_bool("DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", False)
             if setting.enable_kg_query_expansion is None
-            else bool(setting.enable_kg_query_expansion)
+            else setting.enable_kg_query_expansion
         ),
         enable_chunk_injection=(
             anchor_strength._dify_kg_bool("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED", False)
             if setting.enable_kg_chunk_injection is None
-            else bool(setting.enable_kg_chunk_injection)
+            else setting.enable_kg_chunk_injection
         ),
         chunk_injection_max_chunks=(
             anchor_strength._dify_kg_int("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3)
             if setting.kg_chunk_injection_max_chunks is None
-            else int(setting.kg_chunk_injection_max_chunks)
+            else setting.kg_chunk_injection_max_chunks
         ),
         enable_chunk_boost=(
             anchor_strength._dify_kg_bool("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED", False)
             if setting.enable_kg_chunk_boost is None
-            else bool(setting.enable_kg_chunk_boost)
+            else setting.enable_kg_chunk_boost
         ),
         chunk_boost_weight=(
             anchor_strength._dify_kg_float("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25)
             if setting.kg_chunk_boost_weight is None
-            else float(setting.kg_chunk_boost_weight)
+            else setting.kg_chunk_boost_weight
         ),
         chunk_boost_max_promoted=(
             anchor_strength._dify_kg_int("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2)
             if setting.kg_chunk_boost_max_promoted is None
-            else int(setting.kg_chunk_boost_max_promoted)
+            else setting.kg_chunk_boost_max_promoted
         ),
     )
 

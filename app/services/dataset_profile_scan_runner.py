@@ -198,16 +198,16 @@ class _DeepScanStats:
     def as_result(self) -> dict[str, Any]:
         return {
             "ok": True,
-            "documents": int(self.documents),
-            "updated_docs": int(self.updated_docs),
-            "pdf_backfilled": int(self.pdf_backfilled),
-            "text_backfilled": int(self.text_backfilled),
-            "chunk_stats_backfilled": int(self.chunk_stats_backfilled),
-            "chunk_token_stats_backfilled": int(self.chunk_token_stats_backfilled),
-            "chunk_coverage_backfilled": int(self.chunk_coverage_backfilled),
-            "chunk_quality_gate_backfilled": int(self.chunk_quality_gate_backfilled),
-            "hash_backfilled": int(self.hash_backfilled),
-            "errors": int(self.errors),
+            "documents": self.documents,
+            "updated_docs": self.updated_docs,
+            "pdf_backfilled": self.pdf_backfilled,
+            "text_backfilled": self.text_backfilled,
+            "chunk_stats_backfilled": self.chunk_stats_backfilled,
+            "chunk_token_stats_backfilled": self.chunk_token_stats_backfilled,
+            "chunk_coverage_backfilled": self.chunk_coverage_backfilled,
+            "chunk_quality_gate_backfilled": self.chunk_quality_gate_backfilled,
+            "hash_backfilled": self.hash_backfilled,
+            "errors": self.errors,
         }
 
 
@@ -552,10 +552,7 @@ def _maybe_backfill_chunk_coverage(
     from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
 
     coverage = compute_chunk_coverage_metrics_from_ranges(ranges, total_characters=total_characters)
-    if not coverage:
-        return False
-
-    meta["chunk_coverage"] = {**dict(coverage), "ranges_used": int(len(ranges))}
+    meta["chunk_coverage"] = {**coverage, "ranges_used": len(ranges)}
     stats.chunk_coverage_backfilled += 1
     return True
 

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
-from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.evidence_expectations import DEFAULT_EVIDENCE_ANCHOR_FIELDS, normalize_anchor_fields
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.retrieval_profiles import is_recall_first_profile
 from app.rag.core.text import guess_recall_bucket
 from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_retrieval_preset
@@ -104,10 +104,14 @@ def _build_must_recall_scope_payload(state: dict[str, Any]) -> dict[str, Any]:
         scope_payload["dataset_id"] = dataset_scope
     raw_doc_scope = state.get("document_ids")
     if isinstance(raw_doc_scope, list):
-        scope_payload["document_ids"] = [str(value) for value in raw_doc_scope if value is not None and str(value).strip()][:200]
+        scope_payload["document_ids"] = [
+            str(value) for value in raw_doc_scope if value is not None and str(value).strip()
+        ][:200]
     raw_table_scope = state.get("table_ids")
     if isinstance(raw_table_scope, list):
-        scope_payload["table_ids"] = [str(value) for value in raw_table_scope if value is not None and str(value).strip()][:200]
+        scope_payload["table_ids"] = [
+            str(value) for value in raw_table_scope if value is not None and str(value).strip()
+        ][:200]
     return scope_payload
 
 

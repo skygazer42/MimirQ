@@ -80,7 +80,7 @@ def _match_required_source_keys(
         if folded not in present:
             missing.append(exp)
             continue
-        matched_display = display.get(folded) or exp
+        matched_display = display[folded]
         matched.append(matched_display)
         matched_by_required[exp] = matched_display
     return missing, matched, matched_by_required
@@ -109,7 +109,7 @@ def evaluate_required_source_keys(
     present, display = _collect_present_source_keys(citations)
     missing, matched, matched_by_required = _match_required_source_keys(expected, present, display)
 
-    present_out = [display[k] for k in sorted(display.keys())[:200]]
+    present_out = [display[k] for k in sorted(display)[:200]]
     required_n = len(expected)
     missing_n = len(missing)
     matched_n = required_n - missing_n

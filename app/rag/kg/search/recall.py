@@ -136,18 +136,18 @@ def apply_serving_layer_budget(
             continue
 
         chunk_key = _scope_key(event, "chunk_id", fallback=f"event:{eid}")
-        if per_chunk_limit and int(chunk_counts.get(chunk_key, 0) or 0) >= per_chunk_limit:
+        if per_chunk_limit and chunk_counts.get(chunk_key, 0) >= per_chunk_limit:
             dropped_by_chunk += 1
             continue
 
         doc_key = _scope_key(event, "document_id", fallback=f"event:{eid}")
-        if per_doc_limit and int(doc_counts.get(doc_key, 0) or 0) >= per_doc_limit:
+        if per_doc_limit and doc_counts.get(doc_key, 0) >= per_doc_limit:
             dropped_by_document += 1
             continue
 
         kept_ids.append(eid)
-        chunk_counts[chunk_key] = int(chunk_counts.get(chunk_key, 0) or 0) + 1
-        doc_counts[doc_key] = int(doc_counts.get(doc_key, 0) or 0) + 1
+        chunk_counts[chunk_key] = chunk_counts.get(chunk_key, 0) + 1
+        doc_counts[doc_key] = doc_counts.get(doc_key, 0) + 1
 
     dropped = dropped_by_score + dropped_by_chunk + dropped_by_document
     return ServingLayerBudgetResult(
@@ -936,13 +936,13 @@ def _apply_relation_expansion(
             bucket_mid=bucket_mid,
         )
         neighbor_weights[to_id] = max(neighbor_weights.get(to_id, 0.0), weight)
-        predicate_hist[predicate] = int(predicate_hist.get(predicate, 0) or 0) + 1
-        conf_bucket_hist[bucket] = int(conf_bucket_hist.get(bucket, 0) or 0) + 1
+        predicate_hist[predicate] = predicate_hist.get(predicate, 0) + 1
+        conf_bucket_hist[bucket] = conf_bucket_hist.get(bucket, 0) + 1
         edges_used += 1
     sorted_neighbors = sorted(neighbor_weights.items(), key=lambda item: item[1], reverse=True)[:max_neighbors]
     for entity_id, weight in sorted_neighbors:
         key_weights[entity_id] = max(key_weights.get(entity_id, 0.0), weight)
-    relation_debug["edges_used"] = int(edges_used)
+    relation_debug["edges_used"] = edges_used
     relation_debug["neighbors_total"] = len(neighbor_weights)
     relation_debug["neighbors_selected"] = len(sorted_neighbors)
     relation_debug["predicate_hist"] = dict(sorted(predicate_hist.items(), key=lambda item: (-item[1], item[0])))
@@ -1176,14 +1176,14 @@ def _serving_layer_debug(
         "enabled": bool(limits.serving_enabled),
         "reason": str(serving_result.reason),
         "candidate_events": len(events_detail),
-        "kept": int(serving_result.kept),
+        "kept": serving_result.kept,
         "returned": len(merged_event_ids),
-        "dropped": int(serving_result.dropped),
-        "dropped_by_score": int(serving_result.dropped_by_score),
-        "dropped_by_chunk": int(serving_result.dropped_by_chunk),
-        "dropped_by_document": int(serving_result.dropped_by_document),
-        "max_events": int(limits.target_max_events),
-        "candidate_multiplier": int(limits.serving_candidate_multiplier),
+        "dropped": serving_result.dropped,
+        "dropped_by_score": serving_result.dropped_by_score,
+        "dropped_by_chunk": serving_result.dropped_by_chunk,
+        "dropped_by_document": serving_result.dropped_by_document,
+        "max_events": limits.target_max_events,
+        "candidate_multiplier": limits.serving_candidate_multiplier,
     }
 
 

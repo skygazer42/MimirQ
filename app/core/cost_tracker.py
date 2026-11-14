@@ -64,15 +64,15 @@ def build_cost_event(
     request_id: str | None = None,
     stage: str | None = None,
 ) -> dict[str, Any]:
-    input_t = _to_int(input_tokens)
-    output_t = _to_int(output_tokens)
+    input_token_count = _to_int(input_tokens)
+    output_token_count = _to_int(output_tokens)
     return {
         "schema": COST_EVENT_SCHEMA_V1,
         "provider": _clean_text(provider),
         "model": _clean_text(model),
-        "input_tokens": input_t,
-        "output_tokens": output_t,
-        "total_tokens": input_t + output_t,
+        "input_tokens": input_token_count,
+        "output_tokens": output_token_count,
+        "total_tokens": input_token_count + output_token_count,
         "cost_usd": round(_to_float(cost_usd), 6),
         "tenant_id": _clean_text(tenant_id),
         "dataset_id": _clean_text(dataset_id),
@@ -82,7 +82,6 @@ def build_cost_event(
 
 
 def summarize_cost_events(events: list[dict[str, Any]]) -> dict[str, Any]:
-    rows = [dict(item or {}) for item in events or []]
     by_provider: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"events": 0, "total_tokens": 0, "total_cost_usd": 0.0}
     )
@@ -90,13 +89,13 @@ def summarize_cost_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     total_tokens = 0
     total_cost = 0.0
-    for row in rows:
-        provider = _clean_text(row.get("provider")) or "unknown"
-        tenant = _clean_text(row.get("tenant_id")) or "unknown"
-        event_tokens = _to_int(row.get("total_tokens"))
+    for event in events:
+        provider = _clean_text(event.get("provider")) or "unknown"
+        tenant = _clean_text(event.get("tenant_id")) or "unknown"
+        event_tokens = _to_int(event.get("total_tokens"))
         if event_tokens <= 0:
-            event_tokens = _to_int(row.get("input_tokens")) + _to_int(row.get("output_tokens"))
-        event_cost = _to_float(row.get("cost_usd"))
+            event_tokens = _to_int(event.get("input_tokens")) + _to_int(event.get("output_tokens"))
+        event_cost = _to_float(event.get("cost_usd"))
 
         total_tokens += event_tokens
         total_cost += event_cost
@@ -122,7 +121,7 @@ def summarize_cost_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "schema": COST_SUMMARY_SCHEMA_V1,
-        "events": len(rows),
+        "events": len(events),
         "total_tokens": total_tokens,
         "total_cost_usd": round(total_cost, 6),
         "by_provider": _normalize_bucket(by_provider),

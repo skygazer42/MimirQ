@@ -2,8 +2,9 @@
 
 import re
 from pathlib import Path
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
+
+from app.rag.core.metadata import _stringified_metadata_text
 
 _DEEPDOC_BOX_RE = re.compile(r"@@[^#\n]{1,160}##")
 _UUID_PDF_RE = re.compile(
@@ -138,7 +139,11 @@ def _source_answer_title_and_filename(doc: Any) -> tuple[str | None, str | None]
     if not isinstance(meta, dict):
         return None, None
 
-    title = _stringified_metadata_text(meta, "document_title") or _stringified_metadata_text(meta, "doc_title") or _stringified_metadata_text(meta, "title")
+    title = (
+        _stringified_metadata_text(meta, "document_title")
+        or _stringified_metadata_text(meta, "doc_title")
+        or _stringified_metadata_text(meta, "title")
+    )
     if not title:
         title = None
     filename = _stringified_metadata_text(meta, "filename") or _stringified_metadata_text(meta, "source")

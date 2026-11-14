@@ -587,7 +587,14 @@ def _schedule_inflight_chat_response_lease_release(key: str) -> None:
         asyncio.create_task(_release_after_cache_write())
 
 
-def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
+def resolve_inflight_chat_response(
+    key: str,
+    payload: dict[str, Any],
+    *,
+    expected_future: asyncio.Future[dict[str, Any]] | None = None,
+) -> None:
+    if expected_future is not None and _inflight_response_futures.get(key) is not expected_future:
+        return
     lease = _inflight_response_leases.get(key)
     if lease is not None and lease[3]:
         task = asyncio.create_task(
@@ -607,7 +614,14 @@ def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
     future.set_result(payload)
 
 
-def reject_inflight_chat_response(key: str, exc: BaseException) -> None:
+def reject_inflight_chat_response(
+    key: str,
+    exc: BaseException,
+    *,
+    expected_future: asyncio.Future[dict[str, Any]] | None = None,
+) -> None:
+    if expected_future is not None and _inflight_response_futures.get(key) is not expected_future:
+        return
     _schedule_inflight_chat_response_lease_release(key)
     future = _pop_inflight_chat_response_future(key)
     if future is None or future.done():

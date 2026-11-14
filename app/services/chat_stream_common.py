@@ -32,8 +32,6 @@ class ChatStreamRuntimeContext:
     dataset_prompt_defaults_applied_fields: list[str] | None = None
     tenant_qps_meta: dict[str, Any] | None = None
     quota_meta: dict[str, Any] | None = None
-    retrieval_mode_default: str | None = None
-    vector_backend_default: str | None = None
     request_structured_output: bool = False
     structured_data: object | None = None
     structured_preset: str | None = None
@@ -55,8 +53,6 @@ def build_chat_stream_done_event(
     content: str,
     citations: list[dict[str, Any]] | list | None,
     metrics: dict[str, Any],
-    retrieval_mode_default: str | None,
-    vector_backend_default: str | None,
     structured: bool,
     structured_data: object | None,
     structured_preset: str | None = None,
@@ -92,8 +88,6 @@ def log_chat_stream_completion_metrics(
     conversation_id: UUID | None,
     tenant_id: UUID | None,
     metrics: dict[str, Any],
-    retrieval_mode_default: str | None,
-    vector_backend_default: str | None,
 ) -> None:
     retrieval_mode_used = metrics.get("retrieval_mode")
     vector_backend_used = metrics.get("vector_backend")
@@ -160,8 +154,6 @@ async def stream_materialized_chat_events(
         content=answer_text,
         citations=citations_list,
         metrics=final_metrics,
-        retrieval_mode_default=runtime.retrieval_mode_default,
-        vector_backend_default=runtime.vector_backend_default,
         structured=runtime.request_structured_output and runtime.structured_data is not None,
         structured_data=runtime.structured_data,
         structured_preset=runtime.structured_preset,
@@ -172,8 +164,6 @@ async def stream_materialized_chat_events(
         conversation_id=persistence.persist_options.conversation_id,
         tenant_id=persistence.persist_options.tenant_id,
         metrics=final_metrics,
-        retrieval_mode_default=runtime.retrieval_mode_default,
-        vector_backend_default=runtime.vector_backend_default,
     )
 
     dispatch_chat_stream_persistence(
@@ -188,17 +178,3 @@ async def stream_materialized_chat_events(
             structured_data=runtime.structured_data,
         ),
     )
-
-
-async def stream_cached_chat_events(
-    *,
-    stream_input: MaterializedChatStreamInput,
-    runtime: ChatStreamRuntimeContext,
-    persistence: ChatStreamPersistenceContext,
-) -> AsyncIterator[dict[str, Any]]:
-    async for event in stream_materialized_chat_events(
-        stream_input=replace(stream_input, start_message="缓存命中，直接返回…"),
-        runtime=runtime,
-        persistence=persistence,
-    ):
-        yield event

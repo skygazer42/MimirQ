@@ -1,6 +1,6 @@
 from typing import Any, Callable, TypedDict
 
-from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, feedback_polarity_from_score
+from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, _safe_str, feedback_polarity_from_score
 
 POC_ATTRIBUTION_SCHEMA_V1 = "mimirq.poc.attribution.v1"
 _CATEGORIES = ("retrieval_miss", "generation_error", "out_of_scope")
@@ -15,15 +15,6 @@ class _AttributionExample(TypedDict):
     original_query: str | None
     llm_response: str | None
     final_context_filenames: list[Any]
-
-
-def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text[: max(1, int(max_len or 1))]
 
 
 def _is_negative_feedback(row: dict[str, Any]) -> bool:
@@ -137,7 +128,7 @@ def classify_feedback_records(
     review_confidence_threshold: float = 0.7,
     max_examples_per_category: int = 10,
 ) -> dict[str, Any]:
-    selected = [dict(row or {}) for row in (records or []) if isinstance(row, dict) and _is_negative_feedback(row)]
+    selected = [dict(row) for row in (records or []) if isinstance(row, dict) and _is_negative_feedback(row)]
     counts = dict.fromkeys(_CATEGORIES, 0)
     top_examples = {category: [] for category in _CATEGORIES}
     manual_review_candidates: list[dict[str, Any]] = []

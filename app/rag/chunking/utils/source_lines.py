@@ -18,8 +18,6 @@ def iter_source_lines(text: str) -> list[SourceLine]:
         end = start + len(raw)
         offset = end
         lines.append(SourceLine(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not lines and text:
-        lines.append(SourceLine(start=0, end=len(text), plain=text))
     return lines
 
 

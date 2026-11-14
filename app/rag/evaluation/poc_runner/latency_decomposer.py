@@ -74,7 +74,7 @@ def _decompose_row(row: dict[str, Any]) -> _LatencyRow:
 
 
 def decompose_latency_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    out_rows: list[_LatencyRow] = [_decompose_row(dict(row or {})) for row in (rows or []) if isinstance(row, dict)]
+    out_rows: list[_LatencyRow] = [_decompose_row(dict(row)) for row in (rows or []) if isinstance(row, dict)]
     total = max(1, len(out_rows))
     summary = {
         "avg_wait_in_queue_ms": round(sum(row["wait_in_queue_ms"] for row in out_rows) / total, 2) if out_rows else 0.0,

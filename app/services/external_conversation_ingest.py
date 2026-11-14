@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.external_conversation import (
+from app.api.schemas.integrations import (
     ExternalConversationIngestRequest,
     ExternalConversationIngestResponse,
     ExternalConversationMessageIn,
@@ -302,9 +302,12 @@ def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
     metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     document_id = _normalize_uuid_text(value.get("document_id") or metadata.get("document_id"))
     chunk_id = _normalize_uuid_text(value.get("chunk_id") or metadata.get("chunk_id"))
-    chunk_content = _first_non_empty(value, _CITATION_CONTENT_KEYS) or _first_non_empty(metadata, _CITATION_CONTENT_KEYS)
-    if chunk_content is not None:
-        chunk_content = chunk_content.strip()
+    chunk_content = _first_non_empty(value, _CITATION_CONTENT_KEYS) or _first_non_empty(
+        metadata, _CITATION_CONTENT_KEYS
+    )
+    if not isinstance(chunk_content, str):
+        return None
+    chunk_content = chunk_content.strip()
 
     if not document_id or not chunk_id or not chunk_content:
         return None
@@ -405,7 +408,10 @@ def _next_message_created_at(
     imported_at: datetime,
     previous_at: datetime | None,
 ) -> datetime:
+    """Interpret naive candidate times as UTC before applying the insertion-order rule."""
     candidate = requested_at or imported_at
+    if candidate.tzinfo is None:
+        candidate = candidate.replace(tzinfo=UTC)
     if previous_at is not None and candidate <= previous_at:
         return previous_at + timedelta(microseconds=1)
     return candidate

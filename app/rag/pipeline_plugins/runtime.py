@@ -213,9 +213,7 @@ def _invoke_plugin(
         params=params,
         context=context,
     )
-    if kwargs:
-        return func(**kwargs)
-    return func(*positional) if positional else func()
+    return func(*positional, **kwargs)
 
 
 def _plugin_call_arguments(
@@ -237,15 +235,24 @@ def _plugin_call_arguments(
     }
     kwargs: dict[str, Any] = {}
     positional: list[Any] = []
-    for name, param in signature.parameters.items():
-        if name in named_values:
-            kwargs[name] = named_values[name]
-        elif param.kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            if not positional and param.default is inspect.Parameter.empty:
+    for index, (name, param) in enumerate(signature.parameters.items()):
+        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+            if name in named_values:
+                positional.append(named_values[name])
+            elif param.default is not inspect.Parameter.empty:
+                positional.append(param.default)
+            elif index == 0:
                 positional.append(documents)
+            else:
+                break
+        elif name in named_values:
+            kwargs[name] = named_values[name]
+        elif (
+            index == 0
+            and param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            and param.default is inspect.Parameter.empty
+        ):
+            positional.append(documents)
     return positional, kwargs
 
 
@@ -269,7 +276,9 @@ def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> D
         if content is None:
             content = item.get("text")
         if content is None:
-            raise PythonPipelinePluginError(f"python plugin document at index {index} must provide page_content, content or text")
+            raise PythonPipelinePluginError(
+                f"python plugin document at index {index} must provide page_content, content or text"
+            )
         meta = _coerce_metadata(item.get("metadata"))
         meta.setdefault(f"{stage}_python_plugin", plugin_ref)
         doc_id = item.get("id")
@@ -470,7 +479,7 @@ def _coerce_kg_event(
     documents: list[Document],
     plugin_ref: str,
     index: int,
-) -> IndexRecord | None:
+) -> IndexRecord:
     if isinstance(item, IndexRecord):
         if item.kind != IndexKind.EVENT:
             raise PythonPipelinePluginError(f"kg plugin returned non-event IndexRecord at index {index}")
@@ -517,12 +526,11 @@ def _coerce_kg_events(result: Any, *, documents: list[Document], plugin_ref: str
     events: list[IndexRecord] = []
     for idx, item in enumerate(_iter_kg_result(result)):
         event = _coerce_kg_event(item, documents=documents, plugin_ref=plugin_ref, index=idx)
-        if event is not None:
-            try:
-                validate_no_reserved_platform_metadata_views(event.metadata, field_label="kg plugin metadata")
-            except PipelinePluginContractError as exc:
-                raise PythonPipelinePluginError(str(exc)) from exc
-            events.append(event)
+        try:
+            validate_no_reserved_platform_metadata_views(event.metadata, field_label="kg plugin metadata")
+        except PipelinePluginContractError as exc:
+            raise PythonPipelinePluginError(str(exc)) from exc
+        events.append(event)
     return events
 
 
@@ -566,11 +574,8 @@ def apply_chunk_python_plugin(
     result = _invoke_plugin(func, documents=input_documents, params=dict(params or {}), context=ctx)
     chunks = _coerce_documents(result, stage="chunk", plugin_ref=plugin_ref)
     for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta.setdefault("chunk_strategy", "python_plugin")
-        meta.setdefault("chunk_python_plugin", plugin_ref)
-        meta.setdefault("chunk_index", idx)
-        chunk.metadata = meta
+        chunk.metadata.setdefault("chunk_strategy", "python_plugin")
+        chunk.metadata.setdefault("chunk_index", idx)
     return _apply_registered_plugin_contracts(chunks, plugin_ref=plugin_ref, stage="chunk", context=ctx)
 
 

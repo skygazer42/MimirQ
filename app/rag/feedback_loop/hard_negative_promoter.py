@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.evaluation.hard_negative_mining import HARD_NEGATIVES_SCHEMA_V1
 
 FEEDBACK_HARD_NEGATIVE_EXPORT_SCHEMA_V1 = "mimirq.feedback_hard_negative_export.v1"
@@ -12,7 +12,7 @@ DEFAULT_FEEDBACK_HARD_NEGATIVE_JSONL_PATH = "./runs/feedback_loop/hard_negatives
 def _safe_records(candidate_payload: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(candidate_payload, dict):
         return []
-    raw = candidate_payload.get("hard_negative_records") or []
+    raw = candidate_payload.get("hard_negative_records")
     if not isinstance(raw, list):
         return []
     return [dict(item) for item in raw if isinstance(item, dict) and item.get("schema") == HARD_NEGATIVES_SCHEMA_V1]
@@ -63,7 +63,7 @@ def promote_hard_negatives_to_jsonl(
     """
     records = [_export_record(item) for item in _safe_records(candidate_payload)]
     hard_negative_total = sum(
-        len(item.get("hard_negatives") or []) for item in records if isinstance(item.get("hard_negatives"), list)
+        len(item["hard_negatives"]) for item in records if isinstance(item.get("hard_negatives"), list)
     )
     path = Path(output_path or DEFAULT_FEEDBACK_HARD_NEGATIVE_JSONL_PATH)
 

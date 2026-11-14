@@ -11,7 +11,7 @@ from lxml import etree
 from signxml import InvalidSignature, XMLSigner, XMLVerifier, methods
 from sqlalchemy.orm import Session
 
-from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
+from app.api.schemas.identity import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
 from app.core.jwt_utils import create_access_token
 from app.models.user import User
@@ -384,7 +384,6 @@ def _validate_conditions(
     root: etree._Element,
     assertion: etree._Element,
     provider: SamlProvider,
-    acs_url: str | None,
 ) -> int:
     expected_acs = provider.acs_url
     expected_audience = provider.audience
@@ -443,12 +442,11 @@ def exchange_saml_response(
     provider_id: str | None,
     saml_response: str,
     relay_state: str | None = None,
-    acs_url: str | None = None,
 ) -> SamlExchangeResponse:
     provider = _resolve_provider(provider_id)
     root = _decode_saml_response(saml_response)
     assertion = _verify_signature(root, provider)
-    minimum_replay_ttl_sec = _validate_conditions(root, assertion, provider, acs_url)
+    minimum_replay_ttl_sec = _validate_conditions(root, assertion, provider)
 
     replay_key = assertion.get("ID")
     if replay_key is None:

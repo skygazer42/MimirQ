@@ -24,7 +24,7 @@ def get_paddle_doc_preprocessor(
     use_doc_orientation_classify: bool,
     use_doc_unwarping: bool,
     use_textline_orientation: bool,
-):
+) -> Any:
     from paddleocr import DocPreprocessor  # type: ignore
 
     return DocPreprocessor(
@@ -48,25 +48,6 @@ def _extract_preprocessed_image(result: Any) -> Image.Image | None:
 def _extract_result_json(result: Any) -> dict[str, Any]:
     payload = getattr(result, "json", None)
     return dict(payload) if isinstance(payload, dict) else {}
-
-
-def _preprocess_info(
-    *,
-    backend: str,
-    device: str,
-    lang: str,
-    use_doc_orientation_classify: bool,
-    use_doc_unwarping: bool,
-    use_textline_orientation: bool,
-) -> dict[str, Any]:
-    return {
-        "backend": backend,
-        "device": str(device or "cpu"),
-        "lang": str(lang or "ch"),
-        "use_doc_orientation_classify": bool(use_doc_orientation_classify),
-        "use_doc_unwarping": bool(use_doc_unwarping),
-        "use_textline_orientation": bool(use_textline_orientation),
-    }
 
 
 def _resolve_preprocessor(
@@ -108,7 +89,7 @@ def _update_info_from_payload(info: dict[str, Any], payload: dict[str, Any]) -> 
     if isinstance(model_settings, dict):
         for key in ("use_doc_orientation_classify", "use_doc_unwarping", "use_textline_orientation"):
             if key in model_settings:
-                info[key] = bool(model_settings.get(key))
+                info[key] = bool(model_settings[key])
 
 
 def preprocess_with_paddle_doc(
@@ -123,14 +104,14 @@ def preprocess_with_paddle_doc(
     use_textline_orientation: bool = False,
 ) -> tuple[bool, str, dict[str, Any]]:
     normalized_backend = str(backend or "local").strip().lower() or "local"
-    info = _preprocess_info(
-        backend=normalized_backend,
-        device=device,
-        lang=lang,
-        use_doc_orientation_classify=use_doc_orientation_classify,
-        use_doc_unwarping=use_doc_unwarping,
-        use_textline_orientation=use_textline_orientation,
-    )
+    info: dict[str, Any] = {
+        "backend": normalized_backend,
+        "device": str(device or "cpu"),
+        "lang": str(lang or "ch"),
+        "use_doc_orientation_classify": bool(use_doc_orientation_classify),
+        "use_doc_unwarping": bool(use_doc_unwarping),
+        "use_textline_orientation": bool(use_textline_orientation),
+    }
     if normalized_backend == "skip":
         return False, "skipped", info
     if input_path.suffix.lower() not in _RASTER_EXTS:

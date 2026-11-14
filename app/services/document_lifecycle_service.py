@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import (
+from app.api.schemas.documents import (
     DocumentBatchDeleteRequest,
     DocumentBatchLifecycleRequest,
     DocumentLifecycleMetadata,
@@ -25,7 +25,11 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.document_access_service import assert_document_writable_for_lifecycle, get_document_for_lifecycle
+from app.services.document_access_service import (
+    assert_document_writable_for_lifecycle,
+    assert_document_writable_for_unassigned_target,
+    get_document_for_lifecycle,
+)
 from app.storage.object.minio import minio_service
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
@@ -295,9 +299,15 @@ def _assert_document_delete_permission(
     document: DBDocument,
     enforce_permissions: bool,
 ) -> None:
-    if enforce_permissions and document.dataset_id:
+    if not enforce_permissions:
+        return
+    if document.dataset_id:
         ds = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
         dataset_service.assert_dataset_writable(db, ds, account_id)
+    else:
+        assert_document_writable_for_unassigned_target(
+            db, tenant_id=tenant_id, account_id=account_id, document=document
+        )
 
 
 def _cancel_processing_document(db: Session, document: DBDocument) -> None:

@@ -38,7 +38,6 @@ def _parse_change_line(line: str) -> tuple[str, str] | None:
     s = line.strip()
     if not s:
         return None
-    s = s.lstrip()
     if not s.startswith("#"):
         return None
     rest = s[1:].strip()
@@ -78,8 +77,8 @@ def _build_change_blocks(text: str) -> list[_ChangeBlock]:
     blocks: list[_ChangeBlock] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
-        addr = (addrs[idx]).strip()[:300]
-        action = (actions[idx]).strip()[:80]
+        addr = addrs[idx][:300]
+        action = actions[idx][:80]
         blocks.append(_ChangeBlock(start=start, end=end, index=idx, address=addr, action=action))
     return blocks
 
@@ -136,7 +135,7 @@ class TerraformPlanChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

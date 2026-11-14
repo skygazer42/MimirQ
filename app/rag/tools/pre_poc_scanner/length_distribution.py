@@ -11,13 +11,12 @@ _BINS = (
 def _percentile(values: list[int], pct: int) -> int:
     if not values:
         return 0
-    ordered = sorted(values)
-    idx = max(0, min(len(ordered) - 1, ceil((pct / 100.0) * len(ordered)) - 1))
-    return ordered[idx]
+    idx = max(0, min(len(values) - 1, ceil((pct / 100.0) * len(values)) - 1))
+    return values[idx]
 
 
 def summarize_length_distribution(lengths: list[int | float]) -> dict[str, Any]:
-    values = [max(0, int(v or 0)) for v in (lengths or [])]
+    values = sorted(max(0, int(v or 0)) for v in (lengths or []))
     histogram: list[dict[str, str | int]] = []
     for start, end, label in _BINS:
         histogram.append(

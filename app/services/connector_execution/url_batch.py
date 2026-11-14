@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document_ingestion import UrlUploadRequest
+from app.api.schemas.documents import UrlUploadRequest
 from app.core.database import SessionLocal
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
@@ -15,16 +15,19 @@ from app.services.connector_execution.shared.artifacts import (
     _normalize_connector_string_list,
 )
 from app.services.connector_execution.shared.common import (
-    _optional_source_text,
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    _optional_source_text,
     build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import _build_auth_headers
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _url_batch_run_cancelled,
 )
 from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_url_batch_run,
@@ -130,12 +133,6 @@ def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[st
         "created": int(created),
         "failed": int(failed),
     }
-
-
-def _url_batch_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
-    with contextlib.suppress(Exception):
-        db.refresh(run)
-    return run.status.lower() == "cancelled"
 
 
 async def _ingest_url_batch_url(

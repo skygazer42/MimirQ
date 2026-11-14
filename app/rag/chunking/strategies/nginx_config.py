@@ -26,10 +26,8 @@ class _Block:
     end: int
     kind: str
     title: str | None
-    level: int
 
 
-_SERVER_OPEN_RE = re.compile(r"(?m)^\s*server\s*\{")
 _BLOCK_OPEN_RE = re.compile(
     r"(?m)^\s*(?P<kind>http|server|location|upstream|map|events)\b(?P<rest>[^;{]*)\{\s*(?:#.*)?$"
 )
@@ -102,7 +100,7 @@ def _iter_named_blocks(text: str, kind: str) -> list[_Block]:
             continue
         rest = (m.group("rest")).strip()
         title = rest if rest else None
-        blocks.append(_Block(start=start, end=end, kind=kind, title=title, level=1))
+        blocks.append(_Block(start=start, end=end, kind=kind, title=title))
     return blocks
 
 
@@ -113,7 +111,6 @@ def _build_blocks(text: str) -> list[_Block]:
     server_blocks = _iter_named_blocks(text, "server")
     if server_blocks:
         # Ensure stable ordering and no overlaps.
-        server_blocks = sorted(server_blocks, key=lambda b: b.start)
         dedup: list[_Block] = []
         last_end = -1
         for b in server_blocks:
@@ -127,10 +124,9 @@ def _build_blocks(text: str) -> list[_Block]:
     for k in ("http", "upstream", "location", "events", "map"):
         blocks = _iter_named_blocks(text, k)
         if blocks:
-            blocks = sorted(blocks, key=lambda b: b.start)
             return blocks
 
-    return [_Block(start=0, end=len(text), kind="nginx", title=None, level=0)]
+    return [_Block(start=0, end=len(text), kind="nginx", title=None)]
 
 
 def looks_like_nginx_config(text: str) -> bool:
@@ -196,7 +192,7 @@ class NginxConfigChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

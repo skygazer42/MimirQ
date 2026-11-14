@@ -7,15 +7,15 @@ that were ingested into the per-document table store.
 
 import hashlib
 import sqlite3
+from contextlib import closing
 from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.table_store import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets import (
     DatasetTablesListResponse,
     LotusSemFilterRequest,
     TableAskRequest,
@@ -25,11 +25,10 @@ from app.api.schemas.table_store import (
     TableQueryRequest,
     TableQueryResponse,
 )
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.models.tenant import TenantMember
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
@@ -44,11 +43,10 @@ from app.services.fls_policy import (
     redact_row_dicts,
     redact_row_lists,
 )
-from app.services.lotus_bridge import LotusAvailability, get_lotus_availability
+from app.services.lotus_bridge import get_lotus_availability
 from app.services.lotus_bridge import sem_filter as lotus_sem_filter
 from app.services.rbac_service import TenantPermissions, role_allows
 from app.services.security_redaction import redact_sql_literals
-from app.services.table_sql_fingerprint import fingerprint_sql
 from app.services.table_store import (
     TableId,
     parse_table_id,
@@ -61,7 +59,6 @@ from app.services.table_tag_service import (
     generate_answer_from_result,
     generate_sql_for_table,
     generate_sql_for_table_with_metadata,
-    tag_enabled,
 )
 
 if TYPE_CHECKING:
@@ -69,22 +66,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 _DETAIL_INVALID_TABLE_ID = "invalid table_id"
 _DETAIL_TABLE_NOT_FOUND = "table not found"
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-
-
-def _member_role(member: TenantMember) -> str:
-    return (member.role).strip().lower()
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _can_view_redacted_sql_role(role: str) -> bool:
@@ -92,65 +78,29 @@ def _can_view_redacted_sql_role(role: str) -> bool:
 
 
 def _should_redact_table_rows_role(role: str) -> bool:
-    if not (settings.TABLE_ROW_REDACTION_ENABLED):
-        return False
     # Admin/auditor roles can view raw rows; others see best-effort redaction.
-    return not _can_view_redacted_sql_role(role)
+    return settings.TABLE_ROW_REDACTION_ENABLED and not _can_view_redacted_sql_role(role)
 
 
 def _redact_table_text(text: str) -> str:
-    s = text
-    if not s:
-        return s
-
     secrets_mode = settings.GOVERNANCE_SECRETS_MODE.strip().lower()
-    secrets_mask = settings.GOVERNANCE_SECRETS_MASK
-    pii_mode = settings.GOVERNANCE_PII_MODE.strip().lower()
-    pii_mask = settings.GOVERNANCE_PII_MASK
-
     secrets_mode = secrets_mode if secrets_mode in {"mask", "token"} else "mask"
-    pii_mode = pii_mode if pii_mode in {"mask", "token"} else "mask"
-
-    s = redact_secrets(s, enabled=True, mode=secrets_mode, mask=secrets_mask).text
-    s = anonymize_pii(s, enabled=True, mode=pii_mode, mask=pii_mask).text
-    return s
+    redacted = redact_secrets(text, enabled=True, mode=secrets_mode, mask=settings.GOVERNANCE_SECRETS_MASK).text
+    return anonymize_pii(
+        redacted, enabled=True, mode=settings.GOVERNANCE_PII_MODE, mask=settings.GOVERNANCE_PII_MASK
+    ).text
 
 
 def _redact_table_cell(value: Any) -> Any:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return _redact_table_text(value)
-    return value
+    return _redact_table_text(value) if isinstance(value, str) else value
 
 
 def _redact_table_rows(rows: list[list[Any]]) -> list[list[Any]]:
-    out: list[list[Any]] = []
-    for row in rows or []:
-        if isinstance(row, tuple):
-            row = list(row)
-        if not isinstance(row, list):
-            continue
-        out.append([_redact_table_cell(v) for v in row])
-    return out
+    return [[_redact_table_cell(value) for value in row] for row in rows]
 
 
 def _redact_sample_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for r in rows or []:
-        if not isinstance(r, dict):
-            continue
-        redacted: dict[str, Any] = {}
-        for k, v in r.items():
-            key = str(k)[:500]
-            redacted[key] = _redact_table_cell(v)
-        out.append(redacted)
-    return out
-
-
-def _short_sql_hash(sql: str) -> str:
-    raw = (sql).encode("utf-8", "ignore")
-    return hashlib.sha256(raw).hexdigest()[:16]
+    return [{str(key)[:500]: _redact_table_cell(value) for key, value in row.items()} for row in rows]
 
 
 def _audit_table_query(
@@ -174,19 +124,15 @@ def _audit_table_query(
             details={
                 "dataset_id": str(dataset_id),
                 "table_id": str(table_id),
-                "sql_hash": _short_sql_hash(sql),
+                "sql_hash": hashlib.sha256(sql.encode("utf-8", "ignore")).hexdigest()[:16],
                 "sql_chars": len(sql),
                 "sql_redacted": redacted_sql,
             },
         )
-    except Exception:  # noqa: BLE001 - audit logging is a documented fail-open boundary
-        logger.warning("Table query audit write failed", exc_info=True)
-        return
-    try:
         db.commit()
     except Exception:  # noqa: BLE001 - audit logging is a documented fail-open boundary
         db.rollback()
-        logger.warning("Table query audit commit failed", exc_info=True)
+        logger.warning("Table query audit failed", exc_info=True)
 
 
 def _audit_fls_redaction(
@@ -198,32 +144,28 @@ def _audit_fls_redaction(
     source: str,
     resource_type: str,
     resource_id: str,
-    details: dict[str, Any] | None = None,
+    details: dict[str, Any],
 ) -> None:
     # Best-effort, fail-open: redaction enforcement must never block product flows.
     try:
         payload: dict[str, Any] = {
             "dataset_id": str(dataset_id),
             "source": source[:64],
+            **details,
         }
-        payload.update(dict((details if details is not None else {})))
         audit_log_event(
             db,
             tenant_id=tenant_id,
             actor_id=account_id,
             action="fls.redaction_applied",
-            resource_type=resource_type[:64] if resource_type else None,
-            resource_id=resource_id[:255] if resource_id else None,
+            resource_type=resource_type[:64],
+            resource_id=resource_id[:255],
             details=payload,
         )
-    except Exception:  # noqa: BLE001 - FLS audit must not block redaction enforcement
-        logger.warning("FLS redaction audit write failed", exc_info=True)
-        return
-    try:
         db.commit()
     except Exception:  # noqa: BLE001 - FLS audit must not block redaction enforcement
         db.rollback()
-        logger.warning("FLS redaction audit commit failed", exc_info=True)
+        logger.warning("FLS redaction audit failed", exc_info=True)
 
 
 def _table_member_context(
@@ -231,13 +173,23 @@ def _table_member_context(
     *,
     tenant_id: UUID,
     account_id: str,
-    dataset: Dataset,
+    dataset_id: UUID,
 ) -> tuple[str, FlsPolicy | None, FlsUserContext]:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = _member_role(member)
+    role = member.role.strip().lower()
     fls_policy = parse_fls_policy_from_metadata(dataset.dataset_metadata or {})
     fls_ctx = FlsUserContext(account_id=account_id, role=role)
     return role, fls_policy, fls_ctx
+
+
+def _require_table_id(db: Session, *, tenant_id: UUID, account_id: str, table_id: str) -> TableId:
+    parsed = parse_table_id(table_id)
+    if parsed is None:
+        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
+    filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
+    return parsed
 
 
 def _table_columns_payload(table_meta: dict[str, Any], *, include_columns: bool) -> list[TableColumnOut]:
@@ -315,10 +267,7 @@ def _sample_row_columns(sample_rows: list[dict[str, Any]]) -> list[str]:
     seen_cols: set[str] = set()
     cols: list[str] = []
     for row in sample_rows:
-        if not isinstance(row, dict):
-            continue
-        for key in row.keys():
-            name = str(key)
+        for name in row:
             if not name or name in seen_cols:
                 continue
             seen_cols.add(name)
@@ -328,32 +277,25 @@ def _sample_row_columns(sample_rows: list[dict[str, Any]]) -> list[str]:
     return cols
 
 
-def _masked_present_columns(sample_rows: list[dict[str, Any]], mask_map: dict[str, Any]) -> list[str]:
-    return [column for column in mask_map.keys() if any(isinstance(row, dict) and column in row for row in sample_rows)]
-
-
 def _mask_table_asset_sample_rows(
     item: TableAssetOut,
     *,
-    fls_policy: FlsPolicy | None,
+    fls_policy: FlsPolicy,
     fls_ctx: FlsUserContext,
 ) -> list[str]:
-    sample_rows = list(item.sample_rows or [])
-    if not sample_rows or fls_policy is None:
+    sample_rows = item.sample_rows
+    if not sample_rows:
         return []
     cols = _sample_row_columns(sample_rows)
     mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
     if not mask_map:
         return []
-    present = _masked_present_columns(sample_rows, mask_map)
-    if not present:
-        return []
     item.sample_rows = redact_row_dicts(sample_rows, mask_map=mask_map)
-    return present
+    return list(mask_map)
 
 
 def _mask_table_query_rows(
-    payload: dict[str, Any],
+    payload: TableQueryResponse,
     *,
     fls_policy: FlsPolicy | None,
     fls_ctx: FlsUserContext,
@@ -362,17 +304,14 @@ def _mask_table_query_rows(
     account_id: str,
     dataset_id: UUID,
     table_id: str,
-) -> dict[str, Any]:
+) -> TableQueryResponse:
     if fls_policy is None:
         return payload
-    cols = [str(c) for c in (payload.get("columns") or [])]
-    rows = list(payload.get("rows") or [])
-    mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
-    masked_cols = [c for c in cols if c in mask_map]
-    if not (mask_map and masked_cols and rows):
+    mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=payload.columns, ctx=fls_ctx)
+    masked_cols = [column for column in payload.columns if column in mask_map]
+    if not masked_cols or not payload.rows:
         return payload
-    out_payload = dict(payload)
-    out_payload["rows"] = redact_row_lists(rows, columns=cols, mask_map=mask_map)
+    rows = redact_row_lists(payload.rows, columns=payload.columns, mask_map=mask_map)
     _audit_fls_redaction(
         db=db,
         tenant_id=tenant_id,
@@ -387,7 +326,7 @@ def _mask_table_query_rows(
             "column_count": len(masked_cols),
         },
     )
-    return out_payload
+    return payload.model_copy(update={"rows": rows})
 
 
 def _load_table_document_or_404(
@@ -429,18 +368,16 @@ def _table_schema_for_table_id(
     return [], [], None
 
 
-def _maybe_redact_query_rows(payload: dict[str, Any], *, redact_rows: bool) -> dict[str, Any]:
+def _maybe_redact_query_rows(payload: TableQueryResponse, *, redact_rows: bool) -> TableQueryResponse:
     if not redact_rows:
         return payload
-    out_payload = dict(payload)
-    out_payload["rows"] = _redact_table_rows(list(out_payload.get("rows") or []))
-    return out_payload
+    return payload.model_copy(update={"rows": _redact_table_rows(payload.rows)})
 
 
 def _apply_table_assets_fls(
     items: list[TableAssetOut],
     *,
-    fls_policy: FlsPolicy | None,
+    fls_policy: FlsPolicy,
     fls_ctx: FlsUserContext,
 ) -> tuple[int, list[str], list[str]]:
     redacted_tables = 0
@@ -471,123 +408,22 @@ def _table_asset_by_id_or_404(
     raise HTTPException(status_code=404, detail=_DETAIL_TABLE_NOT_FOUND)
 
 
-def _ensure_table_ask_enabled() -> None:
-    if not tag_enabled():
-        raise HTTPException(status_code=400, detail="TABLE_NL2SQL_ENABLED=false")
-    has_llm_key = bool(settings.LLM_API_KEY.strip())
-    deterministic_ok = (settings.TABLE_NL2SQL_DETERMINISTIC_ONLY) or (
-        settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
-    )
-    if not has_llm_key and not deterministic_ok:
-        raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
-
-
-def _generate_table_ask_sql_bundle(
-    *,
-    body: TableAskRequest,
-    table_id: str,
-    doc: DBDocument,
-    sql_table: str,
-    columns: list[dict[str, Any]],
-    sample_rows: list[dict[str, Any]],
-    sheet_name: str | None,
-    max_rows: int,
-) -> tuple[str, str, dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]] | None, str]:
-    sql_generation_mode = "llm"
-    schema_link_diagnostics: dict[str, Any] | None = None
-    planner_diagnostics: dict[str, Any] | None = None
-    join_provenance: list[dict[str, Any]] | None = None
-    sql_fingerprint = ""
-    try:
-        sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
-            question=(body.question),
-            sql_table=sql_table,
-            columns=columns,
-            max_rows=max_rows,
-            sample_rows=sample_rows,
-            table_aliases=[str(table_id), doc.filename] + ([sheet_name] if sheet_name is not None else []),
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
-    if not sql.strip():
-        raise HTTPException(status_code=400, detail="nl2sql_failed: empty sql")
-
-    if isinstance(sql_meta, dict):
-        schema_link = sql_meta.get("schema_link")
-        schema_link_diagnostics = schema_link if isinstance(schema_link, dict) else None
-        planner = sql_meta.get("planner")
-        planner_diagnostics = planner if isinstance(planner, dict) else None
-        joins = sql_meta.get("join_provenance")
-        if isinstance(joins, list):
-            join_provenance = [join for join in joins if isinstance(join, dict)][:10]
-        raw_sql_fingerprint = sql_meta.get("sql_fingerprint")
-        if not raw_sql_fingerprint and planner_diagnostics:
-            raw_sql_fingerprint = planner_diagnostics.get("sql_fingerprint")
-        if raw_sql_fingerprint:
-            sql_fingerprint = str(raw_sql_fingerprint).strip()
-    if not sql_fingerprint:
-        sql_fingerprint = fingerprint_sql(sql, length=16)
-    return (
-        sql,
-        sql_generation_mode,
-        schema_link_diagnostics,
-        planner_diagnostics,
-        join_provenance,
-        sql_fingerprint,
-    )
-
-
-def _generate_table_answer(
-    *,
-    question: str,
-    sql: str,
-    result: dict[str, Any],
-) -> str:
-    try:
-        return generate_answer_from_result(question=question, sql=sql, result=result)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"answer_failed: {str(exc)[:200]}") from exc
-
-
-def _ensure_lotus_sem_filter_enabled() -> None:
-    if not (settings.TABLE_LOTUS_ENABLED):
-        raise HTTPException(status_code=400, detail="TABLE_LOTUS_ENABLED=false")
-    if not settings.LLM_API_KEY.strip():
-        raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
-
-
-def _lotus_input_limits() -> tuple[int, int]:
-    max_in_rows = min(settings.TABLE_LOTUS_MAX_ROWS, settings.TABLE_SEM_FILTER_MAX_IN_ROWS, 100000)
-    max_in_cols = settings.TABLE_SEM_FILTER_MAX_COLS
-    return max_in_rows, max_in_cols
-
-
 def _lotus_select_query(conn: sqlite3.Connection, *, sql_table_q: str, max_in_rows: int, max_in_cols: int) -> str:
-    cols: list[str] = []
-    try:
-        cur = conn.execute(f"PRAGMA table_info({sql_table_q})")
-        cols = [str(row[1]) for row in cur.fetchall() if row and len(row) > 1 and row[1].strip()]
-    except Exception:
-        cols = []
-    if max_in_cols > 0 and cols:
-        cols = cols[:max_in_cols]
+    cur = conn.execute(f"PRAGMA table_info({sql_table_q})")
+    cols = [row[1] for row in cur.fetchall() if row[1].strip()][:max_in_cols]
     if not cols:
         return f"SELECT * FROM {sql_table_q} LIMIT {max_in_rows}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-    select_list = ", ".join(f'"{str(column).replace(chr(34), chr(34) * 2)}"' for column in cols)
+    select_list = ", ".join(quote_sqlite_ident(column) for column in cols)
     return f"SELECT {select_list} FROM {sql_table_q} LIMIT {max_in_rows}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
 
 
 def _apply_lotus_dataframe_fls(df: "pd.DataFrame", *, fls_policy: FlsPolicy | None, fls_ctx: FlsUserContext) -> None:
     if fls_policy is None:
         return
-    try:
-        df_cols = [str(column) for column in df.columns]
-        mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=df_cols, ctx=fls_ctx)
-        for column, mask in mask_map.items():
-            if column in df.columns:  # type: ignore[operator]
-                df[column] = str(mask)  # type: ignore[index]
-    except Exception as exc:
-        logger.debug("Ignoring LOTUS table FLS mask preparation failure: %s", exc)
+    df_cols = [str(column) for column in df.columns]
+    mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=df_cols, ctx=fls_ctx)
+    for column, mask in mask_map.items():
+        df[column] = mask
 
 
 def _load_lotus_dataframe(
@@ -601,28 +437,14 @@ def _load_lotus_dataframe(
 ) -> "pd.DataFrame":
     import pandas as pd  # type: ignore
 
-    max_in_rows, max_in_cols = _lotus_input_limits()
+    max_in_rows = min(settings.TABLE_LOTUS_MAX_ROWS, settings.TABLE_SEM_FILTER_MAX_IN_ROWS, 100000)
+    max_in_cols = settings.TABLE_SEM_FILTER_MAX_COLS
     db_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id)
-    if not db_path.exists():
-        raise HTTPException(status_code=404, detail="table store not found")
-    try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30)
-        try:
-            query = _lotus_select_query(
-                conn,
-                sql_table_q=sql_table_q,
-                max_in_rows=max_in_rows,
-                max_in_cols=max_in_cols,
-            )
-            df = pd.read_sql_query(query, conn)
-            _apply_lotus_dataframe_fls(df, fls_policy=fls_policy, fls_ctx=fls_ctx)
-            return df
-        finally:
-            conn.close()
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"table_load_failed: {str(exc)[:200]}") from exc
+    with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30)) as conn:
+        query = _lotus_select_query(conn, sql_table_q=sql_table_q, max_in_rows=max_in_rows, max_in_cols=max_in_cols)
+        df = pd.read_sql_query(query, conn)
+        _apply_lotus_dataframe_fls(df, fls_policy=fls_policy, fls_ctx=fls_ctx)
+        return df
 
 
 def _lotus_filtered_response(
@@ -647,14 +469,10 @@ def _lotus_filtered_response(
             truncated = True
             break
         rows.append(
-            [
-                value if value is None or isinstance(value, (str, int, float, bool)) else str(value)
-                for value in (row or ())
-            ]
+            [value if value is None or isinstance(value, (str, int, float, bool)) else str(value) for value in row]
         )
-    payload = _maybe_redact_query_rows(
-        {"sql": f"LOTUS sem_filter({sql_table})", "columns": cols, "rows": rows}, redact_rows=redact_rows
-    )
+    payload = TableQueryResponse(sql=f"LOTUS sem_filter({sql_table})", columns=cols, rows=rows, truncated=truncated)
+    payload = _maybe_redact_query_rows(payload, redact_rows=redact_rows)
     payload = _mask_table_query_rows(
         payload,
         fls_policy=fls_policy,
@@ -665,62 +483,7 @@ def _lotus_filtered_response(
         dataset_id=dataset_id,
         table_id=table_id,
     )
-    return TableQueryResponse(
-        sql=str(payload["sql"]), columns=list(payload["columns"]), rows=list(payload["rows"]), truncated=truncated
-    )
-
-
-def _lotus_fallback_query_response(
-    *,
-    body: LotusSemFilterRequest,
-    sql_table: str,
-    output_rows: int,
-    redact_rows: bool,
-    fls_policy: FlsPolicy | None,
-    fls_ctx: FlsUserContext,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID,
-    table_id: str,
-    avail_reason: str | None,
-) -> TableQueryResponse:
-    if not tag_enabled():
-        raise HTTPException(
-            status_code=400,
-            detail=f"LOTUS unavailable: {(avail_reason)} (and TABLE_NL2SQL_ENABLED=false)",
-        )
-    prompt_q = f"Filter rows that match: {(body.user_instruction).strip()}. Return the matching rows."
-    try:
-        sql = generate_sql_for_table(
-            question=prompt_q,
-            sql_table=sql_table,
-            columns=[],
-            max_rows=output_rows,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
-    payload = run_table_query(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        table_id=table_id,
-        sql=sql,
-        max_rows=output_rows,
-        max_cols=settings.TABLE_QUERY_MAX_COLS,
-        max_bytes=settings.TABLE_QUERY_MAX_BYTES,
-    )
-    payload = _maybe_redact_query_rows(dict(payload), redact_rows=redact_rows)
-    payload = _mask_table_query_rows(
-        payload,
-        fls_policy=fls_policy,
-        fls_ctx=fls_ctx,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-        table_id=table_id,
-    )
-    return TableQueryResponse(**payload)
+    return payload
 
 
 def _extract_table_assets(
@@ -774,7 +537,6 @@ def _extract_table_assets(
     "/{dataset_id}/tables",
     response_model=DatasetTablesListResponse,
     summary="List tables ingested into the structured table store for a dataset",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_tables(
     dataset_id: UUID,
@@ -787,14 +549,11 @@ def list_dataset_tables(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> DatasetTablesListResponse:
-    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-    dataset_service.assert_dataset_readable(db, dataset, account_id)
-
     role, fls_policy, fls_ctx = _table_member_context(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
-        dataset=dataset,
+        dataset_id=dataset_id,
     )
     redact_rows = include_sample_rows and _should_redact_table_rows_role(role)
 
@@ -866,7 +625,6 @@ def list_dataset_tables(
     "/{dataset_id}/tables/{table_id}",
     response_model=TableAssetOut,
     summary="Get table metadata by table_id",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_table(
     dataset_id: UUID,
@@ -878,23 +636,16 @@ def get_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TableAssetOut:
-    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-    dataset_service.assert_dataset_readable(db, dataset, account_id)
-
     role, fls_policy, fls_ctx = _table_member_context(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
-        dataset=dataset,
+        dataset_id=dataset_id,
     )
     redact_rows = include_sample_rows and _should_redact_table_rows_role(role)
 
-    parsed = parse_table_id(table_id)
-    if parsed is None:
-        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
-
     # Enforce document-level ACL and dataset binding.
-    filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
+    parsed = _require_table_id(db, tenant_id=tenant_id, account_id=account_id, table_id=table_id)
     doc = _load_table_document_or_404(
         db,
         tenant_id=tenant_id,
@@ -933,7 +684,6 @@ def get_dataset_table(
     "/{dataset_id}/tables/{table_id}/preview",
     response_model=TableQueryResponse,
     summary="Preview a table (SELECT * ... LIMIT N)",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def preview_dataset_table(
     dataset_id: UUID,
@@ -944,21 +694,11 @@ def preview_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TableQueryResponse:
-    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-    dataset_service.assert_dataset_readable(db, dataset, account_id)
-
-    member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = _member_role(member)
+    role, fls_policy, fls_ctx = _table_member_context(
+        db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id
+    )
     redact_rows = _should_redact_table_rows_role(role)
-
-    fls_policy = parse_fls_policy_from_metadata(dataset.dataset_metadata or {})
-    fls_ctx = FlsUserContext(account_id=account_id, role=role)
-
-    parsed = parse_table_id(table_id)
-    if parsed is None:
-        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
-
-    filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
+    parsed = _require_table_id(db, tenant_id=tenant_id, account_id=account_id, table_id=table_id)
 
     sql_table = sql_table_name_for_sheet(parsed.sheet_index)
     sql_table_q = quote_sqlite_ident(sql_table)
@@ -971,9 +711,8 @@ def preview_dataset_table(
         max_cols=settings.TABLE_QUERY_MAX_COLS,
         max_bytes=settings.TABLE_QUERY_MAX_BYTES,
     )
-    if redact_rows:
-        payload = dict(payload)
-        payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
+    payload = TableQueryResponse.model_validate(payload)
+    payload = _maybe_redact_query_rows(payload, redact_rows=redact_rows)
     payload = _mask_table_query_rows(
         payload,
         fls_policy=fls_policy,
@@ -984,14 +723,13 @@ def preview_dataset_table(
         dataset_id=dataset_id,
         table_id=table_id,
     )
-    return TableQueryResponse(**payload)
+    return payload
 
 
 @router.post(
     "/{dataset_id}/tables/{table_id}/query",
     response_model=TableQueryResponse,
     summary="Run a SELECT-only SQL query against a table",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def query_dataset_table(
     dataset_id: UUID,
@@ -1003,35 +741,27 @@ def query_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TableQueryResponse:
-    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-    dataset_service.assert_dataset_readable(db, dataset, account_id)
-
-    member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = _member_role(member)
+    role, fls_policy, fls_ctx = _table_member_context(
+        db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id
+    )
     redact_rows = _should_redact_table_rows_role(role)
-
-    fls_policy = parse_fls_policy_from_metadata(dataset.dataset_metadata or {})
-    fls_ctx = FlsUserContext(account_id=account_id, role=role)
-
-    parsed = parse_table_id(table_id)
-    if parsed is None:
-        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
-
-    filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
+    _require_table_id(db, tenant_id=tenant_id, account_id=account_id, table_id=table_id)
 
     max_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS
     max_cols = body.max_cols or settings.TABLE_QUERY_MAX_COLS
 
-    payload = run_table_query(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        table_id=table_id,
-        sql=body.sql,
-        max_rows=min(max_rows, settings.TABLE_QUERY_MAX_ROWS),
-        max_cols=min(max_cols, settings.TABLE_QUERY_MAX_COLS),
-        max_bytes=settings.TABLE_QUERY_MAX_BYTES,
+    payload = TableQueryResponse.model_validate(
+        run_table_query(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            table_id=table_id,
+            sql=body.sql,
+            max_rows=min(max_rows, settings.TABLE_QUERY_MAX_ROWS),
+            max_cols=min(max_cols, settings.TABLE_QUERY_MAX_COLS),
+            max_bytes=settings.TABLE_QUERY_MAX_BYTES,
+        )
     )
-    raw_sql = payload["sql"]
+    raw_sql = payload.sql
     _audit_table_query(
         db=db,
         tenant_id=tenant_id,
@@ -1041,11 +771,9 @@ def query_dataset_table(
         sql=raw_sql,
     )
     show_sql = include_sql and _can_view_redacted_sql_role(role)
-    out_payload = dict(payload)
-    if redact_rows:
-        out_payload["rows"] = _redact_table_rows(list(out_payload.get("rows") or []))
-    out_payload = _mask_table_query_rows(
-        out_payload,
+    payload = _maybe_redact_query_rows(payload, redact_rows=redact_rows)
+    payload = _mask_table_query_rows(
+        payload,
         fls_policy=fls_policy,
         fls_ctx=fls_ctx,
         db=db,
@@ -1054,15 +782,14 @@ def query_dataset_table(
         dataset_id=dataset_id,
         table_id=table_id,
     )
-    out_payload["sql"] = redact_sql_literals(raw_sql) if show_sql else "<hidden>"
-    return TableQueryResponse(**out_payload)
+    payload.sql = redact_sql_literals(raw_sql) if show_sql else "<hidden>"
+    return payload
 
 
 @router.post(
     "/{dataset_id}/tables/{table_id}/ask",
     response_model=TableAskResponse,
     summary="TAG: Ask a question over a table (NL -> SQL -> execute -> answer)",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def ask_dataset_table(
     dataset_id: UUID,
@@ -1074,24 +801,23 @@ def ask_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TableAskResponse:
-    _ensure_table_ask_enabled()
-
-    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    if not settings.TABLE_NL2SQL_ENABLED:
+        raise HTTPException(status_code=400, detail="TABLE_NL2SQL_ENABLED=false")
+    deterministic_enabled = (
+        settings.TABLE_NL2SQL_DETERMINISTIC_ONLY or settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
+    )
+    if not settings.LLM_API_KEY.strip() and not deterministic_enabled:
+        raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
 
     role, fls_policy, fls_ctx = _table_member_context(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
-        dataset=dataset,
+        dataset_id=dataset_id,
     )
     redact_rows = _should_redact_table_rows_role(role)
 
-    parsed = parse_table_id(table_id)
-    if parsed is None:
-        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
-
-    filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
+    parsed = _require_table_id(db, tenant_id=tenant_id, account_id=account_id, table_id=table_id)
     doc = _load_table_document_or_404(
         db,
         tenant_id=tenant_id,
@@ -1104,23 +830,21 @@ def ask_dataset_table(
     max_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS
     max_rows = min(max_rows, settings.TABLE_QUERY_MAX_ROWS)
 
-    (
-        sql,
-        sql_generation_mode,
-        schema_link_diagnostics,
-        planner_diagnostics,
-        join_provenance,
-        sql_fingerprint,
-    ) = _generate_table_ask_sql_bundle(
-        body=body,
-        table_id=table_id,
-        doc=doc,
-        sql_table=sql_table,
-        columns=columns,
-        sample_rows=sample_rows,
-        sheet_name=sheet_name,
-        max_rows=max_rows,
-    )
+    try:
+        sql, sql_generation_mode, sql_metadata = generate_sql_for_table_with_metadata(
+            question=body.question,
+            sql_table=sql_table,
+            columns=columns,
+            max_rows=max_rows,
+            sample_rows=sample_rows,
+            table_aliases=[table_id, doc.filename] + ([sheet_name] if sheet_name is not None else []),
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve the API's provider failure response
+        raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
+    if not sql.strip():
+        raise HTTPException(status_code=400, detail="nl2sql_failed: empty sql")
+    planner_diagnostics = sql_metadata["planner"]
+    sql_fingerprint = sql_metadata["sql_fingerprint"]
 
     result = run_table_query(
         tenant_id=tenant_id,
@@ -1134,13 +858,9 @@ def ask_dataset_table(
         expected_sql_fingerprint=sql_fingerprint,
     )
     planner_execution_mismatch = result["planner_execution_mismatch"]
-    if (
-        (settings.TABLE_TAG_PLANNER_MISMATCH_STRICT)
-        and planner_execution_mismatch
-        and planner_execution_mismatch["mismatch"]
-    ):
+    if settings.TABLE_TAG_PLANNER_MISMATCH_STRICT and planner_execution_mismatch["mismatch"]:
         raise HTTPException(status_code=409, detail="planner_execution_mismatch")
-    if not (settings.TABLE_LLM_ALLOW_RESULT_EGRESS):
+    if not settings.TABLE_LLM_ALLOW_RESULT_EGRESS:
         raise HTTPException(
             status_code=400,
             detail="TABLE_LLM_ALLOW_RESULT_EGRESS=false (answer drafting requires sending query results to an LLM)",
@@ -1148,7 +868,7 @@ def ask_dataset_table(
 
     # FLS: redact denied columns before any LLM call.
     data_payload = _mask_table_query_rows(
-        dict(result),
+        TableQueryResponse.model_validate(result),
         fls_policy=fls_policy,
         fls_ctx=fls_ctx,
         db=db,
@@ -1157,11 +877,12 @@ def ask_dataset_table(
         dataset_id=dataset_id,
         table_id=table_id,
     )
-    answer = _generate_table_answer(
-        question=(body.question),
-        sql=str(data_payload.get("sql") or sql),
-        result=data_payload,
-    )
+    try:
+        answer = generate_answer_from_result(
+            question=body.question, sql=data_payload.sql, result=data_payload.model_dump()
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve the API's provider failure response
+        raise HTTPException(status_code=400, detail=f"answer_failed: {str(exc)[:200]}") from exc
 
     raw_sql = result["sql"]
     _audit_table_query(
@@ -1175,15 +896,14 @@ def ask_dataset_table(
     show_sql = include_sql and _can_view_redacted_sql_role(role)
     redacted_sql = redact_sql_literals(raw_sql) if show_sql else None
     data_payload = _maybe_redact_query_rows(data_payload, redact_rows=redact_rows)
-    data_payload["sql"] = redacted_sql or "<hidden>"
+    data_payload.sql = redacted_sql or "<hidden>"
     return TableAskResponse(
         answer=answer,
         sql=redacted_sql,
-        data=TableQueryResponse(**data_payload),
-        sql_generation_mode=str(sql_generation_mode or "llm"),
-        schema_link_diagnostics=schema_link_diagnostics,
+        data=data_payload,
+        sql_generation_mode=sql_generation_mode,
+        schema_link_diagnostics=sql_metadata["schema_link"],
         planner_diagnostics=planner_diagnostics,
-        join_provenance=join_provenance,
         sql_fingerprint=sql_fingerprint,
         planner_execution_mismatch=planner_execution_mismatch,
     )
@@ -1193,7 +913,6 @@ def ask_dataset_table(
     "/{dataset_id}/tables/{table_id}/lotus/sem-filter",
     response_model=TableQueryResponse,
     summary="LOTUS (optional): semantic filter over a table (falls back to NL->SQL when LOTUS unavailable)",
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def lotus_sem_filter_dataset_table(
     dataset_id: UUID,
@@ -1204,24 +923,20 @@ def lotus_sem_filter_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TableQueryResponse:
-    _ensure_lotus_sem_filter_enabled()
-
-    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    if not settings.TABLE_LOTUS_ENABLED:
+        raise HTTPException(status_code=400, detail="TABLE_LOTUS_ENABLED=false")
+    if not settings.LLM_API_KEY.strip():
+        raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
 
     role, fls_policy, fls_ctx = _table_member_context(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
-        dataset=dataset,
+        dataset_id=dataset_id,
     )
     redact_rows = _should_redact_table_rows_role(role)
 
-    parsed = parse_table_id(table_id)
-    if parsed is None:
-        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
-
-    filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
+    parsed = _require_table_id(db, tenant_id=tenant_id, account_id=account_id, table_id=table_id)
     _load_table_document_or_404(
         db,
         tenant_id=tenant_id,
@@ -1234,8 +949,9 @@ def lotus_sem_filter_dataset_table(
     output_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS
     output_rows = min(output_rows, settings.TABLE_QUERY_MAX_ROWS)
 
-    avail = get_lotus_availability()
-    if avail.ok:
+    availability = get_lotus_availability()
+    unavailable_reason = availability.reason
+    if availability.ok:
         try:
             df = _load_lotus_dataframe(
                 tenant_id=tenant_id,
@@ -1247,12 +963,16 @@ def lotus_sem_filter_dataset_table(
             )
             filtered = lotus_sem_filter(
                 df,
-                user_instruction=(body.user_instruction),
-                strategy=(body.strategy or "cot"),
+                user_instruction=body.user_instruction,
             )
         except Exception as exc:  # noqa: BLE001
-            # Fall back to NL->SQL below.
-            avail = LotusAvailability(ok=False, reason=f"lotus failed: {str(exc)[:200]}")
+            unavailable_reason = f"lotus failed: {str(exc)[:200]}"
+            logger.warning(
+                "LOTUS semantic filter failed: tenant_id=%s dataset_id=%s error_type=%s",
+                tenant_id,
+                dataset_id,
+                type(exc).__name__,
+            )
         else:
             return _lotus_filtered_response(
                 filtered,
@@ -1269,11 +989,34 @@ def lotus_sem_filter_dataset_table(
             )
 
     # Fallback: use NL->SQL to generate a WHERE clause and execute safely.
-    return _lotus_fallback_query_response(
-        body=body,
-        sql_table=sql_table,
-        output_rows=output_rows,
-        redact_rows=redact_rows,
+    if not settings.TABLE_NL2SQL_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"LOTUS unavailable: {unavailable_reason} (and TABLE_NL2SQL_ENABLED=false)",
+        )
+    try:
+        sql = generate_sql_for_table(
+            question=f"Filter rows that match: {body.user_instruction.strip()}. Return the matching rows.",
+            sql_table=sql_table,
+            columns=[],
+            max_rows=output_rows,
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve the API's provider failure response
+        raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
+    payload = TableQueryResponse.model_validate(
+        run_table_query(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            table_id=table_id,
+            sql=sql,
+            max_rows=output_rows,
+            max_cols=settings.TABLE_QUERY_MAX_COLS,
+            max_bytes=settings.TABLE_QUERY_MAX_BYTES,
+        )
+    )
+    payload = _maybe_redact_query_rows(payload, redact_rows=redact_rows)
+    return _mask_table_query_rows(
+        payload,
         fls_policy=fls_policy,
         fls_ctx=fls_ctx,
         db=db,
@@ -1281,5 +1024,4 @@ def lotus_sem_filter_dataset_table(
         account_id=account_id,
         dataset_id=dataset_id,
         table_id=table_id,
-        avail_reason=avail.reason,
     )

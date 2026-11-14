@@ -105,7 +105,7 @@ def _augment_feedback_extra_with_snapshots(
     *,
     extra: dict[str, Any] | None,
     trace_payload: dict[str, Any] | None,
-    request_id: str,
+    request_id: str | None,
     dataset_id: UUID | None,
 ) -> dict[str, Any]:
     payload = dict(extra or {})
@@ -241,7 +241,7 @@ def _feedback_extra_payload(
     meta: dict[str, Any],
     conv: Conversation | None,
     tenant_id: UUID,
-    request_id: str,
+    request_id: str | None,
     dataset_id: UUID | None,
     list_rag_traces_fn: "Callable[..., RagTraceListResponse]",
 ) -> dict[str, Any]:
@@ -272,7 +272,7 @@ def _feedback_reference_values(
     tenant_id: UUID,
     msg: Message,
     meta: dict[str, Any],
-    request_id: str,
+    request_id: str | None,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     profile = meta.get("retrieval_profile")
     if profile is not None:
@@ -290,7 +290,7 @@ def _feedback_reference_values(
     query_hash = meta.get("query_hash", stable_hash(question, length=64) if question else None)
     if query_hash is not None:
         query_hash = query_hash[:64]
-    retrieval_trace_ref = request_id[:255]
+    retrieval_trace_ref = request_id[:255] if request_id is not None else None
     judge_score_ref = meta.get("judge_score_ref")
     if judge_score_ref is not None:
         judge_score_ref = judge_score_ref[:255]

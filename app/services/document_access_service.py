@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentAccessInfo, DocumentAccessUpdateRequest
+from app.api.schemas.documents import DocumentAccessInfo, DocumentAccessUpdateRequest
 from app.core.constants import UserRoles
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument

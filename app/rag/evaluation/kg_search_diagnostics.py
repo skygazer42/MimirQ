@@ -21,7 +21,7 @@ from uuid import UUID
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.api.schemas.kg_diagnostics import (
+from app.api.schemas.evaluation import (
     KGEvalAttribution,
     KGHardcaseOut,
     KGSearchDiagnosticsItem,
@@ -195,7 +195,7 @@ class _DiagnosticsRunState:
     def record_failure(self, primary_cause: str) -> None:
         if primary_cause == "ok":
             return
-        self.failure_breakdown[primary_cause] = (self.failure_breakdown.get(primary_cause, 0) or 0) + 1
+        self.failure_breakdown[primary_cause] = self.failure_breakdown.get(primary_cause, 0) + 1
 
     def can_generate_deterministic_hardcases(self, limits: _DiagnosticsLimits) -> bool:
         return self.deterministic_failed_cases_used < limits.max_failed_for_hardcase
@@ -206,7 +206,7 @@ class _DiagnosticsRunState:
 
 def _collapse_ws(text: Any) -> str:
     s = "" if text is None else str(text)
-    return " ".join(s.strip().split())
+    return " ".join(s.split())
 
 
 def _coerce_uuid_list(values: Iterable[Any]) -> list[UUID]:
@@ -245,7 +245,7 @@ def _extract_evidence_fields(case: RagasRegressionCase) -> tuple[list[str], list
     snippets: list[str] = []
     seen_chunks: set[str] = set()
     seen_docs: set[str] = set()
-    for src in refs or []:
+    for src in refs:
         if not isinstance(src, dict):
             continue
         raw_id = src.get("chunk_id")
@@ -668,7 +668,7 @@ def _relation_debug_from_stats(stats: dict[str, Any]) -> dict[str, Any] | None:
 def _compact_relation_debug(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
-    return {key: value.get(key) for key in _KG_RELATION_DEBUG_KEYS if key in value}
+    return {key: value[key] for key in _KG_RELATION_DEBUG_KEYS if key in value}
 
 
 def _build_search_config(
@@ -1302,7 +1302,7 @@ def _pick_primary_cause(
     if bool(rel_dbg.get("enabled")) and int(rel_dbg.get("edges_used", 0) or 0) <= 0:
         return "relation"
 
-    if returned_events <= 0 and (clue_counts.get("query_to_entity", 0) + clue_counts.get("query_to_event", 0)) <= 0:
+    if returned_events <= 0 and (clue_counts["query_to_entity"] + clue_counts["query_to_event"]) <= 0:
         return "vector"
     if selected_entities <= 0:
         return "entity"
@@ -1477,7 +1477,7 @@ async def _run_llm_hardcases(
 def _mean(values: Sequence[float]) -> float:
     if not values:
         return 0.0
-    return sum(values) / max(1, len(values))
+    return sum(values) / len(values)
 
 
 def _build_summary(

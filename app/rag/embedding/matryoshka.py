@@ -44,7 +44,7 @@ def resolve_matryoshka_dimension(
     allowed = [dim for dim in _ALLOWED_DIMS if dim <= src]
     if not allowed:
         return src
-    for dim in sorted(allowed):
+    for dim in allowed:
         if dim >= desired:
             return dim
     return max(allowed)
@@ -58,15 +58,15 @@ def _cosine(left: list[float], right: list[float]) -> float:
     left_sq = 0.0
     right_sq = 0.0
     for index in range(size):
-        lval = float(left[index])
-        rval = float(right[index])
+        lval = left[index]
+        rval = right[index]
         dot += lval * rval
         left_sq += lval * lval
         right_sq += rval * rval
     denom = math.sqrt(left_sq) * math.sqrt(right_sq)
     if denom <= 0.0:
         return 0.0
-    return round(float(dot / denom), 6)
+    return round(dot / denom, 6)
 
 
 def _coerce_vector(value: Any) -> list[float]:

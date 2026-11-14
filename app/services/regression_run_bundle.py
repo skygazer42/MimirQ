@@ -1,7 +1,6 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 from app.rag.core.hashing import stable_hash
 from app.rag.evaluation.replay_capture import sanitize_citations_for_capture
@@ -12,36 +11,13 @@ if TYPE_CHECKING:
 REGRESSION_RUN_BUNDLE_SCHEMA_V1 = "mimirq.ragas_regression_run_bundle.v1"
 
 
-def _dt_to_json(v: Any) -> str | None:
+def _dt_to_json(v: datetime | None) -> str | None:
     if v is None:
         return None
-    try:
-        # Accept datetime-like objects.
-        if hasattr(v, "isoformat"):
-            s = v.isoformat()
-        else:
-            return None
-    except Exception:
-        return None
+    s = v.isoformat()
     if s.endswith("+00:00"):
         s = s[:-6] + "Z"
     return s
-
-
-def _coerce_uuid_str(v: Any) -> str | None:
-    if v is None:
-        return None
-    try:
-        return str(UUID(str(v)))
-    except Exception:
-        return None
-
-
-def _hash_uuid_str(v: Any, *, length: int = 16) -> str | None:
-    s = _coerce_uuid_str(v)
-    if not s:
-        return None
-    return stable_hash(s, length=int(length or 16))
 
 
 def _coerce_dict(v: Any) -> dict[str, Any]:
@@ -79,26 +55,20 @@ def export_regression_run_bundle(
     if include_contexts and not include_text:
         raise ValueError("include_contexts requires include_text=true")
 
-    try:
-        max_items_i = max(1, min(int(max_items or 0), 5000))
-    except Exception:
-        max_items_i = 500
-    try:
-        max_citations_i = max(0, min(int(max_citations or 0), 500))
-    except Exception:
-        max_citations_i = 80
+    max_items_i = max(1, min(max_items, 5000))
+    max_citations_i = max(0, min(max_citations, 500))
 
-    run_id = _coerce_uuid_str(run.id)
-    tenant_id = _coerce_uuid_str(run.tenant_id)
-    dataset_id = _coerce_uuid_str(run.dataset_id)
-    run_id_hash = _hash_uuid_str(run_id)
-    tenant_id_hash = _hash_uuid_str(tenant_id)
-    dataset_id_hash = _hash_uuid_str(dataset_id)
+    run_id = str(run.id)
+    tenant_id = str(run.tenant_id)
+    dataset_id = str(run.dataset_id) if run.dataset_id is not None else None
+    run_id_hash = stable_hash(run_id, length=16)
+    tenant_id_hash = stable_hash(tenant_id, length=16)
+    dataset_id_hash = stable_hash(dataset_id, length=16) if dataset_id is not None else None
 
     out_items: list[dict[str, Any]] = []
-    for raw in list(items or [])[:max_items_i]:
-        case_id = _coerce_uuid_str(raw.case_id)
-        case_id_hash = _hash_uuid_str(case_id)
+    for raw in items[:max_items_i]:
+        case_id = str(raw.case_id)
+        case_id_hash = stable_hash(case_id, length=16)
         question = raw.question
         response = raw.response
 
@@ -153,7 +123,7 @@ def export_regression_run_bundle(
     }
     run_payload = {k: v for k, v in run_payload.items() if v is not None}
 
-    now0 = now or datetime.now(UTC)
+    now0 = now if now is not None else datetime.now(UTC)
 
     return {
         "schema": REGRESSION_RUN_BUNDLE_SCHEMA_V1,

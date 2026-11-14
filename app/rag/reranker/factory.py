@@ -51,7 +51,7 @@ def _api_cache_key(
 
 
 def _local_cache_key(provider: str, parts: list[str]) -> str:
-    payload = "|".join([provider.lower().strip()] + [p for p in (parts or [])])
+    payload = "|".join([provider.lower().strip(), *parts])
     digest = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
     return f"{provider}:{digest}"
 

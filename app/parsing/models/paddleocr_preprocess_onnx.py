@@ -89,7 +89,7 @@ def _resize_for_max_side(image: PILImage.Image, *, max_side: int) -> PILImage.Im
 
 def _image_to_nchw(image: PILImage.Image, *, height: int, width: int) -> Any:
     np = require_dependency("numpy", feature="paddleocr_preprocess_onnx", pip_name="numpy")
-    resized = image.convert("RGB").resize((int(width), int(height)), PILImage.Resampling.BICUBIC)
+    resized = image.convert("RGB").resize((width, height), PILImage.Resampling.BICUBIC)
     arr = np.asarray(resized, dtype="float32") / 255.0
     # PaddleOCR classification preprocess is close to ImageNet-style normalization.
     mean = np.asarray([0.485, 0.456, 0.406], dtype="float32")
@@ -194,7 +194,8 @@ def _tensor_to_image(tensor: Any) -> PILImage.Image:
         raise RuntimeError(f"Unexpected UVDoc output shape: {arr.shape}")
     if arr.shape[0] == 3:
         arr = arr.transpose(1, 2, 0)
-    if math.isfinite(float(arr.max())) and float(arr.max()) <= 1.5:
+    max_value = float(arr.max())
+    if math.isfinite(max_value) and max_value <= 1.5:
         arr = arr * 255.0
     arr = np.clip(arr, 0, 255).astype("uint8")
     return PILImage.fromarray(arr, mode="RGB")

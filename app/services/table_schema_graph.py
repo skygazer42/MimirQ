@@ -104,14 +104,14 @@ class _MultiJoinResult(TypedDict):
 
 
 def _normalize_ident(value: str) -> str:
-    raw = (value).strip().casefold()
+    raw = value.strip().casefold()
     if not raw:
         return ""
     return re.sub(_NON_IDENT_RE, "_", raw).strip("_")
 
 
 def _singularize(token: str) -> str:
-    t = (token).strip()
+    t = token.strip()
     if not t:
         return ""
     if t.endswith("ies") and len(t) > 3:
@@ -123,9 +123,9 @@ def _singularize(token: str) -> str:
     return t
 
 
-def _alias_bases(table_name: str, aliases: list[str] | None) -> set[str]:
+def _alias_bases(table_name: str, aliases: list[str]) -> set[str]:
     out: set[str] = set()
-    for raw in [table_name, *list(aliases or [])]:
+    for raw in [table_name, *aliases]:
         s = raw.strip()
         if not s:
             continue
@@ -158,10 +158,8 @@ def _is_likely_key_column(col_name: str) -> bool:
 
 def _safe_col_names(columns: list[dict[str, Any]]) -> list[str]:
     out: list[str] = []
-    for c in columns or []:
-        if not isinstance(c, dict):
-            continue
-        name = c['name'].strip()
+    for c in columns:
+        name = c["name"].strip()
         if not name:
             continue
         out.append(name)
@@ -171,18 +169,18 @@ def _safe_col_names(columns: list[dict[str, Any]]) -> list[str]:
 def _safe_positive_int(value: Any) -> int | None:
     try:
         iv = int(value) if value is not None else None
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
     if iv is None or iv <= 0:
         return None
     return iv
 
 
-def _sample_column_selectivity(*, rows: list[dict[str, Any]] | None, column_name: str) -> float | None:
+def _sample_column_selectivity(*, rows: list[dict[str, Any]], column_name: str) -> float | None:
     col = column_name.strip()
     if not col:
         return None
-    sample = [r for r in (rows or []) if isinstance(r, dict)][:50]
+    sample = rows[:50]
     if not sample:
         return None
 
@@ -202,8 +200,6 @@ def _sample_column_selectivity(*, rows: list[dict[str, Any]] | None, column_name
         return None
     uniq = len(set(values))
     total = len(values)
-    if total <= 0:
-        return None
     return min(1.0, max(0.0, uniq / total))
 
 
@@ -244,8 +240,8 @@ def _build_relationship_candidate(
     reason: str,
     left_row_count: int | None,
     right_row_count: int | None,
-    left_sample_rows: list[dict[str, Any]] | None,
-    right_sample_rows: list[dict[str, Any]] | None,
+    left_sample_rows: list[dict[str, Any]],
+    right_sample_rows: list[dict[str, Any]],
 ) -> _RelationshipCandidate:
     base_penalties, base_penalty_score = _edge_penalties(
         left_column=left_column,
@@ -272,7 +268,7 @@ def _build_relationship_candidate(
         "right_table": right_table,
         "right_column": right_column,
         "confidence": round(confidence, 6),
-        "reason": (reason).strip(),
+        "reason": reason.strip(),
         "penalties": penalties,
         "penalty_score": penalty_score,
         "base_penalty_score": round(base_penalty_score, 6),
@@ -309,11 +305,11 @@ def _same_key_relationship_candidate(
     left_table: str,
     left_column: str,
     left_row_count: int | None,
-    left_sample_rows: list[dict[str, Any]] | None,
+    left_sample_rows: list[dict[str, Any]],
     right_table: str,
     right_column: str,
     right_row_count: int | None,
-    right_sample_rows: list[dict[str, Any]] | None,
+    right_sample_rows: list[dict[str, Any]],
     left_norm: str,
     right_norm: str,
 ) -> _RelationshipCandidate | None:
@@ -338,11 +334,11 @@ def _fk_relationship_candidate(
     left_table: str,
     left_column: str,
     left_row_count: int | None,
-    left_sample_rows: list[dict[str, Any]] | None,
+    left_sample_rows: list[dict[str, Any]],
     right_table: str,
     right_column: str,
     right_row_count: int | None,
-    right_sample_rows: list[dict[str, Any]] | None,
+    right_sample_rows: list[dict[str, Any]],
     left_norm: str,
     right_norm: str,
     target_bases: set[str],
@@ -377,12 +373,12 @@ def _best_candidate_for_column_pair(
     left_table: str,
     left_column: str,
     left_row_count: int | None,
-    left_sample_rows: list[dict[str, Any]] | None,
+    left_sample_rows: list[dict[str, Any]],
     left_bases: set[str],
     right_table: str,
     right_column: str,
     right_row_count: int | None,
-    right_sample_rows: list[dict[str, Any]] | None,
+    right_sample_rows: list[dict[str, Any]],
     right_bases: set[str],
 ) -> _RelationshipCandidate | None:
     left_norm = _normalize_ident(left_column)
@@ -445,8 +441,8 @@ def _cost_model_penalties(
     *,
     left_row_count: int | None,
     right_row_count: int | None,
-    left_sample_rows: list[dict[str, Any]] | None,
-    right_sample_rows: list[dict[str, Any]] | None,
+    left_sample_rows: list[dict[str, Any]],
+    right_sample_rows: list[dict[str, Any]],
     left_column: str,
     right_column: str,
 ) -> tuple[list[str], float, dict[str, Any]]:
@@ -504,15 +500,15 @@ def _cost_model_penalties(
 def _pick_best_relationship_between(
     *,
     left_table: str,
-    left_aliases: list[str] | None,
+    left_aliases: list[str],
     left_columns: list[dict[str, Any]],
     left_row_count: int | None,
-    left_sample_rows: list[dict[str, Any]] | None,
+    left_sample_rows: list[dict[str, Any]],
     right_table: str,
-    right_aliases: list[str] | None,
+    right_aliases: list[str],
     right_columns: list[dict[str, Any]],
     right_row_count: int | None,
-    right_sample_rows: list[dict[str, Any]] | None,
+    right_sample_rows: list[dict[str, Any]],
 ) -> _RelationshipCandidate | None:
     left_col_names = _safe_col_names(left_columns)
     right_col_names = _safe_col_names(right_columns)
@@ -544,10 +540,10 @@ def _pick_best_relationship_between(
 
 def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> _SchemaGraph:
     normalized: list[_NormalizedTable] = []
-    for raw in tables or []:
+    for raw in tables:
         if not isinstance(raw, dict):
             continue
-        tname = raw['table_name'].strip()
+        tname = raw["table_name"].strip()
         cols = raw.get("columns")
         if not tname or not isinstance(cols, list):
             continue
@@ -601,11 +597,6 @@ def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> _SchemaGraph:
     }
 
 
-def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    graph = build_table_schema_graph(tables=tables)
-    return [dict(e) for e in graph["edges"]]
-
-
 def score_join_plan_candidates(
     *,
     tables: list[dict[str, Any]],
@@ -615,7 +606,7 @@ def score_join_plan_candidates(
     graph = build_table_schema_graph(tables=tables)
     edges = graph["edges"]
     candidates: list[_JoinCandidate] = []
-    n = max(1, int(top_n or 1))
+    n = max(1, top_n)
     for e in edges[: max(n, 12)]:
         confidence = e["confidence"]
         penalty = e["penalty_score"]
@@ -666,7 +657,7 @@ def score_join_plan_candidates(
         s0 = candidates[0]["score"]
         s1 = candidates[1]["score"]
         gap = round(s0 - s1, 6)
-        ambiguous = gap <= max(0.0, float(ambiguity_score_gap or 0.0))
+        ambiguous = gap <= max(0.0, ambiguity_score_gap)
 
     return {
         "graph": graph,
@@ -685,7 +676,7 @@ def _empty_multi_join_result(*, graph: _SchemaGraph, max_states: int) -> _MultiJ
         "ambiguous": False,
         "ambiguity_gap": None,
         "states_explored": 0,
-        "max_states": max(4, int(max_states or 4)),
+        "max_states": max(4, max_states),
     }
 
 
@@ -790,7 +781,7 @@ def _finalize_multi_join_candidates(
             candidate["candidate_id"],
         )
     )
-    return candidates[: max(1, int(top_n or 1))]
+    return candidates[: max(1, top_n)]
 
 
 def score_multi_join_plan_candidates(
@@ -820,8 +811,8 @@ def score_multi_join_plan_candidates(
     if not edge_candidates:
         return _empty_multi_join_result(graph=graph, max_states=max_states)
 
-    beam_limit = max(4, int(max_states or 4))
-    table_names = [t['table_name'].strip() for t in (tables or []) if isinstance(t, dict)]
+    beam_limit = max(4, max_states)
+    table_names = [t["table_name"].strip() for t in tables if isinstance(t, dict)]
     target_tables = len([t for t in table_names if t])
 
     states = _seed_multi_join_states(edge_candidates)
@@ -847,7 +838,7 @@ def score_multi_join_plan_candidates(
         s0 = candidates[0]["score"]
         s1 = candidates[1]["score"]
         gap = round(s0 - s1, 6)
-        ambiguous = gap <= max(0.0, float(ambiguity_score_gap or 0.0))
+        ambiguous = gap <= max(0.0, ambiguity_score_gap)
 
     return {
         "graph": graph,
@@ -862,7 +853,6 @@ def score_multi_join_plan_candidates(
 
 __all__ = [
     "build_table_schema_graph",
-    "infer_schema_relationships_for_tables",
     "score_multi_join_plan_candidates",
     "score_join_plan_candidates",
 ]

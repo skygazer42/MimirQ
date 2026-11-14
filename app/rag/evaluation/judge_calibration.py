@@ -101,7 +101,6 @@ def build_calibration_report(
     min_kappa: float = 0.6,
 ) -> dict[str, Any]:
     rows = validate_calibration_payload(payload, min_items=min_items)
-    payload_dict = payload if isinstance(payload, dict) else {}
     kappa = cohens_kappa(rows)
     confusion: dict[str, dict[str, int]] = {
         human: {judge: 0 for judge in CALIBRATION_LABELS} for human in CALIBRATION_LABELS
@@ -114,9 +113,9 @@ def build_calibration_report(
         "schema": "mimirq.llm_judge_calibration_report.v1",
         "items": len(rows),
         "reviewer_count": reviewer_count,
-        "judge_version_hash": _required_version(payload_dict, "judge_version_hash"),
-        "dataset_version": _required_version(payload_dict, "dataset_version"),
-        "label_policy_version": _required_version(payload_dict, "label_policy_version"),
+        "judge_version_hash": _required_version(payload, "judge_version_hash"),
+        "dataset_version": _required_version(payload, "dataset_version"),
+        "label_policy_version": _required_version(payload, "label_policy_version"),
         "cohens_kappa": kappa,
         "min_items": int(min_items),
         "min_kappa": float(min_kappa),

@@ -2,16 +2,12 @@
 
 from typing import Any
 
+from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
 from app.models.document import Document as DBDocument
 from app.parsing.processors.support.common import _PROCESSOR_CLEANUP_LOG_MESSAGE, logger
 from app.parsing.processors.support.results import InlineAssetResult, ParseResult
-
-
-def _asset_metadata(item: Any) -> dict[str, Any]:
-    meta = getattr(item, "metadata", None)
-    return meta if isinstance(meta, dict) else {}
 
 
 def _collect_artifact_dir_from_meta(meta: dict[str, Any], artifact_dirs: set[str]) -> None:
@@ -31,14 +27,14 @@ def _collect_image_ids_from_meta(meta: dict[str, Any], document_img_ids: set[str
 
 
 def _collect_item_asset_refs(
-    items: list[Any] | None,
+    items: list[Document] | None,
     *,
     document_img_ids: set[str],
     artifact_dirs: set[str],
     collect_images: bool,
 ) -> None:
     for item in items if items is not None else []:
-        meta = _asset_metadata(item)
+        meta = item.metadata
         _collect_artifact_dir_from_meta(meta, artifact_dirs)
         if collect_images:
             _collect_image_ids_from_meta(meta, document_img_ids)
@@ -67,13 +63,13 @@ def _collect_parser_asset_refs(
 def _inline_asset_audit_needed(inline_result: InlineAssetResult) -> bool:
     return (
         inline_result.image_codes_added > 0
-        or isinstance(inline_result.image_code_audit, dict)
+        or inline_result.image_code_audit is not None
         or inline_result.captions_added > 0
-        or isinstance(inline_result.caption_audit, dict)
+        or inline_result.caption_audit is not None
         or inline_result.formulas_added > 0
-        or isinstance(inline_result.formula_audit, dict)
+        or inline_result.formula_audit is not None
         or inline_result.charts_added > 0
-        or isinstance(inline_result.chart_audit, dict)
+        or inline_result.chart_audit is not None
     )
 
 
@@ -120,7 +116,7 @@ def _apply_inline_asset_audit_patch(
             if backend_key and backend_value:
                 meta_patch[backend_key] = backend_value
             audit_value = getattr(inline_result, audit_attr)
-            if isinstance(audit_value, dict):
+            if audit_value is not None:
                 meta_patch[audit_key] = dict(audit_value)
         db_document.doc_metadata = meta_patch
         db.commit()
@@ -136,6 +132,7 @@ def _chunk_has_asset(meta: dict[str, Any]) -> bool:
         return True
     if meta.get("image") is not None:
         return True
-    if isinstance(meta.get("image_path"), str) and meta.get("image_path").strip():
+    image_path = meta.get("image_path")
+    if isinstance(image_path, str) and image_path.strip():
         return True
     return bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))

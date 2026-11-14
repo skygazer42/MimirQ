@@ -7,7 +7,7 @@ def embed_code_snippet(code: str, *, dimension: int = 256) -> list[float]:
     out: list[float] = []
     while len(out) < dim:
         for byte in digest:
-            out.append(round(float(byte) / 255.0, 6))
+            out.append(round(byte / 255.0, 6))
             if len(out) >= dim:
                 break
         digest = hashlib.sha256(digest).digest()

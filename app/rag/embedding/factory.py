@@ -15,6 +15,7 @@ from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.config import (
     DEFAULT_EMBED_MODELS,
     get_model_info,
+    get_models_by_provider,
     get_supported_model_ids,
 )
 from app.rag.embedding.providers import (
@@ -229,4 +230,4 @@ def list_embedding_providers() -> list[str]:
 
 def list_models_by_provider(provider: str) -> list[str]:
     """List all model IDs for a specific provider."""
-    return [model_id for model_id in DEFAULT_EMBED_MODELS if model_id.startswith(f"{provider}/")]
+    return list(get_models_by_provider(provider))

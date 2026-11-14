@@ -52,13 +52,6 @@ def _looks_like_table_row(line: str) -> bool:
     return s.startswith("|") and s.endswith("|") and s.count("|") >= 2
 
 
-def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for alt, src in _MD_IMAGE_RE.findall(line):
-        out.append((alt, src))
-    return out
-
-
 def _is_formula_candidate(*, alt: str, src: str) -> bool:
     hint = f"{alt} {src}".strip()
     if not hint:
@@ -87,7 +80,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
 
     try:
         path_obj.relative_to(base_dir_resolved)
-    except Exception:
+    except ValueError:
         return None, "path_outside_origin"
     if not path_obj.exists() or not path_obj.is_file():
         return None, "missing_file"
@@ -126,18 +119,17 @@ async def _call_formula_backend_async(
       - JSON {"latex": "..."} OR {"text": "..."} OR {"output": "..."} OR {"result": "..."}
       - text/*: latex directly
     """
-    timeout = float(timeout_sec)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout_sec) as client:
         try:
             resp = await client.post(
-                str(api_url).strip(),
+                api_url,
                 files={"file": (filename or "formula.png", image_bytes, "application/octet-stream")},
             )
-        except Exception as exc:  # noqa: BLE001
+        except httpx.RequestError as exc:
             return "", f"http_failed:{exc.__class__.__name__}"
 
-        if int(resp.status_code) >= 400:
-            return "", f"http_{int(resp.status_code)}"
+        if resp.status_code >= 400:
+            return "", f"http_{resp.status_code}"
 
         content_type = str(resp.headers.get("content-type") or "").lower()
         try:
@@ -148,10 +140,10 @@ async def _call_formula_backend_async(
                         val = data.get(key)
                         if isinstance(val, str) and val.strip():
                             return val, "ok_json"
-            txt = resp.text if isinstance(resp.text, str) else ""
+            txt = resp.text
             if txt.strip():
                 return txt, "ok_text"
-        except Exception as exc:  # noqa: BLE001
+        except ValueError as exc:
             return "", f"parse_failed:{exc.__class__.__name__}"
 
         return "", "empty"
@@ -198,10 +190,6 @@ class FormulaOcrAudit:
         }
 
 
-def _iter_line_images(line: str) -> list[tuple[str, str]]:
-    return _extract_md_images(line) + _extract_html_imgs(line)
-
-
 def _extract_formula_element(
     *,
     alt: str,
@@ -218,7 +206,7 @@ def _extract_formula_element(
     img_bytes, reason = _safe_read_local_image_bytes(
         src=src,
         origin_path=origin_path,
-        max_bytes=int(max_image_bytes or 0),
+        max_bytes=max_image_bytes,
     )
     if img_bytes is None:
         logger.debug("[formula_ocr] skipped image (read=%s) src=%s", reason, src[:200])
@@ -227,10 +215,10 @@ def _extract_formula_element(
     latex_raw, status = _call_formula_backend(
         api_url=api_url,
         image_bytes=img_bytes,
-        filename=Path(str(src or "formula.png")).name,
-        timeout_sec=float(timeout_sec),
+        filename=Path(src).name,
+        timeout_sec=timeout_sec,
     )
-    latex = _clean_latex(latex_raw, max_chars=int(max_latex_chars or 0))
+    latex = _clean_latex(latex_raw, max_chars=max_latex_chars)
     if not latex:
         logger.debug("[formula_ocr] backend returned empty latex (%s)", status)
         return None, 1, 0
@@ -273,7 +261,7 @@ def _extract_formula_elements_for_line(
     extracted: list[dict[str, Any]] = []
     attempted = 0
     succeeded = 0
-    for alt, src in _iter_line_images(line):
+    for alt, src in _MD_IMAGE_RE.findall(line) + _extract_html_imgs(line):
         if len(extracted) >= remaining:
             break
         element, attempted_inc, succeeded_inc = _extract_formula_element(
@@ -359,6 +347,9 @@ def add_formula_latex_blocks(
         )
 
     t0 = time.perf_counter()
+    image_byte_limit = int(max_image_bytes or 0)
+    request_timeout = float(timeout_sec)
+    latex_limit = int(max_latex_chars or 0)
     out_lines: list[str] = []
     in_fence = False
     formulas_added = 0
@@ -390,10 +381,10 @@ def add_formula_latex_blocks(
             index=i,
             remaining=max_images_i - formulas_added,
             origin_path=origin_path,
-            max_image_bytes=int(max_image_bytes or 0),
+            max_image_bytes=image_byte_limit,
             api_url=url,
-            timeout_sec=float(timeout_sec),
-            max_latex_chars=int(max_latex_chars or 0),
+            timeout_sec=request_timeout,
+            max_latex_chars=latex_limit,
         )
         images_attempted += attempted
         images_succeeded += succeeded

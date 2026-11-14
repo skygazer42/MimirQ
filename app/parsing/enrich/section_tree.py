@@ -63,7 +63,7 @@ def build_section_tree(elements: Sequence[Mapping[str, Any]] | None) -> list[dic
         while stack and stack[-1]["level"] >= level:
             stack.pop()
         if stack:
-            node["parent_id"] = stack[-1].get("id")
+            node["parent_id"] = stack[-1]["id"]
         out.append({key: value for key, value in node.items() if key == "parent_id" or value not in (None, "", [], {})})
         stack.append(out[-1])
     return out
@@ -78,21 +78,21 @@ def add_section_paths(
     path_by_id: dict[str, list[str]] = {}
     for node_id, node in by_id.items():
         path: list[str] = []
-        cursor = node
+        cursor: dict[str, Any] | None = node
         seen: set[str] = set()
-        while cursor and cursor["id"] not in seen:
+        while cursor is not None and cursor["id"] not in seen:
             seen.add(cursor["id"])
             text = cursor["text"].strip()
             if text:
                 path.append(text)
             parent_value = cursor.get("parent_id")
             parent_id = str(parent_value) if parent_value is not None else None
-            cursor = by_id.get(parent_id) if parent_id else {}
+            cursor = by_id.get(parent_id) if parent_id else None
         path_by_id[node_id] = list(reversed(path))
 
     current_path: list[str] = []
     out: list[dict[str, Any]] = []
-    for raw in elements or []:
+    for raw in elements:
         item = dict(raw)
         node_id = item["id"]
         if node_id in path_by_id:

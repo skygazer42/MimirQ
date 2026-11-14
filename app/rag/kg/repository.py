@@ -182,7 +182,7 @@ def _normalize_alias_surfaces(surfaces: list[str], *, max_ngrams: int) -> list[s
 
 
 def _limited_alias_tokens(text: str, *, max_tokens: int) -> list[str]:
-    tokens = [token for token in _ALIAS_TOKEN_RE.findall(text) if token.strip()]
+    tokens = _ALIAS_TOKEN_RE.findall(text)
     return tokens[: max(1, int(max_tokens or 0))]
 
 
@@ -332,7 +332,7 @@ def _alias_match_results(
 
 
 def _event_fetch_k(want_k: int, *, scoped: bool) -> int:
-    return min(max(want_k, want_k * 5), 500) if scoped else want_k
+    return min(want_k * 5, 500) if scoped else want_k
 
 
 def _format_event_vector_hit(result: dict) -> dict:
@@ -384,7 +384,7 @@ def _event_lexical_clauses_and_rank(terms: list[str]):
     rank_expr = None
     for term in terms[:24]:
         pattern = f"%{_escape_like(term)}%"
-        token_count = max(1, len(str(term).split()))
+        token_count = max(1, len(term.split()))
         weight = float(min(4, token_count))
         clauses.extend(
             [
@@ -538,7 +538,7 @@ class EntityRepository:
             seen_ids.add(ent_id)
             if formatted := _format_lexical_entity(ent, terms=terms, tenant_id=tenant_id):
                 scored.append(formatted)
-        scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), item["name"]))
+        scored.sort(key=lambda item: (-item["similarity"], item["name"]))
         return scored[: max(1, int(k))]
 
     def get_entities_by_ids(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> list[KgEntity]:
@@ -851,8 +851,6 @@ class EventRepository:
         formatted_batches: list[list[dict]] = []
         for start in range(0, len(document_ids), 500):
             batch = document_ids[start : start + 500]
-            if not batch:
-                continue
             doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in batch]
             expr = " and ".join([*expr_parts, f"document_id in [{', '.join(doc_id_strs)}]"])
             results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
@@ -1189,7 +1187,7 @@ class EventRepository:
         for ev in rows:
             if formatted := _format_lexical_event(ev, terms=terms, tenant_id=tenant_id):
                 scored.append(formatted)
-        scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), item["event_id"]))
+        scored.sort(key=lambda item: (-item["similarity"], item["event_id"]))
         return scored[: max(1, int(k))]
 
     def search_events_by_entities(

@@ -19,7 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 
-_HEADER_KEYWORDS = [
+_HEADER_KEYS = {
     "from",
     "to",
     "cc",
@@ -37,9 +37,7 @@ _HEADER_KEYWORDS = [
     "日期",
     "发送时间",
     "时间",
-]
-
-_HEADER_KEYS = {k.strip().casefold() for k in _HEADER_KEYWORDS if k.strip()}
+}
 _HEADER_START_KEYS = {"from", "发件人"}
 
 
@@ -153,8 +151,6 @@ def _extract_headers(message_text: str) -> dict[str, str]:
         if parsed is None:
             continue
         key, val = parsed
-        if not key or not val:
-            continue
         if key in headers:
             continue
         headers[key] = val
@@ -190,8 +186,6 @@ def _messages_from_starts(text: str, starts: list[int]) -> list[_Message]:
     msgs: list[_Message] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
-        if end <= start:
-            continue
         segment = text[start:end]
         if not segment.strip():
             continue
@@ -232,8 +226,8 @@ def _split_email_fallback_docs(
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     chunks: list[Document] = []
     for split_doc in split_docs:
-        split_meta = dict(split_doc.metadata or {})
-        abs_start = int(split_meta.pop("start_index", None) or 0)
+        split_meta = dict(split_doc.metadata)
+        abs_start = split_meta.pop("start_index")
         meta: dict[str, Any] = dict(base_meta)
         meta.update(split_meta)
         meta["chunk_strategy"] = "email_thread"
@@ -252,7 +246,7 @@ def _email_window_end(msgs: list[_Message], start_idx: int, chunk_size: int) -> 
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _window_email_subjects(msgs: list[_Message], start_idx: int, end_idx: int) -> tuple[list[str], list[str]]:
@@ -303,7 +297,7 @@ def _next_email_start(msgs: list[_Message], start_idx: int, end_idx: int, chunk_
             continue
         break
     next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 class EmailThreadChunker(BaseChunker):
@@ -326,7 +320,7 @@ class EmailThreadChunker(BaseChunker):
             out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 
@@ -337,7 +331,7 @@ class EmailThreadChunker(BaseChunker):
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         msgs = _iter_messages(text)
         if not msgs:
             return _split_email_fallback_docs(self._fallback_splitter, text, base_meta)
@@ -347,5 +341,7 @@ class EmailThreadChunker(BaseChunker):
         while start_idx < len(msgs):
             end_idx = _email_window_end(msgs, start_idx, self.chunk_size)
             chunks.append(_build_email_chunk(msgs, start_idx, end_idx, base_meta, text))
+            if end_idx == len(msgs):
+                break
             start_idx = _next_email_start(msgs, start_idx, end_idx, self.chunk_overlap)
         return chunks

@@ -1,14 +1,14 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
-from app.api.schemas.chat import ChatRAGConfig, ChatRequest
+from app.api.schemas.conversations import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
-from app.models.chat import Conversation, Message
+from app.models.chat import Message
 from app.models.rag_config_template import RagConfigTemplate
 from app.services.chat_cache_runtime import (
     ChatCacheLookupInput,
@@ -39,6 +39,7 @@ from app.services.rag_config_template_resolver import (
     resolve_rag_config_template,
 )
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 from app.services.structured_memory_service import build_structured_memory_context
 
 
@@ -58,7 +59,6 @@ class PreparedChatRequestRuntime:
 
 @dataclass(frozen=True)
 class PreparedChatTurnSession:
-    conversation: Conversation
     conversation_id: UUID
     scope_dataset_id: UUID | None
     allowed_doc_ids: list[UUID] | None
@@ -162,7 +162,6 @@ def _build_rag_template_meta(
     chosen: RagConfigTemplate,
     rag_config_template_resolver_debug: dict[str, Any] | None,
     rag_config_template_patch_applied_fields: list[str],
-    effective_rag_config_ab_experiment_key: str | None,
     request_id: str,
 ) -> dict[str, Any]:
     rag_config_template_meta = {
@@ -231,7 +230,6 @@ def _resolve_rag_template_runtime(
         chosen=chosen,
         rag_config_template_resolver_debug=rag_config_template_resolver_debug,
         rag_config_template_patch_applied_fields=rag_config_template_patch_applied_fields,
-        effective_rag_config_ab_experiment_key=effective_rag_config_ab_experiment_key,
         request_id=request_id,
     )
     record_rag_config_template_usage(db, chosen)
@@ -333,7 +331,6 @@ def prepare_chat_turn_session(
     db.commit()
 
     return PreparedChatTurnSession(
-        conversation=conversation,
         conversation_id=conversation_id,
         scope_dataset_id=scope_dataset_id,
         allowed_doc_ids=allowed_doc_ids,
@@ -426,16 +423,19 @@ async def prepare_stream_chat_runtime(
     long_term_messages: list[dict[str, Any]],
     request_id: str,
 ) -> PreparedStreamChatRuntime:
-    request_runtime = prepare_chat_request_runtime(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        request=request,
-        conversation_id=conversation_id,
-        scope_dataset_id=scope_dataset_id,
-        document_ids=document_ids,
-        long_term_messages=long_term_messages,
-        request_id=request_id,
+    request_runtime = await run_blocking_call_with_managed_session(
+        lambda worker_db: prepare_chat_request_runtime(
+            db=worker_db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request=request,
+            conversation_id=conversation_id,
+            scope_dataset_id=scope_dataset_id,
+            document_ids=document_ids,
+            long_term_messages=long_term_messages,
+            request_id=request_id,
+        ),
+        request_db=db,
     )
 
     effective_rag_config = request_runtime.effective_rag_config
@@ -453,24 +453,26 @@ async def prepare_stream_chat_runtime(
         "prompt_template_key": effective_prompt_template_key,
         "prompt_ab_experiment_key": effective_prompt_ab_experiment_key,
     }
-    cache_feature_enabled, cache_key, cache_skip_reason = prepare_chat_cache_lookup(
-        options=ChatCacheLookupInput(
-            db=db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=cache_scope_dataset_id,
-            document_ids=document_ids,
-            history=request.history,
-            enable_long_term_memory=request.enable_long_term_memory,
-            long_term_messages=long_term_messages,
-            enable_structured_memory=request.enable_structured_memory,
-            question=request.message,
-            rag_config=rag_cfg,
-            prompt_config=prompt_cfg,
-            structured_output=request.structured_output,
-            structured_preset=request.structured_preset,
-            use_graph=effective_rag_config.use_graph,
-        ),
+    cache_options = ChatCacheLookupInput(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=cache_scope_dataset_id,
+        document_ids=document_ids,
+        history=request.history,
+        enable_long_term_memory=request.enable_long_term_memory,
+        long_term_messages=long_term_messages,
+        enable_structured_memory=request.enable_structured_memory,
+        question=request.message,
+        rag_config=rag_cfg,
+        prompt_config=prompt_cfg,
+        structured_output=request.structured_output,
+        structured_preset=request.structured_preset,
+        use_graph=effective_rag_config.use_graph,
+    )
+    cache_feature_enabled, cache_key, cache_skip_reason = await run_blocking_call_with_managed_session(
+        lambda worker_db: prepare_chat_cache_lookup(options=replace(cache_options, db=worker_db)),
+        request_db=db,
     )
     cache_eligible = bool(cache_key)
     cached = await get_cached_chat_response_async(cache_key) if cache_key else None

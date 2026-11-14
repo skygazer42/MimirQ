@@ -27,12 +27,10 @@ def normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
     resolved_ref = raw
     if raw.lower().startswith("file://"):
         parsed = urlparse(raw)
-        if str(parsed.scheme).lower() != "file":
-            return None, "unsupported_scheme"
-        netloc = str(parsed.netloc).strip().lower()
+        netloc = parsed.netloc.strip().lower()
         if netloc and netloc not in {"localhost", "127.0.0.1"}:
             return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path))
+        resolved_ref = unquote(parsed.path)
         if not resolved_ref:
             return None, "empty_file_path"
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):

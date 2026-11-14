@@ -9,19 +9,15 @@ This module is intentionally dependency-light so it can be used from:
 
 import hashlib
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Literal
 
 from app.core.token_utils import estimate_tokens
-from app.rag.core.logging import get_logger
 from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BINS, HistogramBinSpec, histogram
 
 
 def _percentile_from_sorted(sorted_values: list[int], p: int) -> int:
-    if not sorted_values:
-        return 0
     pp = max(0, min(100, p))
     pos = int((pp / 100.0) * (len(sorted_values) - 1))
-    pos = max(0, min(len(sorted_values) - 1, pos))
     return sorted_values[pos]
 
 
@@ -30,28 +26,18 @@ def compute_chunking_stats_from_lengths(
     *,
     short_threshold: int = 120,
     duplicate_count: int = 0,
-    unit: str = "chars",
+    unit: Literal["chars", "tokens"] = "chars",
     bins: list[HistogramBinSpec] | None = None,
 ) -> dict[str, Any] | None:
     """
     Compute lightweight chunking stats.
 
     Notes:
-    - `lengths` should already be based on stripped content where possible; values that
-      cannot be converted to integers or are nonpositive are skipped.
+    - `lengths` contains integer chunk sizes, based on stripped content where possible;
+      nonpositive values are skipped.
     - `duplicate_count` is best-effort, clamped to zero or higher, and may be 0 when unknown.
     """
-    values: list[int] = []
-    for raw in lengths:
-        try:
-            n = int(raw)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if n <= 0:
-            continue
-        values.append(n)
-
+    values = [length for length in lengths if length > 0]
     if not values:
         return None
 
@@ -62,7 +48,7 @@ def compute_chunking_stats_from_lengths(
     hist = histogram(values, bins or CHUNK_LENGTH_BINS)
 
     return {
-        "unit": unit or "chars",
+        "unit": unit,
         "count": len(values),
         "total": total,
         "min": values[0],
@@ -82,7 +68,7 @@ def compute_chunking_stats_from_texts(
     texts: Iterable[str],
     *,
     short_threshold: int = 120,
-    unit: str = "chars",
+    unit: Literal["chars", "tokens"] = "chars",
 ) -> dict[str, Any] | None:
     """
     Compute chunking stats from raw chunk texts (best-effort).

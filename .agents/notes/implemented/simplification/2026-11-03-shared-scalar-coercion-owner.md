@@ -10,7 +10,11 @@ Status: implemented
 
 `common.py` keeps `_safe_int` and `_safe_float` as the shared numeric conversion owners. Callers pass their original default, minimum, and maximum explicitly. Missing and malformed optional numbers retain their existing fallback values; only standard numeric conversion failures (`OverflowError`, `TypeError`, `ValueError`) use those defaults. The typed LangChain `Document.id` field is read directly.
 
-原始解析 metadata 的可选整数和浮点数使用独立的 `app.parsing.utils.scalars` 所有者。该边界拒绝 `None` 与 bool，整数使用原 `int` 规则，浮点继续过滤 NaN，并保持解析链既有的转换失败返回 `None` 政策；它不引入检索层的默认值或上下限。
+原始解析 metadata 的可选整数和浮点数使用独立的 `app.parsing.utils.scalars` 所有者。该边界拒绝 `None` 与 bool，整数使用原 `int` 规则，浮点继续过滤 NaN；只有 `OverflowError`、`TypeError`、`ValueError` 转换失败返回 `None`，自定义数值协议的意外异常继续传播，不伪装成缺失。它不引入检索层的默认值或上下限。
+
+质量门禁与文档评分的同义布尔解析使用该模块的 `coerce_bool`，保留实际布尔、缺失与原字符串集合的规则。文档评分的浮点入口仍独立：其历史合同允许 bool 参与 0／1 评分，不能替换为拒绝 bool 的共享浮点入口。两处原始边界的差异保持，不为统一函数名改变分数。
+
+质量门禁[内部结果的所有权](2026-11-13-parse-quality-decision-owner.md)只收窄已构造记录，不改变这里的原始标量解析职责。
 
 `kg_merge_boost._coerce_optional_int` remains local because it returns `None` for an absent metadata field; that is a different contract from a defaulting integer conversion. Its invalid-value path catches only standard numeric conversion failures.
 

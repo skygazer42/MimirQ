@@ -6,6 +6,7 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from app.api.schemas.sources import ConnectorRunOut
 from app.core.config import settings
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
@@ -14,11 +15,17 @@ from app.services.connector_config_operations import build_saved_connector_run_c
 from app.services.connector_execution.shared.runtime import _now
 from app.services.connector_run_operations import (
     _DB_CATALOG_CONNECTOR_IDS,
+    _DB_CONNECTOR_PERMISSION_DETAIL,
     _URL_INGEST_CONNECTOR_IDS,
     CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR,
     _create_pending_connector_run,
+    _get_connector_run_or_404,
+    _run_out,
     enqueue_or_schedule_run,
 )
+from app.services.managed_handoff import prepare_managed_handoff
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _URL_CONNECTORS = _URL_INGEST_CONNECTOR_IDS
 _DB_CATALOG_CONNECTORS = _DB_CATALOG_CONNECTOR_IDS
@@ -128,7 +135,7 @@ def _claim_scheduled_config_window(ctx: _ScheduledTickContext, cfg: ConnectorCon
         where.append(ConnectorConfig.last_run_at == cfg.last_run_at)
 
     result = ctx.db.execute(update(ConnectorConfig).where(*where).values(last_run_at=ctx.now, last_error=None))
-    return bool(getattr(result, "rowcount", 0))
+    return bool(result.rowcount)
 
 
 def _create_scheduled_run(ctx: _ScheduledTickContext, cfg: ConnectorConfig, connector_id: str) -> ConnectorRun:
@@ -179,84 +186,152 @@ def _release_scheduled_config_window(
         )
         .values(last_run_at=previous_last_run_at, last_error=error)
     )
-    if getattr(result, "rowcount", 0):
+    if result.rowcount:
         cfg.last_run_at = previous_last_run_at  # type: ignore[assignment]
         cfg.last_error = error  # type: ignore[assignment]
     ctx.db.commit()
 
 
-async def _process_scheduled_config(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> str:
-    if not _is_scheduled_config_due(cfg, now=ctx.now):
-        return "skipped"
-    if not _config_dataset_is_writable(ctx, cfg):
-        return "skipped"
-    previous_last_run_at = cfg.last_run_at
-    if not _claim_scheduled_config_window(ctx, cfg):
-        return "skipped"
-
+def _prepare_scheduled_config(
+    db: Session, *, config_id: UUID, tenant_id: UUID, account_id: str, now: datetime, background_tasks: BackgroundTasks
+) -> tuple[str, ConnectorRunOut | None, datetime | None]:
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if cfg is None:
+        return "skipped", None, None
+    ctx = _ScheduledTickContext(
+        background_tasks=background_tasks, db=db, tenant_id=tenant_id, account_id=account_id, now=now
+    )
+    if not _is_scheduled_config_due(cfg, now=now) or not _config_dataset_is_writable(ctx, cfg):
+        return "skipped", None, None
     connector_id = cfg.connector_id.strip()
-    run = _create_scheduled_run(ctx, cfg, connector_id)
-    if disabled_error := _disabled_connector_error(connector_id):
-        _mark_scheduled_run_failed(ctx, cfg, run, disabled_error)
-        return "enqueued"
-    try:
-        await enqueue_or_schedule_run(
-            ctx.db,
-            background_tasks=ctx.background_tasks,
-            run=run,
-            tenant_id=ctx.tenant_id,
-            requested_by=ctx.account_id,
-        )
-    except HTTPException as exc:
-        if exc.status_code == 503:
-            _release_scheduled_config_window(
-                ctx,
-                cfg,
-                previous_last_run_at=previous_last_run_at,
-                error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR,
+    if connector_id in _DB_CATALOG_CONNECTORS:
+        try:
+            ensure_tenant_permission(
+                db, tenant_id, account_id, TenantPermissions.SETTINGS_WRITE, detail=_DB_CONNECTOR_PERMISSION_DETAIL
             )
-            raise
-        if exc.status_code == 400:
-            _mark_scheduled_run_failed(ctx, cfg, run, "unsupported_connector_id")
-        else:
-            raise
+        except HTTPException as exc:
+            if exc.status_code != 403:
+                raise
+            return "skipped", None, None
+    previous = cfg.last_run_at
+    if not _claim_scheduled_config_window(ctx, cfg):
+        return "skipped", None, None
+    run = _create_scheduled_run(ctx, cfg, connector_id)
+    if error := _disabled_connector_error(connector_id):
+        _mark_scheduled_run_failed(ctx, cfg, run, error)
+        return "enqueued", None, previous
+    return "enqueued", _run_out(run), previous
+
+
+def _recover_scheduled_config(
+    db: Session,
+    *,
+    config_id: UUID,
+    run_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+    now: datetime,
+    background_tasks: BackgroundTasks,
+    previous: datetime | None,
+    unavailable: bool,
+    error: str,
+) -> None:
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Connector config not found")
+    ctx = _ScheduledTickContext(
+        background_tasks=background_tasks, db=db, tenant_id=tenant_id, account_id=account_id, now=now
+    )
+    if unavailable:
+        _release_scheduled_config_window(ctx, cfg, previous_last_run_at=previous, error=error)
     else:
-        cfg.last_run_at = ctx.now  # type: ignore[assignment]
-        cfg.last_error = None  # type: ignore[assignment]
-    return "enqueued"
+        run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
+        _mark_scheduled_run_failed(ctx, cfg, run, error)
 
 
 async def tick_schedules(
-    *,
-    background_tasks: BackgroundTasks,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
+    *, background_tasks: BackgroundTasks, db: Session, tenant_id: UUID, account_id: str
 ) -> dict[str, int]:
-    """
-    Evaluate saved connector schedules and enqueue due runs (best-effort).
+    def load_config_ids(worker_db: Session) -> list[UUID]:
+        dataset_service.ensure_member(worker_db, tenant_id, account_id)
+        return [cfg.id for cfg in _scheduled_connector_configs(worker_db, tenant_id)]
 
-    This endpoint is intentionally simple and deterministic; it is a "tick hook" for an external scheduler.
-    """
-    dataset_service.ensure_member(db, tenant_id, account_id)
-
+    config_ids = await run_blocking_call_with_managed_session(load_config_ids, request_db=None)
     now = _now()
-    rows = _scheduled_connector_configs(db, tenant_id)
-    ctx = _ScheduledTickContext(
-        background_tasks=background_tasks,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        now=now,
-    )
-
     enqueued = 0
     skipped = 0
-    for cfg in rows:
-        result = await _process_scheduled_config(ctx, cfg)
-        if result == "enqueued":
-            enqueued += 1
-        else:
-            skipped += 1
+    for config_id in config_ids:
 
+        def recover_cancelled(
+            worker_db: Session, prepared: tuple[str, ConnectorRunOut | None, datetime | None]
+        ) -> None:
+            _status, prepared_run, previous = prepared
+            if prepared_run is None:
+                return
+            run = _get_connector_run_or_404(worker_db, run_id=prepared_run.id, tenant_id=tenant_id)
+            run.status = "failed"
+            run.error_message = "connector_request_cancelled_before_handoff"
+            run.finished_at = now
+            _recover_scheduled_config(
+                worker_db,
+                config_id=config_id,
+                run_id=run.id,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                now=now,
+                background_tasks=background_tasks,
+                previous=previous,
+                unavailable=True,
+                error="connector_request_cancelled_before_handoff",
+            )
+
+        status, run, previous = await prepare_managed_handoff(
+            lambda worker_db: _prepare_scheduled_config(
+                worker_db,
+                config_id=config_id,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                now=now,
+                background_tasks=background_tasks,
+            ),
+            recover_cancelled=recover_cancelled,
+        )
+        if status == "skipped":
+            skipped += 1
+            continue
+        if run is not None:
+            try:
+                await enqueue_or_schedule_run(
+                    db, background_tasks=background_tasks, run=run, tenant_id=tenant_id, requested_by=account_id
+                )
+            except HTTPException as exc:
+                if exc.status_code not in {400, 503}:
+                    raise
+                unavailable = exc.status_code == 503
+                await run_blocking_call_with_managed_session(
+                    lambda worker_db: _recover_scheduled_config(
+                        worker_db,
+                        config_id=config_id,
+                        run_id=run.id,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        now=now,
+                        background_tasks=background_tasks,
+                        previous=previous,
+                        unavailable=unavailable,
+                        error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR if unavailable else "unsupported_connector_id",
+                    ),
+                    request_db=None,
+                )
+                if unavailable:
+                    raise
+        enqueued += 1
     return {"enqueued": enqueued, "skipped": skipped}

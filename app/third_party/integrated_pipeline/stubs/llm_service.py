@@ -15,6 +15,7 @@ fail-soft and fall back to plaintext parsing (see `integrated/chunkers/naive.py`
 
 import base64
 from typing import Any
+from weakref import finalize
 
 import requests
 
@@ -44,7 +45,7 @@ def _guess_mime_type(image_bytes: bytes) -> str:
 
 
 def _chat_completions_url(api_base: str) -> str:
-    base = (api_base or "").strip().rstrip("/")
+    base = api_base.strip().rstrip("/")
     if not base:
         return ""
     if base.endswith("/chat/completions"):
@@ -62,28 +63,24 @@ class LLMBundle:
       gracefully fall back (the chunkers already wrap this in try/except).
     """
 
-    def __init__(self, tenant_id: str, llm_type: str, **kwargs: Any):
+    def __init__(self, tenant_id: str, llm_type: str, **kwargs: Any) -> None:
         self.tenant_id = tenant_id
         self.llm_type = str(llm_type)
-        self.kwargs = dict(kwargs or {})
+        self.kwargs = dict(kwargs)
 
         if str(llm_type) != str(LLMType.IMAGE2TEXT):
             raise NotImplementedError(f"LLMBundle only supports {LLMType.IMAGE2TEXT} in this project; got: {llm_type}")
 
-        if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
+        if not settings.VISION_LLM_ENABLED:
             raise NotImplementedError(
                 "Vision enrichment is disabled. Set MIMIRQ_VISION_LLM_ENABLED=true to enable image-to-text parsing."
             )
 
-        api_key = (getattr(settings, "VISION_LLM_API_KEY", "") or "").strip() or (
-            getattr(settings, "LLM_API_KEY", "") or ""
-        ).strip()
-        api_base = (getattr(settings, "VISION_LLM_API_BASE", "") or "").strip() or (
-            getattr(settings, "LLM_API_BASE", "") or ""
-        ).strip()
+        api_key = settings.VISION_LLM_API_KEY.strip() or settings.LLM_API_KEY.strip()
+        api_base = settings.VISION_LLM_API_BASE.strip() or settings.LLM_API_BASE.strip()
 
         # Integrated pipeline passes llm_name for user-selected layout recognizer model; treat as model override.
-        model = (self.kwargs.get("llm_name") or getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
+        model = (self.kwargs.get("llm_name") or settings.VISION_LLM_MODEL).strip()
 
         if not api_key:
             raise NotImplementedError(
@@ -102,15 +99,21 @@ class LLMBundle:
         self._api_key = api_key
         self._model = model
 
-        self._timeout_sec = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
-        self._max_tokens = int(getattr(settings, "VISION_LLM_MAX_TOKENS", 4096) or 4096)
-        self._temperature = float(getattr(settings, "VISION_LLM_TEMPERATURE", 0.0) or 0.0)
+        self._timeout_sec = settings.VISION_LLM_TIMEOUT_SEC
+        self._max_tokens = settings.VISION_LLM_MAX_TOKENS
+        self._temperature = settings.VISION_LLM_TEMPERATURE
 
         self._session = requests.Session()
+        # Fixed upstream callers do not expose a close hook; collection still
+        # releases this instance's pooled connections without retaining self.
+        self._close_session = finalize(self, self._session.close)
         self._headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
+
+    def close(self) -> None:
+        self._close_session()
 
     def _build_payload(self, *, image_bytes: bytes, prompt: str | None) -> dict[str, Any]:
         mime_type = _guess_mime_type(image_bytes)
@@ -120,7 +123,7 @@ class LLMBundle:
         # Put instructions first for better determinism across providers.
         content = []
         if prompt:
-            content.append({"type": "text", "text": str(prompt)})
+            content.append({"type": "text", "text": prompt})
         content.append({"type": "image_url", "image_url": {"url": data_url}})
 
         return {
@@ -142,24 +145,27 @@ class LLMBundle:
 
         This mirrors what DeepDoc's VisionParser expects.
         """
-        if image_bytes is None:
-            raise ValueError("image_bytes is required")
+        if not self._close_session.alive:
+            raise RuntimeError("LLMBundle is closed")
 
         payload = self._build_payload(image_bytes=image_bytes, prompt=prompt)
-        resp = self._session.post(
+        with self._session.post(
             self._api_url,
             headers=self._headers,
             json=payload,
             timeout=self._timeout_sec,
-        )
+        ) as response:
+            if response.status_code != 200:
+                body = response.text
+                logger.warning("Integrated pipeline vision API error %s: %s", response.status_code, body[:500])
+                raise RuntimeError(f"Integrated pipeline vision API error {response.status_code}: {body[:500]}")
 
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
-            body = getattr(resp, "text", "") or ""
-            logger.warning(
-                "Integrated pipeline vision API error %s: %s", getattr(resp, "status_code", None), body[:500]
-            )
-            raise RuntimeError(f"Integrated pipeline vision API error {resp.status_code}: {body[:500]}")
-
-        data = resp.json()
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        return str(content or "").strip()
+            data = response.json()
+            if not isinstance(data, dict):
+                raise TypeError("Vision response must be an object")
+            content = data["choices"][0]["message"]["content"]
+            if content is None:
+                return ""
+            if not isinstance(content, str):
+                raise TypeError("Vision response content must be text")
+            return content.strip()

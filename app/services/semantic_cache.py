@@ -119,7 +119,7 @@ def build_semantic_cache_scope_hash(
         "corpus_cache_token": corpus_cache_token,
         "behavior_hash": behavior_hash,
         "doc_scope": _hash_doc_scope(document_ids),
-        "doc_count": int(len([d for d in document_ids if d])),
+        "doc_count": len([d for d in document_ids if d]),
         "top_k": int(top_k),
         "score_threshold": float(score_threshold),
         "retrieval_mode": retrieval_mode.strip().lower(),
@@ -253,11 +253,11 @@ def _semantic_cache_result_matches(
     if not vector_id:
         return None
     checks = (
-        metadata.get('tenant_id') == str(tenant_id),
-        metadata.get('account_id') == account_id,
-        metadata.get('scope_hash') == str(scope_hash),
-        metadata.get('corpus_cache_token') == str(corpus_cache_token),
-        metadata.get('embedding_space_hash') == embedding_space_hash,
+        metadata.get("tenant_id") == str(tenant_id),
+        metadata.get("account_id") == account_id,
+        metadata.get("scope_hash") == str(scope_hash),
+        metadata.get("corpus_cache_token") == str(corpus_cache_token),
+        metadata.get("embedding_space_hash") == embedding_space_hash,
     )
     if not all(checks):
         return None
@@ -293,7 +293,7 @@ def _cached_semantic_payload_from_results(
     cleanup_ids: list[str] = []
     cleanup_seen: set[str] = set()
     meta["cleanup_budget"] = cleanup_budget
-    for result in results or []:
+    for result in results:
         match = _semantic_cache_result_matches(
             result,
             tenant_id=tenant_id,
@@ -485,10 +485,7 @@ def set_cached_semantic_payload(
 
     key = _redis_payload_key(tenant_id=str(tenant_id), vector_id=vector_id)
     try:
-        if ttl > 0:
-            client.set(key, raw, ex=ttl)
-        else:
-            client.set(key, raw)
+        client.set(key, raw, ex=ttl)
     except Exception:  # noqa: BLE001
         _invalidate_redis_client()
         return False
@@ -576,7 +573,12 @@ def _evaluate_retention_row(
         return
     row_id = row.get("id")
     row_tenant_id = row.get("tenant_id")
-    if not isinstance(row_id, str) or not isinstance(row_tenant_id, str) or not row_id.strip() or not row_tenant_id.strip():
+    if (
+        not isinstance(row_id, str)
+        or not isinstance(row_tenant_id, str)
+        or not row_id.strip()
+        or not row_tenant_id.strip()
+    ):
         summary["failed"] = True
         summary["errors"].append("semantic cache maintenance row missing tenant scope")
         return

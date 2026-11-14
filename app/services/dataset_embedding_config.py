@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
-from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.embedding.adapter import LangChainEmbeddingsAdapter, create_langchain_embeddings_from_config
 from app.rag.embedding.utils import embedding_space_hash_for_config
 
 
@@ -93,7 +93,7 @@ def resolve_dataset_embedding_runtime(
 
 
 @lru_cache(maxsize=8)
-def create_embeddings_for_runtime(runtime: DatasetEmbeddingRuntimeConfig):
+def create_embeddings_for_runtime(runtime: DatasetEmbeddingRuntimeConfig) -> LangChainEmbeddingsAdapter:
     return create_langchain_embeddings_from_config(
         provider=runtime.provider,
         model=runtime.model,

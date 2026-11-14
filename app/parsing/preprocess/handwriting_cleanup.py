@@ -6,13 +6,18 @@ This stage is feature-flagged and best-effort:
 - http backend: forward the file to a remote cleanup service and store returned bytes
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
-from app.parsing.preprocess.model_loader import get_preprocess_model_loader
+from app.parsing.preprocess.model_loader import get_preprocess_model_loader, positive_onnx_dimension
+
+if TYPE_CHECKING:
+    from onnxruntime import InferenceSession
 
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 
@@ -51,22 +56,12 @@ async def _cleanup_handwriting_via_http_async(
     return changed, "cleanup_ok" if changed else "cleanup_no_change", info
 
 
-def _positive_int(value: Any) -> int | None:
-    try:
-        number = int(value)
-    except Exception:
-        return None
-    return number if number > 0 else None
-
-
 def _infer_onnx_layout(shape: Any) -> str:
     dims = list(shape or [])
     if len(dims) != 4:
         return "nchw"
-    if _positive_int(dims[-1]) in {1, 3}:
+    if positive_onnx_dimension(dims[-1]) in {1, 3}:
         return "nhwc"
-    if _positive_int(dims[1]) in {1, 3}:
-        return "nchw"
     return "nchw"
 
 
@@ -75,16 +70,17 @@ def _infer_onnx_channels(shape: Any, *, layout: str) -> int:
     if len(dims) != 4:
         return 3
     if layout == "nhwc":
-        channels = _positive_int(dims[-1])
+        channels = positive_onnx_dimension(dims[-1])
     else:
-        channels = _positive_int(dims[1])
+        channels = positive_onnx_dimension(dims[1])
     return channels if channels in {1, 3} else 3
 
 
-def _onnx_input_spec(session: Any) -> tuple[str, Any, str, int]:
+def _onnx_input_spec(session: InferenceSession) -> tuple[str, Any, str, int]:
     inputs = list(session.get_inputs() or [])
-    input_name = str(inputs[0].name or "input")
-    input_shape = getattr(inputs[0], "shape", None) if inputs else None
+    input_info = inputs[0]
+    input_name = str(input_info.name or "input")
+    input_shape = getattr(input_info, "shape", None)
     input_layout = _infer_onnx_layout(input_shape)
     input_channels = _infer_onnx_channels(input_shape, layout=input_layout)
     return input_name, input_shape, input_layout, input_channels
@@ -95,8 +91,8 @@ def _onnx_target_size(input_shape: Any, *, layout: str) -> tuple[int | None, int
     if len(dims) != 4:
         return None, None
     if layout == "nhwc":
-        return _positive_int(dims[2]), _positive_int(dims[1])
-    return _positive_int(dims[3]), _positive_int(dims[2])
+        return positive_onnx_dimension(dims[2]), positive_onnx_dimension(dims[1])
+    return positive_onnx_dimension(dims[3]), positive_onnx_dimension(dims[2])
 
 
 def _prepare_onnx_tensor(*, image: Any, layout: str, channels: int) -> Any:
@@ -144,7 +140,7 @@ def _save_cleaned_output(*, result: Any, output_path: Path, original_size: tuple
     cleaned.save(output_path)
 
 
-def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: Any) -> bool:
+def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: InferenceSession) -> bool:
     from PIL import Image
 
     if input_path.suffix.lower() not in _RASTER_EXTS:

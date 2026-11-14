@@ -199,7 +199,7 @@ def get_parse_cache(
     if age_s is None:
         return None, None
     age_ms = int(round(age_s * 1000))
-    if ttl_i > 0 and age_s > float(ttl_i):
+    if age_s > float(ttl_i):
         # Best-effort cleanup of stale cache (do not fail).
         with contextlib.suppress(Exception):
             minio_service.delete_object(object_name=object_name)

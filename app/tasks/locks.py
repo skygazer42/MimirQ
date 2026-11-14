@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -13,8 +12,6 @@ if TYPE_CHECKING:
     from arq import Retry
 
 logger = get_logger("tasks.locks")
-
-_SCRIPT_UNAVAILABLE = object()
 
 _COMPARE_DELETE_LUA = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -32,9 +29,7 @@ return 0
 
 _SEMAPHORE_LEASE_SEPARATOR = "|"
 _SEMAPHORE_BUSY_ATTR = "_mimirq_semaphore_busy"
-_DEFAULT_TASK_JOB_TIMEOUT_SEC = 60 * 30
 _TASK_JOB_LOCK_MIN_TTL_SEC = 40 * 60
-_DEFAULT_TASK_SEMAPHORE_LEASE_TTL_SEC = 60
 _TASK_SEMAPHORE_LEASE_MIN_TTL_SEC = 5
 _TASK_SEMAPHORE_HEARTBEAT_MAX_INTERVAL_SEC = 10.0
 _TASK_SEMAPHORE_WAIT_POLL_INTERVAL_SEC = 0.1
@@ -50,31 +45,21 @@ _SEMAPHORE_HEARTBEATS: dict[str, _SemaphoreHeartbeat] = {}
 _SEMAPHORE_HEARTBEATS_LOCK = threading.Lock()
 
 
-def task_job_timeout_sec(*, default_sec: int = _DEFAULT_TASK_JOB_TIMEOUT_SEC) -> int:
-    return settings.TASK_JOB_TIMEOUT_SEC
-
-
 def task_job_lock_ttl_sec(*, minimum_sec: int = _TASK_JOB_LOCK_MIN_TTL_SEC) -> int:
-    return max(max(1, (minimum_sec or 0)), task_job_timeout_sec() + 60)
+    return max(minimum_sec, settings.TASK_JOB_TIMEOUT_SEC + 60)
 
 
 def task_semaphore_lease_ttl_sec(
     *,
-    default_sec: int = _DEFAULT_TASK_SEMAPHORE_LEASE_TTL_SEC,
     minimum_sec: int = _TASK_SEMAPHORE_LEASE_MIN_TTL_SEC,
 ) -> int:
-    configured = settings.TASK_SEMAPHORE_LEASE_TTL_SEC
-    return max(max(1, (minimum_sec or 0)), configured)
+    return max(minimum_sec, settings.TASK_SEMAPHORE_LEASE_TTL_SEC)
 
 
 def get_retry_exc() -> "type[Retry]":
     # When task queue is enabled, Retry must exist; failing silently would bypass concurrency limits.
     mod = require_dependency("arq", feature="task_queue_retry")
-    retry_cls = getattr(mod, "Retry", None)
-    if retry_cls is None:
-        # If arq is installed but doesn't expose Retry, it's likely a version mismatch.
-        raise RuntimeError("arq is installed but Retry is missing (version mismatch?)")
-    return retry_cls
+    return mod.Retry
 
 
 def _semaphore_busy_retry(retry_cls: "type[Retry]", *, defer_sec: int) -> "Retry":
@@ -88,15 +73,7 @@ def is_semaphore_busy_retry(exc: Exception) -> bool:
 
 
 async def _eval_redis_script(redis: Any, script: str, *, keys: tuple[str, ...], args: tuple[Any, ...]) -> Any:
-    eval_fn = getattr(redis, "eval", None)
-    if callable(eval_fn):
-        return await eval_fn(script, len(keys), *keys, *args)
-
-    execute_command = getattr(redis, "execute_command", None)
-    if callable(execute_command):
-        return await execute_command("EVAL", script, len(keys), *keys, *args)
-
-    return _SCRIPT_UNAVAILABLE
+    return await redis.eval(script, len(keys), *keys, *args)
 
 
 async def _semaphore_acquire(
@@ -109,7 +86,7 @@ async def _semaphore_acquire(
 ) -> str | None:
     token = uuid4().hex
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + max(0.0, (wait_timeout_sec or 0.0))
+    deadline = loop.time() + max(0.0, wait_timeout_sec)
     while True:
         for slot in range(1, limit + 1):
             key = f"{key_prefix}:{slot}"
@@ -122,7 +99,7 @@ async def _semaphore_acquire(
 
 
 def _semaphore_heartbeat_interval_sec(ttl_sec: int) -> float:
-    return max(1.0, min(float(max(1, ttl_sec)) / 3.0, _TASK_SEMAPHORE_HEARTBEAT_MAX_INTERVAL_SEC))
+    return max(1.0, min(ttl_sec / 3.0, _TASK_SEMAPHORE_HEARTBEAT_MAX_INTERVAL_SEC))
 
 
 async def _semaphore_refresh(redis: Any, *, key: str, token: str, ttl_sec: int) -> bool | None:
@@ -133,9 +110,6 @@ async def _semaphore_refresh(redis: Any, *, key: str, token: str, ttl_sec: int) 
             keys=(key,),
             args=(token, max(1, ttl_sec)),
         )
-        if refreshed is _SCRIPT_UNAVAILABLE:
-            logger.warning("Semaphore heartbeat disabled because Redis EVAL is unavailable")
-            return False
         return bool(refreshed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Semaphore heartbeat refresh failed: %s", str(exc)[:200])
@@ -188,16 +162,18 @@ async def _semaphore_release(redis: Any, lease: str) -> None:
     except ValueError:
         logger.warning("Ignoring malformed semaphore lease")
         return
-    controller = None
     with _SEMAPHORE_HEARTBEATS_LOCK:
         controller = _SEMAPHORE_HEARTBEATS.pop(lease, None)
-    if controller is not None:
-        controller.stop_event.set()
-        controller.task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await controller.task
-    if key and token:
-        await release_lock(redis, key=key, value=token)
+    try:
+        if controller is not None:
+            controller.stop_event.set()
+            controller.task.cancel()
+            await asyncio.wait({controller.task})
+            if not controller.task.cancelled():
+                controller.task.result()
+    finally:
+        if key and token:
+            await release_lock(redis, key=key, value=token)
 
 
 async def _acquire_semaphore_lease(
@@ -365,12 +341,7 @@ async def release_lock(redis: Any, *, key: str, value: str) -> None:
     if redis is None:
         return
     try:
-        deleted = await _eval_redis_script(redis, _COMPARE_DELETE_LUA, keys=(key,), args=(value,))
-        if deleted is _SCRIPT_UNAVAILABLE:
-            cur = await redis.get(key)
-            cur_decoded = cur.decode("utf-8", "ignore") if isinstance(cur, (bytes, bytearray)) else cur
-            if cur_decoded == value:
-                await redis.delete(key)
+        await _eval_redis_script(redis, _COMPARE_DELETE_LUA, keys=(key,), args=(value,))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis lock release failed: %s", str(exc)[:200])
 

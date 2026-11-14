@@ -39,16 +39,13 @@ def _find_frontmatter(text: str) -> tuple[int, int] | None:
     if not text:
         return None
     lines = _iter_lines(text)
-    if not lines:
-        return None
 
     first_plain = lines[0].plain.lstrip("\ufeff").strip()
     if first_plain != _FRONTMATTER_DELIM:
         return None
 
     for i in range(1, len(lines)):
-        plain = lines[i].plain.strip()
-        if _is_frontmatter_end_delim(plain):
+        if _is_frontmatter_end_delim(lines[i].plain):
             return 0, lines[i].end
     return None
 

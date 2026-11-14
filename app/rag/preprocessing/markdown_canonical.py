@@ -55,9 +55,6 @@ def _split_blockquote_lead(line: str) -> tuple[str, str]:
     Implemented without regex so it stays linear-time and avoids backtracking hotspots.
     """
     s = line
-    if not s:
-        return "", ""
-
     i = 0
     n = len(s)
     lead_end = 0
@@ -87,9 +84,6 @@ def _parse_code_fence(line: str) -> tuple[str, str, str] | None:
       [ \\t]* ```+ <rest>
     """
     s = line
-    if not s:
-        return None
-
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -112,9 +106,6 @@ def _parse_heading(line: str) -> tuple[str, str, str] | None:
       '##Heading' or '##  Heading'
     """
     s = line
-    if not s:
-        return None
-
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -140,9 +131,6 @@ def _parse_heading(line: str) -> tuple[str, str, str] | None:
 
 def _parse_ulist(line: str) -> tuple[str, str] | None:
     s = line
-    if not s:
-        return None
-
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -162,9 +150,6 @@ def _parse_ulist(line: str) -> tuple[str, str] | None:
 
 def _parse_olist(line: str) -> tuple[str, str, str] | None:
     s = line
-    if not s:
-        return None
-
     i = 0
     n = len(s)
     while i < n and s[i] in (" ", "\t"):
@@ -195,13 +180,13 @@ def _is_indented_code_line(line: str) -> bool:
     if len(s) < 2:
         return False
     if s[0] == "\t":
-        return len(s) > 1 and (not s[1].isspace())
+        return not s[1].isspace()
     if s.startswith("    "):
         i = 0
         n = len(s)
         while i < n and s[i] == " ":
             i += 1
-        return i >= 4 and i < n and (not s[i].isspace())
+        return i < n and not s[i].isspace()
     return False
 
 
@@ -240,7 +225,7 @@ def _canonicalize_body_line(lead: str, body: str) -> _CanonicalLine:
     ordered = _parse_olist(body)
     if ordered is not None:
         indent, num, rest = ordered
-        new_body = f"{indent}{num or '1'}. {rest.lstrip()}"
+        new_body = f"{indent}{num}. {rest.lstrip()}"
         return _CanonicalLine(
             text=f"{lead}{new_body}",
             in_fence=False,
@@ -263,7 +248,7 @@ def _canonicalize_markdown_line(raw_line: str, in_fence: bool) -> _CanonicalLine
 
 
 def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
-    original = text if isinstance(text, str) else ""
+    original = text
     if not original:
         return MarkdownCanonicalizeResult(text="", changed=False)
 

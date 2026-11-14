@@ -174,14 +174,8 @@ def _resolve_language(meta: dict[str, Any], working: str) -> tuple[str | None, A
     language_confidence = meta.get("document_language_confidence")
     if language:
         return language, language_confidence
-    try:
-        detected = detect_language(working, min_chars=20)
-        language = _safe_text(detected.language, max_len=20)
-        language_confidence = round(detected.confidence, 3)
-    except Exception:
-        language = None
-        language_confidence = None
-    return language, language_confidence
+    detected = detect_language(working, min_chars=20)
+    return detected.language, round(detected.confidence, 3)
 
 
 def _resolve_keywords(
@@ -377,8 +371,8 @@ def enrich_documents_metadata(
     generate_questions: bool = True,
 ) -> list[Document]:
     out: list[Document] = []
-    for doc in documents or []:
-        meta = dict(doc.metadata or {})
+    for doc in documents:
+        meta = dict(doc.metadata)
         meta.update(
             build_document_metadata_enrichment(
                 doc.page_content,
@@ -391,10 +385,7 @@ def enrich_documents_metadata(
                 generate_questions=generate_questions,
             )
         )
-        try:
-            out.append(doc.model_copy(update={"metadata": meta}))
-        except Exception:
-            out.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None)))
+        out.append(doc.model_copy(update={"metadata": meta}))
     return out
 
 

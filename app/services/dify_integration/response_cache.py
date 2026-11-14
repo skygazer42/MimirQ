@@ -16,7 +16,11 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.schemas.dify import DifyExternalKnowledgeRecord, DifyExternalKnowledgeRequest, DifyRetrievalSetting
+from app.api.schemas.integrations import (
+    DifyExternalKnowledgeRecord,
+    DifyExternalKnowledgeRequest,
+    DifyRetrievalSetting,
+)
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.retrieval.planner import DatasetScopePlan

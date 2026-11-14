@@ -46,12 +46,10 @@ def _iter_endpoints(text: str) -> list[_Endpoint]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        method = (m.group("method")).strip().upper()
-        path = (m.group("path")).strip()
-        if not method or not path:
-            continue
+        method = m.group("method").upper()
+        path = m.group("path")
         endpoints.append(_Endpoint(start=start, end=end, index=len(endpoints), method=method, path=path))
-    return endpoints if len(endpoints) >= 2 else []
+    return endpoints
 
 
 def looks_like_api_reference(text: str) -> bool:
@@ -134,8 +132,6 @@ class APIReferenceChunker(BaseChunker):
 
             for ep in endpoints:
                 ep_text = text[ep.start : ep.end]
-                if not ep_text.strip():
-                    continue
                 sig = f"{ep.method} {ep.path}"
                 self._append_chunks(
                     out,

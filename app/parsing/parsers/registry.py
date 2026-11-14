@@ -16,8 +16,6 @@ HTML_EXTENSIONS = (".html", ".htm")
 JSON_EXTENSION = ".json"
 EMAIL_EXTENSIONS = (".eml", ".msg")
 IMAGE_EXTENSIONS = (".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp")
-AUDIO_EXTENSIONS = (".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav")
-VIDEO_EXTENSIONS = (".avi", ".m4v", ".mkv", ".mov", ".mp4", ".webm")
 
 
 @dataclass(frozen=True)
@@ -58,20 +56,11 @@ class ParserBackendFamily:
     docx_advanced_fallback: bool = False
 
 
-def _aliases_for(canonical_name: str, *extra_aliases: str) -> tuple[str, ...]:
-    aliases: list[str] = []
-
-    def _add(alias: str) -> None:
-        token = alias.strip().lower()
-        if token and token not in aliases:
-            aliases.append(token)
-
-    _add(canonical_name)
-    for alias in extra_aliases:
-        _add(alias)
+def _aliases_for(canonical_name: str) -> tuple[str, ...]:
+    aliases = [canonical_name]
     for alias, resolved in _BACKEND_ALIASES.items():
-        if resolved == canonical_name:
-            _add(alias)
+        if resolved == canonical_name and alias not in aliases:
+            aliases.append(alias)
     return tuple(aliases)
 
 

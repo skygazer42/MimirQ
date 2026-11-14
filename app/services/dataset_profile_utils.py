@@ -181,17 +181,17 @@ OVERLAP_WASTE_PCT_BINS: list[HistogramBinSpec] = [
 
 
 def _as_pct(numerator: int, denominator: int) -> int:
-    den = int(max(0, denominator))
+    den = max(0, denominator)
     if den <= 0:
         return 0
-    num = int(max(0, numerator))
-    return int(round((num / den) * 100.0))
+    num = max(0, numerator)
+    return round((num / den) * 100.0)
 
 
 def _risk_severity(*, pct: int, warn: int, error: int) -> str | None:
-    if int(pct) >= int(error):
+    if pct >= error:
         return "error"
-    if int(pct) >= int(warn):
+    if pct >= warn:
         return "warning"
     return None
 
@@ -230,9 +230,9 @@ def build_recall_risk_hints(
                     "label": "短 Chunk 占比偏高",
                     "severity": sev,
                     "observed": {
-                        "short_chunks": int(short_cnt),
-                        "total_chunks": int(token_total),
-                        "short_chunk_pct": int(short_pct),
+                        "short_chunks": short_cnt,
+                        "total_chunks": token_total,
+                        "short_chunk_pct": short_pct,
                     },
                     "target": {"short_chunk_pct_warn": 20, "short_chunk_pct_error": 35},
                     "message": f"短 chunk（<=100 tokens）占比 {short_pct}%，可能导致召回碎片化与排序不稳定。",
@@ -254,9 +254,9 @@ def build_recall_risk_hints(
                     "label": "词汇多样性偏低（重复风险）",
                     "severity": sev,
                     "observed": {
-                        "duplicate_docs": int(dup_docs),
-                        "total_documents": int(total_docs),
-                        "duplicate_docs_pct": int(dup_pct),
+                        "duplicate_docs": dup_docs,
+                        "total_documents": total_docs,
+                        "duplicate_docs_pct": dup_pct,
                     },
                     "target": {"duplicate_docs_pct_warn": 10, "duplicate_docs_pct_error": 25},
                     "message": f"疑似重复/低多样性文档占比 {dup_pct}%，可能压缩有效召回空间。",
@@ -279,9 +279,9 @@ def build_recall_risk_hints(
                     "label": "低文本质量占比偏高",
                     "severity": sev,
                     "observed": {
-                        "affected_docs": int(quality_affected),
-                        "total_documents": int(total_docs),
-                        "affected_docs_pct": int(quality_pct),
+                        "affected_docs": quality_affected,
+                        "total_documents": total_docs,
+                        "affected_docs_pct": quality_pct,
                         "low_density_docs": int(max(0, low_density_docs)),
                         "parse_low_quality_docs": int(max(0, parse_low_quality_docs)),
                     },
@@ -296,13 +296,10 @@ def build_recall_risk_hints(
 
     sev_order = {"error": 2, "warning": 1, "info": 0}
     hints.sort(
-        key=lambda h: (
-            -int(sev_order.get(str(h.get("severity") or "warning"), 1)),
-            -int(
-                (h.get("observed") or {}).get("short_chunk_pct", (h.get("observed") or {}).get("duplicate_docs_pct", 0))
-                or 0
-            ),
-            h["key"],
+        key=lambda hint: (
+            -sev_order[hint["severity"]],
+            -hint["observed"].get("short_chunk_pct", hint["observed"].get("duplicate_docs_pct", 0)),
+            hint["key"],
         )
     )
     return hints[:8]

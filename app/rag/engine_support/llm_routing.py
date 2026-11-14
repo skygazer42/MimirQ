@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
@@ -35,12 +34,11 @@ class LlmRoutingMixin:
         re.compile(r"\d+\.\s+"),  # numbered list
     )
 
-    def _build_llm(self, chat_cls: type[ChatOpenAI], model_name: str) -> Any:
+    def _build_llm(self, model_name: str) -> Any:
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients.
 
         In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
         """
-        _ = chat_cls
         if bool(settings.LLM_MOCK_ENABLED):
             # Lazy import to keep default startup lightweight.
             from langchain_core.language_models.fake import FakeStreamingListLLM
@@ -241,16 +239,19 @@ class LlmRoutingMixin:
             elapsed = time.time() - mq_start
             mq_data, parse_meta = parse_json_from_text(mq_raw, expected="array")
 
-            if isinstance(mq_data, list):
+            if mq_data is not None:
+                query_key = query.strip().strip('"').strip()
+                if len(query_key) > 400:
+                    query_key = query_key[:400] + "..."
                 seen: set[str] = set()
                 for item in mq_data:
                     if not isinstance(item, str):
                         continue
-                    candidate = (item).strip().strip('"').strip()
-                    if not candidate or candidate == query or candidate in seen:
-                        continue
+                    candidate = item.strip().strip('"').strip()
                     if len(candidate) > 400:
                         candidate = candidate[:400] + "..."
+                    if not candidate or candidate == query_key or candidate in seen:
+                        continue
                     seen.add(candidate)
                     queries.append(candidate)
                     if len(queries) >= count:

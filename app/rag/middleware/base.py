@@ -15,7 +15,6 @@ Additional optional phases:
 import asyncio
 import threading
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
 from typing import Any
@@ -43,17 +42,6 @@ class MiddlewarePhase(str, Enum):
     WRAP_TOOL_CALL = "wrap_tool_call"
     BEFORE_AGENT = "before_agent"
     AFTER_AGENT = "after_agent"
-
-
-@dataclass
-class MiddlewareConfig:
-    """Configuration for a middleware."""
-
-    name: str
-    phase: MiddlewarePhase
-    priority: int = 100  # Lower = earlier execution
-    enabled: bool = True
-    async_mode: bool = False
 
 
 class MiddlewareRegistry:

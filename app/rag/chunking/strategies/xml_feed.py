@@ -65,7 +65,7 @@ def _iter_blocks(text: str, *, kind: str) -> list[_Block]:
             continue
         start = sm.start()
         end = em.end()
-        if end < len(text) and text[end : end + 1] == "\n":
+        if text[end : end + 1] == "\n":
             end += 1
         blk_text = text[start:end]
         blocks.append(
@@ -167,8 +167,6 @@ class XMLFeedChunker(BaseChunker):
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
-                if not blk_text.strip():
-                    continue
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
                 extra_meta: dict[str, Any] = {
                     "xml_feed_kind": blk.kind,

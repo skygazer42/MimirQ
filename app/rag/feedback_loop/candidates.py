@@ -98,11 +98,6 @@ def _feedback_id(row: dict[str, Any]) -> str | None:
     return str(value)[:128] if value is not None else None
 
 
-def _dataset_id(row: dict[str, Any]) -> str | None:
-    value = row.get("dataset_id", _extra(row).get("dataset_id"))
-    return str(value)[:128] if value is not None else None
-
-
 def _lineage_id(row: dict[str, Any], key: str) -> str | None:
     value = row.get(key, _extra(row).get(key))
     return str(value)[:128] if value is not None else None
@@ -129,11 +124,11 @@ def _build_training_triple(
     reference_sources: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     positives = _positive_chunk_ids(reference_sources)
-    negatives = [
-        _safe_str(item.get("chunk_id"), max_len=200)
-        for item in (mined.get("hard_negatives") or [])
-        if isinstance(item, dict) and _safe_str(item.get("chunk_id"), max_len=200)
-    ]
+    negatives: list[str] = []
+    for item in mined["hard_negatives"]:
+        chunk_id = _safe_str(item["chunk_id"], max_len=200)
+        if chunk_id:
+            negatives.append(chunk_id)
     if not positives or not negatives:
         return None
     return {
@@ -142,7 +137,7 @@ def _build_training_triple(
         "positive_chunk_ids": positives,
         "negative_chunk_ids": negatives[:20],
         "source_feedback_id": _feedback_id(row),
-        "dataset_id": _dataset_id(row),
+        "dataset_id": _lineage_id(row, "dataset_id"),
     }
 
 
@@ -183,7 +178,7 @@ def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "source_feedback_id": _feedback_id(row),
         "source_conversation_id": _lineage_id(row, "conversation_id"),
         "source_message_id": _lineage_id(row, "message_id"),
-        "dataset_id": _dataset_id(row),
+        "dataset_id": _lineage_id(row, "dataset_id"),
     }
 
 
@@ -214,9 +209,11 @@ def build_feedback_loop_candidates(
     max_hard_negatives: int = 10,
 ) -> dict[str, Any]:
     normalized_rows = [_as_mapping(row) for row in (rows or [])]
-    negative_rows = [
-        row for row in normalized_rows if (_rating(row) is not None and (_rating(row) or 0) <= int(max_rating))
-    ]
+    negative_rows: list[dict[str, Any]] = []
+    for row in normalized_rows:
+        rating = _rating(row)
+        if rating is not None and rating <= int(max_rating):
+            negative_rows.append(row)
 
     hard_negative_records: list[dict[str, Any]] = []
     training_triples: list[dict[str, Any]] = []
@@ -237,12 +234,12 @@ def build_feedback_loop_candidates(
             query_hash=_stable_query_hash(query),
             max_hard_negatives=max_hard_negatives,
         )
-        if not mined.get("hard_negatives"):
+        if not mined["hard_negatives"]:
             continue
         fid = _feedback_id(row)
         if fid:
             mined["source_feedback_ids"] = [fid]
-        ds = _dataset_id(row)
+        ds = _lineage_id(row, "dataset_id")
         if ds:
             mined["dataset_id"] = ds
         conv_id = _lineage_id(row, "conversation_id")
@@ -268,9 +265,9 @@ def build_feedback_loop_candidates(
             "hard_negative_records": len(hard_negative_records),
             "training_triples": len(training_triples),
             "eval_case_candidates": len(eval_case_candidates),
-            "rules_glossary_candidates": len(rules_suggestions.get("glossary_suggestions") or []),
-            "rules_pattern_candidates": len(rules_suggestions.get("pattern_suggestions") or []),
-            "rules_intent_candidates": len(rules_suggestions.get("intent_suggestions") or []),
+            "rules_glossary_candidates": len(rules_suggestions["glossary_suggestions"]),
+            "rules_pattern_candidates": len(rules_suggestions["pattern_suggestions"]),
+            "rules_intent_candidates": len(rules_suggestions["intent_suggestions"]),
         },
         "hard_negative_records": hard_negative_records,
         "training_triples": training_triples,

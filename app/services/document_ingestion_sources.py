@@ -11,9 +11,9 @@ from uuid import UUID
 
 from fastapi import HTTPException
 
-from app.api.schemas.document_ingestion import LocalHtmlIngestRequest, UrlUploadRequest
-from app.api.utils.upload import _sanitize_filename, compute_file_hash
-from app.api.utils.url_ingest import DownloadedURL, URLDownloadOptions, download_url_to_path
+from app.api.schemas.documents import LocalHtmlIngestRequest, UrlUploadRequest
+from app.api.utils import compute_file_hash, sanitize_upload_filename
+from app.api.utils.url_ingest import DownloadedURL, ValidatedFetchTarget, download_url_to_path
 from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -188,7 +188,9 @@ async def _extract_url_canonical_metadata(
         return None, None
 
 
-async def download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_id: UUID) -> UrlIngestFile:
+async def download_url_ingest_file(
+    *, target: ValidatedFetchTarget, body: UrlUploadRequest, tenant_id: UUID
+) -> UrlIngestFile:
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_id = uuid.uuid4()
@@ -196,21 +198,19 @@ async def download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_i
     source_lease = SourceFileLease(temp_path)
     try:
         downloaded = await download_url_to_path(
-            url,
+            target,
             temp_path,
-            options=URLDownloadOptions(
-                max_bytes=(settings.URL_INGEST_MAX_BYTES or settings.MAX_FILE_SIZE),
-                timeout_sec=float(settings.URL_INGEST_TIMEOUT_SEC or 30.0),
-                follow_redirects=settings.URL_INGEST_FOLLOW_REDIRECTS,
-                user_agent=body.user_agent,
-                extra_headers=body.fetch_headers,
-            ),
+            max_bytes=(settings.URL_INGEST_MAX_BYTES or settings.MAX_FILE_SIZE),
+            timeout_sec=settings.URL_INGEST_TIMEOUT_SEC,
+            follow_redirects=settings.URL_INGEST_FOLLOW_REDIRECTS,
+            user_agent=body.user_agent,
+            extra_headers=body.fetch_headers,
         )
 
         content_type = downloaded.content_type
         if content_type is not None:
             content_type = content_type.split(";", 1)[0].strip().lower()
-        file_ext = _resolve_url_file_ext(filename=body.filename, url=url, content_type=content_type)
+        file_ext = _resolve_url_file_ext(filename=body.filename, url=target.raw, content_type=content_type)
         final_path = upload_dir / f"{file_id}{file_ext}"
         source_lease.path = final_path
         _finalize_url_download(temp_path, final_path)
@@ -238,7 +238,7 @@ def write_local_html_ingest_file(*, body: LocalHtmlIngestRequest, tenant_id: UUI
     if settings.MAX_FILE_SIZE > 0 and len(data) > settings.MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
 
-    safe_name = _sanitize_filename(body.filename or "confluence-page.html")
+    safe_name = sanitize_upload_filename(body.filename or "confluence-page.html")
     file_ext = _resolve_local_html_file_ext(safe_name)
     file_id = uuid.uuid4()
     file_path = upload_dir / f"{file_id}{file_ext}"

@@ -63,7 +63,7 @@ class ParentChildChunker(BaseChunker):
         )
 
     def _cache_key_for_document(self, doc: Document) -> str:
-        meta = dict(doc.metadata or {})
+        meta = dict(doc.metadata)
         meta_json = json.dumps(meta, ensure_ascii=False, sort_keys=True, default=str)
         return stable_hash(
             f"pc-cache:{self.chunk_size}:{self.chunk_overlap}:{self.child_ratio}:{self.min_child_size}:"
@@ -74,12 +74,12 @@ class ParentChildChunker(BaseChunker):
     @staticmethod
     def _clone_documents(documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-        for doc in documents or []:
-            meta = dict(doc.metadata or {})
+        for doc in documents:
+            meta = dict(doc.metadata)
             try:
                 out.append(doc.model_copy(update={"metadata": meta}))
             except Exception:
-                out.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None)))
+                out.append(Document(page_content=doc.page_content, metadata=meta, id=doc.id))
         return out
 
     def _split_single_document(
@@ -127,7 +127,7 @@ class ParentChildChunker(BaseChunker):
             f"pc:{parent_start}:{parent_end}:{stable_hash(parent_text, length=None)}",
             length=32,
         )
-        parent_metadata = dict(doc.metadata or {})
+        parent_metadata = dict(doc.metadata)
         parent_metadata.update(
             {
                 "start_char": parent_start,
@@ -177,7 +177,7 @@ class ParentChildChunker(BaseChunker):
 
             child_start = parent_start + child_rel_start
             child_end = parent_start + child_rel_end
-            child_metadata = dict(doc.metadata or {})
+            child_metadata = dict(doc.metadata)
             child_node_key = stable_hash(
                 f"pc-child:{parent_id}:{child_start}:{child_end}:{stable_hash(child_text, length=None)}",
                 length=32,

@@ -851,7 +851,7 @@ class PostProcessMixin:
 
         needed_pairs = self._neighbor_needed_pairs(anchors, window=window, short_doc_ids=short_doc_ids)
 
-        if not needed_pairs:
+        if not needed_pairs and not (sibling_enabled and short_doc_max_chunks > 0 and doc_ids_for_sibling):
             return results
 
         neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
@@ -1497,7 +1497,10 @@ class PostProcessMixin:
         for result in results:
             meta = result.get("metadata") or {}
             cid = _stringified_metadata_text(result, "chunk_id") or _stringified_metadata_text(meta, "chunk_id")
-            if meta.get("retrieval_role") == "neighbor" and _stringified_metadata_text(meta, "neighbor_of") in removed_child_ids:
+            if (
+                meta.get("retrieval_role") == "neighbor"
+                and _stringified_metadata_text(meta, "neighbor_of") in removed_child_ids
+            ):
                 continue
             role = _stringified_metadata_text(meta, "chunk_role")
             if role is not None:

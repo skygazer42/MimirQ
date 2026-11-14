@@ -55,7 +55,7 @@ def _infer_object_name(stmt_text: str) -> tuple[str, str | None]:
         return "sql", None
     m = _OBJ_NAME_RE.search(stmt_text[:2000])
     if m:
-        kind = (m.group("kind") or "create").strip().lower()
+        kind = m.group("kind").strip().lower()
         name = m.group("name").strip()
         return kind, name
     m = _ALTER_NAME_RE.search(stmt_text[:2000])
@@ -152,7 +152,7 @@ class SqlSchemaChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

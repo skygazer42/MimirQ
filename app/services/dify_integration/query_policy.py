@@ -2,8 +2,6 @@
 
 from typing import Any
 
-from app.services.dify_integration.common import _first_nonempty_str
-
 from app.core.config import settings
 from app.services.dify_integration import policy_helpers
 from app.services.dify_integration.anchor_strength import _query_intent_terms as _query_intent_terms
@@ -11,6 +9,7 @@ from app.services.dify_integration.common import (
     _EXACT_QUERY_ANCHOR_FIELDS,
     _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
     _MIXED_INTENT_SPLIT_RE,
+    _first_nonempty_str,
 )
 from app.services.dify_integration.common import _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS
 from app.services.dify_integration.common import _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS

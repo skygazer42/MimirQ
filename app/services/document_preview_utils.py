@@ -15,7 +15,7 @@ from langchain_core.documents import Document
 from PIL import Image
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import (
+from app.api.schemas.documents import (
     ChunkPreviewItem,
     ChunkPreviewQualityGate,
     ChunkPreviewQualityReason,
@@ -426,7 +426,7 @@ def _ensure_preview_page_indices(documents: list[Document]) -> None:
     Chunk preview joins these docs with "\\n" and returns global `start_index`/`end_index` offsets;
     without a stable key, mapping by `page` can collide and misplace chunks.
     """
-    for i, doc in enumerate(documents or []):
+    for i, doc in enumerate(documents):
         meta = dict(doc.metadata)
         # Keep existing value if present; otherwise assign a deterministic 1-based index.
         meta.setdefault("page_index", i + 1)
@@ -1097,20 +1097,6 @@ def _materialize_local_images_for_preview(
     return documents
 
 
-def _compute_chunk_coverage_metrics_from_ranges(
-    ranges: list[tuple[int, int]], *, total_characters: int
-) -> dict[str, float | int]:
-    """
-    Compute coverage/overlap signals from chunk start/end ranges.
-
-    Same semantics as `_compute_chunk_coverage_metrics`, but avoids requiring `ChunkPreviewItem`
-    objects when callers only need lightweight stats (e.g. auto-tune).
-    """
-    from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
-
-    return compute_chunk_coverage_metrics_from_ranges(ranges, total_characters=total_characters)
-
-
 def _chunk_histogram_step(max_value: int, *, unit: Literal["chars", "tokens"], target_bins: int) -> int:
     bins = max(3, min(12, target_bins or 8))
     base = 25 if unit == "tokens" else 50
@@ -1174,7 +1160,7 @@ def _chunk_preview_item_key(chunk: ChunkPreviewItem) -> tuple[int, int, int]:
 def _chunk_preview_analysis_items(
     chunk_items: list[ChunkPreviewItem], *, strategy: str
 ) -> tuple[list[ChunkPreviewItem], Literal["all", "child"]]:
-    analysis = list(chunk_items or [])
+    analysis = list(chunk_items)
     if strategy != "parent_child":
         return analysis, "all"
 
@@ -1223,7 +1209,7 @@ def _chunk_preview_length_for_short_signal(chunk: ChunkPreviewItem, *, unit: Lit
 def _collect_short_chunk_indices(chunk_items: list[ChunkPreviewItem], *, unit: Literal["chars", "tokens"]) -> set[int]:
     threshold = 40 if unit == "tokens" else 120
     out: set[int] = set()
-    for chunk in chunk_items or []:
+    for chunk in chunk_items:
         idx = chunk.index
         length = _chunk_preview_length_for_short_signal(chunk, unit=unit)
         if idx >= 0 and 0 < length < threshold:
@@ -1234,7 +1220,7 @@ def _collect_short_chunk_indices(chunk_items: list[ChunkPreviewItem], *, unit: L
 def _collect_duplicate_chunk_indices(chunk_items: list[ChunkPreviewItem]) -> set[int]:
     duplicate_indices: set[int] = set()
     seen: dict[str, int] = {}
-    for chunk in chunk_items or []:
+    for chunk in chunk_items:
         idx = chunk.index
         if idx < 0:
             continue
@@ -1293,59 +1279,6 @@ def _chunk_preview_stats_dict(stats: ChunkPreviewStats) -> dict[str, float | int
     }
 
 
-def _chunk_preview_quality_reason(raw: object) -> ChunkPreviewQualityReason | None:
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return ChunkPreviewQualityReason(
-            code=raw["code"][:80],
-            severity=str(raw.get("severity") or "info"),  # type: ignore[arg-type]
-            message=raw["message"][:200],
-            meta=dict(raw.get("meta") or {}),
-        )
-    except Exception:
-        return None
-
-
-def _chunk_preview_quality_reasons(gate_raw: object) -> list[ChunkPreviewQualityReason]:
-    raw_items = gate_raw.get("reason_items") if isinstance(gate_raw, dict) else []
-    out: list[ChunkPreviewQualityReason] = []
-    for raw in raw_items or []:
-        item = _chunk_preview_quality_reason(raw)
-        if item is not None:
-            out.append(item)
-    return out
-
-
-def _chunk_preview_recommendation_patch(raw: object) -> ChunkPreviewRecommendationPatch | None:
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return ChunkPreviewRecommendationPatch(
-            id=raw["id"][:80],
-            title=raw["title"][:120],
-            description=raw["description"][:400],
-            target=str(raw.get("target") or "preview"),  # type: ignore[arg-type]
-            patch=dict(raw.get("patch") or {}),
-        )
-    except Exception:
-        return None
-
-
-def _chunk_preview_recommendation_patches(patches_raw: object) -> list[ChunkPreviewRecommendationPatch]:
-    out: list[ChunkPreviewRecommendationPatch] = []
-    for raw in patches_raw or []:
-        patch = _chunk_preview_recommendation_patch(raw)
-        if patch is not None:
-            out.append(patch)
-    return out
-
-
-def _chunk_preview_legacy_reasons(gate_raw: object) -> list[str]:
-    reasons = gate_raw.get("reasons") if isinstance(gate_raw, dict) else []
-    return [str(reason) for reason in reasons] if isinstance(reasons, list) else []
-
-
 def _compute_chunk_preview_quality(
     *,
     stats: ChunkPreviewStats,
@@ -1375,14 +1308,12 @@ def _compute_chunk_preview_quality(
         original_text_max_chars=original_text_max_chars,
     )
 
-    grade = str(gate_raw.get("grade") if isinstance(gate_raw, dict) else "pass") or "pass"
-
     return (
         ChunkPreviewQualityGate(
-            grade=grade,
-            reasons=_chunk_preview_legacy_reasons(gate_raw)[:10],
-            reason_items=_chunk_preview_quality_reasons(gate_raw)[:10],
+            grade=gate_raw["grade"],
+            reasons=gate_raw["reasons"][:10],
+            reason_items=[ChunkPreviewQualityReason(**item) for item in gate_raw["reason_items"][:10]],
         ),
-        list(recs or [])[:10],
-        _chunk_preview_recommendation_patches(patches_raw)[:10],
+        recs[:10],
+        [ChunkPreviewRecommendationPatch(**patch) for patch in patches_raw[:10]],
     )

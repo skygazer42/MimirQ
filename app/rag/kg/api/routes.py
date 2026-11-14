@@ -14,18 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-# Names split into app.rag.kg.api.routes_support are re-imported below so that
-# every pre-split reference (``app.rag.kg.api.routes.<name>``) keeps working.
-# Private module handles keep facade-only bindings explicit and lint-clean.
-import app.rag.kg.api.routes_support.common as _common_support
-import app.rag.kg.api.routes_support.extraction as _extraction_support
-import app.rag.kg.api.routes_support.merge_alias as _merge_alias_support
-import app.rag.kg.api.routes_support.projection as _projection_support
-import app.rag.kg.api.routes_support.schemas as _schemas_support
-import app.rag.kg.api.routes_support.undo as _undo_support
-import app.rag.kg.schemas as _kg_schemas
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies import get_current_account_id, get_tenant_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
@@ -125,66 +114,6 @@ from app.services.document_access import filter_allowed_document_ids
 if TYPE_CHECKING:
     from app.rag.kg.models import KgEntity, KgEntityResolutionAction, KgEventEntity, KgRelation, KgSourceEvent
     from app.rag.kg.schemas import KGGraphLink
-
-KG_EXTRACTION_ALREADY_QUEUED_DETAIL = _common_support.KG_EXTRACTION_ALREADY_QUEUED_DETAIL
-KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL = _common_support.KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL
-
-_default_prompt_template_id = _extraction_support._default_prompt_template_id
-_document_kg_python_plugin = _extraction_support._document_kg_python_plugin
-_selected_extraction_pipeline_hash = _extraction_support._selected_extraction_pipeline_hash
-
-_alias_suggestion_item = _merge_alias_support._alias_suggestion_item
-_delete_duplicate_target_assocs = _merge_alias_support._delete_duplicate_target_assocs
-_merge_duplicate_assoc_fields = _merge_alias_support._merge_duplicate_assoc_fields
-_score_alias_candidates = _merge_alias_support._score_alias_candidates
-_target_assoc_to_keep = _merge_alias_support._target_assoc_to_keep
-_vector_alias_suggestion_item = _merge_alias_support._vector_alias_suggestion_item
-
-_active_pipeline_hash_expr = _projection_support._active_pipeline_hash_expr
-_add_kg_entity_cooccurrence_links = _projection_support._add_kg_entity_cooccurrence_links
-_append_relation_links = _projection_support._append_relation_links
-_apply_relation_pipeline_scope = _projection_support._apply_relation_pipeline_scope
-_chunk_matches_pipeline = _projection_support._chunk_matches_pipeline
-_dict_list = _projection_support._dict_list
-_doc_pipeline_hash = _projection_support._doc_pipeline_hash
-_event_entity_nodes_and_links = _projection_support._event_entity_nodes_and_links
-_event_entity_snapshot = _projection_support._event_entity_snapshot
-_event_ids_for_center_entity = _projection_support._event_ids_for_center_entity
-_kg_allowed_entities = _projection_support._kg_allowed_entities
-_kg_entity_cooccurrence_counts = _projection_support._kg_entity_cooccurrence_counts
-_kg_entity_node = _projection_support._kg_entity_node
-_kg_event_degrees = _projection_support._kg_event_degrees
-_kg_event_entity_link = _projection_support._kg_event_entity_link
-_kg_event_entity_rows = _projection_support._kg_event_entity_rows
-_kg_event_node = _projection_support._kg_event_node
-_kg_limit_value = _projection_support._kg_limit_value
-_kg_relation_link = _projection_support._kg_relation_link
-_load_events_by_ids = _projection_support._load_events_by_ids
-_related_event_ids_for_center_event = _projection_support._related_event_ids_for_center_event
-_relation_snapshot = _projection_support._relation_snapshot
-_uuid_list = _projection_support._uuid_list
-_uuid_or_none = _projection_support._uuid_or_none
-
-KGExtractionEffectiveOptions = _schemas_support.KGExtractionEffectiveOptions
-KGGraphBuildResult = _schemas_support.KGGraphBuildResult
-KGGraphProjectionLimits = _schemas_support.KGGraphProjectionLimits
-KGMergeAffectedRows = _schemas_support.KGMergeAffectedRows
-KGMergeSideEffects = _schemas_support.KGMergeSideEffects
-KGMergeTargets = _schemas_support.KGMergeTargets
-KGUndoStats = _schemas_support.KGUndoStats
-KGEntityAliasSuggestionItem = _kg_schemas.KGEntityAliasSuggestionItem
-
-_delete_orphan_split_entity = _undo_support._delete_orphan_split_entity
-_dict_or_none = _undo_support._dict_or_none
-_limited_optional_str = _undo_support._limited_optional_str
-_remove_merge_redirect = _undo_support._remove_merge_redirect
-_restore_deleted_assoc_rows = _undo_support._restore_deleted_assoc_rows
-_restore_deleted_relation_rows = _undo_support._restore_deleted_relation_rows
-_restore_source_entity_vector_if_needed = _undo_support._restore_source_entity_vector_if_needed
-_restore_split_relations = _undo_support._restore_split_relations
-_restore_updated_assocs = _undo_support._restore_updated_assocs
-_restore_updated_relations = _undo_support._restore_updated_relations
-_restored_relation_row_payload = _undo_support._restored_relation_row_payload
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -1774,14 +1703,14 @@ def preview_kg_entity_merge(
             "target_event_entity_edges": len(target_assocs),
             "overlap_events": len(overlap_events),
             "source_relations": len(rel_by_id),
-            "self_relations_removed": int(self_rel_after),
+            "self_relations_removed": self_rel_after,
             # Preview details (bounded) for UI conflict resolution workflows.
             "source_events": len(source_event_ids),
             "source_event_ids_sample": source_event_sample,
             "overlap_event_ids_sample": overlap_event_sample,
             # Merge semantics: overlapping events will trigger a dedupe delete of the source association.
             "event_entity_edges_deleted": len(overlap_events),
-            "event_entity_edges_updated": int(max(0, len(source_assocs) - len(overlap_events))),
+            "event_entity_edges_updated": max(0, len(source_assocs) - len(overlap_events)),
         },
     )
 
@@ -2078,8 +2007,8 @@ def merge_kg_entities(
     payload_dict = dict(action.payload or {})
     payload_dict["event_entity_deleted_rows"] = deleted_assoc_rows
     payload_dict["relation_deleted_rows"] = relation_deleted_rows
-    payload_dict["redirect_created"] = bool(redirect_created)
-    payload_dict["vector_deleted"] = bool(vector_deleted)
+    payload_dict["redirect_created"] = redirect_created
+    payload_dict["vector_deleted"] = vector_deleted
     action.payload = payload_dict
 
     _commit_or_rollback(db)
@@ -2093,8 +2022,8 @@ def merge_kg_entities(
             "source_relations": len(affected.source_relations),
             "dedup_deleted_event_entity_edges": len(deleted_assoc_rows),
             "deleted_relations": len(relation_deleted_rows),
-            "redirect_created": bool(redirect_created),
-            "vector_deleted": bool(vector_deleted),
+            "redirect_created": redirect_created,
+            "vector_deleted": vector_deleted,
         },
     )
 
@@ -2421,7 +2350,7 @@ def delete_kg_for_document(
 
         details: dict[str, Any] = {
             "document_id": str(document_id),
-            "prune_orphan_entities": bool(eff_prune_orphans),
+            "prune_orphan_entities": eff_prune_orphans,
         }
         if isinstance(stats, dict):
             for k, v in stats.items():

@@ -57,7 +57,7 @@ def canonicalize_url(url: str, *, strip_tracking: bool = True) -> str:
 
     try:
         parts = urlsplit(raw)
-    except Exception:
+    except ValueError:
         return raw
 
     if parts.scheme not in {"http", "https"}:

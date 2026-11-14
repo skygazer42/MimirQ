@@ -113,19 +113,16 @@ def _normalize_meta_value(value: Any) -> Any:
 
 
 def _fingerprint_candidate_entry(candidate: RerankCandidate) -> dict[str, Any] | None:
-    if candidate is None:
-        return None
     cid = candidate.id.strip()
     if not cid:
         return None
     meta = candidate.metadata
-    meta = meta if isinstance(meta, dict) else {}
 
     entry: dict[str, Any] = {"id": cid}
     for key in _META_KEYS_SORTED:
         if key not in meta:
             continue
-        nv = _normalize_meta_value(meta.get(key))
+        nv = _normalize_meta_value(meta[key])
         if nv is None:
             continue
         entry[key] = nv
@@ -300,7 +297,7 @@ def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
         payload = _get_cached_payload_from_redis(key)
     else:
         payload = _CACHE.get(key)
-    if not isinstance(payload, dict):
+    if payload is None:
         return None
 
     ordered = payload.get("ordered_ids")
@@ -337,11 +334,11 @@ def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
 
 
 def set_cached_evidence_post_rerank_result(key: str, result: RerankResult) -> bool:
-    if not key or result is None:
+    if not key:
         return False
     payload: dict[str, Any] = {
-        "ordered_ids": list(result.ordered_ids or []),
-        "score_map": dict(result.score_map or {}),
+        "ordered_ids": list(result.ordered_ids),
+        "score_map": dict(result.score_map),
         "provider": result.provider,
         "model_used": result.model_used,
         "schema": "mimirq.rerank_result_cache_item.v1",

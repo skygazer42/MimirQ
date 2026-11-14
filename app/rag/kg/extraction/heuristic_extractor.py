@@ -162,7 +162,7 @@ def _entity_type(name: str) -> str:
     upper = value.upper()
     if re.fullmatch(r"RFC\s?-?\d{3,5}", value, flags=re.IGNORECASE):
         return "standard"
-    if upper in {"IETF", "Mozilla", "Fastly", "OpenAI", "Alibaba", "DashScope"}:
+    if upper in {"IETF", "MOZILLA", "FASTLY", "OPENAI", "ALIBABA", "DASHSCOPE"}:
         return "organization"
     if upper in {"QUIC", "HTTP", "HTTP/3", "TLS", "TCP", "UDP", "API", "RAG", "KG", "OCR"}:
         return "protocol"

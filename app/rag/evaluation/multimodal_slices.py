@@ -167,9 +167,6 @@ def summarize_multimodal_regression_slices(eval_items: list[dict[str, Any]]) -> 
         meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}
         raw_slice = meta.get("golden_multimodal_slice") or meta.get("slice_modality") or "text"
         slice_key = _normalize_slice(raw_slice) or "text"
-        if slice_key not in counts:
-            slice_key = "text"
-
         counts[slice_key] += 1
         contexts = _as_list(item.get("retrieved_contexts"))
         citations = _as_list(item.get("citations"))

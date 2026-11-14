@@ -55,10 +55,10 @@ class PrometheusMiddleware:
 
     def __init__(self, app: ASGIApp, *, exclude_paths: Iterable[str] | None = None) -> None:
         self.app = app
-        self.exclude_paths = set(exclude_paths or [])
+        self.exclude_paths = set() if exclude_paths is None else set(exclude_paths)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http":
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
@@ -75,8 +75,8 @@ class PrometheusMiddleware:
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status_code
-            if message.get("type") == "http.response.start":
-                status_code = int(message.get("status") or 500)
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
             await send(message)
 
         try:

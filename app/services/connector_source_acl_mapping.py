@@ -9,8 +9,8 @@ This module is intentionally connector-agnostic. Individual connectors are expec
 
 from uuid import UUID
 
-from app.api.schemas.connector_acl import ConnectorSourceAclConfig, SourceAcl
-from app.api.schemas.document import DocumentAccessUpdateRequest
+from app.api.schemas.documents import DocumentAccessUpdateRequest
+from app.api.schemas.sources import ConnectorSourceAclConfig, SourceAcl
 
 
 def _build_group_mapping_index(config: ConnectorSourceAclConfig) -> dict[str, set[UUID]]:

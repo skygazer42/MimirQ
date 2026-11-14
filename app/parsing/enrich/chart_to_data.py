@@ -10,10 +10,9 @@ from urllib.parse import unquote, urlparse
 import httpx
 
 from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
+from app.parsing.enrich.image_references import extract_html_images as _extract_html_imgs
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-_HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
-_HTML_IMG_ATTR_RE = re.compile(r"(src|alt)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 _MINIO_URL_HINT = "/api/v1/documents/image-url/"
 _CHART_HINT_RE = re.compile(r"\b(chart|plot|graph|bar|line|pie|trend)\b", re.IGNORECASE)
@@ -21,10 +20,7 @@ CHART_DATA_SCHEMA_V1 = "mimirq.chart_data.v1"
 
 
 def _stable_json(value: Any) -> str:
-    try:
-        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
-    except Exception:
-        return str(value)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def _stable_hash(*parts: Any, length: int = 24) -> str:
@@ -44,7 +40,7 @@ def _coerce_confidence(value: Any) -> float | None:
         if value is None:
             return None
         out = float(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
     if out < 0:
         return 0.0
@@ -86,25 +82,6 @@ def build_chart_data_v1_payload(
     return out
 
 
-def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    return [(alt, src) for alt, src in _MD_IMAGE_RE.findall(line)]
-
-
-def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line):
-        alt = ""
-        src = ""
-        for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = key.strip().lower()
-            if k == "alt":
-                alt = val
-            elif k == "src":
-                src = val
-        out.append((alt, src))
-    return out
-
-
 def _is_chart_candidate(*, alt: str, src: str) -> bool:
     hint = f"{alt} {src}".strip()
     return bool(hint and _CHART_HINT_RE.search(hint))
@@ -114,12 +91,10 @@ def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
     resolved_ref = raw
     if raw.lower().startswith("file://"):
         parsed = urlparse(raw)
-        if str(parsed.scheme).lower() != "file":
-            return None, "unsupported_scheme"
-        netloc = str(parsed.netloc).strip().lower()
+        netloc = parsed.netloc.strip().lower()
         if netloc and netloc not in {"localhost", "127.0.0.1"}:
             return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path))
+        resolved_ref = unquote(parsed.path)
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):
             resolved_ref = resolved_ref[1:]
         return resolved_ref, None
@@ -144,7 +119,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
 
     try:
         path_obj.relative_to(base_dir_resolved)
-    except Exception:
+    except ValueError:
         return None, "path_outside_origin"
     if not path_obj.exists() or not path_obj.is_file():
         return None, "missing_file"
@@ -156,7 +131,7 @@ def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | 
         if int(path_obj.stat().st_size) > int(max_bytes):
             return None, "too_large"
         data = path_obj.read_bytes()
-    except Exception:
+    except (OSError, ValueError):
         return None, "read_failed"
     if len(data) > int(max_bytes):
         return None, "too_large"
@@ -186,22 +161,21 @@ async def _call_chart_backend_async(
     filename: str,
     timeout_sec: float,
 ) -> tuple[dict[str, Any] | None, str]:
-    timeout = float(timeout_sec)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout_sec) as client:
         try:
             resp = await client.post(
-                str(api_url).strip(),
+                api_url,
                 files={"file": (filename or "chart.png", image_bytes, "application/octet-stream")},
             )
-        except Exception as exc:  # noqa: BLE001
+        except httpx.RequestError as exc:
             return None, f"http_failed:{exc.__class__.__name__}"
 
-        if int(resp.status_code) >= 400:
-            return None, f"http_{int(resp.status_code)}"
+        if resp.status_code >= 400:
+            return None, f"http_{resp.status_code}"
 
         try:
             data = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except ValueError as exc:
             return None, f"parse_failed:{exc.__class__.__name__}"
         if isinstance(data, dict):
             return data, "ok_json"
@@ -249,10 +223,6 @@ class ChartToDataAudit:
         }
 
 
-def _iter_line_images(line: str) -> list[tuple[str, str]]:
-    return _extract_md_images(line) + _extract_html_imgs(line)
-
-
 def _extract_chart_payload(
     *,
     alt: str,
@@ -267,7 +237,7 @@ def _extract_chart_payload(
     image_bytes, _ = _safe_read_local_image_bytes(
         src=src,
         origin_path=origin_path,
-        max_bytes=int(max_image_bytes or 0),
+        max_bytes=max_image_bytes,
     )
     if image_bytes is None:
         return None, "", 0, 0
@@ -275,7 +245,7 @@ def _extract_chart_payload(
         api_url=api_url,
         image_bytes=image_bytes,
         filename=Path(src).name or "chart.png",
-        timeout_sec=float(timeout_sec or 20.0),
+        timeout_sec=timeout_sec,
     )
     if not payload:
         return None, backend_status, 1, 0
@@ -342,6 +312,9 @@ def add_chart_data_blocks(
         )
 
     t0 = time.perf_counter()
+    image_limit = max(0, int(max_images or 0))
+    image_byte_limit = int(max_image_bytes or 0)
+    request_timeout = float(timeout_sec or 20.0)
     out_lines: list[str] = []
     in_fence = False
     charts_added = 0
@@ -355,19 +328,19 @@ def add_chart_data_blocks(
             out_lines.append(line)
             continue
         out_lines.append(line)
-        if in_fence or charts_added >= max(0, int(max_images or 0)):
+        if in_fence or charts_added >= image_limit:
             continue
 
-        for alt, src in _iter_line_images(line):
-            if charts_added >= max(0, int(max_images or 0)):
+        for alt, src in _MD_IMAGE_RE.findall(line) + _extract_html_imgs(line):
+            if charts_added >= image_limit:
                 break
             chart_payload, backend_status, attempted, succeeded = _extract_chart_payload(
                 alt=alt,
                 src=src,
                 origin_path=origin_path,
-                max_image_bytes=int(max_image_bytes or 0),
+                max_image_bytes=image_byte_limit,
                 api_url=api_url,
-                timeout_sec=float(timeout_sec or 20.0),
+                timeout_sec=request_timeout,
             )
             images_attempted += attempted
             images_succeeded += succeeded

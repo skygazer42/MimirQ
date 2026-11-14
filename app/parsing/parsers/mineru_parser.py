@@ -15,6 +15,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from langchain_core.documents import Document
+
 from app.core.config import settings
 from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
 from app.services.mineru_service import mineru_service
@@ -31,25 +33,26 @@ class MinerUParser(BaseAdvancedParser):
     """
 
     def __init__(self):
-        api = settings.MINERU_LOCAL_SERVER_URL.strip()
-        self._api = api.rstrip("/") if api else ""
-
-        server_url = settings.MINERU_VL_SERVER.strip()
-        self._server_url = server_url.rstrip("/") if server_url else ""
+        self._api = settings.MINERU_LOCAL_SERVER_URL.strip().rstrip("/")
+        self._server_url = settings.MINERU_VL_SERVER.strip().rstrip("/")
         super().__init__()
 
     def _get_parser_name(self) -> str:
         return "mineru"
 
-    def _create_parser(self) -> Any:
-
+    def _create_parser(self) -> DeepDocMinerUParser:
         return DeepDocMinerUParser(mineru_api=self._api, mineru_server_url=self._server_url)
 
-    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
+    def _check_parser_installation(self, parser: DeepDocMinerUParser) -> tuple[bool, str]:
         return parser.check_installation()
 
     def _call_parse_method(
-        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
+        self,
+        parser: DeepDocMinerUParser,
+        file_path: Path,
+        binary: bytes | None,
+        callback: Callable[[float, str], None],
+        **kwargs: Any,
     ) -> tuple[list, list]:
         return parser.parse_pdf(
             filepath=str(file_path),
@@ -61,16 +64,16 @@ class MinerUParser(BaseAdvancedParser):
             **kwargs,
         )
 
-    def parse(self, file_path: Path, **kwargs) -> list:
+    def parse(self, file_path: Path, **kwargs: Any) -> list[Document]:
         """
         Prefer the project's MinerU integrations when configured:
-        - Local ZIP mode: MINERU_LOCAL_SERVER_URL (+ optional MINERU_VL_SERVER). When dataset/document ids
-          are provided, we parse via `MinerUService.parse_file_local()` so images can be uploaded to MinIO.
+        - Local ZIP mode: MINERU_LOCAL_SERVER_URL (+ optional MINERU_VL_SERVER). Parse via
+          `MinerUService.parse_file_local()`; dataset/document ids allow images to be uploaded to MinIO.
         - Online API mode: MINERU_API_TOKEN. When no local API server is configured, we parse via
           `MinerUService.parse_file()`.
 
-        Fallback to DeepDoc's MinerU adapter when a local API server is configured but we cannot use the
-        ZIP->MinIO path (e.g. preview endpoints without ids).
+        Fall back to DeepDoc's MinerU adapter if the local ZIP integration fails or neither service mode
+        is configured.
         """
         file_path = Path(file_path)
         self._validate_file(file_path)

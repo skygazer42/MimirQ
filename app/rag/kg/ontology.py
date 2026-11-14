@@ -66,7 +66,7 @@ def resolve_allowed_predicates(
     raw = str(raw_override or "").strip()
     if raw:
         parts = [p.strip() for p in raw.replace("\r\n", "\n").split("\n") for p in p.split(",")]
-        cleaned = [p for p in (x.strip() for x in parts) if p]
+        cleaned = [p for p in parts if p]
         if cleaned:
             return cleaned
 

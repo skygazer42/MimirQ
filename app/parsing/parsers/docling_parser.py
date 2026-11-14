@@ -30,7 +30,6 @@ from .base_parser import BaseAdvancedParser
 logger = get_logger(__name__)
 
 # Configuration
-DOCLING_ENABLED = settings.DOCLING_ENABLED
 DOCLING_OCR_ENABLED = settings.DOCLING_OCR_ENABLED
 _DEFAULT_TABLE_MODE = "markdown"
 _DEFAULT_EXTRACT_IMAGES = False
@@ -53,7 +52,9 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
     else:
         out.setdefault("element_kind", "paragraph")
     out.setdefault("element_text", text)
-    attrs = out.get("element_attributes") if isinstance(out.get("element_attributes"), dict) else {}
+    attrs = out.get("element_attributes")
+    if not isinstance(attrs, dict):
+        attrs = {}
     attrs.setdefault("source_content_type", out.get("content_type"))
     attrs.setdefault("source_doc_type", out.get("doc_type_kwd"))
 
@@ -106,19 +107,17 @@ class _TableParser(HTMLParser):
         self.rows: list[list[str]] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[override]
-        t = (tag).lower()
-        if t == "tr":
+        if tag == "tr":
             self._in_row = True
             self._cell_buf = []
-        elif t in {"td", "th"}:
+        elif tag in {"td", "th"}:
             self._in_cell = True
             self._cell_buf.append("")
 
     def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
-        t = (tag).lower()
-        if t in {"td", "th"}:
+        if tag in {"td", "th"}:
             self._in_cell = False
-        elif t == "tr":
+        elif tag == "tr":
             if self._in_row and self._cell_buf:
                 self.rows.append([c.strip() for c in self._cell_buf])
             self._in_row = False
@@ -130,8 +129,7 @@ class _TableParser(HTMLParser):
         text = re.sub(r"\s+", " ", data).strip()
         if not text:
             return
-        idx = len(self._cell_buf) - 1
-        self._cell_buf[idx] = (self._cell_buf[idx] + " " + text).strip()
+        self._cell_buf[-1] = (self._cell_buf[-1] + " " + text).strip()
 
 
 def _html_table_to_markdown(table_html: str) -> str:
@@ -163,24 +161,17 @@ def _html_table_to_markdown(table_html: str) -> str:
 
 
 def _convert_table_content(text: str, *, mode: str) -> str:
-    mode = (mode or "markdown").strip().lower()
-    if not text:
-        return ""
-    lowered = text.lower()
-    if "<table" not in lowered:
-        return text
-
-    if mode == "html":
+    if mode == "html" or "<table" not in text.lower():
         return text
     if mode == "plain":
         stripped = re.sub(r"<[^>]+>", " ", text)
         return re.sub(r"\s+", " ", _html.unescape(stripped)).strip()
 
     # markdown: convert all tables found, join with blank lines.
-    tables = list(re.finditer(r"(?is)<table\\b.*?</table>", text))
+    tables = list(re.finditer(r"(?is)<table\b.*?</table>", text))
     if not tables:
         return _html_table_to_markdown(text)
-    converted = [_html_table_to_markdown(m.group(0)) for m in tables if m.group(0)]
+    converted = [_html_table_to_markdown(m.group(0)) for m in tables]
     return "\n\n".join([c for c in converted if c.strip()]).strip() or text
 
 
@@ -219,13 +210,12 @@ class DoclingParser(BaseAdvancedParser):
     def _get_parser_name(self) -> str:
         return "docling"
 
-    def _create_parser(self) -> Any:
+    def _create_parser(self) -> DoclingServiceParser:
         return DoclingServiceParser(ocr_enabled=self.ocr_enabled)
 
-    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
+    def _check_parser_installation(self, parser: DoclingServiceParser) -> tuple[bool, str]:
         ok = parser.check_installation()
-        reason = str(getattr(parser, "unavailable_reason", "") or "Docling service unavailable")
-        return (ok, "" if ok else reason)
+        return ok, "" if ok else parser.unavailable_reason
 
     def _call_parse_method(
         self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
@@ -246,15 +236,7 @@ class DoclingParser(BaseAdvancedParser):
             content_type = content_type.lower()
         meta = _apply_element_hints(meta, text=content)
         if content_type == "table":
-            converted = _convert_table_content(content, mode=self.table_mode)
-            if converted != content:
-                return [
-                    Document(
-                        page_content=converted,
-                        metadata=_apply_element_hints(meta, text=converted),
-                        id=doc.id,
-                    )
-                ]
+            content = _convert_table_content(content, mode=self.table_mode)
         return [Document(page_content=content, metadata=meta, id=doc.id)]
 
     def parse(self, file_path: Path, **kwargs) -> list[Document]:

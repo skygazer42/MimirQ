@@ -58,14 +58,7 @@ def _extract_markdown_from_payload(data: Any) -> str:
             if isinstance(value, str) and value.strip():
                 return value
     strings = _collect_markdown_like_strings(result)
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for item in strings:
-        if item in seen:
-            continue
-        seen.add(item)
-        deduped.append(item)
-    return "\n\n".join(s.strip() for s in deduped if s.strip()).strip()
+    return "\n\n".join(item.strip() for item in dict.fromkeys(strings))
 
 
 def _extract_error_message(data: Any) -> str:
@@ -165,7 +158,7 @@ class TextInParser:
         logger.info("[textin] parsing %s", file_path.name)
 
         resp = self._post_binary(file_path=file_path)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
+        if resp.status_code != 200:
             raise RuntimeError(f"TextIn API error {resp.status_code}: {(resp.text)[:500]}")
 
         try:

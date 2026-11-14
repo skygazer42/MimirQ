@@ -3,12 +3,10 @@
 from collections.abc import Callable
 from typing import Any
 
-from app.services.dify_integration.common import _first_nonempty_str
-
 from app.services.dify_integration.common import (
     _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
 )
-from app.services.dify_integration.common import _DEFAULT_RESPONSE_HINT_SOURCE_PREFIX
+from app.services.dify_integration.common import _DEFAULT_RESPONSE_HINT_SOURCE_PREFIX, _first_nonempty_str
 from app.services.dify_integration.common import _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS
 from app.services.dify_integration.common import _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS
 from app.services.dify_integration.common import _metadata_terms as _metadata_terms
@@ -140,7 +138,6 @@ def _add_metadata_answer_field_spec_highlights(
         _add_metadata_answer_dict_field_spec_highlights(
             source,
             field_spec=field_spec,
-            metadata_key=metadata_key,
             max_chars=max_chars,
             query=query,
             policy_plugin_refs=policy_plugin_refs,
@@ -158,13 +155,11 @@ def _add_metadata_answer_dict_field_spec_highlights(
     source: dict[str, Any],
     *,
     field_spec: dict[str, Any],
-    metadata_key: str,
     max_chars: int,
     query: str,
     policy_plugin_refs: tuple[str, ...],
     add: Callable[[str], None],
 ) -> None:
-    del metadata_key
     labels = field_spec.get("labels") if isinstance(field_spec.get("labels"), dict) else {}
     ordered_fields = _prioritized_response_hint_metadata_fields(
         _response_hint_metadata_fields(field_spec),
@@ -278,7 +273,6 @@ def _requested_fast_response_labels(
     )
     for label, markers in rules:
         if label in exact_labels or _fast_response_rule_is_shadowed(
-            label,
             markers=markers,
             query_text=query_text,
             normalized_exact_labels=normalized_exact_labels,
@@ -307,13 +301,11 @@ def _requested_fast_response_exact_labels(
 
 
 def _fast_response_rule_is_shadowed(
-    label: str,
     *,
     markers: tuple[str, ...],
     query_text: str,
     normalized_exact_labels: tuple[str, ...],
 ) -> bool:
-    del label
     matched_markers = tuple(marker for marker in markers if marker in query_text)
     if not matched_markers:
         return True

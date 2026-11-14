@@ -379,7 +379,9 @@ def _collect_citation_records(citations: Any) -> tuple[list[CitationRecord], lis
             continue
         chunk_id = _coerce_uuid(payload.get("chunk_id"))
         document_id = _coerce_uuid(payload.get("document_id"))
-        raw_text = next((payload[key] for key in ("chunk_content", "quote", "text") if payload.get(key) is not None), None)
+        raw_text = next(
+            (payload[key] for key in ("chunk_content", "quote", "text") if payload.get(key) is not None), None
+        )
         fallback_text = str(raw_text).strip() if raw_text is not None else None
         records.append(
             CitationRecord(
@@ -593,7 +595,7 @@ def _compact_chunk_metadata_for_regression(raw_metadata: Any) -> dict[str, Any]:
         view = raw_metadata.get(view_key)
         if not isinstance(view, dict):
             continue
-        view_copy = _json_safe(dict(view))
+        view_copy = _json_safe(view)
         out[view_key] = view_copy
         for key, value in view_copy.items():
             if key not in out:
@@ -601,7 +603,7 @@ def _compact_chunk_metadata_for_regression(raw_metadata: Any) -> dict[str, Any]:
 
     for key in _REGRESSION_CITATION_METADATA_SCALAR_KEYS:
         if key in raw_metadata and key not in out:
-            out[key] = _json_safe(raw_metadata.get(key))
+            out[key] = _json_safe(raw_metadata[key])
 
     return out
 
@@ -731,7 +733,7 @@ def _update_answer_quality_faithfulness_summary(
         return
     out["faithfulness_det"] = faith_det
     out["atomic_faithfulness"] = faith_det
-    out["hallucination_rate"] = round(1.0 - float(faith_det), 4)
+    out["hallucination_rate"] = round(1.0 - faith_det, 4)
     out["faithfulness"] = faith_det
 
 
@@ -774,7 +776,7 @@ def _build_refusal_quality_summary(metas: list[dict[str, Any]]) -> dict[str, Any
         "refusal_correctness": round(float(correct) / float(labeled), 4),
         "refusal_false_positive_rate": round(float(false_pos) / float(labeled), 4),
         "refusal_false_negative_rate": round(float(false_neg) / float(labeled), 4),
-        "refusal_labeled_items": int(labeled),
+        "refusal_labeled_items": labeled,
     }
 
 
@@ -872,12 +874,12 @@ def _build_regression_slice_summaries(
             summary = _build_retrieval_metrics_summary(items)
             rows.append({"key": bucket, "items": len(items), **summary})
 
-        rows.sort(key=lambda o: (-int(o.get("items") or 0), o["key"]))
+        rows.sort(key=lambda o: (-o["items"], o["key"]))
         truncated = False
         if max_buckets > 0 and len(rows) > max_buckets:
             rows = rows[:max_buckets]
             truncated = True
-        return {"buckets": rows, "truncated": bool(truncated)}
+        return {"buckets": rows, "truncated": truncated}
 
     return {
         "file_type": _bucketize(key="slice_file_type"),
@@ -900,8 +902,8 @@ def _merge_summary_with_regression_gate(
     out = dict(summary or {})
     gate = _build_regression_gate_summary(eval_items)
     # Do not override existing summary keys (e.g. RAGAS metrics like "faithfulness").
-    for k, v in (gate or {}).items():
-        if k in out and out.get(k) is not None:
+    for k, v in gate.items():
+        if k in out and out[k] is not None:
             continue
         out[k] = v
     out["retrieval_slices"] = _build_regression_slice_summaries(eval_items)
@@ -1082,7 +1084,7 @@ def _build_conversation_deterministic_scores(
         scores["faithfulness_det"] = faithfulness_det
         scores["faithfulness"] = faithfulness_det
         scores["atomic_faithfulness"] = faithfulness_det
-        scores["hallucination_rate"] = round(1.0 - float(faithfulness_det), 4)
+        scores["hallucination_rate"] = round(1.0 - faithfulness_det, 4)
 
     response_relevancy_det = _deterministic_response_relevancy(user_input, response)
     if response_relevancy_det is not None:
@@ -1660,7 +1662,7 @@ def run_conversation_ragas_evaluation(
 def _build_regression_run_mode(metric_names: list[str]) -> RegressionRunMode:
     normalized_metric_names = _normalized_metric_names(metric_names)
     metric_split = split_regression_metric_names(normalized_metric_names)
-    retrieval_only = not bool(normalized_metric_names)
+    retrieval_only = not normalized_metric_names
     deterministic_only = (not retrieval_only) and bool(metric_split.deterministic) and not metric_split.ragas
     progress_mode = "retrieval_only" if retrieval_only else ("deterministic_gate" if deterministic_only else "ragas")
     return RegressionRunMode(
@@ -2260,7 +2262,7 @@ def _maybe_attach_llm_judge(
     account_id: str,
     rag_params: dict[str, Any],
 ) -> tuple[dict[str, Any], Any | None, Any | None]:
-    if not bool(use_llm_judge) or retrieval_only:
+    if not use_llm_judge or retrieval_only:
         return {}, None, None
     try:
         shared_llm, shared_embeddings = _build_llm_and_embeddings()
@@ -2292,7 +2294,7 @@ def _replace_regression_items(
     run_id: UUID,
     tenant_id: UUID,
     eval_items: list[dict[str, Any]],
-    score_builder: Any,
+    score_builder: Callable[[dict[str, Any], int], dict[str, Any]],
 ) -> None:
     db.query(RagasRegressionItem).filter(
         RagasRegressionItem.run_id == run_id,
@@ -2344,7 +2346,7 @@ def _apply_judge_only_eval_cost_summary(
     use_llm_judge: bool,
     llm_judge_summary: dict[str, Any],
 ) -> None:
-    if bool(use_llm_judge):
+    if use_llm_judge:
         judge_in = llm_judge_summary.get("llm_judge_tokens_input")
         judge_out = llm_judge_summary.get("llm_judge_tokens_output")
         judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd")
@@ -2505,9 +2507,9 @@ def _apply_combined_eval_cost_summary(
     summary["eval_estimated_cost_usd_ragas"] = (
         round(execution.eval_total_cost, 6) if execution.eval_total_cost is not None else None
     )
-    judge_in = llm_judge_summary.get("llm_judge_tokens_input") if isinstance(llm_judge_summary, dict) else None
-    judge_out = llm_judge_summary.get("llm_judge_tokens_output") if isinstance(llm_judge_summary, dict) else None
-    judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd") if isinstance(llm_judge_summary, dict) else None
+    judge_in = llm_judge_summary.get("llm_judge_tokens_input")
+    judge_out = llm_judge_summary.get("llm_judge_tokens_output")
+    judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd")
     token_in_known = (execution.eval_prompt_tokens is not None) or (judge_in is not None)
     token_out_known = (execution.eval_completion_tokens is not None) or (judge_out is not None)
     cost_known = (execution.eval_total_cost is not None) or (judge_cost is not None)

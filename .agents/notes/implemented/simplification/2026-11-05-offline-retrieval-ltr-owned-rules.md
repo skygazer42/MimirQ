@@ -24,7 +24,7 @@ trace miner 继续持有自己的 JSON／case 规则，因为它没有 HTTP 依�
 
 ## Alternatives considered
 
-采集入口已经持有相同的 JSON／case helper，直接复用能减少更多重复。不过 `app/__init__.py` 执行 LangChain 设置，evaluation 包初始化还导入评估器和 Ragas／benchmark 代码；把当前只有标准库和 httpx 的 ablation 入口接到该链会扩大初始化范围。因此 HTTP 工具选择现有 ablation 所有者，trace miner 保留独立规则。
+采集入口已经持有相同的 JSON／case helper，直接复用能减少更多重复。不过 evaluation 包初始化仍导入评估器和 Ragas／benchmark 代码，把只有标准库和 httpx 的 ablation 入口接到该链会扩大初始化范围。因此 HTTP 工具选择现有 ablation 所有者，trace miner 保留独立规则。根包原有的 LangChain globals 补丁已按固定版本及实际消费者核对退出；这不改变 evaluation 依赖范围较大的取舍。
 
 新建通用 CLI 模块可以集中跨类别 helper，但会引入新的运行时所有者和迁移面。现有所有者已经提供完全相同的实现与足够小的依赖范围，因此直接导入即可。
 

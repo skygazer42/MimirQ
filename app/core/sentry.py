@@ -12,7 +12,7 @@ logger = logging.getLogger("mimirq.sentry")
 
 
 def init_sentry() -> bool:
-    dsn = (settings.SENTRY_DSN).strip()
+    dsn = settings.SENTRY_DSN.strip()
     if not dsn:
         return False
 
@@ -24,7 +24,7 @@ def init_sentry() -> bool:
         sentry_sdk.init(
             dsn=dsn,
             integrations=[FastApiIntegration(), SqlalchemyIntegration()],
-            traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE or 0.0,
+            traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
             send_default_pii=False,
         )
         logger.info("Sentry initialized")

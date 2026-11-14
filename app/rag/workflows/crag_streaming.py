@@ -16,7 +16,7 @@ def classify_retrieval_verdict(
         min_citations=min_citations,
         min_top_score=min_top_score,
     )
-    return str(result.get("verdict") or "incorrect")
+    return result["verdict"]
 
 
 def format_web_search_context_block(search_result: dict[str, Any]) -> str:
@@ -61,7 +61,7 @@ async def run_crag_streaming(
         min_citations=min_citations,
         min_top_score=min_top_score,
     )
-    verdict = str(evaluator.get("verdict") or "incorrect")
+    verdict = evaluator["verdict"]
 
     if not settings.RAG_CRAG_STREAMING_ENABLED or verdict != "incorrect":
         return {

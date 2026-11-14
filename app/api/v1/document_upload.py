@@ -3,63 +3,54 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail, UrlUploadRequest
-from app.api.schemas.document_ingestion import (
-    PipelineOverridesFormFields as PipelineOverridesFormFields,
-)
-from app.api.schemas.document_ingestion import (
-    UploadDocumentFormFields as UploadDocumentFormFields,
-)
-from app.api.schemas.document_ingestion import (
-    UploadDocumentsBatchFormFields as UploadDocumentsBatchFormFields,
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.documents import (
+    DocumentBatchUploadResponse,
+    DocumentDetail,
+    UploadDocumentFormFields,
+    UploadDocumentsBatchFormFields,
+    UrlUploadRequest,
 )
 from app.core.database import get_db
-from app.models.document import Document as DBDocument
+from app.models.document import Document
 from app.services import document_batch_ingestion, document_ingestion
-from app.services.document_ingestion import INGEST_LOCK_UNAVAILABLE_DETAIL as INGEST_LOCK_UNAVAILABLE_DETAIL
-from app.storage.object.minio import minio_service as minio_service
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-    503: {"description": "Service Unavailable"},
-}
-
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(
+    responses={
+        400: {"description": "Bad Request"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+        409: {"description": "Conflict"},
+        416: {"description": "Range Not Satisfiable"},
+        503: {"description": "Service Unavailable"},
+    }
+)
 
 
-@router.post("/upload", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/upload", response_model=DocumentDetail, status_code=201)
 async def upload_document(
     background_tasks: BackgroundTasks,
-    file: Annotated[UploadFile, File(...)],
-    form: Annotated[UploadDocumentFormFields, Depends()],
-    overrides_form: Annotated[PipelineOverridesFormFields, Depends()],
+    form: Annotated[UploadDocumentFormFields, Form(media_type="multipart/form-data")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-) -> DBDocument:
+) -> Document:
     return await document_ingestion.ingest_file(
         background_tasks=background_tasks,
-        file=file,
+        file=form.file,
         form=form,
-        overrides_form=overrides_form,
+        overrides_form=form.to_pipeline_overrides(),
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
     )
 
 
-@router.post("/upload-url", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/upload-url", response_model=DocumentDetail, status_code=201)
 async def upload_document_from_url(
     background_tasks: BackgroundTasks,
     body: UrlUploadRequest,
@@ -67,7 +58,7 @@ async def upload_document_from_url(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-) -> DBDocument:
+) -> Document:
     """
     Fetch a remote URL and ingest it as a document.
 
@@ -85,17 +76,10 @@ async def upload_document_from_url(
     )
 
 
-@router.post(
-    "/upload-batch",
-    response_model=DocumentBatchUploadResponse,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201)
 async def upload_documents_batch(
     background_tasks: BackgroundTasks,
-    files: Annotated[list[UploadFile], File(...)],
-    form: Annotated[UploadDocumentsBatchFormFields, Depends()],
-    overrides_form: Annotated[PipelineOverridesFormFields, Depends()],
+    form: Annotated[UploadDocumentsBatchFormFields, Form(media_type="multipart/form-data")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -103,9 +87,9 @@ async def upload_documents_batch(
 ) -> DocumentBatchUploadResponse:
     return await document_batch_ingestion.ingest_batch(
         background_tasks=background_tasks,
-        files=files,
+        files=form.files,
         form=form,
-        overrides_form=overrides_form,
+        overrides_form=form.to_pipeline_overrides(),
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,

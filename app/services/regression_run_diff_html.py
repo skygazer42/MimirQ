@@ -15,7 +15,7 @@ def _fmt_num(v: Any) -> str:
         return ""
     if isinstance(v, bool):
         return "1" if v else "0"
-    if isinstance(v, int) and not isinstance(v, bool):
+    if isinstance(v, int):
         return str(v)
     if isinstance(v, float):
         return f"{v:.4f}"

@@ -39,11 +39,11 @@ def _doc_key(doc: Document) -> str:
     return f"content:{digest}"
 
 
-def _node_key(meta: dict[str, Any]) -> str:
+def _node_key(meta: dict[str, Any]) -> str | None:
     return _sig(meta.get("hierarchy_node_key") or meta.get("chunk_key") or meta.get("chunk_id"))
 
 
-def _parent_key(meta: dict[str, Any]) -> str:
+def _parent_key(meta: dict[str, Any]) -> str | None:
     # Respect explicit hierarchy_parent_key=None; fall back only when field absent.
     raw = (
         meta.get("hierarchy_parent_key")
@@ -53,15 +53,15 @@ def _parent_key(meta: dict[str, Any]) -> str:
     return _sig(raw)
 
 
-def _prev_key(meta: dict[str, Any]) -> str:
+def _prev_key(meta: dict[str, Any]) -> str | None:
     return _sig(meta.get("hierarchy_prev_sibling_key") or meta.get("prev_chunk_key"))
 
 
-def _next_key(meta: dict[str, Any]) -> str:
+def _next_key(meta: dict[str, Any]) -> str | None:
     return _sig(meta.get("hierarchy_next_sibling_key") or meta.get("next_chunk_key"))
 
 
-def _record_identity_key(meta: dict[str, Any]) -> str:
+def _record_identity_key(meta: dict[str, Any]) -> str | None:
     raw = meta.get("_record_identity") or meta.get("record_identity")
     if not isinstance(raw, dict):
         return ""
@@ -120,7 +120,7 @@ def _fetch_hierarchy_docs(
             cache[key] = value
 
 
-def _anchor_doc_id(doc: Document) -> str:
+def _anchor_doc_id(doc: Document) -> str | None:
     return _sig((getattr(doc, "metadata", None) or {}).get("document_id"))
 
 
@@ -159,9 +159,9 @@ def _collect_parent_chains(
 def _next_parent_key(
     *,
     cache: dict[tuple[str, str], Document],
-    doc_id: str,
+    doc_id: str | None,
     parent_keys: list[str],
-) -> str:
+) -> str | None:
     if not doc_id or not parent_keys:
         return ""
     parent_doc = cache.get((doc_id, parent_keys[-1]))
@@ -201,8 +201,8 @@ def _collect_sibling_chains(
 def _collect_sibling_pending_pairs(
     *,
     anchors: list[Document],
-    current_prev: dict[str, str],
-    current_next: dict[str, str],
+    current_prev: dict[str, str | None],
+    current_next: dict[str, str | None],
     prev_keys_by_anchor: dict[str, list[str]],
     next_keys_by_anchor: dict[str, list[str]],
 ) -> set[tuple[str, str]]:
@@ -227,9 +227,9 @@ def _next_sibling_keys(
     cache: dict[tuple[str, str], Document],
     prev_keys_by_anchor: dict[str, list[str]],
     next_keys_by_anchor: dict[str, list[str]],
-) -> tuple[dict[str, str], dict[str, str]]:
-    next_prev: dict[str, str] = {}
-    next_next: dict[str, str] = {}
+) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    next_prev: dict[str, str | None] = {}
+    next_next: dict[str, str | None] = {}
     for anchor in anchors:
         anchor_key = _doc_key(anchor)
         doc_id = _anchor_doc_id(anchor)
@@ -251,10 +251,10 @@ def _next_sibling_keys(
 def _resolve_sibling_pointer(
     *,
     cache: dict[tuple[str, str], Document],
-    doc_id: str,
+    doc_id: str | None,
     sibling_keys: list[str],
-    pointer_getter: Callable[[dict[str, Any]], str],
-) -> str:
+    pointer_getter: Callable[[dict[str, Any]], str | None],
+) -> str | None:
     if not doc_id or not sibling_keys:
         return ""
     sibling_doc = cache.get((doc_id, sibling_keys[-1]))
@@ -277,7 +277,7 @@ def _add_hierarchy_doc(
     expanded: list[Document],
     seen: set[str],
     original_keys: set[str],
-    doc: Document,
+    doc: Document | None,
     role: str,
     neighbor_of: str | None,
     base_score: float,
@@ -300,7 +300,7 @@ def _add_hierarchy_doc(
     meta["retrieval_role"] = role
     if neighbor_of:
         meta["neighbor_of"] = str(neighbor_of).strip()
-    score = float(base_score) * float(score_scale)
+    score = base_score * score_scale
     meta.setdefault("retrieval_score", score)
     meta["score"] = score
     expanded.append(
@@ -482,15 +482,15 @@ def expand_hierarchy_context(
 
     meta_out = {
         "enabled": True,
-        "parent_depth": int(depth),
-        "sibling_window": int(window),
-        "anchors": int(len(anchors)),
-        "added_docs": int(stats["added"]),
-        "added_parents": int(stats["added_parents"]),
-        "added_siblings": int(stats["added_siblings"]),
-        "skipped_cross_record_siblings": int(stats["skipped_cross_record_siblings"]),
-        "max_added_docs": int(cap),
-        "cache_size": int(len(cache)),
+        "parent_depth": depth,
+        "sibling_window": window,
+        "anchors": len(anchors),
+        "added_docs": stats["added"],
+        "added_parents": stats["added_parents"],
+        "added_siblings": stats["added_siblings"],
+        "skipped_cross_record_siblings": stats["skipped_cross_record_siblings"],
+        "max_added_docs": cap,
+        "cache_size": len(cache),
     }
     return expanded, meta_out
 

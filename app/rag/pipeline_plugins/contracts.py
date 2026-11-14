@@ -378,7 +378,7 @@ def validate_documents_metadata(
         for field in fields:
             if not _stage_applies(field, stage):
                 continue
-            value = meta.get(field.name)
+            value = _value_from_metadata(meta, field.name)
             missing = value is None or value == "" or value == []
             if field.required and missing:
                 errors.append({"index": doc_index, "field": field.name, "reason": "required"})
@@ -973,7 +973,12 @@ def _validate_response_hint_highlight_labels(labels: Any, *, index: int) -> None
             f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].labels must be an object"
         )
     for label_key, label_value in labels.items():
-        if not isinstance(label_key, str) or not label_key.strip() or not isinstance(label_value, str) or not label_value.strip():
+        if (
+            not isinstance(label_key, str)
+            or not label_key.strip()
+            or not isinstance(label_value, str)
+            or not label_value.strip()
+        ):
             raise PipelinePluginContractError(
                 "retrieval_policy.response_hints.answer_highlight_metadata_fields"
                 f"[{index}].labels must map non-empty field names to non-empty strings"
@@ -1133,7 +1138,9 @@ def _validate_response_hint_named_markers(named_markers: Any) -> None:
         raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.named_markers must be an object")
     for raw_key, raw_value in named_markers.items():
         if not isinstance(raw_key, str):
-            raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.named_markers keys must be strings")
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.enumeration.named_markers keys must be strings"
+            )
         key = raw_key.strip()
         if not key:
             raise PipelinePluginContractError(
@@ -1463,6 +1470,8 @@ def validate_retrieval_policy_metadata_fields(
 
 
 def _value_from_metadata(meta: dict[str, Any], key: str) -> Any:
+    if key in meta:
+        return meta[key]
     if "." not in key:
         return meta.get(key)
     cur: Any = meta

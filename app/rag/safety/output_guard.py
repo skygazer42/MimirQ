@@ -41,13 +41,13 @@ class OutputGuard:
             list(context_chunks or []),
         )
         safety_result = await self._safety_guard.guard_agent_response(text)
-        matched_rules = list(sync_result.matched_rules or [])
-        details = dict(sync_result.details or {})
-        score = float(sync_result.score or 0.0)
+        matched_rules = list(sync_result.matched_rules)
+        details = dict(sync_result.details)
+        score = float(sync_result.score)
 
-        if str(safety_result.action or "allow").strip().lower() != "allow":
+        if safety_result.action != "allow":
             matched_rules.append("safety_guard_response")
-            details["safety_guard_action"] = str(safety_result.action or "allow")
+            details["safety_guard_action"] = safety_result.action
             score = min(1.0, max(score, 0.9))
 
         matched_rules = sorted(set(matched_rules))
@@ -62,23 +62,20 @@ class OutputGuard:
         matched: dict[str, float] = {}
         details: dict[str, Any] = {}
 
-        def _record(name: str, score: float) -> None:
-            matched[name] = max(matched.get(name) or 0.0, float(score))
-
         if _PHONE_RE.search(text):
-            _record("pii_phone", 0.72)
+            matched["pii_phone"] = 0.72
         if _ID_CARD_RE.search(text):
-            _record("pii_id_card", 0.9)
+            matched["pii_id_card"] = 0.9
         if _FAKE_CITATION_RE.search(text):
-            _record("citation_fabrication_risk", 0.42)
+            matched["citation_fabrication_risk"] = 0.42
 
         context_text = " ".join(item for item in context_chunks if item.strip())
         if context_text:
-            answer_entities = {item.strip() for item in _CN_ENTITY_RE.findall(text) if len(item.strip()) >= 4}
-            context_entities = {item.strip() for item in _CN_ENTITY_RE.findall(context_text) if len(item.strip()) >= 4}
+            answer_entities = {item for item in _CN_ENTITY_RE.findall(text) if len(item) >= 4}
+            context_entities = {item for item in _CN_ENTITY_RE.findall(context_text) if len(item) >= 4}
             missing = sorted(entity for entity in answer_entities if entity not in context_entities)
             if missing:
-                _record("citation_consistency", 0.41)
+                matched["citation_consistency"] = 0.41
                 details["missing_entities"] = missing[:10]
 
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))

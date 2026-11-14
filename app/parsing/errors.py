@@ -61,7 +61,7 @@ def classify_parser_subprocess_error(exc: Exception) -> ParsingError:
     log_tail_raw = getattr(exc, "log_tail", "")
     log_tail = log_tail_raw if isinstance(log_tail_raw, str) else str(log_tail_raw)
 
-    norm = message.lower().strip()
+    norm = message.lower()
 
     if norm == "worker_timeout":
         return ParsingTimeoutError(message, details=details, log_tail=log_tail)

@@ -28,7 +28,7 @@ class _PathBlock:
 
 _OPENAPI_RE = re.compile(r"(?m)^\s*openapi\s*:\s*(?P<val>[^\s#]+)")
 _SWAGGER_RE = re.compile(r"(?m)^\s*swagger\s*:\s*(?P<val>[^\s#]+)")
-_PATHS_RE = re.compile(r"(?m)^(?P<indent>\s*)paths\s*:\s*(?:#.*)?$")
+_PATHS_RE = re.compile(r"(?m)^(?P<indent>[ \t]*)paths\s*:\s*(?:#.*)?$")
 _PATH_KEY_RE = re.compile(r"^\s*/[^:]{1,200}:\s*(?:#.*)?$")
 _METHOD_RE = re.compile(r"^\s*(get|post|put|delete|patch|options|head|trace)\s*:\s*(?:#.*)?$", re.IGNORECASE)
 
@@ -86,7 +86,7 @@ def _extract_methods(block_text: str) -> list[str]:
         if not m:
             continue
         meth = (m.group(1)).upper()
-        if meth and meth not in methods:
+        if meth not in methods:
             methods.append(meth)
     return methods
 
@@ -216,7 +216,7 @@ class OpenAPISpecChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

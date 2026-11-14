@@ -58,8 +58,6 @@ def _iter_tag_segments(text: str) -> list[_TagSeg]:
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         prefix = (m.group("prefix")).strip()
-        if not prefix:
-            continue
         lower = prefix.lower()
         kind = "Q" if lower.startswith("q") or prefix.startswith("问") else "A"
         segs.append(_TagSeg(start=start, end=end, kind=kind))
@@ -144,7 +142,7 @@ def _window_end_index(*, pairs: list[_QAPair], start_idx: int, chunk_size: int) 
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -158,7 +156,7 @@ def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, ch
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 def _qa_chunk_document(

@@ -20,27 +20,23 @@ def _grade_rank(value: Any) -> int:
 
 
 def _coerce_float(value: Any) -> float:
+    if value is None or isinstance(value, bool):
+        return 0.0
     try:
-        if value is None:
-            return 0.0
-        if isinstance(value, bool):
-            return 0.0
         f = float(value)
         if f != f:
             return 0.0
         return f
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return 0.0
 
 
 def _coerce_int(value: Any) -> int:
+    if value is None or isinstance(value, bool):
+        return 0
     try:
-        if value is None:
-            return 0
-        if isinstance(value, bool):
-            return 0
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return 0
 
 
@@ -69,7 +65,7 @@ def _component_score(item: Mapping[str, Any], key: str) -> float:
 
 
 def _normalize_weights(weights: Mapping[str, Any] | None) -> dict[str, float] | None:
-    if weights is None or not isinstance(weights, Mapping):
+    if not isinstance(weights, Mapping):
         return None
     out: dict[str, float] = {}
     for key in ("text", "table", "image", "reading_order"):
@@ -82,8 +78,6 @@ def _normalize_weights(weights: Mapping[str, Any] | None) -> dict[str, float] | 
     if not out:
         return None
     total = sum(out.values())
-    if total <= 0.0:
-        return None
     return {key: value / total for key, value in out.items()}
 
 
@@ -95,10 +89,9 @@ def compute_competition_matrix_score(attempt: Mapping[str, Any], *, weights: Map
     falls back to existing `parse_score` / `quality_components` fields so the
     older competition callers keep working unchanged.
     """
-    normalized_weights = _normalize_weights(weights) or {}
+    normalized_weights = _normalize_weights(weights)
     if not normalized_weights:
         return 0.0
-
     score = 0.0
     for key in ("text", "table", "image", "reading_order"):
         score += normalized_weights.get(key, 0.0) * _clamp01(_component_score(attempt, key))
@@ -126,8 +119,7 @@ def select_best_parse_attempt(
     3) parse_score: higher is better
     4) content_chars: higher is better
     """
-    items = list(attempts or [])
-    if not items:
+    if not attempts:
         raise ValueError("attempts_empty")
 
     def key(it: Mapping[str, Any]) -> tuple[int, float, float, int]:
@@ -138,7 +130,7 @@ def select_best_parse_attempt(
             _coerce_int(it.get("content_chars")),
         )
 
-    return max(items, key=key)
+    return max(attempts, key=key)
 
 
 __all__ = [

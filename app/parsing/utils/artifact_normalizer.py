@@ -44,7 +44,7 @@ def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
     return resolved_child
 
 
-def _choose_markdown_file(markdown_files: list[Path]) -> Path:
+def choose_markdown_file(markdown_files: list[Path]) -> Path:
     preferred = {"output.md", "result.md", "index.md", "readme.md"}
 
     candidates: list[Path] = []
@@ -177,40 +177,24 @@ def rewrite_html_image_refs(text: str, resolver: Callable[[str], str | None]) ->
     return "".join(out)
 
 
-def _artifact_normalizer_empty_result(root_path: Path, *, output_image_dir: str) -> _ArtifactNormalizationResult:
-    return {
-        "markdown_file": None,
-        "image_dir": _safe_direct_child(root_path, output_image_dir, field="output_image_dir"),
-        "image_count": 0,
-        "mapping": {},
-    }
-
-
 def _artifact_mapping_keys(img: Path, *, root_path: Path, markdown_parent: Path) -> list[str]:
     keys: list[str] = []
     try:
         keys.append(img.relative_to(root_path).as_posix())
-    except Exception as exc:
+    except ValueError as exc:
         logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
     try:
         keys.append(img.relative_to(markdown_parent).as_posix())
-    except Exception as exc:
+    except ValueError as exc:
         logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
     keys.append(img.name)
     return keys
 
 
-def _register_artifact_mapping_keys(*, mapping: dict[str, str], keys: list[str], new_rel: str) -> None:
-    for key in keys:
-        normalized = _normalize_ref_path(key)
-        if normalized and normalized not in mapping:
-            mapping[normalized] = new_rel
-
-
 def _move_or_copy_artifact_image(img: Path, new_path: Path) -> None:
     try:
         shutil.move(str(img), str(new_path))
-    except Exception:
+    except OSError:
         # If move fails (e.g. cross-device), fall back to copy.
         shutil.copy2(img, new_path)
 
@@ -218,24 +202,19 @@ def _move_or_copy_artifact_image(img: Path, new_path: Path) -> None:
 def _rewrite_artifact_markdown_refs(md_text: str, *, mapping: dict[str, str]) -> str:
     md_img_pattern = r"!\[([^\]]*)\]\(([^)]+)\)"
 
+    def _resolve_ref(raw_path: str) -> str | None:
+        key = _normalize_ref_path(raw_path)
+        return mapping.get(key) or mapping.get(Path(key).name)
+
     def _replace_md(m: re.Match) -> str:
         alt = m.group(1)
-        raw_path = m.group(2)
-        key = _normalize_ref_path(raw_path)
-        new_rel = mapping.get(key) or mapping.get(Path(key).name)
+        new_rel = _resolve_ref(m.group(2))
         if new_rel:
             return f"![{alt}]({new_rel})"
         return m.group(0)
 
-    def _resolve_html_src(raw_path: str) -> str | None:
-        key = _normalize_ref_path(raw_path)
-        new_rel = mapping.get(key) or mapping.get(Path(key).name)
-        if new_rel:
-            return new_rel
-        return None
-
     rewritten = re.sub(md_img_pattern, _replace_md, md_text)
-    return rewrite_html_image_refs(rewritten, _resolve_html_src)
+    return rewrite_html_image_refs(rewritten, _resolve_ref)
 
 
 def normalize_extracted_artifacts(
@@ -261,9 +240,14 @@ def normalize_extracted_artifacts(
 
     md_files = list(root.rglob("*.md"))
     if not md_files:
-        return _artifact_normalizer_empty_result(root, output_image_dir=output_image_dir)
+        return {
+            "markdown_file": None,
+            "image_dir": _safe_direct_child(root, output_image_dir, field="output_image_dir"),
+            "image_count": 0,
+            "mapping": {},
+        }
 
-    md_file = _choose_markdown_file(md_files)
+    md_file = choose_markdown_file(md_files)
     md_text = md_file.read_text(encoding="utf-8", errors="ignore")
 
     image_dir = _safe_direct_child(root, output_image_dir, field="output_image_dir")
@@ -278,7 +262,7 @@ def normalize_extracted_artifacts(
         try:
             img.relative_to(image_dir)
             continue
-        except Exception as exc:
+        except ValueError as exc:
             logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
 
         new_name = f"image_{counter:03d}{img.suffix.lower()}"
@@ -288,7 +272,10 @@ def normalize_extracted_artifacts(
         # Multiple keys to match common reference habits.
         keys = _artifact_mapping_keys(img, root_path=root, markdown_parent=md_file.parent)
         _move_or_copy_artifact_image(img, new_path)
-        _register_artifact_mapping_keys(mapping=mapping, keys=keys, new_rel=new_rel)
+        for key in keys:
+            normalized = _normalize_ref_path(key)
+            if normalized and normalized not in mapping:
+                mapping[normalized] = new_rel
         counter += 1
 
     if mapping:
@@ -307,6 +294,7 @@ def normalize_extracted_artifacts(
 
 
 __all__ = [
+    "choose_markdown_file",
     "normalize_extracted_artifacts",
     "rewrite_html_image_refs",
 ]

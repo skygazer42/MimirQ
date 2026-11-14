@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from app.services.connector_execution.shared.common import _optional_source_text
 import hashlib
 import re
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from app.models.connector import ConnectorRun
 from app.models.document import Document
+from app.services.connector_execution.shared.common import _optional_source_text
 from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest, slice_items_from_cursor
 
 if TYPE_CHECKING:

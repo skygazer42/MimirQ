@@ -61,25 +61,20 @@ class OlmocrParser:
         run_id = _sanitize_run_id(document_id or file_path.stem or "olmocr")
         return (file_path.parent / ".olmocr" / run_id).absolute()
 
-    def _candidate_api_urls(self) -> list[str]:
-        return build_docker_service_url_candidates(
-            self._api_url,
-            service_hostnames={"mimirq-olmocr"},
-        )
-
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
         suffix = (file_path.suffix).lower()
         content_type = "application/pdf" if suffix == ".pdf" else "application/octet-stream"
         files = {"file": (file_path.name, file_bytes, content_type)}
         data = {"output_format": "markdown"}
-        candidate_urls = self._candidate_api_urls()
-        last_error: Exception | None = None
+        candidate_urls = build_docker_service_url_candidates(
+            self._api_url,
+            service_hostnames={"mimirq-olmocr"},
+        )
         for index, url in enumerate(candidate_urls):
             try:
                 return self._session.post(url, files=files, data=data, timeout=self._timeout_sec)
             except requests.RequestException as exc:
-                last_error = exc
                 if index == len(candidate_urls) - 1:
                     raise
                 logger.warning(
@@ -88,8 +83,6 @@ class OlmocrParser:
                     exc.__class__.__name__,
                     candidate_urls[index + 1],
                 )
-        if last_error is not None:
-            raise last_error
         raise RuntimeError("olmOCR parser requires at least one candidate API URL.")
 
     def parse(
@@ -111,7 +104,7 @@ class OlmocrParser:
 
         logger.info("[olmocr] parsing %s", file_path.name)
         resp = self._post_multipart(file_path=file_path)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
+        if resp.status_code != 200:
             raise RuntimeError(f"olmOCR API error {resp.status_code}: {(resp.text)[:500]}")
 
         markdown_text = ""

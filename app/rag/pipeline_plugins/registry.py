@@ -242,9 +242,7 @@ def _load_manifest(manifest_path: Path) -> dict[str, Any]:
         raise PipelinePluginRegistryError(f"unsupported plugin manifest suffix: {suffix}")
     if not isinstance(raw, dict):
         raise PipelinePluginRegistryError("plugin manifest must be an object")
-    unknown = sorted(
-        str(key).strip() or "<empty>" for key in raw if str(key).strip() not in _SUPPORTED_MANIFEST_FIELDS
-    )
+    unknown = sorted(str(key).strip() or "<empty>" for key in raw if str(key).strip() not in _SUPPORTED_MANIFEST_FIELDS)
     if unknown:
         raise PipelinePluginRegistryError(
             f"plugin manifest contains unknown top-level fields: {', '.join(unknown[:20])}"
@@ -290,9 +288,7 @@ def _manifest_entries(raw: dict[str, Any]) -> dict[str, PipelinePluginEntry]:
     if not isinstance(entry, dict):
         raise PipelinePluginRegistryError("plugin manifest must define entry object")
     unsupported = sorted(
-        str(stage).strip() or "<empty>"
-        for stage in entry
-        if str(stage).strip() not in _SUPPORTED_ENTRY_STAGES
+        str(stage).strip() or "<empty>" for stage in entry if str(stage).strip() not in _SUPPORTED_ENTRY_STAGES
     )
     if unsupported:
         raise PipelinePluginRegistryError(
@@ -484,9 +480,7 @@ def _validate_declared_contract_schema(
 ) -> None:
     if raw.get("schema") != expected_schema:
         raise PipelinePluginRegistryError(f"{contract_name}.schema must be {expected_schema}")
-    unknown = sorted(
-        key.strip() or "<empty>" for key in raw if key.strip() not in supported_fields
-    )
+    unknown = sorted(key.strip() or "<empty>" for key in raw if key.strip() not in supported_fields)
     if unknown:
         raise PipelinePluginRegistryError(
             f"{contract_name} contains unknown top-level fields: {', '.join(unknown[:20])}"

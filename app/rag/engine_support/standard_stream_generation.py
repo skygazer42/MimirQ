@@ -6,17 +6,36 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.core.config import settings
+from app.core.pii_redaction import pii_redaction_enabled, redact_text
+from app.core.token_utils import num_tokens_from_string
+from app.rag.core.claim_evidence import build_claim_evidence_map
+from app.rag.core.confidence import compute_confidence_score
+from app.rag.core.faithfulness import compute_faithfulness_score
+from app.rag.core.logging import get_logger
+from app.rag.core.sentence_citations import render_sentence_citations_inline, render_sentence_citations_markdown
+from app.rag.core.text import (
+    scrub_structured_output_visible_evidence_only,
+    split_into_claims,
+    verify_claim_with_fallback,
+)
+from app.rag.core.vision_reader import build_vision_image_blocks, stream_vision_chat_completions_tokens
+from app.rag.engine_support.common import _RAG_ENGINE_FALLBACK_LOG_MESSAGE, _UNABLE_TO_ANSWER_MESSAGE
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.llm.structured_output import parse_and_repair_structured_output
+from app.rag.retrieval.source_labels import maybe_build_source_identification_answer
+from app.services.metrics_logger import log_metrics
+
+logger = get_logger("rag.engine")
 
 
 async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
     # Step 4: Stream answer generation.
     runtime.data.full_response = ""
     runtime.data.gen_start = time.time()
-    runtime.data.pii_on = bool(runtime.module.pii_redaction_enabled())
+    runtime.data.pii_on = bool(pii_redaction_enabled())
 
     runtime.data.claim_check_configured = bool(settings.RAG_CLAIM_CHECK_ENABLED) or bool(runtime.data.strict_visible)
     runtime.data.claim_check_max_claims = max(1, int(settings.RAG_CLAIM_CHECK_MAX_CLAIMS))
@@ -35,14 +54,12 @@ async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dic
     runtime.data.claim_check_total = 0
     runtime.data.claim_check_removed_reasons: list[dict[str, Any]] = []
 
-    runtime.data.context_for_model = (
-        runtime.module.redact_text(runtime.data.context) if runtime.data.pii_on else runtime.data.context
-    )
+    runtime.data.context_for_model = redact_text(runtime.data.context) if runtime.data.pii_on else runtime.data.context
     runtime.data.history_for_model = (
-        runtime.module.redact_text(runtime.data.history_text) if runtime.data.pii_on else runtime.data.history_text
+        redact_text(runtime.data.history_text) if runtime.data.pii_on else runtime.data.history_text
     )
     runtime.data.question_for_model = (
-        runtime.module.redact_text(runtime.data.question) if runtime.data.pii_on else runtime.data.question
+        redact_text(runtime.data.question) if runtime.data.pii_on else runtime.data.question
     )
 
     # PII redaction must see the complete response before any bytes are
@@ -76,14 +93,14 @@ async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dic
     runtime.data.token_stream = None
     runtime.data.deterministic_source_answer = None
     if not runtime.data.structured_output:
-        runtime.data.deterministic_source_answer = runtime.module.maybe_build_source_identification_answer(
+        runtime.data.deterministic_source_answer = maybe_build_source_identification_answer(
             question=runtime.data.question,
             docs=runtime.data.docs,
         )
     if runtime.data.deterministic_source_answer:
         runtime.data.source_identification_answer_used = True
         runtime.data.source_answer_text = (
-            runtime.module.redact_text(str(runtime.data.deterministic_source_answer))
+            redact_text(str(runtime.data.deterministic_source_answer))
             if runtime.data.pii_on
             else str(runtime.data.deterministic_source_answer)
         )
@@ -122,10 +139,7 @@ def _render_vision_messages(runtime: StandardStreamState) -> list[dict[str, Any]
         rendered_messages = runtime.data.current_prompt_template.format_messages(**runtime.data.generation_inputs)
     except Exception:
         rendered_messages = []
-    return [
-        {"role": _vision_message_role(message), "content": message.content}
-        for message in rendered_messages
-    ]
+    return [{"role": _vision_message_role(message), "content": message.content} for message in rendered_messages]
 
 
 def _attach_vision_blocks(runtime: StandardStreamState) -> None:
@@ -154,7 +168,7 @@ async def prepare_vision_generation(runtime: StandardStreamState) -> None:
             return
         runtime.data.max_images = max(0, int(settings.VISION_RAG_GENERATION_MAX_IMAGES))
         runtime.data.max_bytes = max(1, int(settings.VISION_RAG_GENERATION_MAX_IMAGE_BYTES))
-        runtime.data.blocks, runtime.data.blocks_meta = await runtime.module.build_vision_image_blocks(
+        runtime.data.blocks, runtime.data.blocks_meta = await build_vision_image_blocks(
             image_docs=runtime.data.image_docs,
             tenant_id=runtime.data.tenant_id,
             max_images=runtime.data.max_images,
@@ -177,7 +191,7 @@ async def prepare_vision_generation(runtime: StandardStreamState) -> None:
             runtime.data.vision_generation_meta.update(
                 {"used": True, "reason": "ok", "returned_images": len(runtime.data.blocks)}
             )
-            runtime.data.token_stream = runtime.module.stream_vision_chat_completions_tokens(
+            runtime.data.token_stream = stream_vision_chat_completions_tokens(
                 http_client=runtime.engine.http_async_client,
                 messages=runtime.data.openai_msgs,
             )
@@ -219,9 +233,7 @@ async def stream_generation_tokens(runtime: StandardStreamState) -> AsyncGenerat
     if runtime.data.buffered_parts is not None:
         runtime.data.raw_generated = "".join(runtime.data.buffered_parts)
         runtime.data.full_response = (
-            runtime.module.redact_text(runtime.data.raw_generated)
-            if runtime.data.pii_on
-            else runtime.data.raw_generated
+            redact_text(runtime.data.raw_generated) if runtime.data.pii_on else runtime.data.raw_generated
         )
 
     runtime.data.llm_invocation_meta: dict[str, Any] = {}
@@ -240,14 +252,14 @@ async def capture_llm_invocation(runtime: StandardStreamState) -> None:
 
 
 def _verify_text_claims(runtime: StandardStreamState) -> None:
-    runtime.data.claims = runtime.module.split_into_claims(
+    runtime.data.claims = split_into_claims(
         runtime.data.full_response,
         max_claims=runtime.data.claim_check_max_claims,
     )
     runtime.data.claim_check_total = len(runtime.data.claims)
     runtime.data.kept = []
     for claim in runtime.data.claims:
-        verification = runtime.module.verify_claim_with_fallback(
+        verification = verify_claim_with_fallback(
             claim,
             runtime.data.evidence_text,
             verifier_mode=runtime.data.claim_verifier_mode,
@@ -277,7 +289,7 @@ def _verify_text_claims(runtime: StandardStreamState) -> None:
                 }
             )
     cleaned = "\n".join(runtime.data.kept).strip()
-    runtime.data.full_response = cleaned or runtime.module._UNABLE_TO_ANSWER_MESSAGE
+    runtime.data.full_response = cleaned or _UNABLE_TO_ANSWER_MESSAGE
 
 
 def _structured_claim_citations(runtime: StandardStreamState) -> list[dict[str, Any]]:
@@ -295,13 +307,13 @@ def _structured_claim_citations(runtime: StandardStreamState) -> list[dict[str, 
 
 def _verify_structured_claims(runtime: StandardStreamState) -> None:
     runtime.data.structured_citations = _structured_claim_citations(runtime)
-    runtime.data.parsed, runtime.data._meta = runtime.module.parse_and_repair_structured_output(
+    runtime.data.parsed, runtime.data._meta = parse_and_repair_structured_output(
         runtime.data.full_response,
         preset=runtime.data.structured_preset,
-        fallback_answer=runtime.module._UNABLE_TO_ANSWER_MESSAGE,
+        fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
         fallback_citations=runtime.data.structured_citations,
     )
-    runtime.data.scrubbed, runtime.data.scrub_meta = runtime.module.scrub_structured_output_visible_evidence_only(
+    runtime.data.scrubbed, runtime.data.scrub_meta = scrub_structured_output_visible_evidence_only(
         runtime.data.parsed,
         evidence_text=runtime.data.evidence_text,
         max_claims=runtime.data.claim_check_max_claims,
@@ -324,9 +336,9 @@ def _verify_structured_claims(runtime: StandardStreamState) -> None:
             and isinstance(runtime.data.scrubbed.get("answer"), str)
             and not runtime.data.scrubbed["answer"].strip()
         ):
-            runtime.data.scrubbed["answer"] = runtime.module._UNABLE_TO_ANSWER_MESSAGE
+            runtime.data.scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
     except Exception as exc:
-        runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+        logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
     runtime.data.full_response = json.dumps(runtime.data.scrubbed, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -363,7 +375,7 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
                 else:
                     runtime.data.full_response = runtime.data.blocked_message
         except Exception as exc:  # noqa: BLE001
-            runtime.module.logger.warning("Output guard failed open: %s", str(exc)[:160])
+            logger.warning("Output guard failed open: %s", str(exc)[:160])
             runtime.data.output_guard_result = {
                 "enabled": True,
                 "action": "allow",
@@ -375,7 +387,7 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
     runtime.data.claim_evidence: list[dict[str, Any]] = []
     if not runtime.data.structured_output:
         try:
-            runtime.data.claim_evidence = runtime.module.build_claim_evidence_map(
+            runtime.data.claim_evidence = build_claim_evidence_map(
                 runtime.data.full_response,
                 evidence_chunks=runtime.data.docs,
                 max_claims=runtime.data.claim_check_max_claims if runtime.data.claim_check_configured else 24,
@@ -401,16 +413,12 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
 async def score_evidence_and_confidence(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
     if bool(settings.FAITHFULNESS_SCORE_ENABLED):
         runtime.data.evidence_text = "\n".join(
-            [
-                d.page_content
-                for d in (runtime.data.docs or [])
-                if d.page_content.strip()
-            ]
+            [d.page_content for d in (runtime.data.docs or []) if d.page_content.strip()]
         )
         runtime.data.max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS))
         if runtime.data.max_evidence_chars and len(runtime.data.evidence_text) > runtime.data.max_evidence_chars:
             runtime.data.evidence_text = runtime.data.evidence_text[: runtime.data.max_evidence_chars]
-        runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
+        runtime.data.faithfulness_meta = compute_faithfulness_score(
             answer=runtime.data.full_response,
             evidence_text=runtime.data.evidence_text,
             max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
@@ -439,7 +447,7 @@ async def score_evidence_and_confidence(runtime: StandardStreamState) -> AsyncGe
     if runtime.data.sentence_citations_inline_style not in {"appendix", "inline"}:
         runtime.data.sentence_citations_inline_style = "appendix"
     runtime.data.sentence_citations_inline_fallback_reason: str | None = None
-    runtime.data.confidence_meta = runtime.module.compute_confidence_score(
+    runtime.data.confidence_meta = compute_confidence_score(
         faithfulness_score=runtime.data.faithfulness_meta.get("score"),
         claim_total=runtime.data.faithfulness_meta.get("total_claims"),
         claim_supported=runtime.data.faithfulness_meta.get("supported_claims"),
@@ -480,7 +488,7 @@ async def render_claim_citations(runtime: StandardStreamState) -> None:
         and runtime.data.sentence_citations_inline_style == "inline"
     ):
         if runtime.data.claim_check_mode == "text":
-            runtime.data.inline_text, runtime.data.rendered_count = runtime.module.render_sentence_citations_inline(
+            runtime.data.inline_text, runtime.data.rendered_count = render_sentence_citations_inline(
                 runtime.data.claim_evidence,
                 max_items=max(
                     0,
@@ -531,10 +539,10 @@ async def append_image_citations(runtime: StandardStreamState) -> AsyncGenerator
                 runtime.data.images_md_parts.append(f"![Cited Image {runtime.data.i}]({runtime.data.url})")
             runtime.data.images_md = "\n\n".join(runtime.data.images_md_parts) + "\n"
             runtime.data.images_md_safe = (
-                runtime.module.redact_text(runtime.data.images_md) if runtime.data.pii_on else runtime.data.images_md
+                redact_text(runtime.data.images_md) if runtime.data.pii_on else runtime.data.images_md
             )
             runtime.data.full_response += runtime.data.images_md_safe
-            if not runtime.data.claim_check_applied:
+            if runtime.data.buffered_parts is None:
                 yield {"type": "token", "data": {"content": runtime.data.images_md_safe}}
 
 
@@ -545,19 +553,19 @@ async def flush_response_and_init_costs(runtime: StandardStreamState) -> AsyncGe
         and runtime.data.sentence_citations_inline_enabled
         and runtime.data.sentence_citations_inline_style == "appendix"
     ):
-        runtime.data.suffix_md, runtime.data.rendered_count = runtime.module.render_sentence_citations_markdown(
+        runtime.data.suffix_md, runtime.data.rendered_count = render_sentence_citations_markdown(
             runtime.data.claim_evidence,
             max_items=max(0, int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS)),
             max_evidence_per_claim=max(1, int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM)),
         )
         if runtime.data.suffix_md:
             runtime.data.suffix_md_safe = (
-                runtime.module.redact_text(runtime.data.suffix_md) if runtime.data.pii_on else runtime.data.suffix_md
+                redact_text(runtime.data.suffix_md) if runtime.data.pii_on else runtime.data.suffix_md
             )
             runtime.data.full_response += runtime.data.suffix_md_safe
             runtime.data.sentence_citations_inline_used = True
             runtime.data.sentence_citations_inline_count = int(runtime.data.rendered_count or 0)
-            if not runtime.data.claim_check_applied:
+            if runtime.data.buffered_parts is None:
                 yield {"type": "token", "data": {"content": runtime.data.suffix_md_safe}}
 
     if runtime.data.buffered_parts is not None:
@@ -567,12 +575,12 @@ async def flush_response_and_init_costs(runtime: StandardStreamState) -> AsyncGe
     #
     # Keep this PII-safe: only numeric counters and model identifiers.
     runtime.data.answer_chars = len(runtime.data.full_response)
-    runtime.data.answer_tokens = runtime.module.num_tokens_from_string(runtime.data.full_response)
-    runtime.data.question_tokens = runtime.module.num_tokens_from_string(runtime.data.question)
+    runtime.data.answer_tokens = num_tokens_from_string(runtime.data.full_response)
+    runtime.data.question_tokens = num_tokens_from_string(runtime.data.question)
     runtime.data.prompt_overhead = int(settings.COST_PROMPT_OVERHEAD_TOKENS)
     runtime.data.prompt_tokens_est = (
-        runtime.module.num_tokens_from_string(runtime.data.history_text)
-        + runtime.module.num_tokens_from_string(runtime.data.context)
+        num_tokens_from_string(runtime.data.history_text)
+        + num_tokens_from_string(runtime.data.context)
         + runtime.data.question_tokens
         + max(0, runtime.data.prompt_overhead)
     )
@@ -589,11 +597,11 @@ async def measure_embedding_costs(runtime: StandardStreamState) -> None:
         try:
             runtime.data.embed_query_tokens += int(runtime.data.q.get("query_tokens") or 0)
         except Exception as exc:
-            runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+            logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
         try:
             runtime.data.embed_query_chars += int(runtime.data.q.get("query_chars") or 0)
         except Exception as exc:
-            runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+            logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
 
     runtime.data.rerank_elapsed_sec: float | None = None
 
@@ -608,7 +616,7 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
         try:
             runtime.data.fv = float(runtime.data.v)
         except Exception:
-            runtime.module.logger.debug("Skipping item after non-critical exception", exc_info=True)
+            logger.debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if runtime.data.fv < 0:
             continue
@@ -684,8 +692,8 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
             has_error=bool(runtime.data.retrieval_errors),
         )
     except Exception as exc:
-        runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
-    runtime.module.log_metrics(runtime.data.rag_trace_payload)
+        logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+    log_metrics(runtime.data.rag_trace_payload)
 
 
 async def enqueue_online_evaluation(runtime: StandardStreamState) -> None:
@@ -703,7 +711,7 @@ async def enqueue_online_evaluation(runtime: StandardStreamState) -> None:
             citations_count=len(runtime.data.citations or []),
         )
     except Exception as exc:
-        runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+        logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
 
 
 GENERATION_OPERATIONS = (

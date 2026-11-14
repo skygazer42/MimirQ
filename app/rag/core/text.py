@@ -189,6 +189,16 @@ def _truncate_with_ellipsis(text: str, *, max_chars: int) -> str:
     return (text[:max_chars] + "...") if max_chars and len(text) > max_chars else text
 
 
+def _raw_index_from_casefold_index(text: str, folded_index: int) -> int:
+    """Map a matched casefold offset to the original text without retaining an index map."""
+    folded_end = 0
+    for raw_index, character in enumerate(text):
+        folded_end += len(character.casefold())
+        if folded_index < folded_end:
+            return raw_index
+    raise IndexError("Casefold match index is outside the source text")
+
+
 def _query_terms(query: str, *, max_terms: int) -> list[str]:
     terms: list[str] = []
     for match in _QUERY_TOKEN_RE.finditer(query):
@@ -878,7 +888,7 @@ def derive_followup_questions(
 def _extract_followup_tags(raw: str, *, max_items: int) -> tuple[list[str], list[str], bool]:
     open_tag = "<followup>"
     close_tag = "</followup>"
-    lower = raw.lower()
+    lower = raw.translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
     limit = max(0, int(max_items or 0))
     questions: list[str] = []
     seen: set[str] = set()

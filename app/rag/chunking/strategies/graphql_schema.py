@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ def _take_name_token(text: str) -> str | None:
     i = 1
     while i < len(s) and (s[i].isalnum() or s[i] == "_"):
         i += 1
-    return s[:i] if i > 0 else None
+    return s[:i]
 
 
 def _parse_def_line(line: str) -> tuple[str, str | None] | None:
@@ -59,8 +60,6 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
         return None
 
     parts = raw.split(None, 1)
-    if not parts:
-        return None
     first = parts[0].casefold()
     rest = parts[1] if len(parts) > 1 else ""
 
@@ -87,33 +86,22 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
 
 def _iter_defs(text: str) -> list[_Def]:
     defs: list[_Def] = []
-    offset = 0
-    for raw_line in (text).splitlines(keepends=True):
-        line_start = offset
-        offset += len(raw_line)
-        plain = raw_line.rstrip("\r\n")
-        parsed = _parse_def_line(plain)
+    for ln in _iter_lines(text):
+        parsed = _parse_def_line(ln.plain)
         if not parsed:
             continue
         kind, name = parsed
         defs.append(
             _Def(
-                start=line_start,
-                end=line_start + len(raw_line),
+                start=ln.start,
+                end=ln.end,
                 kind=kind,
                 name=name,
                 index=len(defs),
             )
         )
 
-    deduped: list[_Def] = []
-    last_start = -1
-    for d in defs:
-        if d.start == last_start:
-            continue
-        deduped.append(d)
-        last_start = d.start
-    return deduped
+    return defs
 
 
 def _build_sections(text: str, defs: list[_Def]) -> list[_Section]:

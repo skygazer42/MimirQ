@@ -7,7 +7,6 @@ import os
 import shutil
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,15 +15,14 @@ from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentBatchUploadResponse
-from app.api.schemas.document_ingestion import (
+from app.api.schemas.documents import (
+    DocumentBatchUploadResponse,
     PipelineOptionOverrides,
-    PipelineOverridesFormFields,
     UploadDocumentsBatchFormFields,
 )
+from app.api.utils import normalize_upload_key, normalize_upload_path_parts, save_upload_file_with_hash
 from app.api.utils.document_pipeline_input import parse_pipeline_json
-from app.api.utils.upload import _normalize_upload_key as normalize_upload_key
-from app.api.utils.upload import _normalize_upload_path_parts, save_upload_file_with_hash
+from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset import Dataset
@@ -46,6 +44,7 @@ from app.services.document_ingestion import (
     _retain_ingest_lock_if_task_handed_off,
     _retry_failed_persisted_duplicate,
     _reuse_duplicate_document,
+    _upload_extension_allowed,
 )
 from app.services.document_ingestion import (
     _IngestLockLease as IngestLockLease,
@@ -236,18 +235,6 @@ async def _finalize_batch_document(
     upload_only: bool,
     ingest_lock: IngestLockLease,
 ) -> DBDocument:
-    if upload_only:
-        with contextlib.suppress(Exception):
-            reconcile_document_index_channels(
-                db,
-                document=document,
-                pipeline_hash=pipeline_hash,
-                reset_enabled_to_pending=True,
-                commit=True,
-            )
-        if is_object_storage_uri(document.file_path):
-            source_persistence.unlink_source(file_path)
-        return document
     with contextlib.suppress(Exception):
         reconcile_document_index_channels(
             db,
@@ -256,6 +243,10 @@ async def _finalize_batch_document(
             reset_enabled_to_pending=True,
             commit=True,
         )
+    if upload_only:
+        if is_object_storage_uri(document.file_path):
+            source_persistence.unlink_source(file_path)
+        return document
     keep_local_file = await dispatch_uploaded_document(
         background_tasks=background_tasks,
         source=LocalProcessingSource(file_path),
@@ -396,9 +387,7 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
         try:
             dst.relative_to(staging_root_resolved)
         except Exception:
-            dst = (staging_root / f"FILE_{idx:06d}{item['file_ext'].strip().lower()}").resolve(
-                strict=False
-            )
+            dst = (staging_root / f"FILE_{idx:06d}{item['file_ext'].strip().lower()}").resolve(strict=False)
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists():
             suffix = item["file_id"].hex
@@ -781,7 +770,7 @@ async def _run_precheck_scan(
             return None
         db.refresh(scan_run)
         try:
-            await asyncio.to_thread(
+            await run_blocking_in_thread(
                 _run_precheck_scan_job,
                 tenant_id=tenant_id,
                 dataset_id=dataset.id,
@@ -853,7 +842,7 @@ def _run_precheck_scan_job(
 def _safe_staging_relpath(item: dict[str, Any], *, idx: int) -> Path:
 
     raw = str(item.get("upload_key") or item.get("filename") or f"FILE_{idx:06d}").strip()
-    parts = _normalize_upload_path_parts(raw)
+    parts = normalize_upload_path_parts(raw)
     if not parts:
         parts = [str(item.get("filename") or f"FILE_{idx:06d}")]
     safe_parts: list[str] = []
@@ -952,15 +941,6 @@ def _success_result(*, filename: str, source_path: str | None, document: DBDocum
     return {"success": True, "filename": filename, **_document_result_snapshot(document, source_path=source_path)}
 
 
-def _unlink_upload(path: Path) -> None:
-    with contextlib.suppress(OSError):
-        path.unlink(missing_ok=True)
-
-
-def _upload_extension_allowed(file_ext: str) -> bool:
-    return file_ext in settings.allowed_extensions_list
-
-
 def _validate_batch_upload_request(files: list[UploadFile], *, max_concurrent: int) -> int:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -977,7 +957,7 @@ async def ingest_batch(
     background_tasks: BackgroundTasks,
     files: list[UploadFile],
     form: UploadDocumentsBatchFormFields,
-    overrides_form: PipelineOverridesFormFields,
+    overrides_form: PipelineOptionOverrides,
     tenant_id: UUID,
     account_id: str,
     db: Session,
@@ -989,7 +969,7 @@ async def ingest_batch(
         additional_docs=len(files),
         additional_bytes=0,
     )
-    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
+    pipeline_overrides = overrides_form
     parser_backend = form.parser_backend
     chunk_strategy = form.chunk_strategy
     precheck_first = form.precheck_first

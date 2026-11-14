@@ -27,7 +27,6 @@ def secure_jitter(jitter: float) -> float:
     """
     Return a jitter term in [0.0, jitter] (inclusive of 0.0, exclusive of jitter for float rounding).
     """
-    jitter = jitter or 0.0
     if jitter <= 0.0:
         return 0.0
     return secure_random_float01() * jitter

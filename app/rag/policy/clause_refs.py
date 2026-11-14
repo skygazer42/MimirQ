@@ -54,8 +54,6 @@ def extract_clause_refs(text: str) -> list[str]:
 
     def _add(x: str) -> None:
         v = normalize_clause_ref(x)
-        if not v:
-            return
         key = v.casefold() if v.isascii() else v
         if key in seen:
             return

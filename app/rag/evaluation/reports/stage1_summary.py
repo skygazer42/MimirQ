@@ -3,13 +3,15 @@ from typing import Any
 
 
 def summarize_stage1_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    route_ids = sorted({str(row["route_id"]) for row in rows if row.get("route_id") is not None and str(row["route_id"])})
+    route_ids = sorted(
+        {str(row["route_id"]) for row in rows if row.get("route_id") is not None and str(row["route_id"])}
+    )
     sample_count = len(rows)
     latency_values = [float(row.get("latency_ms") or 0.0) for row in rows]
     latency_avg = round(sum(latency_values) / len(latency_values), 4) if latency_values else 0.0
 
     by_query_type: dict[str, dict[str, Any]] = defaultdict(lambda: {"sample_count": 0})
-    for row in rows or []:
+    for row in rows:
         raw_type = row.get("query_type")
         if raw_type is None:
             continue

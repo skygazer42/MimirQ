@@ -96,7 +96,7 @@ def build_online_shadow_plan(
     )
 
     limit = max(0, int(sample_size or 0))
-    selected = ranked[:limit] if limit > 0 else []
+    selected = ranked[:limit]
 
     return {
         "schema": "mimirq.online_shadow_plan.v1",

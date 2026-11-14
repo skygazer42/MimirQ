@@ -8,9 +8,10 @@ aggregate queries, with rolling windows computed server-side in UTC.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID
 
@@ -24,10 +25,11 @@ from app.services.audit_log_service import audit_log_event
 from app.services.metrics_logger import log_metrics
 
 if TYPE_CHECKING:
-    from app.api.middleware.rate_limit import RateLimiter, RedisRateLimiter
+    from app.core.rate_limit import RateLimiter, RedisRateLimiter
 
 _QUOTA_GUARD_EVENT = "tenant_quota.guard"
 _QUOTA_BACKEND_UNAVAILABLE_REASON = "tenant_quota_backend_unavailable"
+logger = logging.getLogger(__name__)
 
 
 class TenantQpsQuotaConfig(TypedDict):
@@ -43,7 +45,7 @@ class TenantQpsQuotaResult(TenantQpsQuotaConfig):
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _emit_quota_guard_evidence(
@@ -170,7 +172,7 @@ def _document_quota_usage(db: Session, tenant_id: UUID) -> int:
         )
         .scalar()
     )
-    return int(used_raw or 0)
+    return int(used_raw)
 
 
 def _storage_quota_usage_bytes(db: Session, tenant_id: UUID) -> int:
@@ -182,7 +184,7 @@ def _storage_quota_usage_bytes(db: Session, tenant_id: UUID) -> int:
         )
         .scalar()
     )
-    return int(used_raw or 0)
+    return int(used_raw)
 
 
 def _embedding_quota_usage_chars(db: Session, *, tenant_id: UUID, since: datetime) -> int:
@@ -198,7 +200,7 @@ def _embedding_quota_usage_chars(db: Session, *, tenant_id: UUID, since: datetim
         )
         .scalar()
     )
-    return int(used_raw or 0)
+    return int(used_raw)
 
 
 class TenantQuotaExceededError(RuntimeError):
@@ -240,8 +242,8 @@ def _get_tenant_qps_limiter() -> RateLimiter | RedisRateLimiter:
     if _tenant_qps_limiter is not None and _tenant_qps_cfg == cfg:
         return _tenant_qps_limiter
 
-    # Lazy import to avoid pulling FastAPI middleware code into startup when unused.
-    from app.api.middleware.rate_limit import RateLimiter, RedisRateLimiter
+    # Load the actual limiter only when QPS enforcement needs it.
+    from app.core.rate_limit import RateLimiter, RedisRateLimiter
 
     if use_redis:
         _tenant_qps_limiter = RedisRateLimiter(
@@ -266,55 +268,6 @@ def get_tenant_qps_quota_config() -> TenantQpsQuotaConfig:
     """Return QPS quota configuration without consuming quota tokens."""
     enabled, rps, burst, mode = _tenant_qps_quota_config()
     return {"enabled": enabled and rps > 0, "mode": mode, "rps": rps, "burst": burst}
-
-
-def check_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
-    enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = key.strip() or "chat"
-    if not enabled or rps <= 0:
-        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
-
-    try:
-        limiter = _get_tenant_qps_limiter()
-        allowed, retry_after = limiter.check(f"tenant:{tenant_id}:{scope_key}")
-    except Exception:
-        # Visibility checks preserve the existing fail-open policy.
-        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
-    return _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
-
-
-async def check_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
-    enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = key.strip() or "chat"
-    if not enabled or rps <= 0:
-        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
-
-    try:
-        limiter = _get_tenant_qps_limiter()
-        allowed, retry_after = await limiter.acheck(f"tenant:{tenant_id}:{scope_key}")
-    except Exception:
-        # Visibility checks preserve the existing fail-open policy.
-        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
-    return _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
-
-
-def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
-    """Enforce tenant QPS limits, raising HTTP 429 in block mode or 503 when configured to fail closed."""
-    enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = key.strip() or "chat"
-    if not enabled or rps <= 0:
-        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
-
-    try:
-        limiter = _get_tenant_qps_limiter()
-        allowed, retry_after = limiter.check(f"tenant:{tenant_id}:{scope_key}")
-    except Exception as exc:
-        return _tenant_qps_backend_failure(
-            tenant_id=tenant_id, scope_key=scope_key, mode=mode, rps=rps, burst=burst, exc=exc
-        )
-
-    meta = _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
-    return _enforce_tenant_qps_result(meta, scope_key=scope_key)
 
 
 async def enforce_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
@@ -399,7 +352,8 @@ def check_tenant_document_quota(db: Session, *, tenant_id: UUID) -> dict[str, An
 
     try:
         used = _document_quota_usage(db, tenant_id=tenant_id)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Tenant document quota visibility failed: %s", type(exc).__name__)
         return {"enabled": False, "limit": limit, "used": 0, "exceeded": False}
 
     return {"enabled": True, "limit": limit, "used": used, "exceeded": used >= limit}
@@ -413,7 +367,8 @@ def check_tenant_storage_quota(db: Session, *, tenant_id: UUID) -> dict[str, Any
 
     try:
         used_bytes = _storage_quota_usage_bytes(db, tenant_id=tenant_id)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Tenant storage quota visibility failed: %s", type(exc).__name__)
         return {"enabled": False, "limit_bytes": limit_bytes, "used_bytes": 0, "exceeded": False}
 
     return {
@@ -435,7 +390,7 @@ def check_tenant_embedding_char_quota(db: Session, *, tenant_id: UUID) -> dict[s
     enabled = settings.TENANT_EMBED_CHAR_QUOTA_ENABLED
     limit_chars = settings.TENANT_EMBED_CHAR_QUOTA_LIMIT
     window_hours = settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS
-    mode = (settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
+    mode = settings.TENANT_EMBED_CHAR_QUOTA_MODE
 
     if not enabled or limit_chars <= 0:
         return {
@@ -447,12 +402,12 @@ def check_tenant_embedding_char_quota(db: Session, *, tenant_id: UUID) -> dict[s
             "window_hours": window_hours,
         }
 
-    window_hours = max(1, window_hours)
     since = _now_utc() - timedelta(hours=window_hours)
 
     try:
         used_chars = _embedding_quota_usage_chars(db, tenant_id=tenant_id, since=since)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Tenant embedding quota visibility failed: %s", type(exc).__name__)
         return {
             "enabled": False,
             "mode": mode,
@@ -485,8 +440,8 @@ def enforce_tenant_embedding_char_quota(
     """
     enabled = settings.TENANT_EMBED_CHAR_QUOTA_ENABLED
     limit = settings.TENANT_EMBED_CHAR_QUOTA_LIMIT
-    window_hours = max(1, settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS)
-    mode = (settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
+    window_hours = settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS
+    mode = settings.TENANT_EMBED_CHAR_QUOTA_MODE
     add = max(0, additional_chars)
     if not enabled or limit <= 0:
         return {
@@ -602,10 +557,7 @@ __all__ = [
     "check_tenant_document_quota",
     "check_tenant_storage_quota",
     "check_tenant_embedding_char_quota",
-    "check_tenant_qps_quota",
-    "check_tenant_qps_quota_async",
     "enforce_tenant_embedding_char_quota",
-    "enforce_tenant_qps_quota",
     "enforce_tenant_qps_quota_async",
     "enforce_tenant_upload_quotas",
     "get_tenant_qps_quota_config",

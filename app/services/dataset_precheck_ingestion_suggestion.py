@@ -20,12 +20,16 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
+from app.api.schemas.sources import IngestionPolicy, IngestionRule
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
-from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
+from app.services.dataset_precheck_service import (
+    _assert_artifact_path_under_tenant,
+    _jsonl_path_from_row,
+    _list_finding_from_jsonl,
+)
 from app.services.ingestion_policy import validate_and_normalize_ingestion_policy
 from app.services.ingestion_policy_diff import diff_ingestion_policies
 
@@ -78,21 +82,6 @@ def _summary_or_404(scan_run: DBDatasetPrecheckScanRun) -> dict[str, Any]:
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not available")
     return summary
-
-
-def _load_jsonl_path(scan_run: DBDatasetPrecheckScanRun, *, tenant_id: UUID) -> Path:
-    artifacts = scan_run.artifacts
-    artifacts = artifacts if isinstance(artifacts, dict) else {}
-    raw = artifacts.get("files_jsonl")
-    if raw is not None:
-        raw = raw.strip()
-    if not raw:
-        raise HTTPException(status_code=404, detail="Artifacts not available")
-    p = Path(raw)
-    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=p)
-    if not p.exists() or not p.is_file():
-        raise HTTPException(status_code=404, detail="Artifacts not found")
-    return p
 
 
 def _iter_jsonl(path: Path):  # noqa: ANN202
@@ -161,9 +150,7 @@ def _pii_secrets_patch(*, enable_pii: bool, enable_secrets: bool) -> dict[str, A
 def _extract_suggestion_signals(summary: dict[str, Any]) -> _SuggestionSignals:
     pdf_scan = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     finding_list = summary.get("findings") if isinstance(summary.get("findings"), list) else []
-    finding_by_key = {
-        item["key"].strip().lower(): item for item in finding_list if isinstance(item, dict)
-    }
+    finding_by_key = {item["key"].strip().lower(): item for item in finding_list if isinstance(item, dict)}
     length_percentiles = (
         summary.get("length_percentiles") if isinstance(summary.get("length_percentiles"), dict) else {}
     )
@@ -426,7 +413,7 @@ def _build_ingestion_rules(
             name="聊天导出（Slack/Teams）：TXT（文件名命中）",
             extensions=[".txt"],
             filename_regex=r"(?i)(slack|teams|chat|conversation|messages?|export|\u804a\u5929|\u4f1a\u8bdd|\u5bf9\u8bdd)",
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="semantic_sentence",
             governance_profile_ref="builtin:chat_exports",
@@ -442,7 +429,7 @@ def _build_ingestion_rules(
             name="Markdown（层级：段落->句子，可用于层级召回）",
             enabled=False,
             extensions=[".md"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="markdown_hierarchy",
             governance_profile_ref=md_profile,
@@ -454,7 +441,7 @@ def _build_ingestion_rules(
             rid="markdown-md",
             name="Markdown（按标题分块）",
             extensions=[".md"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="markdown_header",
             governance_profile_ref=md_profile,
@@ -467,7 +454,7 @@ def _build_ingestion_rules(
             name="纯文本（层级：段落->句子，可用于层级召回）",
             enabled=False,
             extensions=[".txt"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="text_hierarchy",
             governance_profile_ref=md_profile,
@@ -479,7 +466,7 @@ def _build_ingestion_rules(
             rid="text-txt",
             name="纯文本（按句子分块）",
             extensions=[".txt"],
-            preprocess_steps=list(common_text_preprocess),
+            preprocess_steps=common_text_preprocess,
             parser_backend="auto",
             chunk_strategy="semantic_sentence",
             governance_profile_ref=md_profile,
@@ -574,7 +561,7 @@ def build_ingestion_policy_suggestion(
     """
     max_names = max(0, min(int(max_names_per_bucket or 0), 2000))
     summary = _summary_or_404(scan_run)
-    jsonl_path = _load_jsonl_path(scan_run, tenant_id=tenant_id)
+    jsonl_path = _jsonl_path_from_row(scan_run, tenant_id=tenant_id)
     signals = _extract_suggestion_signals(summary)
     pii_types, secrets_types = _collect_sensitive_file_types(jsonl_path)
     notes = _build_suggestion_notes(signals)

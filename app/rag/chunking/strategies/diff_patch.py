@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -68,27 +69,17 @@ def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
 
 
 def _iter_file_blocks(text: str) -> list[_FileBlock]:
-    raw = text
-    if not raw:
-        return []
-
     headers: list[tuple[int, str, str]] = []
-    offset = 0
-    for raw_line in raw.splitlines(keepends=True):
-        line_start = offset
-        offset += len(raw_line)
-        parsed = _parse_diff_header_line(raw_line.rstrip("\r\n"))
+    for ln in _iter_lines(text):
+        parsed = _parse_diff_header_line(ln.plain)
         if not parsed:
             continue
         a_path, b_path = parsed
-        headers.append((line_start, a_path, b_path))
-
-    if not headers:
-        return []
+        headers.append((ln.start, a_path, b_path))
 
     blocks: list[_FileBlock] = []
     for idx, (start, a_path, b_path) in enumerate(headers):
-        end = headers[idx + 1][0] if idx + 1 < len(headers) else len(raw)
+        end = headers[idx + 1][0] if idx + 1 < len(headers) else len(text)
         blocks.append(_FileBlock(start=start, end=end, index=idx, a_path=a_path, b_path=b_path))
     return blocks
 
@@ -96,8 +87,6 @@ def _iter_file_blocks(text: str) -> list[_FileBlock]:
 def _iter_hunks(text: str, *, start: int, end: int) -> list[_Span]:
     window = text[start:end]
     matches = list(_HUNK_RE.finditer(window))
-    if not matches:
-        return []
     hunks: list[_Span] = []
     for i, m in enumerate(matches):
         hs = start + m.start()
@@ -185,8 +174,7 @@ class DiffPatchChunker(BaseChunker):
                 desired -= 1
                 continue
             break
-        next_start = desired if desired > start_idx else (end_idx - 1)
-        return next_start if next_start > start_idx else end_idx
+        return desired if desired > start_idx else (end_idx - 1)
 
     def _append_hunk_chunks(
         self,
@@ -210,9 +198,6 @@ class DiffPatchChunker(BaseChunker):
                     continue
                 break
 
-            if end_idx == start_idx:
-                end_idx = start_idx + 1
-
             chunk_start = file_block.start if first else hunks[start_idx].start
             chunk_end = hunks[end_idx - 1].end
             self._append_file_chunk(
@@ -235,10 +220,6 @@ class DiffPatchChunker(BaseChunker):
         base_meta: dict[str, Any],
         file_block: _FileBlock,
     ) -> None:
-        file_text = text[file_block.start : file_block.end]
-        if not file_text.strip():
-            return
-
         hunks = _iter_hunks(text, start=file_block.start, end=file_block.end)
         if not hunks:
             self._append_file_chunk(

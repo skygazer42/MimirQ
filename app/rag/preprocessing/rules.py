@@ -32,20 +32,6 @@ DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
 ]
 
 
-def _extend_rule_packs(out: list[RegexRule], rule_packs: list[str] | None) -> None:
-    seen: set[str] = set()
-    for raw in rule_packs or []:
-        if not isinstance(raw, str):
-            continue
-        key = raw.strip().lower()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        pack = GOVERNANCE_RULE_PACKS.get(key)
-        if pack:
-            out.extend(pack)
-
-
 def _coerce_extra_rule(item: object) -> RegexRule | None:
     if not isinstance(item, dict):
         return None
@@ -78,7 +64,17 @@ def build_governance_rules(
       to reuse its internal defaults.
     """
     out = list(DEFAULT_MARKDOWN_RULES)
-    _extend_rule_packs(out, rule_packs)
+    seen: set[str] = set()
+    for raw in rule_packs or []:
+        if not isinstance(raw, str):
+            continue
+        key = raw.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        pack = GOVERNANCE_RULE_PACKS.get(key)
+        if pack:
+            out.extend(pack)
     for item in extra_rules or []:
         rule = _coerce_extra_rule(item)
         if rule is not None:

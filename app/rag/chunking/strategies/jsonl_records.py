@@ -32,8 +32,6 @@ def _try_parse_json_line(line: str) -> tuple[Any, list[str]] | None:
     s = (line).strip()
     if not s:
         return None
-    if _COMMENT_RE.match(s):
-        return None
     if s[0] not in "{[":
         return None
     try:
@@ -42,9 +40,7 @@ def _try_parse_json_line(line: str) -> tuple[Any, list[str]] | None:
         return None
     keys: list[str] = []
     if isinstance(obj, dict):
-        for k in obj:
-            if isinstance(k, str):
-                keys.append(k)
+        keys = list(obj)
     return obj, keys
 
 
@@ -70,7 +66,7 @@ def looks_like_jsonl_records(text: str) -> bool:
     for ln in sample:
         if _try_parse_json_line(ln) is not None:
             parseable += 1
-    return parseable >= 3 and (parseable / max(1, len(sample))) >= 0.4
+    return parseable >= 3 and (parseable / len(sample)) >= 0.4
 
 
 def _build_fallback_chunks(
@@ -106,7 +102,7 @@ def _record_window_end(records: list[_Record], *, start_idx: int, chunk_size: in
             end_idx += 1
             continue
         break
-    return end_idx if end_idx != start_idx else (start_idx + 1)
+    return end_idx
 
 
 def _record_keys(records: list[_Record]) -> list[str]:
@@ -153,8 +149,6 @@ def _next_record_start(records: list[_Record], *, start_idx: int, end_idx: int, 
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-    if next_start <= start_idx:
-        return end_idx
     return next_start
 
 

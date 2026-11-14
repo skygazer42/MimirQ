@@ -42,7 +42,7 @@ def sample_pdf_text_pages(
         return _empty_pdf_text_sample()
 
     try:
-        page_count = int(getattr(doc, "page_count", 0) or 0)
+        page_count = doc.page_count
         if page_count <= 0:
             return {"page_count": page_count, "samples": [], "is_scanned": False}
 
@@ -53,7 +53,8 @@ def sample_pdf_text_pages(
         if page_count >= 2:
             idxs.append(page_count)
         idxs = sorted({i for i in idxs if 1 <= i <= page_count})
-        idxs = idxs[: max(0, int(max_pages or 0))] if int(max_pages or 0) > 0 else idxs
+        if max_pages > 0:
+            idxs = idxs[:max_pages]
 
         samples: list[dict[str, Any]] = []
         for page_no in idxs:
@@ -63,11 +64,11 @@ def sample_pdf_text_pages(
             except Exception:
                 txt = ""
 
-            excerpt = txt[: max(0, int(max_excerpt_chars or 0))] if txt else ""
+            excerpt = txt[: max(0, max_excerpt_chars)]
             samples.append({"page": page_no, "text_chars": len(txt), "excerpt": excerpt})
 
         # Heuristic: if none of sampled pages has meaningful selectable text, treat as scanned.
-        is_scanned = bool(samples) and all(int(s.get("text_chars") or 0) < 20 for s in samples)
+        is_scanned = bool(samples) and all(sample["text_chars"] < 20 for sample in samples)
         return {"page_count": page_count, "samples": samples, "is_scanned": is_scanned}
     finally:
         try:

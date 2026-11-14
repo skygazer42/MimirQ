@@ -43,7 +43,9 @@ def normalize_eval_dataset_sample(sample: dict[str, Any]) -> dict[str, Any]:
         "review_status": _safe_str(payload.get("review_status"), max_len=64) or "pending",
         "construction_method": _safe_str(payload.get("construction_method"), max_len=128),
         "parent_sample_ids": [
-            str(item).strip() for item in (payload.get("parent_sample_ids") or []) if item is not None and str(item).strip()
+            str(item).strip()
+            for item in (payload.get("parent_sample_ids") or [])
+            if item is not None and str(item).strip()
         ],
         "critique": dict(payload.get("critique") or {}),
         "notes": _safe_str(payload.get("notes")),

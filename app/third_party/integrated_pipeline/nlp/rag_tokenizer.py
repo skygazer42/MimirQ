@@ -2,6 +2,7 @@
 RAG tokenizer wrapper.
 Integrated from third_party/integrated/nlp/rag_tokenizer.py
 """
+
 from app.deepdoc.src.model.rag_tokenizer import RagTokenizer as DeepDocRagTokenizer
 
 
@@ -15,14 +16,12 @@ class RagTokenizer(DeepDocRagTokenizer):
     def tokenize(self, line: str) -> str:
         if self._use_infinity:
             return line
-        else:
-            return super().tokenize(line)
+        return super().tokenize(line)
 
     def fine_grained_tokenize(self, tks: str) -> str:
         if self._use_infinity:
             return tks
-        else:
-            return super().fine_grained_tokenize(tks)
+        return super().fine_grained_tokenize(tks)
 
 
 # Default tokenizer instance
@@ -32,4 +31,4 @@ fine_grained_tokenize = tokenizer.fine_grained_tokenize
 tag = tokenizer.tag
 freq = tokenizer.freq
 tradi2simp = tokenizer._tradi2simp
-strQ2B = tokenizer._strQ2B
+strQ2B = tokenizer._strQ2B  # noqa: N816  # Preserve the DeepDoc tokenizer API spelling.

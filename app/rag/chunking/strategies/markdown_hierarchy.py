@@ -38,8 +38,6 @@ def _iter_markdown_headings(text: str) -> list[_Heading]:
         if parsed is None:
             continue
         level, title = parsed
-        if not title:
-            continue
         out.append(_Heading(pos=line_start, level=level, text=title[:200]))
     return out
 

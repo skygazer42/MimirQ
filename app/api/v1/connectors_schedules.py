@@ -4,16 +4,15 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1.connectors_common import _DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.services.connector_schedule_operations import tick_schedules
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.post("/scheduled/tick", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/scheduled/tick")
 async def scheduled_tick(
     background_tasks: BackgroundTasks,
     *,

@@ -14,9 +14,9 @@ Status: implemented
 
 文件和图像预处理的真实返回路径均构造完整结果，changed 为布尔值、output_path 由实际 Path 转字符串；消费端直接读取，不再缺省为空路径。索引开关来自 build_indexing_options 的完整 IndexingOptions，记录真实类型并直接读取字段，既有开关转换保留。checkpoint 查询得到完整 DocumentChunk／DocumentParsedContent，查无记录时明确退出，空正文、原文和原总字符规则继续处理。
 
-两种 checkpoint 恢复共用 _checkpoint_option，在当前保存值、请求保存值、调用参数和 auto 之间按原真值顺序惰性选择，再去空白。已选中的空白字符串仍变成 auto，不继续回退到后面的字段。LangChain Document 的实际 SDK 声明了可空 id 与 metadata；来源映射和缓存写入直接读取这些成员，缓存反序列化仍验证原始载荷、真实 None 与空集合的差别保持。
+两种 checkpoint 恢复共用 _checkpoint_option，在当前保存值、请求保存值、调用参数和 auto 之间按原真值顺序惰性选择，再去空白。已选中的空白字符串仍变成 auto，不继续回退到后面的字段。当前安装的 LangChain Document 由 BaseMedia 声明可空 id 与非空 dict metadata；metadata 为 None 的工厂参数属于 Blob，不能据此给 Document 重复兜底。来源映射和缓存写入直接读取实际成员，缓存反序列化仍验证原始载荷，真实 None 与空集合的差别保持。
 
-DocumentProcessorService 继续持有处理入口和现有依赖接口。ParsingStage、InlineAssetStage 与 ChunkAssetStage 仍接收 service，保留解析取消、产物目录、图像上传与 SDK 清理行为。它们通过 type-only 引用声明实际 processor 依赖，避免循环导入；图像后端在原位置加载，外部图像对象继续保留实际协议处理。
+先前方案保留 DocumentProcessorService 与三个 Stage 的 service 回调接口，以控制当时的签名迁移范围。当前源码核实这些对象没有实例状态，这部分接口由[实际函数所有者](../architecture/2026-11-13-document-pipeline-function-owners.md)接管；原参数、解析取消、产物目录、图像上传与 SDK 清理边界继续保留。
 
 真实 flow 调用方直接接收和调用五个函数，不再构造对应阶段。这个已独立审查的模块只迁移必要的参数、类型与调用点，不作为本批完整 owner 再计完成。旧 test import、已有调用与 monkeypatch 目标同步到新符号；没有增加、扩写或执行测试用例、断言或 helper。
 
@@ -24,13 +24,13 @@ DocumentProcessorService 继续持有处理入口和现有依赖接口。Parsing
 
 processor、处理流程与恢复模块直接读取 PipelineEffective 和 GovernanceStats 的声明字段。配置解析器返回完整的 frozen dataclass，治理统计的两个真实构造路径也覆盖必填字段，其余属性由数据类缺省值创建；消费参数没有在读取前被重新赋值。因此移除 78 处 getattr 的字段存在性兜底，不再支持缺少声明成员的内部替身对象。字段值原有的 int／float／str／bool、字典复制、范围限制与 or 语义仍按原位置执行，没有把数据类注解当作运行时数值校验。
 
-该增量不删除 ORM、SDK、原始 metadata 或动态插件返回值的取值保护；重试、取消、checkpoint、治理降级、分块、索引、租户约束、资源关闭和事务控制流保持。阶段函数、注入入口和兼容注册名称不变，不增加类、模块或解析协议。
+该增量不删除 ORM、SDK、原始 metadata 或动态插件返回值的取值保护；重试、取消、checkpoint、治理降级、分块、索引、租户约束、资源关闭和事务控制流保持。旧固定注入和测试 facade 的退出由上述新决定说明，原始数据和真实第三方接口不按名称或行数删除。
 
 2026-11-07 ORM 字段增量：正常流程和恢复路径的数据库查询已取得完整 Document，并在缺失时提前退出，因此另外 17 处声明字段直接读取，保留原 JSON、可空 owner／dataset、状态和失败转换。另五处错误／取消路径继续使用原 getattr：process_document 在 begin_process_document 返回前可能失败，此时 runtime_state 中还没有 db_document。它们的现有 DBDocument 注解不足以证明对象存在，不能直接替换成属性读取，也不能改变原异常处理顺序。
 
 图像代码处理固定启用，因此 InlineAssetStage 中依赖 not image_code_enabled 的提前返回不可达，直接退出该死分支；其余开关仍按原顺序计算，图像代码、公式、图表、标题和上传仍按原顺序执行。
 
-本批保留本地缓存反序列化与过期清理、质量门禁 JSON 序列化、预览解析入口、重试／checkpoint 恢复、路由选择、worker 协议和常量模块的原始边界。asyncio Process 与 Popen 两种进程、进程组信号、等待、超时、取消、日志／结果限额以及错误分类没有统一成新抽象。解析输出的顺序、metadata 名称、缓存键、租户／路径／ACL、事务和事件保持。
+质量门禁的通用 JSON 序列化由[结果实际构造者](2026-11-13-parse-quality-decision-owner.md)接管：只有内部已成立记录退出任意对象转文本，原始信号解析仍保留。其余本地缓存反序列化与过期清理、预览解析入口、重试／checkpoint 恢复、路由选择、worker 协议和常量模块继续守住各自边界。asyncio Process 与 Popen 两种进程、进程组信号、等待、超时、取消、日志／结果限额以及错误分类没有统一成新抽象。解析输出的顺序、metadata 名称、缓存键、租户／路径／ACL、事务和事件保持。
 
 ## Alternatives considered
 

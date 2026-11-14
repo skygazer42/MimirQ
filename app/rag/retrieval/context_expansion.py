@@ -2,13 +2,12 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.retrieval.hierarchy_expand import FetchByHierarchyKey, expand_hierarchy_context
 from app.rag.core.metadata import _stringified_metadata_text
+from app.rag.retrieval.hierarchy_expand import FetchByHierarchyKey, expand_hierarchy_context
 from app.rag.retrieval.sibling_expand import expand_document_siblings
 
 
 def _chunk_id_from_item(item: dict[str, Any]) -> str:
-    meta = item.get("metadata") or {}
     return str(item["chunk_id"]).strip()
 
 
@@ -85,7 +84,7 @@ def _neighbor_item(
         "chunk_id": str(chunk.id),
         "content": chunk.content,
         "metadata": stored_meta,
-        "score": float(anchor_score * 0.85) if anchor_score else 0.0,
+        "score": anchor_score * 0.85 if anchor_score else 0.0,
     }
 
 
@@ -348,7 +347,7 @@ def _process_short_doc_result(
 def _process_windowed_result(
     *,
     result: dict[str, Any],
-    doc_key: str,
+    doc_key: str | None,
     chunk_index: int | None,
     local_window: int,
     max_added: int,
@@ -468,16 +467,16 @@ def expand_ranked_chunk_results(
         "framework": "context_expansion",
         "strategy": strategy,
         "strategies_used": sorted(strategies_used),
-        "window": int(window_i),
+        "window": window_i,
         "score_driven": bool(score_driven),
         "high_threshold": float(high_threshold),
         "mid_threshold": float(mid_threshold),
         "high_span": int(high_span),
         "mid_span": int(mid_span),
-        "short_doc_count": int(len(short_doc_ids)),
-        "neighbor_added": int(neighbor_added),
-        "sibling_added": int(sibling_added),
-        "added_docs": int(neighbor_added + sibling_added),
+        "short_doc_count": len(short_doc_ids),
+        "neighbor_added": neighbor_added,
+        "sibling_added": sibling_added,
+        "added_docs": neighbor_added + sibling_added,
     }
     return expanded, meta
 

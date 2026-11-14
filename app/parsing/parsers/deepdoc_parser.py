@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import re
 import time
 import warnings
 from pathlib import Path
 from threading import Lock
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from langchain_core.documents import Document
 from PIL import Image as PILImage
@@ -37,18 +39,31 @@ from app.parsing.enrich.table_structure_adapter import (
 from app.parsing.enrich.watermark_detector import WatermarkRemovalResult, remove_document_watermark_elements
 from app.parsing.models.runtime import SmallModelRuntime
 from app.parsing.models.table_transformer_onnx import predict_table_structure_detections
-from app.parsing.utils.block_schema import POSITION_TAG_RE, build_block_element, parse_position_tags
+from app.parsing.utils.block_schema import build_block_element, parse_position_tags
+
+if TYPE_CHECKING:
+    from app.deepdoc.parser import DocxParser as DeepDocDocxParser
 
 _HEADING_LEVEL_RE = re.compile(r"(\d+)")
 
 
+class _SectionRecord(TypedDict):
+    text: str
+    element: dict[str, Any]
+
+
+class _TableModelMetadata(TypedDict):
+    model: dict[str, Any]
+    detections: list[dict[str, Any]]
+    detection_count: int
+
+
 class _MediaAnalysis(TypedDict):
     positions: list[dict[str, Any]]
-    first_position: dict[str, Any]
     table_profile: MarkdownTableProfile | None
     table_extraction: TableExtraction | None
-    table_detection_model: dict[str, Any] | None
-    structure_model: dict[str, Any] | None
+    table_detection_model: _TableModelMetadata | None
+    structure_model: _TableModelMetadata | None
     is_table: bool
 
 
@@ -56,58 +71,41 @@ def _elapsed_ms_since(start: float) -> int:
     return max(0, int(round((time.perf_counter() - start) * 1000.0)))
 
 
-def _raw_item_count(value: Any) -> int:
-    if isinstance(value, list):
-        return len(value)
-    if value is None:
-        return 0
-    if isinstance(value, str):
-        return 1 if value.strip() else 0
-    return 1
-
-
 def _looks_like_heading_style(style_name: str) -> bool:
-    s = (style_name).strip()
-    if not s:
+    style = style_name.strip()
+    if not style:
         return False
-    s_lower = s.lower()
-    return s_lower.startswith("heading") or "标题" in s
+    return style.lower().startswith("heading") or "标题" in style
 
 
 def _heading_level(style_name: str) -> int:
-    m = _HEADING_LEVEL_RE.search((style_name).strip())
-    if not m:
+    match = _HEADING_LEVEL_RE.search(style_name.strip())
+    if not match:
         return 2
     try:
-        lvl = int(m.group(1))
+        level = int(match.group(1))
     except Exception:
         return 2
-    return max(1, min(6, lvl))
+    return max(1, min(6, level))
 
 
 def _looks_like_list_style(style_name: str) -> bool:
-    s = (style_name).strip().lower()
-    return "list" in s or "bullet" in s or "列表" in s
+    style = style_name.strip().lower()
+    return "list" in style or "bullet" in style or "列表" in style
 
 
 def _list_marker(style_name: str) -> str:
-    s = (style_name).strip().lower()
-    if "number" in s or "编号" in s or "序号" in s:
+    style = style_name.strip().lower()
+    if "number" in style or "编号" in style or "序号" in style:
         return "1."
     return "-"
 
 
 def _small_model_summary(runtime_metadata: dict[str, Any]) -> dict[str, Any]:
-    available_tasks: list[str] = []
-    unavailable_tasks: list[str] = []
-    for task, item in runtime_metadata.items():
-        if isinstance(item, dict) and bool(item.get("available")):
-            available_tasks.append(task)
-        else:
-            unavailable_tasks.append(task)
+    unavailable_tasks = [task for task, item in runtime_metadata.items() if not item["available"]]
     return {
         "task_count": len(runtime_metadata),
-        "available_count": len(available_tasks),
+        "available_count": len(runtime_metadata) - len(unavailable_tasks),
         "unavailable_count": len(unavailable_tasks),
         "unavailable_tasks": unavailable_tasks,
     }
@@ -121,7 +119,7 @@ def _build_deepdoc_profile(
     document_count: int,
     section_count: int,
     media_count: int,
-    total_pages: Any = None,
+    total_pages: int | None = None,
     ocr_recognition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile: dict[str, Any] = {
@@ -129,18 +127,14 @@ def _build_deepdoc_profile(
         "engine": "deepdoc",
         "file_type": file_type,
         "stages_ms": dict(stages_ms),
-        "document_count": max(0, document_count),
-        "section_count": max(0, section_count),
-        "media_count": max(0, media_count),
+        "document_count": document_count,
+        "section_count": section_count,
+        "media_count": media_count,
         "small_model_summary": _small_model_summary(runtime_metadata),
     }
-    try:
-        pages = int(total_pages)
-    except (TypeError, ValueError):
-        pages = 0
-    if pages > 0:
-        profile["total_pages"] = pages
-    if isinstance(ocr_recognition, dict) and ocr_recognition:
+    if total_pages is not None and total_pages > 0:
+        profile["total_pages"] = total_pages
+    if ocr_recognition:
         profile["ocr_recognition"] = dict(ocr_recognition)
     return profile
 
@@ -153,79 +147,51 @@ def _attach_deepdoc_profile(documents: list[Document], profile: dict[str, Any]) 
     return documents
 
 
-def _ocr_recognition_profile_from_parser(parser: Any) -> dict[str, Any] | None:
-    ocr = getattr(parser, "ocr", None)
-    profile = getattr(ocr, "last_recognition_profile", None)
-    return dict(profile) if isinstance(profile, dict) and profile else None
+def _ocr_recognition_profile_from_parser(parser: DeepDocPdfParser) -> dict[str, Any] | None:
+    profile = parser.ocr.last_recognition_profile
+    return dict(profile) if profile else None
 
 
 def _table_structure_detections_from_metadata(
-    structure_model: dict[str, Any] | None,
+    structure_model: _TableModelMetadata | None,
 ) -> list[TableStructureDetection]:
-    if not isinstance(structure_model, dict):
+    if structure_model is None:
         return []
-    detections = structure_model.get("detections")
-    if not isinstance(detections, list):
-        return []
-    out: list[TableStructureDetection] = []
-    for item in detections:
-        if not isinstance(item, dict):
-            continue
-        out.append(
-            TableStructureDetection(
-                label=str(item.get("label") or ""),
-                score=float(item.get("score") or 0.0),
-                bbox=item.get("bbox") if isinstance(item.get("bbox"), dict) else None,
-            )
+    return [
+        TableStructureDetection(
+            label=item["label"],
+            score=item["score"],
+            bbox=item["bbox"],
         )
-    return out
+        for item in structure_model["detections"]
+    ]
 
 
-def _docx_section_parts(sections: Any) -> list[str]:
+def _docx_section_parts(sections: list[tuple[str, str | None]]) -> list[str]:
     parts: list[str] = []
-    if isinstance(sections, list):
-        for item in sections:
-            if isinstance(item, tuple):
-                text = str((item[0] if item else "") or "").strip()
-                style_name = str((item[1] if len(item) > 1 else "") or "")
-            else:
-                text = str(item or "").strip()
-                style_name = ""
-            if not text:
-                continue
-            if style_name and _looks_like_heading_style(style_name):
-                parts.append(f"{'#' * _heading_level(style_name)} {text}")
-            elif style_name and _looks_like_list_style(style_name):
-                parts.append(f"{_list_marker(style_name)} {text}")
-            else:
-                parts.append(text)
-    else:
-        text = str(sections or "").strip()
-        if text:
+    for raw_text, style_name in sections:
+        text = raw_text.strip()
+        if not text:
+            continue
+        if style_name and _looks_like_heading_style(style_name):
+            parts.append(f"{'#' * _heading_level(style_name)} {text}")
+        elif style_name and _looks_like_list_style(style_name):
+            parts.append(f"{_list_marker(style_name)} {text}")
+        else:
             parts.append(text)
     return parts
 
 
-def _docx_table_parts(tables: Any) -> list[str]:
+def _docx_table_parts(tables: list[list[str]]) -> list[str]:
     parts: list[str] = []
-    if isinstance(tables, list):
-        for table in tables:
-            if isinstance(table, list):
-                joined = "\n".join(str(value).strip() for value in table if str(value).strip()).strip()
-                if joined:
-                    parts.append(joined)
-            else:
-                text = str(table or "").strip()
-                if text:
-                    parts.append(text)
+    for table in tables:
+        joined = "\n".join(value.strip() for value in table if value.strip()).strip()
+        if joined:
+            parts.append(joined)
     return parts
 
 
-def _docx_parts(sections: Any, tables: Any) -> list[str]:
-    return _docx_section_parts(sections) + _docx_table_parts(tables)
-
-
-def _pdf_base_meta(file_path: Path, *, runtime_metadata: dict[str, Any], total_pages: Any) -> dict[str, Any]:
+def _pdf_base_meta(file_path: Path, *, runtime_metadata: dict[str, Any], total_pages: int | None) -> dict[str, Any]:
     base_meta = {
         "source": file_path.name,
         "file_type": "pdf",
@@ -237,79 +203,31 @@ def _pdf_base_meta(file_path: Path, *, runtime_metadata: dict[str, Any], total_p
     return base_meta
 
 
-def _normalize_pdf_section(section: Any) -> tuple[str, str, dict[str, Any] | None]:
-    if isinstance(section, tuple):
-        head = section[0] if section else ""
-        text = str(head or "").strip()
-        if not text:
-            return "", "text", None
-
-        tag = ""
-        native_kind = "text"
-        extra_attrs: dict[str, Any] = {}
-        for item in reversed(section[1:]):
-            if isinstance(item, dict):
-                extra_attrs.update(item)
-                continue
-            if not isinstance(item, str):
-                continue
-            candidate = item.strip()
-            if "@@" in candidate and "##" in candidate and POSITION_TAG_RE.search(candidate):
-                tag = candidate
-                continue
-            normalized = candidate.lower()
-            if normalized in {
-                "text",
-                "paragraph",
-                "heading",
-                "title",
-                "list",
-                "table",
-                "image",
-                "figure",
-                "equation",
-                "formula",
-            }:
-                native_kind = normalized
-        if tag and tag not in text:
-            text = f"{text}{tag}"
-        return text, native_kind, (extra_attrs)
-
-    if isinstance(section, str):
-        return section.strip(), "text", None
-    return str(section or "").strip(), "text", None
-
-
-def _section_record(*, text: str, native_kind: str, attrs: dict[str, Any] | None, index: int) -> dict[str, Any]:
-    return {
-        "text": text,
-        "element": build_block_element(
-            text=text,
-            kind=native_kind,
-            source_backend="deepdoc",
-            source_element_id=f"section:{index}",
-            element_id=f"deepdoc:section:{index}",
-            attributes={"block_index": index, **(attrs or {})},
-        ),
-    }
-
-
-def _section_records(sections: Any) -> list[dict[str, Any]]:
-    section_items = sections if isinstance(sections, list) else [sections]
-    records: list[dict[str, Any]] = []
-    for index, item in enumerate(section_items):
-        normalized, native_kind, attrs = _normalize_pdf_section(item)
-        if normalized:
-            records.append(_section_record(text=normalized, native_kind=native_kind, attrs=attrs, index=index))
-    return records
+def _section_records(sections: str) -> list[_SectionRecord]:
+    text = sections.strip()
+    if not text:
+        return []
+    return [
+        {
+            "text": text,
+            "element": build_block_element(
+                text=text,
+                kind="text",
+                source_backend="deepdoc",
+                source_element_id="section:0",
+                element_id="deepdoc:section:0",
+                attributes={"block_index": 0},
+            ),
+        }
+    ]
 
 
 def _filter_records_by_elements(
-    records: list[dict[str, Any]],
+    records: list[_SectionRecord],
     elements: list[dict[str, Any]],
     *,
     changed: bool,
-) -> list[dict[str, Any]]:
+) -> list[_SectionRecord]:
     if not changed:
         return records
     kept_ids = {element["id"] for element in elements}
@@ -317,9 +235,9 @@ def _filter_records_by_elements(
 
 
 def _prepare_section_content(
-    section_records: list[dict[str, Any]],
+    section_records: list[_SectionRecord],
 ) -> tuple[
-    list[dict[str, Any]],
+    list[_SectionRecord],
     list[str],
     list[dict[str, Any]],
     list[dict[str, Any]],
@@ -342,13 +260,10 @@ def _prepare_section_content(
     )
 
     reading_order_fix = fix_reading_order_elements([record["element"] for record in section_records])
-    if reading_order_fix.elements:
-        records_by_id = {record["element"]["id"]: record for record in section_records}
-        fixed_records = [records_by_id.get(element["id"]) for element in reading_order_fix.elements]
-        if all(record is not None for record in fixed_records) and len(fixed_records) == len(section_records):
-            section_records = [record for record in fixed_records if record is not None]
+    records_by_id = {record["element"]["id"]: record for record in section_records}
+    section_records = [records_by_id[element["id"]] for element in reading_order_fix.elements]
 
-    text_parts = [str(record["text"]) for record in section_records]
+    text_parts = [record["text"] for record in section_records]
     derived_elements = [dict(record["element"]) for record in section_records]
     section_tree = build_section_tree(derived_elements)
     if section_tree:
@@ -399,13 +314,11 @@ def _text_document_from_sections(
     return Document(page_content=merged_text, metadata=text_meta)
 
 
-def _media_content(payload: Any) -> str:
+def _media_content(payload: str | list[str]) -> str:
     if isinstance(payload, str):
         content = payload.strip()
-    elif isinstance(payload, list):
-        content = "\n".join(str(item).strip() for item in payload if str(item).strip()).strip()
     else:
-        content = str(payload).strip() if payload is not None else ""
+        content = "\n".join(item.strip() for item in payload if item.strip()).strip()
     if not content:
         return "image"
     if len(content) > 900:
@@ -435,21 +348,20 @@ def _apply_media_position_metadata(
     *,
     meta: dict[str, Any],
     positions: list[dict[str, Any]],
-    first_position: dict[str, Any],
     derived_elements: list[dict[str, Any]],
     is_table: bool,
 ) -> None:
     if not positions:
         return
-    meta["element_page"] = first_position.get("page")
-    meta["element_bbox"] = first_position.get("bbox")
-    if first_position.get("pages"):
-        meta["cross_page_merge_pages"] = first_position.get("pages")
+    first_position = positions[0]
+    meta["element_page"] = first_position["page"]
+    meta["element_bbox"] = first_position["bbox"]
+    meta["cross_page_merge_pages"] = first_position["pages"]
     caption = find_nearest_caption(
         derived_elements,
         media_kind="table" if is_table else "image",
-        page=meta.get("element_page"),
-        bbox=meta.get("element_bbox"),
+        page=first_position["page"],
+        bbox=first_position["bbox"],
     )
     if caption is not None:
         meta["caption"] = caption
@@ -460,11 +372,11 @@ def _apply_table_extraction_metadata(
     meta: dict[str, Any],
     image_obj: Any,
     table_extraction: TableExtraction | None,
-    structure_model: dict[str, Any] | None,
-    table_detection_model: dict[str, Any] | None,
-) -> TableExtraction | None:
+    structure_model: _TableModelMetadata | None,
+    table_detection_model: _TableModelMetadata | None,
+) -> None:
     if table_extraction is None:
-        return None
+        return
     if isinstance(image_obj, PILImage.Image):
         rotation = select_table_rotation(image_obj)
         table_kind = classify_table_grid_type(image_obj)
@@ -488,7 +400,6 @@ def _apply_table_extraction_metadata(
         meta["table_structure_model"] = structure_model
     if table_detection_model is not None:
         meta["table_detection_model"] = table_detection_model
-    return table_extraction
 
 
 def _media_element_attributes(
@@ -496,7 +407,7 @@ def _media_element_attributes(
     is_table: bool,
     source_element_id: str,
     table_profile: MarkdownTableProfile | None,
-    caption: Any,
+    caption: dict[str, Any] | None,
     positions: list[dict[str, Any]],
 ) -> dict[str, Any]:
     attributes = {
@@ -507,9 +418,9 @@ def _media_element_attributes(
     }
     if table_profile is not None:
         attributes.update(table_profile.to_metadata())
-    if isinstance(caption, dict):
+    if caption is not None:
         attributes["caption_text"] = caption["text"]
-        attributes["caption_source_element_id"] = caption.get("source_element_id")
+        attributes["caption_source_element_id"] = caption["source_element_id"]
     if positions:
         attributes["position_tag"] = positions[0]["tag"]
         attributes["position_tags"] = [item["tag"] for item in positions]
@@ -541,19 +452,18 @@ def _append_seal_documents(docs: list[Document], *, file_path: Path) -> list[Doc
 class DeepDocParser:
     """Bridge DeepDoc's parser so we can reuse it inside our pipeline."""
 
-    def __init__(self):
-        self._pdf_parser_cls = DeepDocPdfParser
-        self._pdf_parser = None
-        self._docx_parser = None
+    def __init__(self) -> None:
+        self._pdf_parser: DeepDocPdfParser | None = None
+        self._docx_parser: DeepDocDocxParser | None = None
         self._small_model_runtime = SmallModelRuntime()
         self._lock = Lock()
 
-    def _ensure_pdf_parser(self):
+    def _ensure_pdf_parser(self) -> DeepDocPdfParser:
         if self._pdf_parser is None:
-            self._pdf_parser = self._pdf_parser_cls()
+            self._pdf_parser = DeepDocPdfParser()
         return self._pdf_parser
 
-    def _ensure_docx_parser(self):
+    def _ensure_docx_parser(self) -> DeepDocDocxParser:
         if self._docx_parser is None:
             from app.deepdoc.parser import DocxParser as DeepDocDocxParser
 
@@ -582,7 +492,7 @@ class DeepDocParser:
                 }
         return out
 
-    def _table_structure_model_metadata(self, image_obj: Any) -> dict[str, Any] | None:
+    def _table_structure_model_metadata(self, image_obj: Any) -> _TableModelMetadata | None:
         if not isinstance(image_obj, PILImage.Image):
             return None
         try:
@@ -621,7 +531,7 @@ class DeepDocParser:
                 "detection_count": 0,
             }
 
-    def _table_detection_model_metadata(self, image_obj: Any) -> dict[str, Any] | None:
+    def _table_detection_model_metadata(self, image_obj: Any) -> _TableModelMetadata | None:
         if not isinstance(image_obj, PILImage.Image):
             return None
         try:
@@ -671,7 +581,7 @@ class DeepDocParser:
                 raise RuntimeError(f"DeepDoc failed to parse {file_path}") from exc
 
         postprocess_t0 = time.perf_counter()
-        merged_text = "\n\n".join(_docx_parts(sections, tables)).strip()
+        merged_text = "\n\n".join(_docx_section_parts(sections) + _docx_table_parts(tables)).strip()
         stages_ms["postprocess"] = _elapsed_ms_since(postprocess_t0)
         runtime_metadata = self._small_model_runtime_metadata()
         docs = [
@@ -690,12 +600,14 @@ class DeepDocParser:
             stages_ms=stages_ms,
             runtime_metadata=runtime_metadata,
             document_count=len(docs),
-            section_count=_raw_item_count(sections),
-            media_count=_raw_item_count(tables),
+            section_count=len(sections),
+            media_count=len(tables),
         )
         return _attach_deepdoc_profile(docs, profile)
 
-    def _parse_pdf_core(self, file_path: Path) -> tuple[Any, Any, Any, Any, dict[str, int]]:
+    def _parse_pdf_core(
+        self, file_path: Path
+    ) -> tuple[DeepDocPdfParser, str, list[tuple[Any, str | list[str]]], int | None, dict[str, int]]:
         stages_ms: dict[str, int] = {}
         with self._lock:
             stage_t0 = time.perf_counter()
@@ -738,7 +650,6 @@ class DeepDocParser:
             )
         return {
             "positions": positions,
-            "first_position": first_position,
             "table_profile": table_profile,
             "table_extraction": table_extraction,
             "table_detection_model": table_detection_model,
@@ -757,7 +668,6 @@ class DeepDocParser:
     ) -> Document:
         analysis = self._media_analysis(media_index=media_index, image_obj=image_obj, content=content)
         positions = analysis["positions"]
-        first_position = analysis["first_position"]
         table_profile = analysis["table_profile"]
         table_extraction = analysis["table_extraction"]
         table_detection_model = analysis["table_detection_model"]
@@ -774,11 +684,10 @@ class DeepDocParser:
         _apply_media_position_metadata(
             meta=meta,
             positions=positions,
-            first_position=first_position,
             derived_elements=derived_elements,
             is_table=is_table,
         )
-        table_extraction = _apply_table_extraction_metadata(
+        _apply_table_extraction_metadata(
             meta=meta,
             image_obj=image_obj,
             table_extraction=table_extraction,
@@ -816,15 +725,14 @@ class DeepDocParser:
         return Document(page_content=content, metadata=meta)
 
     def _media_documents(
-        self, media: Any, *, base_meta: dict[str, Any], derived_elements: list[dict[str, Any]]
+        self,
+        media: list[tuple[Any, str | list[str]]],
+        *,
+        base_meta: dict[str, Any],
+        derived_elements: list[dict[str, Any]],
     ) -> list[Document]:
         docs: list[Document] = []
-        if not isinstance(media, list):
-            return docs
-        for media_index, item in enumerate(media):
-            if not (isinstance(item, tuple) and len(item) == 2):
-                continue
-            image_obj, payload = item
+        for media_index, (image_obj, payload) in enumerate(media):
             if image_obj is None:
                 continue
             docs.append(
@@ -880,7 +788,7 @@ class DeepDocParser:
             runtime_metadata=runtime_metadata,
             document_count=len(docs),
             section_count=len(section_records),
-            media_count=_raw_item_count(media),
+            media_count=len(media),
             total_pages=total_pages,
             ocr_recognition=_ocr_recognition_profile_from_parser(parser),
         )

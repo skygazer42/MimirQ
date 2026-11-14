@@ -57,10 +57,10 @@ def _build_generic_object_store(provider: str, *, region: str | None = None) -> 
 
 
 def get_document_object_store(*, region: str | None = None) -> MinIOService | None:
-    provider = normalize_object_store_provider(settings.OBJECT_STORAGE_PROVIDER or "minio")
+    provider = normalize_object_store_provider()
     generic_store = _build_generic_object_store(provider, region=region)
     generic_backend = object_store_backend_config(generic_store)
-    if bool(generic_backend.get("enabled", False)) and bool(generic_backend.get("documents_enabled", False)):
+    if generic_backend["enabled"] and generic_backend["documents_enabled"]:
         return generic_store
     if settings.MINIO_ENABLED and settings.MINIO_DOCUMENTS_ENABLED:
         return minio_service
@@ -75,10 +75,9 @@ def _resolve_stored_object_region(
     ref: ObjectStorageRef,
     *,
     region: str | None,
-    document_metadata: dict[str, object] | None,
+    document_metadata: dict[str, object],
 ) -> str | None:
-    metadata = document_metadata if isinstance(document_metadata, dict) else {}
-    stored_region = metadata.get(SOURCE_STORAGE_REGION_KEY)
+    stored_region = document_metadata.get(SOURCE_STORAGE_REGION_KEY)
     if stored_region is not None:
         stored_region = stored_region.strip().lower()
     if stored_region:
@@ -86,7 +85,7 @@ def _resolve_stored_object_region(
     explicit_region = region.strip().lower() if region is not None else None
     if explicit_region:
         return explicit_region
-    stored_backend = metadata.get(SOURCE_STORAGE_BACKEND_KEY)
+    stored_backend = document_metadata.get(SOURCE_STORAGE_BACKEND_KEY)
     if stored_backend is not None:
         stored_backend = stored_backend.strip().lower()
     if stored_backend != SOURCE_STORAGE_BACKEND_OBJECT_STORAGE:
@@ -135,10 +134,10 @@ def object_store_backend_config(store: MinIOService) -> dict[str, Any]:
     return store.describe_backend()
 
 
-def document_object_store_metadata(store: object) -> dict[str, str]:
+def document_object_store_metadata(store: MinIOService) -> dict[str, str]:
     backend = SOURCE_STORAGE_BACKEND_LEGACY_MINIO if store is minio_service else SOURCE_STORAGE_BACKEND_OBJECT_STORAGE
     backend_config = object_store_backend_config(store)
-    provider = str(backend_config.get("provider") or "minio").strip().lower() or "minio"
+    provider = backend_config["provider"].strip().lower()
     metadata = {
         SOURCE_STORAGE_BACKEND_KEY: backend,
         SOURCE_STORAGE_PROVIDER_KEY: provider,
@@ -164,7 +163,7 @@ def resolve_document_object_reference(
     ref = parse_object_storage_uri(raw_path)
     store = get_object_store_for_uri(raw_path, region=region, document_metadata=document_metadata)
     backend = object_store_backend_config(store)
-    if not bool(backend.get("enabled", False)):
+    if not backend["enabled"]:
         raise RuntimeError("object_storage_disabled")
     expected_bucket = backend["bucket"].strip()
     if ref.bucket != expected_bucket:

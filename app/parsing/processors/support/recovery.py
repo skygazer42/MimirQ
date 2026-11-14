@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -25,6 +25,12 @@ from app.services.document_index_channel_service import (
 )
 from app.services.metrics_logger import log_metrics
 from app.types.pipeline import PipelineEffective
+
+if TYPE_CHECKING:
+    from app.services.indexer import Indexer
+    from app.types.indexing import IndexingOptions
+
+RetryCleanupStatus = Literal["applied", "deferred", "invalid"]
 
 AUDIT_ACTION_DOCUMENT_INGEST_GATE = "document.ingest_gate"
 logger = get_logger("parsing.document_processor")
@@ -58,7 +64,9 @@ def _validate_retry_cleanup_scope(
     requested_hash = request.get("pipeline_hash")
     scope = request.get("scope")
     target_key = request.get("doc_pipeline_key")
-    if any(value is not None and not isinstance(value, str) for value in (pipeline_hash, requested_hash, scope, target_key)):
+    if any(
+        value is not None and not isinstance(value, str) for value in (pipeline_hash, requested_hash, scope, target_key)
+    ):
         logger.error("Refusing malformed retry cleanup intent for document %s", document_id)
         return None
     pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
@@ -68,7 +76,7 @@ def _validate_retry_cleanup_scope(
     if not pipeline_hash or requested_hash != pipeline_hash or scope not in {"document", "pipeline"}:
         logger.error("Refusing stale retry cleanup intent for document %s", document_id)
         return None
-    if scope == "pipeline" and (not pipeline_hash or target_key != f"{document_id}:{pipeline_hash}"):
+    if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
         logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
         return None
     return scope, target_key, scope == "pipeline"
@@ -79,7 +87,6 @@ def _clear_forced_retry_state(
     *,
     metadata: dict[str, Any],
     request: dict[str, Any],
-    parsed_content_model: type[DocumentParsedContent],
     document_id: UUID,
     tenant_id: UUID,
 ) -> None:
@@ -87,16 +94,15 @@ def _clear_forced_retry_state(
         return
     metadata.pop("ingest_checkpoint", None)
     metadata.pop("parsed_content_persisted", None)
-    db.query(parsed_content_model).filter(
-        parsed_content_model.document_id == document_id,
-        parsed_content_model.tenant_id == tenant_id,
+    db.query(DocumentParsedContent).filter(
+        DocumentParsedContent.document_id == document_id,
+        DocumentParsedContent.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
 
 
 def _load_pipeline_cleanup_chunk_ids(
     db: Session,
     *,
-    chunk_model: type[DocumentChunk],
     document_id: UUID,
     tenant_id: UUID,
     target_key: str,
@@ -104,15 +110,14 @@ def _load_pipeline_cleanup_chunk_ids(
     return [
         chunk_id
         for (chunk_id,) in (
-            db.query(chunk_model.id)
+            db.query(DocumentChunk.id)
             .filter(
-                chunk_model.document_id == document_id,
-                chunk_model.tenant_id == tenant_id,
-                chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
             )
             .all()
         )
-        if isinstance(chunk_id, UUID)
     ]
 
 
@@ -122,8 +127,7 @@ def _delete_retry_cleanup_chunks(
     db_document: DBDocument,
     metadata: dict[str, Any],
     preserve_existing: bool,
-    indexer: Any,
-    chunk_model: type[DocumentChunk],
+    indexer: "Indexer",
     document_id: UUID,
     tenant_id: UUID,
     target_key: str,
@@ -131,7 +135,6 @@ def _delete_retry_cleanup_chunks(
     if preserve_existing:
         cleanup_chunk_ids = _load_pipeline_cleanup_chunk_ids(
             db,
-            chunk_model=chunk_model,
             document_id=document_id,
             tenant_id=tenant_id,
             target_key=target_key,
@@ -141,17 +144,17 @@ def _delete_retry_cleanup_chunks(
             document_id=document_id,
             doc_pipeline_key=target_key,
         )
-        db.query(chunk_model).filter(
-            chunk_model.document_id == document_id,
-            chunk_model.tenant_id == tenant_id,
-            chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+        db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
         ).delete(synchronize_session=False)
         return cleanup_chunk_ids
 
     indexer.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-    db.query(chunk_model).filter(
-        chunk_model.document_id == document_id,
-        chunk_model.tenant_id == tenant_id,
+    db.query(DocumentChunk).filter(
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.tenant_id == tenant_id,
     ).delete(synchronize_session=False)
     metadata.pop("img_ids", None)
     db_document.chunk_count = 0
@@ -162,7 +165,7 @@ def _delete_retry_cleanup_chunks(
 def _cleanup_retry_relations(
     db: Session,
     *,
-    indexer: Any,
+    indexer: "Indexer",
     preserve_existing: bool,
     cleanup_chunk_ids: list[UUID],
     tenant_id: UUID,
@@ -212,10 +215,7 @@ def apply_pending_retry_cleanup(
     db_document: DBDocument,
     tenant_id: UUID,
     document_id: UUID,
-    indexer_factory: Callable[[Session], Any],
-    parsed_content_model: type[DocumentParsedContent] = DocumentParsedContent,
-    chunk_model: type[DocumentChunk] = DocumentChunk,
-) -> str:
+) -> RetryCleanupStatus:
     original_meta = dict(db_document.doc_metadata or {})
     original_chunk_count = db_document.chunk_count
     original_total_characters = db_document.total_characters
@@ -230,12 +230,13 @@ def apply_pending_retry_cleanup(
     if cleanup_scope is None:
         return "invalid"
     scope, target_key, preserve_existing = cleanup_scope
-    indexer = indexer_factory(db)
+    from app.services.indexer import Indexer
+
+    indexer = Indexer(db)
     _clear_forced_retry_state(
         db,
         metadata=meta,
         request=request,
-        parsed_content_model=parsed_content_model,
         document_id=document_id,
         tenant_id=tenant_id,
     )
@@ -245,7 +246,6 @@ def apply_pending_retry_cleanup(
         metadata=meta,
         preserve_existing=preserve_existing,
         indexer=indexer,
-        chunk_model=chunk_model,
         document_id=document_id,
         tenant_id=tenant_id,
         target_key=target_key,
@@ -409,8 +409,8 @@ def _document_questions_count(metadata: dict[str, Any] | None) -> int:
     if raw is None:
         raw = settings.DOCUMENT_QUESTIONS_COUNT
     try:
-        count = int(raw or 3)
-    except Exception:
+        count = int(raw)
+    except (OverflowError, TypeError, ValueError):
         count = 3
     return max(3, min(5, count))
 
@@ -503,11 +503,8 @@ def maybe_enrich_document_questions(
 
 
 def _kg_prompt_template_id() -> UUID | None:
-    try:
-        raw_template_id = (settings.KG_EXTRACT_PROMPT_TEMPLATE_ID).strip()
-        return UUID(raw_template_id) if raw_template_id else None
-    except Exception:
-        return None
+    raw_template_id = settings.KG_EXTRACT_PROMPT_TEMPLATE_ID.strip()
+    return UUID(raw_template_id) if raw_template_id else None
 
 
 def _kg_python_plugin_ref(pipeline_effective: PipelineEffective) -> str:
@@ -592,7 +589,7 @@ async def _extract_post_completion_kg_events(
     chunk_ids: list[UUID],
     tenant_id: UUID,
     db_chunks: list[DocumentChunk],
-    index_options: Any,
+    index_options: "IndexingOptions",
     pipeline_effective: PipelineEffective,
 ) -> tuple[list[Any], str]:
     kg_python_plugin_ref = _kg_python_plugin_ref(pipeline_effective)
@@ -618,7 +615,7 @@ async def run_post_completion_kg(
     document_id: UUID,
     chunk_ids: list[UUID],
     db_chunks: list[DocumentChunk],
-    index_options: Any,
+    index_options: "IndexingOptions",
     pipeline_effective: PipelineEffective,
 ) -> None:
     if not pipeline_effective.kg_enabled:

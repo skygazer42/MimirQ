@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import ManualChunkCreate, ManualDocumentCreate
+from app.api.schemas.documents import ManualChunkCreate, ManualDocumentCreate
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset import Dataset

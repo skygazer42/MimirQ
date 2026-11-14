@@ -13,8 +13,8 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document_folders import DocumentFolderTreeResponse
-from app.api.schemas.report import (
+from app.api.schemas.documents import DocumentFolderTreeResponse
+from app.api.schemas.evaluation import (
     ComplianceSummary,
     ConnectorRunSummary,
     DatasetChunkQualityMetricsOut,
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Query
     from sqlalchemy.sql.elements import ColumnElement
 
-    from app.api.schemas.dataset_profile import DatasetProfileSummary
+    from app.api.schemas.datasets import DatasetProfileSummary
     from app.rag.kg.models import KgEventEntity, KgSourceEvent
 
 logger = get_logger(__name__)
@@ -188,7 +188,7 @@ def _metadata_int(meta: dict[str, Any], key: str) -> int:
 
 
 def _percentage_points(value: float) -> int:
-    return int(round(_clamp_ratio(value) * 100.0))
+    return round(_clamp_ratio(value) * 100.0)
 
 
 def _distribution(values: list[int], bins: tuple[HistogramBinSpec, ...]) -> tuple[dict[str, int], list[dict]]:
@@ -330,7 +330,7 @@ def _parse_risk_recommendation(considered: int, high_ratio: float) -> str:
 def _summary_int(summary: dict[str, Any], *keys: str) -> int | None:
     for key in keys:
         if key in summary:
-            return max(0, _safe_int(summary.get(key)))
+            return max(0, _safe_int(summary[key]))
     return None
 
 
@@ -358,7 +358,7 @@ def _safe_report_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> l
     seen: set[str] = set()
     for item in values:
         text = _safe_report_text(item, max_len=max_len)
-        if not text or len(text) > max_len or text in seen:
+        if not text or text in seen:
             continue
         seen.add(text)
         out.append(text)
@@ -382,7 +382,7 @@ def _retrieval_audit_safe_metrics(summary: dict[str, Any]) -> dict[str, Any]:
         value = summary.get(key)
         if isinstance(value, bool):
             metrics[key] = bool(value)
-        elif isinstance(value, int) and not isinstance(value, bool):
+        elif isinstance(value, int):
             metrics[key] = int(value)
         elif isinstance(value, float):
             metrics[key] = round(float(value), 6)
@@ -400,9 +400,7 @@ def _retrieval_audit_adapter_binding_failed(
 ) -> bool:
     direct_nonempty = _summary_int(summary, "mimirq_direct_nonempty")
     hit_1 = _summary_ratio_any(summary, "hit_at_1", "retrieval_hit_at_1")
-    direct_has_evidence = bool(direct_nonempty is not None and direct_nonempty > 0) or bool(
-        hit_1 is not None and hit_1 >= 1.0
-    )
+    direct_has_evidence = (direct_nonempty is not None and direct_nonempty > 0) or (hit_1 is not None and hit_1 >= 1.0)
 
     external_nonempty = _summary_int(summary, "dify_hit_nonempty")
     if direct_has_evidence and external_nonempty is not None and external_nonempty <= 0:
@@ -757,7 +755,7 @@ def _normalize_must_recall_counts(
     failed = _summary_int(summary, "must_recall_cases_failed")
 
     if passed is None and pass_rate is not None and total > 0:
-        passed = int(round(float(pass_rate) * float(total)))
+        passed = round(float(pass_rate) * float(total))
     passed = max(0, min(passed or 0, total))
 
     if failed is None:
@@ -793,15 +791,15 @@ def _aggregate_governance_metrics(
         _add_rule_packs(rule_packs_docs, meta.get("governance_rule_packs"))
 
     return DatasetGovernanceMetricsOut(
-        total_documents=int(total_documents or 0),
+        total_documents=total_documents,
         used_documents=len(valid_metadatas),
-        truncated=bool(truncated),
+        truncated=truncated,
         docs_with_governance=docs_with_governance,
         rules_applied_total=max(0, rules_applied_total),
         changed_documents_total=max(0, changed_documents_total),
         dropped_documents_total=max(0, dropped_documents_total),
-        drop_reasons_total={k: max(0, v) for k, v in drop_reasons_total.items() if v > 0},
-        rule_packs_docs={k: max(0, v) for k, v in rule_packs_docs.items() if v > 0},
+        drop_reasons_total={k: v for k, v in drop_reasons_total.items() if v > 0},
+        rule_packs_docs={k: v for k, v in rule_packs_docs.items() if v > 0},
     )
 
 
@@ -877,9 +875,9 @@ def _aggregate_governance_audit(
     heading_percentiles, heading_hist = _distribution(heading_ratio_pcts, _HEADING_RATIO_BINS)
 
     return DatasetGovernanceAuditOut(
-        total_documents=int(total_documents or 0),
+        total_documents=total_documents,
         used_documents=len(valid_metadatas),
-        truncated=bool(truncated),
+        truncated=truncated,
         docs_with_parsed_content_persisted=persisted_docs,
         parsed_content_truncated_docs=persisted_truncated_docs,
         docs_with_char_stats=char_stats_docs,
@@ -935,12 +933,12 @@ def _aggregate_chunk_quality_metrics(
     for k, v in gate_grades.items():
         if k in stable:
             continue
-        stable[str(k)] = v
+        stable[k] = v
 
     return DatasetChunkQualityMetricsOut(
-        total_documents=int(total_documents or 0),
+        total_documents=total_documents,
         used_documents=len(valid_metadatas),
-        truncated=bool(truncated),
+        truncated=truncated,
         gate_grade_docs=stable,
         coverage_low_documents=max(0, coverage_low),
         overlap_waste_high_documents=max(0, overlap_high),
@@ -992,9 +990,9 @@ def _aggregate_parse_risk_summary(
         for doc_id, score, reason, specialty_signals in docs_low[:20]
     ]
     return DatasetParseRiskSummaryOut(
-        total_documents=int(total_documents or 0),
+        total_documents=total_documents,
         used_documents=len(valid_metadatas),
-        truncated=bool(truncated),
+        truncated=truncated,
         low_threshold=round(float(low_threshold), 3),
         considered_documents=considered,
         high_risk_documents=high,
@@ -1103,8 +1101,8 @@ def _build_compliance_summary(profile: "DatasetProfileSummary") -> ComplianceSum
     return ComplianceSummary(
         pii_hits_total={str(k): int(v or 0) for k, v in (profile.pii_hits_total or {}).items()},
         secrets_hits_total={str(k): int(v or 0) for k, v in (profile.secrets_hits_total or {}).items()},
-        quarantined_documents=by_status.get("quarantined", 0) or 0,
-        failed_documents=by_status.get("failed", 0) or 0,
+        quarantined_documents=by_status.get("quarantined", 0),
+        failed_documents=by_status.get("failed", 0),
     )
 
 

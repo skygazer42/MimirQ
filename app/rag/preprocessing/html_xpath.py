@@ -47,31 +47,6 @@ def _missing_lxml_result(raw: str) -> HtmlXPathExtractResult:
     )
 
 
-def _parse_root(raw: str, lxml_html: ModuleType) -> "tuple[HtmlElement | None, HtmlXPathExtractResult | None]":
-    parser = lxml_html.HTMLParser(recover=True, remove_comments=False)
-    try:
-        return lxml_html.fromstring(raw, parser=parser), None
-    except Exception as exc:
-        return None, HtmlXPathExtractResult(
-            text=raw,
-            matched_nodes=0,
-            xpath_error=f"parse_failed:{str(exc)[:80]}",
-        )
-
-
-def _select_nodes(root: "HtmlElement | None", xpath: str | None) -> tuple[list[Any] | None, str | None]:
-    nodes: list[Any] | None = None
-    xpath_error: str | None = None
-    if xpath and str(xpath).strip():
-        try:
-            result = root.xpath(str(xpath))
-            nodes = list(result) if isinstance(result, (list, tuple)) else [result]
-        except Exception as exc:
-            xpath_error = f"xpath_failed:{str(exc)[:120]}"
-            nodes = None
-    return nodes, xpath_error
-
-
 def _serialize_nodes(raw: str, nodes: list[Any] | None, lxml_etree: ModuleType) -> tuple[str, int]:
     if not nodes:
         return raw, 0
@@ -88,19 +63,8 @@ def _serialize_nodes(raw: str, nodes: list[Any] | None, lxml_etree: ModuleType) 
     return "\n".join([fragment for fragment in fragments if (fragment).strip()]), len(nodes)
 
 
-def _extract_html_text(fragments_html: str) -> tuple[bool, str]:
-    html_text = optional_import("html_text", feature="html_xpath_text_extraction", pip_name="html-text")
-    extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
-    if callable(extract_text):
-        try:
-            return True, extract_text(fragments_html, guess_layout=True)
-        except Exception as exc:
-            logger.debug("Optional html-text extraction failed (%s)", type(exc).__name__)
-    return False, ""
-
-
 def _extract_with_lxml_fallback(
-    root: "HtmlElement | None",
+    root: "HtmlElement",
     nodes: list[Any] | None,
     fragments_html: str,
     lxml_etree: ModuleType,
@@ -129,14 +93,31 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
     if lxml_etree is None or lxml_html is None:
         return _missing_lxml_result(raw)
 
-    root, parse_error = _parse_root(raw, lxml_html)
-    if parse_error is not None:
-        return parse_error
+    parser = lxml_html.HTMLParser(recover=True, remove_comments=False)
+    try:
+        root = lxml_html.fromstring(raw, parser=parser)
+    except Exception as exc:
+        return HtmlXPathExtractResult(text=raw, matched_nodes=0, xpath_error=f"parse_failed:{str(exc)[:80]}")
 
-    nodes, xpath_error = _select_nodes(root, xpath)
+    nodes: list[Any] | None = None
+    xpath_error: str | None = None
+    if xpath and str(xpath).strip():
+        try:
+            result = root.xpath(str(xpath))
+            nodes = list(result) if isinstance(result, (list, tuple)) else [result]
+        except Exception as exc:
+            xpath_error = f"xpath_failed:{str(exc)[:120]}"
+
     fragments_html, matched = _serialize_nodes(raw, nodes, lxml_etree)
-    extracted, text = _extract_html_text(fragments_html)
-    if not extracted:
-        text = _extract_with_lxml_fallback(root, nodes, fragments_html, lxml_etree)
+    html_text = optional_import("html_text", feature="html_xpath_text_extraction", pip_name="html-text")
+    extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
+    if callable(extract_text):
+        try:
+            text = extract_text(fragments_html, guess_layout=True)
+        except Exception as exc:
+            logger.debug("Optional html-text extraction failed (%s)", type(exc).__name__)
+        else:
+            return HtmlXPathExtractResult(text=text, matched_nodes=matched, xpath_error=xpath_error)
 
+    text = _extract_with_lxml_fallback(root, nodes, fragments_html, lxml_etree)
     return HtmlXPathExtractResult(text=text, matched_nodes=matched, xpath_error=xpath_error)

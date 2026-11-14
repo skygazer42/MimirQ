@@ -463,8 +463,8 @@ class Settings(BaseSettings):
     DB_CATALOG_ROW_SYNC_MAX_TABLES: int = 20
     DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE: int = 50
     DB_CATALOG_ROW_SYNC_MAX_COLS: int = 50
-    URL_INGEST_MAX_BYTES: int = 50_000_000
-    URL_INGEST_TIMEOUT_SEC: float = 30.0
+    URL_INGEST_MAX_BYTES: int = Field(default=50_000_000, ge=0)
+    URL_INGEST_TIMEOUT_SEC: float = Field(default=30.0, gt=0, allow_inf_nan=False)
     # Allowlist (CSV) for outbound URL ingestion. Empty means "allow any public host/port"
     # after applying SSRF guards (private/loopback/link-local are blocked by default).
     # Supports wildcard suffix patterns like "*.example.com" (matches "a.example.com" but not "example.com").
@@ -975,7 +975,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = Field(default=8, ge=1)
 
-    CORS_ORIGINS: str = "http" + "://localhost:3000,http" + "://localhost:3001"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
     # Whether CORS responses include `Access-Control-Allow-Credentials: true`.
     #
     # Prod strategy (Option A):
@@ -1267,10 +1267,6 @@ class Settings(BaseSettings):
     COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Used only by deterministic provider.
     COLBERT_RERANK_EMBED_DIM: int = 64
-    # Provider readiness guard for ColBERT reranker.
-    # strict=false: fallback to deterministic provider on readiness/warmup failure.
-    # strict=true: raise an error when requested provider is not ready.
-    # Optional one-time warmup probe for model-backed providers.
     # Optional: load fusion channel budget policy (generated from offline ablations).
     # When configured, orchestrator can auto-apply budgeted_rrf channel quotas.
     RAG_CHANNEL_BUDGET_POLICY_PATH: str = ""
@@ -1509,8 +1505,6 @@ class Settings(BaseSettings):
     CHART_TO_DATA_TIMEOUT_SEC: float = 20.0
     CHART_TO_DATA_MAX_IMAGES: int = 8
     CHART_TO_DATA_MAX_IMAGE_BYTES: int = 5_000_000
-    MATHPIX_APP_ID: str = ""
-    MATHPIX_APP_KEY: str = ""
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True

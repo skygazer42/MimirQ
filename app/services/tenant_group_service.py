@@ -17,6 +17,26 @@ from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroup, TenantGroupMember
 
 
+def _normalize_group_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise BadRequestError("name is required")
+    if len(name) > 255:
+        raise BadRequestError("name too long (max=255)")
+    return name
+
+
+def _normalize_external_id(external_id: str | None) -> str | None:
+    if external_id is None:
+        return None
+    external_id = external_id.strip()
+    if not external_id:
+        return None
+    if len(external_id) > 255:
+        raise BadRequestError("external_id too long (max=255)")
+    return external_id
+
+
 def _normalize_member_ids(member_ids: Iterable[str], *, max_items: int = 200) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -79,35 +99,26 @@ def get_group(db: Session, *, tenant_id: UUID, group_id: UUID) -> TenantGroup:
 
 
 def create_group(db: Session, *, tenant_id: UUID, name: str, external_id: str | None = None) -> TenantGroup:
-    n = name.strip()
-    if not n:
-        raise BadRequestError("name is required")
-    if len(n) > 255:
-        raise BadRequestError("name too long (max=255)")
+    name = _normalize_group_name(name)
+    external_id = _normalize_external_id(external_id)
 
-    ext = external_id
-    if ext is not None:
-        ext = ext.strip()
-        if not ext:
-            ext = None
-    if ext is not None and len(ext) > 255:
-        raise BadRequestError("external_id too long (max=255)")
-
-    exists = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == n).first()
+    exists = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == name).first()
     if exists:
         raise ConflictError("Group name already exists")
 
-    if ext is not None:
+    if external_id is not None:
         ext_exists = (
-            db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.external_id == ext).first()
+            db.query(TenantGroup.id)
+            .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.external_id == external_id)
+            .first()
         )
         if ext_exists:
             raise ConflictError("Group external_id already exists")
 
     group = TenantGroup(
         tenant_id=tenant_id,
-        name=n,
-        external_id=ext,
+        name=name,
+        external_id=external_id,
     )
     db.add(group)
     db.commit()
@@ -126,40 +137,32 @@ def update_group(
     group = get_group(db, tenant_id=tenant_id, group_id=group_id)
 
     if name is not None:
-        n = name.strip()
-        if not n:
-            raise BadRequestError("name is required")
-        if len(n) > 255:
-            raise BadRequestError("name too long (max=255)")
-        if n != group.name:
+        name = _normalize_group_name(name)
+        if name != group.name:
             exists = (
                 db.query(TenantGroup.id)
-                .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == n, TenantGroup.id != group_id)
+                .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == name, TenantGroup.id != group_id)
                 .first()
             )
             if exists:
                 raise ConflictError("Group name already exists")
-            group.name = n
+            group.name = name
 
     if external_id is not None:
-        ext = external_id.strip()
-        if not ext:
-            ext = None
-        if ext is not None and len(ext) > 255:
-            raise BadRequestError("external_id too long (max=255)")
-        if ext is not None:
+        external_id = _normalize_external_id(external_id)
+        if external_id is not None:
             ext_exists = (
                 db.query(TenantGroup.id)
                 .filter(
                     TenantGroup.tenant_id == tenant_id,
-                    TenantGroup.external_id == ext,
+                    TenantGroup.external_id == external_id,
                     TenantGroup.id != group_id,
                 )
                 .first()
             )
             if ext_exists:
                 raise ConflictError("Group external_id already exists")
-        group.external_id = ext
+        group.external_id = external_id
 
     db.commit()
     db.refresh(group)

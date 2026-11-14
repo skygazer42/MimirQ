@@ -24,6 +24,10 @@ TOML 和 KV 只删除无用的条目标记与末尾第二次全文 fallback。�
 
 在输出追加去重层可以隐藏重复 fallback，但会改变重叠块或有意重复记录的含义；直接删除重复调用能保留原始 section 语义。为 Auto 和 Manuscript 新建统一分派器可以合并相似代码，但它们的策略顺序、policy-manual 支持和自适应行为不同，本批保留这些业务差异及现有检测 patch 目标。
 
+[分块公共规则所有者](../architecture/2026-11-13-chunking-shared-rule-owners.md)仅共享两个完全相同的文本检测函数，不合并本篇的不同分派规则；旧私有 detector patch 目标不再保留，其余策略与原始数据边界继续成立。
+
+[结构化终点与行边界修复](2026-11-13-structured-chunk-boundaries.md)修正已有限复现的终端重复尾块、HCL转义、YAML缩进和POM嵌套覆盖终点，保本篇不同格式及原始SDK规则；未将局部范围策略统一为全文覆盖。
+
 把构造参数或 SDK 元数据也当成已校验值可以删更多转换；实际边界仍可能返回原始值，因此仅收窄已经追溯到本模块生产者的转换。不为私有小方法新建文件，也不增加 manager、Context、依赖或兼容层。
 
 ## Consequences
@@ -32,6 +36,6 @@ TOML／KV 的无条目文本只经过原有每节 fallback，Markdown 标题形�
 
 `stacktrace._infer_kind` 的 Node 分支被前面的 Java frame 条件覆盖。语言分类需要新的区分规则，本批按已确认范围保留该完整函数和现有标签；后续修复应先确定 Java 与 Node 的真实输入约定。
 
-活跃笔记检索命中的查询准备、LLM 消息和聊天流笔记属于其他调用链，与本次完整策略域无直接决定重叠，不被替代。原有 core、strategy、heading parser、registry、factory 和兼容 shim 已关闭的所有者仅作为生产者证据，不重复处理。未修改中央覆盖表、验证文档或 README。
+活跃笔记检索命中的查询准备、LLM 消息和聊天流笔记属于其他调用链，与本篇完整策略域无直接决定重叠，不被替代。core、strategy、heading parser、registry 和 factory 的实际配置、顺序和缓存职责保持。[集成分块实际所有者](../architecture/2026-11-13-integrated-pipeline-canonical-owner.md)部分替代生成 shim 的保留状态，真实调用方直接依赖 canonical 实现；本篇策略和数据边界继续成立。
 
 验证限于完整冻结 Git 源码、限定函数和表达式的 AST 归一化、实际构造器／SDK／调用方绑定、Ruff 和笔记门禁。未增加、修改或执行 Python 测试，也未执行应用、正则表达式、chunker、parser、模型、索引、网络或服务运行时；静态证明不替代真实数据的分块效果验证。

@@ -146,11 +146,9 @@ def build_periodic_job_freshness_snapshot(
         )
         created_at: datetime | None = None
         resource_id: str | None = None
-        if isinstance(latest, dict):
-            if isinstance(latest.get("created_at"), datetime):
-                created_at = _as_utc(latest["created_at"])
-            rid = latest.get("resource_id")
-            resource_id = str(rid) if rid is not None else None
+        if latest is not None:
+            created_at = latest["created_at"]
+            resource_id = latest["resource_id"]
 
         age_seconds: int | None = None
         stale = True

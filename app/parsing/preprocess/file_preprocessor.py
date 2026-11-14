@@ -107,13 +107,13 @@ class FilePreprocessResult:
                     "applied": bool(s.applied),
                     "changed": bool(s.changed),
                     "note": s.note,
-                    "bytes_before": int(s.bytes_before or 0),
-                    "bytes_after": int(s.bytes_after or 0),
-                    "elapsed_ms": int(s.elapsed_ms or 0),
+                    "bytes_before": int(s.bytes_before),
+                    "bytes_after": int(s.bytes_after),
+                    "elapsed_ms": int(s.elapsed_ms),
                 }
-                for s in (self.steps or [])
+                for s in self.steps
             ],
-            "warnings": list(self.warnings or []),
+            "warnings": list(self.warnings),
         }
 
 
@@ -404,10 +404,7 @@ def _write_preprocessed_text(*, output_path: Path, text: str) -> tuple[int, str]
 
 
 def _utf8_byte_len(text: str) -> int:
-    try:
-        return len(text.encode("utf-8", errors="replace"))
-    except Exception:
-        return len(text)
+    return len(text.encode("utf-8", errors="replace"))
 
 
 def _apply_preprocess_steps(
@@ -417,8 +414,7 @@ def _apply_preprocess_steps(
     ext: str,
     enc: str,
     conf: float,
-) -> tuple[str, list[PreprocessStepLog], bool]:
-    changed_any = False
+) -> tuple[str, list[PreprocessStepLog]]:
     logs: list[PreprocessStepLog] = []
     current_bytes = _utf8_byte_len(text)
     for step in steps:
@@ -433,7 +429,6 @@ def _apply_preprocess_steps(
             conf=conf,
         )
         if changed:
-            changed_any = True
             current_bytes = _utf8_byte_len(text)
         bytes_after = current_bytes
         elapsed_ms = max(0, int(round((time.perf_counter() - step_t0) * 1000)))
@@ -448,7 +443,7 @@ def _apply_preprocess_steps(
                 elapsed_ms=elapsed_ms,
             )
         )
-    return text, logs, changed_any
+    return text, logs
 
 
 def preprocess_file(
@@ -469,7 +464,6 @@ def preprocess_file(
     sha_before = _sha256_file(input_path)
 
     warnings: list[str] = []
-    logs: list[PreprocessStepLog] = []
 
     if not steps:
         return _result_unchanged(
@@ -512,7 +506,7 @@ def preprocess_file(
         conf = 0.0
 
     original_text = text
-    text, logs, changed_any = _apply_preprocess_steps(
+    text, logs = _apply_preprocess_steps(
         text=text,
         steps=steps,
         ext=ext,
@@ -521,9 +515,6 @@ def preprocess_file(
     )
 
     if text == original_text:
-        changed_any = False
-
-    if not changed_any:
         return _result_unchanged(
             input_path=input_path,
             size_before=size_before,

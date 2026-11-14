@@ -38,8 +38,6 @@ def _canonical_params(value: object) -> dict[str, Any]:
         normalized = json.loads(json.dumps(dict(value), ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     except (TypeError, ValueError) as exc:
         raise ValueError("kg_python_params must be JSON serializable") from exc
-    if not isinstance(normalized, dict):
-        raise ValueError("kg_python_params must be an object")
     return normalized
 
 

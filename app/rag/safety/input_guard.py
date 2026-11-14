@@ -42,8 +42,6 @@ def _record_rule_matches(text: str, rules: tuple[GuardRule, ...], matched: dict[
 def _base64_obfuscation_hits(text: str) -> int:
     hits = 0
     for candidate in BASE64_BLOCK_RE.findall(text):
-        if len(candidate) < 24:
-            continue
         try:
             decoded = base64.b64decode(candidate, validate=True).decode("utf-8", errors="ignore").lower()
         except ValueError:
@@ -101,22 +99,20 @@ class InputGuard:
         query: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
-        text = query
-        return await asyncio.to_thread(self._check_sync, text, conversation_history)
+        return await asyncio.to_thread(self._check_sync, query, conversation_history)
 
     def _check_sync(
         self,
         query: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
-        text = query
-        matched = _collect_matches(text, conversation_history)
+        matched = _collect_matches(query, conversation_history)
 
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))
         matched_rules = sorted(matched.keys())
         action = self._resolve_action(score=score, matched_rules=matched_rules)
         result = GuardResult(action=action, score=round(score, 3), matched_rules=matched_rules)
-        self._log_result(query=text, result=result)
+        self._log_result(query=query, result=result)
         return result
 
     @staticmethod
@@ -137,7 +133,7 @@ class InputGuard:
     @staticmethod
     def _log_result(*, query: str, result: GuardResult) -> None:
         query_hash = stable_hash(query)
-        matched_rules = list(result.matched_rules or [])
+        matched_rules = list(result.matched_rules)
         observe_input_guard(action=result.action, matched_rules=matched_rules)
 
         if result.action == "allow":
@@ -146,7 +142,7 @@ class InputGuard:
         payload = {
             "event": "rag_input_guard",
             "action": result.action,
-            "score": float(result.score or 0.0),
+            "score": float(result.score),
             "matched_rules": matched_rules,
             "query_hash": query_hash,
         }

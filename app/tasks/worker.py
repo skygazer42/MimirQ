@@ -31,37 +31,7 @@ from app.tasks.jobs import (
 
 logger = get_logger("tasks.worker")
 
-_SOCKET_CONNECT_PROBE_TIMEOUT_SEC = 0.2
 _WORKER_HEARTBEAT_TASK_KEY = "_mimirq_worker_heartbeat_task"
-
-
-def _warn_if_redis_unreachable(redis_settings: RedisSettings) -> None:
-    """
-    Best-effort: emit a clear log line if Redis isn't reachable at worker startup.
-
-    This runs at import-time (before arq configures logging) so we intentionally
-    log at WARNING level to ensure it is visible via Python's last-resort handler.
-    """
-
-    if not isinstance(redis_settings.host, str):
-        return
-
-    host = redis_settings.host
-    port = redis_settings.port
-    try:
-        with socket.create_connection((host, port), timeout=_SOCKET_CONNECT_PROBE_TIMEOUT_SEC):
-            return
-    except OSError as exc:
-        logger.warning(
-            "Redis not reachable yet (host=%s port=%s). Worker will retry connection "
-            "(conn_timeout=%ss conn_retries=%s conn_retry_delay=%ss). last_error=%s",
-            host,
-            port,
-            redis_settings.conn_timeout,
-            redis_settings.conn_retries,
-            redis_settings.conn_retry_delay,
-            str(exc)[:200],
-        )
 
 
 def _build_worker_redis_settings() -> RedisSettings:
@@ -69,7 +39,6 @@ def _build_worker_redis_settings() -> RedisSettings:
     redis_settings.conn_timeout = settings.TASK_WORKER_REDIS_CONN_TIMEOUT_SEC or 1
     redis_settings.conn_retries = settings.TASK_WORKER_REDIS_CONN_RETRIES or 60
     redis_settings.conn_retry_delay = settings.TASK_WORKER_REDIS_CONN_RETRY_DELAY_SEC or 1
-    _warn_if_redis_unreachable(redis_settings)
     return redis_settings
 
 
@@ -94,10 +63,7 @@ async def _heartbeat_loop(
 def _log_heartbeat_task_exit(task: asyncio.Task[None]) -> None:
     if task.cancelled():
         return
-    try:
-        error = task.exception()
-    except asyncio.CancelledError:
-        return
+    error = task.exception()
     if error is not None:
         logger.error("Worker heartbeat task exited unexpectedly: %s", str(error)[:200])
 
@@ -115,7 +81,7 @@ async def startup(ctx: dict[str, Any]) -> None:
         # Fire-and-forget: never block worker startup.
         heartbeat_task = asyncio.create_task(
             _heartbeat_loop(
-                redis=ctx.get("redis"),
+                redis=ctx["redis"],
                 queue_name=queue_name,
                 worker_id=worker_id,
                 interval=interval,
@@ -136,8 +102,9 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     if task is not None:
         try:
             task.cancel()
+            await asyncio.wait({task})
             with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
+                task.result()
         finally:
             ctx.pop(_WORKER_HEARTBEAT_TASK_KEY, None)
 

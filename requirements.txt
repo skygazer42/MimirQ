@@ -3,6 +3,7 @@
 # See docs/guides/dependencies.md for supported services and installation profiles.
 
 fastapi==0.135.3
+anyio==4.15.1
 uvicorn[standard]==0.44.0
 python-multipart==0.0.31
 

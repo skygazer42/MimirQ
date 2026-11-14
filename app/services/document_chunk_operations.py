@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import (
+from app.api.schemas.documents import (
     DocumentChunkCreateRequest,
     DocumentChunkReembedRequest,
     DocumentChunkUpdateRequest,
@@ -53,7 +53,7 @@ def create_chunk(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    _assert_document_writable_for_chunk_ops(
+    document_access_service.assert_document_writable_for_lifecycle(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -301,10 +301,10 @@ async def disable_chunk(
 
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    document = _get_document_for_chunk_ops(db, tenant_id, document_id)
+    document = document_access_service.get_document_for_lifecycle(db, tenant_id, document_id)
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-    _assert_document_writable_for_chunk_ops(
+    document_access_service.assert_document_writable_for_lifecycle(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -414,10 +414,10 @@ def enable_chunk(
     """Enable a previously-disabled chunk (requires re-embed to restore vector index)."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    document = _get_document_for_chunk_ops(db, tenant_id, document_id)
+    document = document_access_service.get_document_for_lifecycle(db, tenant_id, document_id)
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-    _assert_document_writable_for_chunk_ops(
+    document_access_service.assert_document_writable_for_lifecycle(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -529,10 +529,10 @@ def _load_chunk_write_document(
     edit_verb: str,
 ) -> tuple[DBDocument, str]:
     dataset_service.ensure_member(db, tenant_id, account_id)
-    document = _get_document_for_chunk_ops(db, tenant_id, document_id)
+    document = document_access_service.get_document_for_lifecycle(db, tenant_id, document_id)
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-    _assert_document_writable_for_chunk_ops(
+    document_access_service.assert_document_writable_for_lifecycle(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -856,10 +856,6 @@ def _reembed_single_chunk(
     return True
 
 
-def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
-    return db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
-
-
 def _get_chunk_for_chunk_ops(
     db: Session,
     tenant_id: UUID,
@@ -874,21 +870,6 @@ def _get_chunk_for_chunk_ops(
             DocumentChunk.id == chunk_id,
         )
         .first()
-    )
-
-
-def _assert_document_writable_for_chunk_ops(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    document: DBDocument,
-) -> None:
-    document_access_service.assert_document_writable_for_lifecycle(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document=document,
     )
 
 

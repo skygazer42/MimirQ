@@ -82,6 +82,7 @@ def _append_split_documents(
         meta.setdefault("doc_type_kwd", "junit")
         if extra_meta:
             meta.update(extra_meta)
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=split_doc.page_content, metadata=meta))
 
 
@@ -95,13 +96,6 @@ def _case_block_meta(block: _CaseBlock, block_count: int) -> dict[str, Any]:
     if block.classname:
         meta["junit_classname"] = block.classname
     return meta
-
-
-def _assign_chunk_indexes(chunks: list[Document]) -> None:
-    for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
-        meta["chunk_index"] = idx
-        chunk.metadata = meta
 
 
 def looks_like_junit_xml(text: str) -> bool:
@@ -134,7 +128,7 @@ class JUnitXMLChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -163,7 +157,5 @@ class JUnitXMLChunker(BaseChunker):
                     offset_base=blk.start,
                     extra_meta=_case_block_meta(blk, len(blocks)),
                 )
-
-        _assign_chunk_indexes(out)
 
         return out

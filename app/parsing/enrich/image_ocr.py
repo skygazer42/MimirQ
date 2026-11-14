@@ -60,17 +60,13 @@ def _build_image_ocr_audit(
 ) -> ImageOcrAudit:
     return ImageOcrAudit(
         applied=applied,
-        ocr_blocks_added=int(ocr_blocks_added),
-        images_attempted=int(images_attempted),
-        images_succeeded=int(images_succeeded),
-        elapsed_ms=int(elapsed_ms),
+        ocr_blocks_added=ocr_blocks_added,
+        images_attempted=images_attempted,
+        images_succeeded=images_succeeded,
+        elapsed_ms=elapsed_ms,
         backend="local_ocr",
         error=error,
     )
-
-
-def _iter_line_images(line: str) -> list[tuple[str, str]]:
-    return _extract_md_images(line) + _extract_html_imgs(line)
 
 
 def _ocr_text_for_image(
@@ -95,7 +91,7 @@ def _ocr_text_for_image(
         return None, 1, 0
 
     try:
-        text = ocr_image(image, _max_chars=int(max_ocr_chars or 0)).strip()
+        text = ocr_image(image, _max_chars=max_ocr_chars)
     finally:
         try:
             image.close()
@@ -184,22 +180,19 @@ def add_image_ocr_blocks(
 
     lines = raw.splitlines()
     for index, line in enumerate(lines):
+        out_lines.append(line)
         if _FENCE_RE.match(line):
             in_fence = not in_fence
-            out_lines.append(line)
             continue
         if in_fence:
-            out_lines.append(line)
             continue
-
-        out_lines.append(line)
         if ocr_blocks_added >= max_images_i:
             continue
 
         if _next_non_empty_line(lines, index).lower().startswith("image ocr:"):
             continue
 
-        images = _iter_line_images(line)
+        images = _extract_md_images(line) + _extract_html_imgs(line)
         if not images:
             continue
 
@@ -218,7 +211,7 @@ def add_image_ocr_blocks(
     elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
     return (
         "\n".join(out_lines).rstrip() + "\n",
-        int(ocr_blocks_added),
+        ocr_blocks_added,
         _build_image_ocr_audit(
             applied=True,
             ocr_blocks_added=ocr_blocks_added,

@@ -18,7 +18,8 @@ def run_rerank_expand_rerank(
     mid_span: int = 1,
 ) -> RerankResult:
     base_candidates = list(candidates or [])
-    first_pass = rerank_fn(query, base_candidates, top_n=max(1, int(top_n or 1)))
+    bounded_top_n = max(1, int(top_n or 1))
+    first_pass = rerank_fn(query, base_candidates, top_n=bounded_top_n)
     first_ranked = [{"id": cid, "score": float(first_pass.score_map.get(cid, 0.0))} for cid in first_pass.ordered_ids]
     expanded = expand_neighbors_by_score(
         ranked_items=first_ranked,
@@ -30,7 +31,7 @@ def run_rerank_expand_rerank(
     )
     expanded_ids = list(expanded["expanded_ids"])
     expanded_candidates = [resolve_candidate(cid) for cid in expanded_ids]
-    second_pass = rerank_fn(query, expanded_candidates, top_n=max(1, int(top_n or 1)))
+    second_pass = rerank_fn(query, expanded_candidates, top_n=bounded_top_n)
     second_pass.stats = {
         **dict(second_pass.stats or {}),
         "first_pass_top_ids": list(first_pass.ordered_ids),

@@ -17,7 +17,6 @@ Notes:
   cleanup to avoid duplicating side effects in a second code path.
 """
 
-import contextlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID
@@ -25,13 +24,17 @@ from uuid import UUID
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.async_bridge import run_blocking_in_thread
+from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
 from app.services.retention_jobs import _resolve_delete_document_lifecycle
 
 RTBF_CASCADE_SCHEMA_V1 = "mimirq.rtbf_cascade.v1"
 RTBF_ARTIFACT_SCOPES = ["documents", "chunks", "kg", "vectors", "object_assets", "cache"]
+logger = get_logger(__name__)
 
 
 def _now_utc() -> datetime:
@@ -89,6 +92,11 @@ def _list_rtbf_documents(
     return out
 
 
+def _load_rtbf_candidates(*, tenant_id: UUID, subject_account_id: str, max_docs: int) -> list[dict[str, object]]:
+    with SessionLocal() as db:
+        return _list_rtbf_documents(db, tenant_id=tenant_id, subject_account_id=subject_account_id, max_docs=max_docs)
+
+
 async def _run_delete_document_lifecycle(
     delete_document_lifecycle: Callable[..., Awaitable[None]],
     *,
@@ -139,6 +147,13 @@ def _invalidate_dataset_caches(
     raise RuntimeError("dataset cache invalidation retries exhausted")
 
 
+def _invalidate_rtbf_caches(*, tenant_id: UUID, dataset_ids: set[UUID], max_retries: int) -> int:
+    with SessionLocal() as db:
+        count = _invalidate_dataset_caches(db, tenant_id=tenant_id, dataset_ids=dataset_ids, max_retries=max_retries)
+        db.commit()
+        return count
+
+
 def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: bool) -> list[dict[str, object]]:
     return [
         {
@@ -154,7 +169,7 @@ def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: boo
 
 
 def _increment_summary(summary: dict[str, object], key: str) -> None:
-    summary[key] = int(summary.get(key, 0) or 0) + 1
+    summary[key] = summary[key] + 1
 
 
 def _update_summary_document(
@@ -169,7 +184,7 @@ def _update_summary_document(
     if not isinstance(state, dict):
         return
     state["status"] = status
-    state["attempts"] = int(attempts)
+    state["attempts"] = attempts
     if error is not None:
         state["error"] = error
 
@@ -248,8 +263,8 @@ async def _execute_rtbf_cascade(
 
     if successful_dataset_ids:
         try:
-            summary["cache_invalidations"] = _invalidate_dataset_caches(
-                db,
+            summary["cache_invalidations"] = await run_blocking_in_thread(
+                _invalidate_rtbf_caches,
                 tenant_id=tenant_id,
                 dataset_ids=successful_dataset_ids,
                 max_retries=max_retries,
@@ -276,13 +291,27 @@ def _audit_rtbf_summary(
         resource_id=subject,
         details={
             "dry_run": bool(dry_run),
-            "eligible": int(summary.get("eligible", 0) or 0),
-            "deleted": int(summary.get("deleted", 0) or 0),
-            "errors": int(summary.get("errors", 0) or 0),
-            "cache_invalidations": int(summary.get("cache_invalidations", 0) or 0),
+            "eligible": summary["eligible"],
+            "deleted": summary["deleted"],
+            "errors": summary["errors"],
+            "cache_invalidations": summary["cache_invalidations"],
             "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
         },
     )
+
+
+def _commit_rtbf_audit(
+    *, tenant_id: UUID, actor_id: str, subject: str, dry_run: bool, summary: dict[str, object]
+) -> None:
+    with SessionLocal() as db:
+        try:
+            _audit_rtbf_summary(
+                db, tenant_id=tenant_id, actor_id=actor_id, subject=subject, dry_run=dry_run, summary=summary
+            )
+            db.commit()
+        except Exception:
+            logger.warning("RTBF audit logging failed: tenant_id=%s", tenant_id, exc_info=True)
+            db.rollback()
 
 
 async def run_rtbf_cascade(
@@ -298,8 +327,8 @@ async def run_rtbf_cascade(
 ) -> dict[str, object]:
     now0 = now or _now_utc()
     subject = subject_account_id.strip()
-    candidates = _list_rtbf_documents(
-        db,
+    candidates = await run_blocking_in_thread(
+        _load_rtbf_candidates,
         tenant_id=tenant_id,
         subject_account_id=subject,
         max_docs=max_docs,
@@ -325,17 +354,9 @@ async def run_rtbf_cascade(
             max_retries=max_retries,
         )
 
-    with contextlib.suppress(Exception):
-        _audit_rtbf_summary(
-            db,
-            tenant_id=tenant_id,
-            actor_id=str(actor_id),
-            subject=subject,
-            dry_run=dry_run,
-            summary=summary,
-        )
-    with contextlib.suppress(Exception):
-        db.commit()
+    await run_blocking_in_thread(
+        _commit_rtbf_audit, tenant_id=tenant_id, actor_id=actor_id, subject=subject, dry_run=dry_run, summary=summary
+    )
 
     return summary
 

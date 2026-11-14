@@ -147,7 +147,7 @@ def _select_body_content(plain_parts: list[str], html_parts: list[str]) -> tuple
     return "", "none"
 
 
-def _parse_eml_message(file_path: Path) -> tuple[Message, _ParsedEmail]:
+def _parse_eml_message(file_path: Path) -> _ParsedEmail:
     raw = file_path.read_bytes()
     try:
         msg = BytesParser(policy=policy.default).parsebytes(raw)
@@ -155,7 +155,7 @@ def _parse_eml_message(file_path: Path) -> tuple[Message, _ParsedEmail]:
         raise RuntimeError(f"Failed to parse .eml: {exc.__class__.__name__}: {str(exc)[:200]}") from exc
 
     body, body_meta = _extract_body(msg)
-    return msg, {
+    return {
         "subject": _safe_header(msg, "Subject") or "Email",
         "sender": _safe_header(msg, "From"),
         "to": _safe_header(msg, "To"),
@@ -229,7 +229,7 @@ def _build_email_markdown(*, subject: str, sender: str, to: str, cc: str, date: 
     if body.strip():
         md_parts.append("---")
         md_parts.append(body.strip())
-    return "\n\n".join([part for part in md_parts if part.strip()]).strip() + "\n"
+    return "\n\n".join(md_parts).strip() + "\n"
 
 
 def _build_email_metadata(
@@ -266,7 +266,6 @@ def _extract_body(msg: Message) -> tuple[str, _EmailBodyMetadata]:
 
 class EmailParser:
     def parse(self, file_path: Path, **kwargs: Any) -> list[Document]:
-        _ = kwargs
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -275,36 +274,30 @@ class EmailParser:
             raise ValueError(f"EmailParser supports only .eml/.msg, got: {ext}")
 
         if ext == ".eml":
-            _, parsed = _parse_eml_message(file_path)
+            parsed = _parse_eml_message(file_path)
         else:
             parsed = _parse_msg_message(file_path)
 
         subject = parsed["subject"]
-        sender = parsed["sender"]
-        to = parsed["to"]
-        cc = parsed["cc"]
-        date = parsed["date"]
         body = parsed["body"]
-        body_content_type = parsed["body_content_type"]
-        warnings = list(parsed["warnings"])
 
         if not body.strip():
             logger.info("[email] parsed %s but body is empty", file_path.name)
 
         markdown = _build_email_markdown(
             subject=subject,
-            sender=sender,
-            to=to,
-            cc=cc,
-            date=date,
+            sender=parsed["sender"],
+            to=parsed["to"],
+            cc=parsed["cc"],
+            date=parsed["date"],
             body=body,
         )
         metadata = _build_email_metadata(
             file_path=file_path,
             ext=ext,
             subject=subject,
-            body_content_type=body_content_type,
-            warnings=warnings,
+            body_content_type=parsed["body_content_type"],
+            warnings=parsed["warnings"],
         )
 
         return [Document(page_content=markdown, metadata=metadata)]

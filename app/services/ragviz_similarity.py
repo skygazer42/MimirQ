@@ -568,8 +568,8 @@ def calculate_similarity_matrix(
         "compute_time": (time.time() - start) * 1000.0,
     }
 
-    x_available_fields = [k for k in (x_items[0].keys() if x_items else []) if k != "id"]
-    y_available_fields = [k for k in (y_items[0].keys() if y_items else []) if k != "id"]
+    x_available_fields = [k for k in x_items[0] if k != "id"]
+    y_available_fields = [k for k in y_items[0] if k != "id"]
 
     return {
         "matrix": matrix,

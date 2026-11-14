@@ -390,7 +390,7 @@ def create_ragas_evaluator(
     Create an evaluator using RAGAS metrics.
 
     Args:
-        metrics: List of RAGAS metrics to use
+        metrics: Compatibility argument; this evaluator uses faithfulness and answer_relevancy
 
     Returns:
         Evaluator function

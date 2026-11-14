@@ -28,13 +28,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from langchain_core.documents import Document  # noqa: E402
 
-from app.api.schemas.document import ChunkPreviewItem  # noqa: E402
+from app.api.schemas.documents import ChunkPreviewItem  # noqa: E402
 from app.core.token_utils import estimate_tokens, num_tokens_from_string  # noqa: E402
 from app.rag.chunking.factory import chunker_factory  # noqa: E402
-from app.services.document_preview_utils import (  # noqa: E402
-    _compute_chunk_coverage_metrics_from_ranges,
-    _compute_chunk_preview_quality,
-)
+from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges  # noqa: E402
+from app.services.document_preview_utils import _compute_chunk_preview_quality  # noqa: E402
 
 
 def _iter_files(paths: list[str]) -> Iterable[Path]:
@@ -173,7 +171,7 @@ def _evaluate_file(
     items = _build_preview_items(text, chunks, strategy=strategy)
     total_chars = len(text)
     chunk_ranges = [(int(item.start_index or 0), int(item.end_index or 0)) for item in items]
-    coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_chars)
+    coverage = compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_chars)
     stats = _preview_stats(items, coverage, strategy=strategy)
     quality_gate, recommendations, patches = _compute_chunk_preview_quality(
         stats=stats,

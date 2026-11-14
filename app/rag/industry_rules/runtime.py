@@ -39,6 +39,7 @@ def _hash_text(value: str) -> str:
 
 
 def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[str]) -> dict[str, Any]:
+    query_hash = _hash_text(original)
     return {
         "schema": _SCHEMA,
         "enabled": enabled,
@@ -47,38 +48,19 @@ def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[s
         "rulesets_used": [],
         "alias_count": 0,
         "query_changed": False,
-        "query_hash": _hash_text(original),
-        "expanded_query_hash": _hash_text(original),
+        "query_hash": query_hash,
+        "expanded_query_hash": query_hash,
         "errors": [],
     }
 
 
-def _collect_matching_aliases(*, before: str, glossary: dict[str, Any], aliases: list[str]) -> None:
-    for term, values in (glossary or {}).items():
-        token = term.strip()
-        if not token or token not in before:
+def _collect_matching_aliases(*, before: str, glossary: dict[str, list[str]], aliases: list[str]) -> None:
+    for term, values in glossary.items():
+        if term not in before:
             continue
-        for value in values or []:
-            alias = value.strip()
-            if alias and alias not in aliases:
+        for alias in values:
+            if alias not in aliases:
                 aliases.append(alias)
-
-
-def _apply_ruleset_expansion(
-    *,
-    name: str,
-    expanded: str,
-    aliases: list[str],
-    meta: dict[str, Any],
-) -> str:
-    ruleset = load_ruleset(name)
-    before = expanded
-    after = expand_query_terms(expanded, ruleset.glossary)
-    if after == before:
-        return expanded
-    _collect_matching_aliases(before=before, glossary=ruleset.glossary, aliases=aliases)
-    meta["rulesets_used"].append(name)
-    return after
 
 
 def apply_industry_rules_query_expansion(
@@ -101,12 +83,13 @@ def apply_industry_rules_query_expansion(
     aliases: list[str] = []
     for name in names:
         try:
-            expanded = _apply_ruleset_expansion(
-                name=name,
-                expanded=expanded,
-                aliases=aliases,
-                meta=meta,
-            )
+            ruleset = load_ruleset(name)
+            before = expanded
+            after = expand_query_terms(expanded, ruleset.glossary)
+            if after != before:
+                _collect_matching_aliases(before=before, glossary=ruleset.glossary, aliases=aliases)
+                meta["rulesets_used"].append(name)
+            expanded = after
         except Exception as exc:  # noqa: BLE001
             meta["errors"].append({"ruleset": name, "error": str(exc)[:160]})
         if len(aliases) >= max_aliases_i:
@@ -118,7 +101,7 @@ def apply_industry_rules_query_expansion(
     if len(expanded) > max_query_chars_i:
         expanded = expanded[:max_query_chars_i].rstrip()
 
-    meta["alias_count"] = max(0, len([a for a in aliases[:max_aliases_i] if a]))
+    meta["alias_count"] = len(aliases[:max_aliases_i])
     meta["query_changed"] = expanded != original
     meta["used"] = meta["query_changed"]
     meta["expanded_query_hash"] = _hash_text(expanded)

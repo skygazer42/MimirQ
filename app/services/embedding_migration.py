@@ -231,9 +231,7 @@ def _init_shadow_embeddings() -> "LangChainEmbeddingsAdapter":
         raise RuntimeError("shadow embedding config not enabled")
 
     api_key = (
-        settings.EMBEDDING_SHADOW_API_KEY.strip()
-        or settings.EMBEDDING_API_KEY.strip()
-        or settings.LLM_API_KEY.strip()
+        settings.EMBEDDING_SHADOW_API_KEY.strip() or settings.EMBEDDING_API_KEY.strip() or settings.LLM_API_KEY.strip()
     )
     return _create_embeddings_from_config(
         provider=cfg["provider"],
@@ -241,6 +239,7 @@ def _init_shadow_embeddings() -> "LangChainEmbeddingsAdapter":
         api_key=api_key,
         base_url=cfg["base_url"],
         dimension=None,  # Auto-detect
+        cache_space_hash=cfg["embedding_space_hash"],
     )
 
 
@@ -446,7 +445,7 @@ def _build_progress_payload(
             shadow_collection=shadow_collection,
             shadow_space=shadow_space,
         ),
-        "counters": dict(counters or {}),
+        "counters": dict(counters),
     }
 
 
@@ -509,7 +508,7 @@ def _load_document_chunks(
     chunks_q = chunks_q.order_by(document_chunk_model.chunk_index.asc())
     if int(chunk_limit_per_document or 0) > 0:
         chunks_q = chunks_q.limit(int(chunk_limit_per_document))
-    return list(chunks_q.all() or [])
+    return chunks_q.all()
 
 
 def _build_vector_docs_for_document(
@@ -532,7 +531,7 @@ def _build_vector_docs_for_document(
             continue
 
         meta0 = chunk.doc_metadata
-        meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
+        meta = dict(meta0) if isinstance(meta0, dict) else {}
         meta.setdefault("tenant_id", str(tenant_id))
         meta.setdefault("dataset_id", str(doc.dataset_id) if doc.dataset_id is not None else "")
         meta.setdefault("document_id", str(doc_id))
@@ -569,7 +568,7 @@ def _persist_backfill_progress(
             shadow_collection=runtime.shadow_collection,
             shadow_space=runtime.shadow_space,
             execute=execute,
-            counters=dict(runtime.payload.get("counters") or {}),
+            counters=runtime.payload["counters"],
         ),
     )
 
@@ -853,7 +852,7 @@ def _load_overlap_queries(
 
     queries: list[tuple[str, str]] = []
     query_char_cap = int(max_query_chars or 0)
-    for chunk_id, content in list(chunks_q.all() or []):
+    for chunk_id, content in chunks_q.all():
         query = content.strip()
         if not query:
             continue
@@ -894,7 +893,7 @@ def _build_overlap_summary(
         },
     }
     if overlaps:
-        overlaps_sorted = sorted(float(value) for value in overlaps)
+        overlaps_sorted = sorted(overlaps)
         avg = sum(overlaps_sorted) / float(len(overlaps_sorted))
         summary["overlap"] = {
             "avg": avg,

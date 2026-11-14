@@ -15,13 +15,9 @@ def _bbox(value: Any) -> dict[str, int] | None:
     y0 = _coerce_int(value.get("y0"))
     x1 = _coerce_int(value.get("x1"))
     y1 = _coerce_int(value.get("y1"))
-    if None in {x0, y0, x1, y1}:
+    if x0 is None or y0 is None or x1 is None or y1 is None:
         return None
-    return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
-
-
-def _caption_pattern(media_kind: str) -> re.Pattern[str]:
-    return _TABLE_CAPTION_RE if media_kind.strip().lower() == "table" else _FIGURE_CAPTION_RE
+    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
 
 
 def _vertical_gap(a: Mapping[str, int], b: Mapping[str, int]) -> int:
@@ -47,8 +43,8 @@ def find_nearest_caption(
     media_bbox = _bbox(bbox)
     if page is None or media_bbox is None:
         return None
-    pattern = _caption_pattern(media_kind)
-    candidates: list[tuple[int, int, Mapping[str, Any]]] = []
+    pattern = _TABLE_CAPTION_RE if media_kind.strip().lower() == "table" else _FIGURE_CAPTION_RE
+    candidates: list[tuple[int, int, Mapping[str, Any], dict[str, int]]] = []
     for raw in elements or []:
         if not isinstance(raw, Mapping):
             continue
@@ -64,15 +60,15 @@ def find_nearest_caption(
         if gap > max_vertical_gap:
             continue
         overlap = _horizontal_overlap(candidate_bbox, media_bbox)
-        candidates.append((gap, -overlap, raw))
+        candidates.append((gap, -overlap, raw, candidate_bbox))
     if not candidates:
         return None
-    _gap, _overlap, selected = min(candidates, key=lambda item: (item[0], item[1]))
+    _gap, _overlap, selected, selected_bbox = min(candidates, key=lambda item: (item[0], item[1]))
     return {
         "id": selected["id"],
         "text": selected["text"].strip(),
         "page": page,
-        "bbox": dict(_bbox(selected.get("bbox")) or {}),
+        "bbox": selected_bbox,
         "source_element_id": selected.get("source_element_id"),
     }
 

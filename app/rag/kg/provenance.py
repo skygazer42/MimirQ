@@ -210,7 +210,7 @@ def _shortest_path_entities(
     selected: list[tuple[str, str]] = []
     for entity in _iter_items(entities):
         entity_id, entity_type = _shortest_path_entity_id_and_type(entity)
-        if not entity_id or not entity_type:
+        if not entity_id:
             continue
         if key_entity_ids is not None and entity_id not in key_entity_ids:
             continue

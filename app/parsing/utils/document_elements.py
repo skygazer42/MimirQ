@@ -63,8 +63,6 @@ def _clean_element_text(value: Any) -> str:
     if value is None:
         return ""
     text = str(value)
-    if not text:
-        return ""
     return _POSITION_TAG_RE.sub("", text).strip()
 
 
@@ -201,13 +199,11 @@ def _json_safe(value: Any) -> Any:
     return None
 
 
-def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
+def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any]:
     attrs: dict[str, Any] = {}
     preferred_attrs = meta.get("element_attributes")
     if isinstance(preferred_attrs, Mapping):
-        safe_preferred = _json_safe(dict(preferred_attrs))
-        if isinstance(safe_preferred, dict):
-            attrs.update(safe_preferred)
+        attrs.update(_json_safe(dict(preferred_attrs)))
     for key, value in meta.items():
         if key in _SKIP_ATTRIBUTE_KEYS:
             continue
@@ -221,10 +217,10 @@ def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
     return attrs
 
 
-def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | None) -> str | None:
+def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any]) -> str | None:
     if kind != "image":
         return None
-    raw_kind = (attributes or {}).get("visual_kind")
+    raw_kind = attributes.get("visual_kind")
     existing = raw_kind.strip().lower() if isinstance(raw_kind, str) else None
     if existing:
         return existing
@@ -232,14 +228,14 @@ def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | 
         str(part).strip().lower()
         for part in (
             text,
-            (attributes or {}).get("source_content_type"),
-            (attributes or {}).get("image_caption"),
-            (attributes or {}).get("caption"),
-            (attributes or {}).get("image_path"),
-            (attributes or {}).get("image_url"),
-            (attributes or {}).get("img_url"),
-            (attributes or {}).get("src"),
-            (attributes or {}).get("alt"),
+            attributes.get("source_content_type"),
+            attributes.get("image_caption"),
+            attributes.get("caption"),
+            attributes.get("image_path"),
+            attributes.get("image_url"),
+            attributes.get("img_url"),
+            attributes.get("src"),
+            attributes.get("alt"),
         )
         if part is not None and str(part).strip()
     )
@@ -256,14 +252,12 @@ def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | 
     return None
 
 
-def _prefer_image_code_text(
-    *, kind: str, visual_kind: str | None, text: str, attributes: Mapping[str, Any] | None
-) -> str:
+def _prefer_image_code_text(*, kind: str, visual_kind: str | None, text: str, attributes: Mapping[str, Any]) -> str:
     if kind != "image":
         return text
     if visual_kind is None or visual_kind.strip().lower() not in {"qr", "barcode"}:
         return text
-    code_text = _clean_element_text((attributes or {}).get("image_code_text"))
+    code_text = _clean_element_text(attributes.get("image_code_text"))
     return code_text or text
 
 
@@ -349,13 +343,11 @@ def _normalize_markdown_image_elements(
     return out
 
 
-def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
+def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any]:
     attrs: dict[str, Any] = {}
     preferred_attrs = meta.get("attributes")
     if isinstance(preferred_attrs, Mapping):
-        safe_preferred = _json_safe(dict(preferred_attrs))
-        if isinstance(safe_preferred, dict):
-            attrs.update(safe_preferred)
+        attrs.update(_json_safe(dict(preferred_attrs)))
     for key, value in meta.items():
         if key in {
             "id",
@@ -385,13 +377,13 @@ def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | Non
 def _resolve_source_fields(
     raw: Mapping[str, Any],
     *,
-    attributes: Mapping[str, Any] | None,
+    attributes: Mapping[str, Any],
 ) -> tuple[str | None, str | None]:
     source_backend = raw.get("source_backend")
-    if source_backend is None and isinstance(attributes, Mapping):
+    if source_backend is None:
         source_backend = attributes.get("source_backend")
     source_element_id = raw.get("source_element_id")
-    if source_element_id is None and isinstance(attributes, Mapping):
+    if source_element_id is None:
         source_element_id = attributes.get("source_element_id")
     return source_backend, source_element_id
 
@@ -401,18 +393,15 @@ def _resolve_element_visuals(
     *,
     kind: str,
     text: str,
-    attributes: Mapping[str, Any] | None,
-) -> tuple[str | None, dict[str, Any] | None, str]:
+    attributes: Mapping[str, Any],
+) -> tuple[str | None, dict[str, Any], str]:
     visual_kind = _normalize_string(raw.get("visual_kind")) or _infer_visual_kind(
         kind=kind,
         text=text,
         attributes=attributes,
     )
-    next_attributes = (
-        dict(attributes or {}) if visual_kind else (dict(attributes) if isinstance(attributes, dict) else attributes)
-    )
+    next_attributes = dict(attributes)
     if visual_kind:
-        next_attributes = dict(attributes or {})
         next_attributes["visual_kind"] = visual_kind
     preferred_text = _prefer_image_code_text(kind=kind, visual_kind=visual_kind, text=text, attributes=next_attributes)
     return visual_kind, next_attributes, preferred_text
@@ -496,23 +485,14 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
         pages = _extract_pages(meta)
         bbox = _extract_bbox(meta)
         attributes = _extract_attributes(meta)
-        source_backend = meta.get("source_backend")
-        if source_backend is None and isinstance(attributes, Mapping):
-            source_backend = attributes.get("source_backend")
-        source_element_id = meta.get("source_element_id")
-        if source_element_id is None and isinstance(attributes, Mapping):
-            source_element_id = attributes.get("source_element_id")
+        source_backend, source_element_id = _resolve_source_fields(meta, attributes=attributes)
         visual_kind = _infer_visual_kind(kind=kind, text=text, attributes=attributes)
         if visual_kind:
-            attrs = dict(attributes or {})
+            attrs = dict(attributes)
             attrs["visual_kind"] = visual_kind
             attributes = attrs
         text = _prefer_image_code_text(kind=kind, visual_kind=visual_kind, text=text, attributes=attributes)
-        confidence = None
-        for key in ("element_confidence", "seal_score", "confidence", "score"):
-            confidence = _coerce_float(meta.get(key))
-            if confidence is not None:
-                break
+        confidence = _coerce_element_confidence(meta, "element_confidence", "seal_score", "confidence", "score")
 
         item_id = str(meta.get("element_id") or meta.get("id") or "").strip()
         if not item_id:

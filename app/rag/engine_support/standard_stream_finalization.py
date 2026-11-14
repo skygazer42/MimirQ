@@ -5,10 +5,14 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
+from app.rag.engine_support.common import _UNABLE_TO_ANSWER_MESSAGE
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.llm.structured_output import parse_and_repair_structured_output
+from app.services.metrics_logger import log_metrics
 
 
 async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
@@ -33,10 +37,10 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
         (
             runtime.data.structured_data,
             runtime.data.structured_parse_meta,
-        ) = runtime.module.parse_and_repair_structured_output(
+        ) = parse_and_repair_structured_output(
             runtime.data.full_response,
             preset=runtime.data.structured_preset,
-            fallback_answer=runtime.module._UNABLE_TO_ANSWER_MESSAGE,
+            fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
             fallback_citations=runtime.data.structured_citations,
         )
     runtime.data.done_payload = {
@@ -116,9 +120,9 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                     {c.get("document_id") for c in runtime.data.citations if c.get("document_id")}
                 ),
                 "history_chars": len(runtime.data.history_text),
-                "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text),
+                "history_tokens": num_tokens_from_string(runtime.data.history_text),
                 "context_chars": len(runtime.data.context),
-                "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context),
+                "context_tokens": num_tokens_from_string(runtime.data.context),
                 "tag_enabled": bool(runtime.data.tag_meta.get("enabled")),
                 "tag_used": bool(runtime.data.tag_meta.get("used")),
                 "tag_reason": runtime.data.tag_meta.get("reason"),
@@ -298,7 +302,7 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
     yield runtime.data.done_payload
 
     # Persist logs (optional).
-    runtime.module.log_metrics(
+    log_metrics(
         {
             "event": "rag_done",
             "conversation_id": str(runtime.data.conversation_id) if runtime.data.conversation_id else None,

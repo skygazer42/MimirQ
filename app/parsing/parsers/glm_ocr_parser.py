@@ -23,10 +23,7 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.parsing.parsers.response_text import extract_markdown_from_json as _extract_markdown_from_json
 from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
-from app.parsing.utils.zip_processor import ZipImageProcessor
-from app.rag.core.logging import get_logger
-
-logger = get_logger("parsing.glm_ocr")
+from app.parsing.utils.zip_processor import safe_extract_zip
 
 
 def _sanitize_run_id(value: str) -> str:
@@ -39,7 +36,7 @@ def _looks_like_zip(resp: requests.Response) -> bool:
     ctype = str(resp.headers.get("content-type") or "").lower()
     if "application/zip" in ctype or "application/x-zip" in ctype:
         return True
-    body = getattr(resp, "content", b"") or b""
+    body = resp.content or b""
     return len(body) >= 4 and body[:2] == b"PK"
 
 
@@ -78,7 +75,7 @@ class GlmOCRParser:
         extract_root.mkdir(parents=True, exist_ok=True)
 
         with zipfile.ZipFile(zip_path, "r") as zf:
-            ZipImageProcessor._safe_extract(zf, extract_root)
+            safe_extract_zip(zf, extract_root)
 
         norm = normalize_extracted_artifacts(
             extract_root,

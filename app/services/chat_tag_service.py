@@ -191,7 +191,7 @@ def _score_candidate(
     if sheet_name is not None:
         sheet_name = sheet_name.strip()
     sample_blob = _sample_value_blob(sample_rows)
-    col_names = [c['name'] for c in (columns or []) if isinstance(c, dict)]
+    col_names = [c["name"] for c in (columns or []) if isinstance(c, dict)]
     return sum(
         _score_candidate_term(
             term,

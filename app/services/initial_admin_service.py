@@ -55,10 +55,10 @@ def _read_password_file(raw_path: str) -> str:
 
 
 def _load_credentials(config: Settings) -> _InitialAdminCredentials | None:
-    raw_email = (config.INITIAL_ADMIN_EMAIL).strip()
-    username = (config.INITIAL_ADMIN_USERNAME).strip()
+    raw_email = config.INITIAL_ADMIN_EMAIL.strip()
+    username = config.INITIAL_ADMIN_USERNAME.strip()
     inline_password = config.INITIAL_ADMIN_PASSWORD
-    password_file = (config.INITIAL_ADMIN_PASSWORD_FILE).strip()
+    password_file = config.INITIAL_ADMIN_PASSWORD_FILE.strip()
 
     if not any((raw_email, username, inline_password, password_file)):
         return None
@@ -165,7 +165,7 @@ def _default_credentials(config: Settings) -> _InitialAdminCredentials:
 
 
 def _default_tenant_id(config: Settings) -> UUID:
-    raw_tenant_id = (config.DEFAULT_TENANT_ID).strip()
+    raw_tenant_id = config.DEFAULT_TENANT_ID.strip()
     try:
         return UUID(raw_tenant_id)
     except ValueError as exc:

@@ -57,7 +57,7 @@ def _estimate_csv_shape(path: Path, *, sample_bytes: int) -> tuple[int, int, boo
     Returns (rows_est, cols_est, estimated_rows).
     """
     size = _safe_stat_size(path)
-    sample_n = max(1024, int(sample_bytes or 0))
+    sample_n = max(1024, sample_bytes)
     read_n = min(size, sample_n) if size > 0 else sample_n
 
     try:
@@ -75,9 +75,7 @@ def _estimate_csv_shape(path: Path, *, sample_bytes: int) -> tuple[int, int, boo
     line_count = text.count("\n")
     if text and not text.endswith("\n"):
         line_count += 1
-    line_count = max(0, line_count)
-
-    estimated_rows = bool(size > read_n and size > 0 and read_n > 0)
+    estimated_rows = size > read_n
     rows_est = line_count
     if estimated_rows:
         ratio = float(size) / float(max(1, read_n))
@@ -115,11 +113,11 @@ def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int,
     wb = None
     try:
         wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
-        sheetnames = list(getattr(wb, "sheetnames", None) or [])
+        sheetnames = wb.sheetnames
         sheet_count = len(sheetnames)
         max_rows = 0
         max_cols = 0
-        for name in sheetnames[: max(1, min(int(max_sheets or 1), sheet_count))]:
+        for name in sheetnames[: max(1, min(max_sheets, sheet_count))]:
             ws = wb[name]
             r = int(getattr(ws, "max_row", 0) or 0)
             c = int(getattr(ws, "max_column", 0) or 0)
@@ -226,14 +224,14 @@ def decide_table_route(
     if not auto_route:
         return TableRouteDecision(route="tag", reason="auto_route_disabled", stats=stats)
 
-    fb = int(file_bytes_threshold or 0)
+    fb = file_bytes_threshold
     if fb > 0 and size >= fb:
         stats.update({"trigger": "file_bytes", "file_bytes_threshold": fb})
         return TableRouteDecision(route="tag", reason="file_bytes_threshold", stats=stats)
 
-    rt = int(row_threshold or 0)
-    ct = int(col_threshold or 0)
-    st = int(sheet_threshold or 0)
+    rt = row_threshold
+    ct = col_threshold
+    st = sheet_threshold
 
     if ext == ".csv":
         return _route_for_csv(

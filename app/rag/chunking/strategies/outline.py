@@ -236,15 +236,7 @@ def _iter_headings(text: str) -> list[OutlineHeading]:
             )
         )
 
-    # De-duplicate headings that start at the same position (best-effort).
-    deduped: list[OutlineHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[OutlineHeading]) -> list[_Section]:

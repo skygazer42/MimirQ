@@ -25,7 +25,7 @@ def normalize_url_for_dedup(url: str) -> str:
     s = canonicalize_url(url.strip(), strip_tracking=True)
     try:
         parts = urlsplit(s)
-    except Exception:
+    except ValueError:
         return s
     return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))  # drop fragment
 
@@ -59,7 +59,7 @@ def extract_canonical_url(html_text: str, *, base_url: str) -> str | None:
             continue
         try:
             return normalize_url_for_dedup(urljoin(base_url, href))
-        except Exception:
+        except ValueError:
             return None
     return None
 

@@ -3,27 +3,10 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from app.api.schemas.evaluation import RagasRegressionCaseBundleItem
     from app.models.evaluation import RagasRegressionCase
 
 REGRESSION_CASE_BUNDLE_SCHEMA_V1 = "mimirq.regression_cases.v1"
-
-
-def _coerce_bundle_item(raw: Any) -> dict[str, Any]:
-    if raw is None:
-        return {}
-    if hasattr(raw, "model_dump"):
-        return raw.model_dump(mode="json")
-    if isinstance(raw, dict):
-        return dict(raw)
-    return {
-        "question": getattr(raw, "question", None),
-        "expected_answer": getattr(raw, "expected_answer", None),
-        "tags": getattr(raw, "tags", None),
-        "reference_sources": getattr(raw, "reference_sources", None),
-        "reasoning_hops": getattr(raw, "reasoning_hops", None),
-        "evidence_chain": getattr(raw, "evidence_chain", None),
-        "extra": getattr(raw, "extra", None),
-    }
 
 
 def _portable_extra(extra: Any) -> dict[str, Any]:
@@ -52,12 +35,12 @@ def export_case_bundle(cases: "Sequence[RagasRegressionCase]", dataset_id: UUID)
     - Omits internal identifiers (case id / tenant id) for portability.
     - Enforces all input cases belong to the provided dataset_id to avoid accidental cross-dataset mixes.
     """
-    ds_id = UUID(str(dataset_id))
+    ds_id = dataset_id
 
     items: list[dict[str, Any]] = []
-    for case in cases or []:
+    for case in cases:
         case_ds = case.dataset_id
-        if case_ds is None or UUID(str(case_ds)) != ds_id:
+        if case_ds != ds_id:
             raise ValueError("All cases must belong to the same dataset_id")
 
         items.append(
@@ -96,19 +79,17 @@ def export_case_bundle(cases: "Sequence[RagasRegressionCase]", dataset_id: UUID)
 
 def plan_case_import(
     *,
-    dataset_id: UUID,
     existing_questions: set[str],
-    items: Sequence[Any],
+    items: "Sequence[RagasRegressionCaseBundleItem]",
     overwrite: bool = False,
     max_items: int = 500,
 ) -> dict[str, Any]:
     """
-    Plan case upserts using (dataset_id + question.strip()) as a stable key.
+    Plan case upserts by question within the caller's authorized dataset.
 
     Returns counts plus `create_items`/`update_items` for the API layer.
     """
-    _ = UUID(str(dataset_id))  # ensure UUID-compatible input
-    cap = max(1, min(2000, int(max_items or 0))) if max_items else 500
+    cap = max(1, min(2000, max_items)) if max_items else 500
 
     created = 0
     updated = 0
@@ -121,14 +102,9 @@ def plan_case_import(
 
     seen: set[str] = set()
 
-    for idx, raw in enumerate(list(items or [])[:cap]):
-        payload = _coerce_bundle_item(raw)
-        raw_question = payload.get("question")
-        if raw_question is not None and not isinstance(raw_question, str):
-            skipped += 1
-            errors.append({"index": idx, "error": "question must be a string"})
-            continue
-        question = raw_question.strip() if raw_question is not None else None
+    for idx, item in enumerate(items[:cap]):
+        payload = item.model_dump(mode="json")
+        question = payload["question"].strip()
         if not question:
             skipped += 1
             errors.append({"index": idx, "error": "question is required"})
@@ -169,7 +145,7 @@ def plan_case_import(
         create_items.append(payload)
 
     # If input is larger than cap, treat remaining items as skipped.
-    if items and len(items) > cap:
+    if len(items) > cap:
         skipped += len(items) - cap
         errors.append({"error": "max_items exceeded", "max_items": cap, "ignored": len(items) - cap})
 

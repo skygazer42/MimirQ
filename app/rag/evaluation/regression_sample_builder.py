@@ -187,7 +187,7 @@ def _semantic_key_set_from_mapping(value: Any) -> set[str]:
 
 
 def _semantic_key_set(obj: Any) -> set[str]:
-    out = set(_semantic_key_set_from_mapping(obj))
+    out = _semantic_key_set_from_mapping(obj)
     for base in _citation_metadata_bases(obj):
         out.update(_semantic_key_set_from_mapping(base))
     for meta in _citation_metadata_containers(obj):
@@ -293,9 +293,9 @@ def _citation_metadata_containers(citation: Any) -> list[dict[str, Any]]:
                 seen.add(id(fields))
                 out.append(fields)
         scalar = {
-            key: base.get(key)
+            key: base[key]
             for key in _EXPECTED_METADATA_PLATFORM_SCALAR_KEYS
-            if key in base and _value_present(base.get(key))
+            if key in base and _value_present(base[key])
         }
         if scalar:
             out.append(scalar)
@@ -574,7 +574,7 @@ def _reference_match_state(
         "cit_record_key_set": {key for citation in citations_ranked if (key := _record_identity_key(citation))},
         "cit_semantic_key_sets": cit_semantic_key_sets,
         "cit_semantic_key_union": {key for keys in cit_semantic_key_sets for key in keys},
-        "cit_text_joined": "\n".join([text for text in cit_texts if text]) if cit_texts else "",
+        "cit_text_joined": "\n".join([text for text in cit_texts if text]),
     }
 
 
@@ -625,7 +625,7 @@ def _ranked_relevance_flags(citations_ranked: list[Any], *, state: _ReferenceMat
     semantic_key_sets = state["cit_semantic_key_sets"]
     flags: list[bool] = []
     for index, citation in enumerate(citations_ranked):
-        semantic_keys = semantic_key_sets[index] if index < len(semantic_key_sets) else _semantic_key_set(citation)
+        semantic_keys = semantic_key_sets[index]
         flags.append(_citation_matches_reference(citation, semantic_keys=semantic_keys, state=state))
     return flags
 
@@ -652,9 +652,7 @@ def _document_recall_metrics(
     reference_sources: list[Any], citations_ranked: list[Any]
 ) -> tuple[float | None, bool | None]:
     ref_doc_set = {
-        str(raw_id).strip()
-        for src in reference_sources
-        if (raw_id := _coerce_dict(src).get("document_id")) is not None
+        str(raw_id).strip() for src in reference_sources if (raw_id := _coerce_dict(src).get("document_id")) is not None
     }
     ref_doc_set = {doc_id for doc_id in ref_doc_set if doc_id}
     if not ref_doc_set:
@@ -806,7 +804,9 @@ def _reasoning_inputs(case: Any, extra_d: dict[str, Any]) -> tuple[list[str], li
     reasoning_hops_raw = _get(case, "reasoning_hops", None)
     if not isinstance(reasoning_hops_raw, list):
         reasoning_hops_raw = extra_d.get("reasoning_hops")
-    reasoning_hops = [str(value) for value in (reasoning_hops_raw or []) if value is not None and str(value).strip()][:20]
+    reasoning_hops = [str(value) for value in (reasoning_hops_raw or []) if value is not None and str(value).strip()][
+        :20
+    ]
     evidence_chain_raw = _get(case, "evidence_chain", None)
     if not isinstance(evidence_chain_raw, list):
         evidence_chain_raw = extra_d.get("evidence_chain")
@@ -823,7 +823,7 @@ def _reasoning_inputs(case: Any, extra_d: dict[str, Any]) -> tuple[list[str], li
 def _expected_refusal(extra_d: dict[str, Any]) -> bool | None:
     for key in ("expected_refusal", "should_refuse", "expected_abstain"):
         if key in extra_d:
-            return bool(extra_d.get(key))
+            return bool(extra_d[key])
     return None
 
 
@@ -991,7 +991,7 @@ def _apply_refusal_correctness(meta: dict[str, Any]) -> None:
         abst = meta.get("abstain_triggered")
         exp = meta.get("expected_refusal")
         if isinstance(exp, bool) and abst is not None:
-            meta["refusal_correct"] = bool(bool(exp) == bool(abst))
+            meta["refusal_correct"] = bool(exp) == bool(abst)
     except Exception as exc:
         logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
 
@@ -1078,7 +1078,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
     atomic_faithfulness = faithfulness_det
-    hallucination_rate = round(1.0 - float(faithfulness_det), 4) if faithfulness_det is not None else None
+    hallucination_rate = round(1.0 - faithfulness_det, 4) if faithfulness_det is not None else None
     quote_verifiability = _quote_verifiability(response, retrieved_contexts)
 
     # Chunk-level diagnostics (P0): attribution/utilization/noise/self-knowledge.
@@ -1088,7 +1088,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     chunk_diag = compute_chunk_diagnostics(
         answer=response,
-        retrieved_contexts=[str(c) if c is not None else "" for c in (retrieved_contexts or [])],
+        retrieved_contexts=[str(c) if c is not None else "" for c in retrieved_contexts],
         context_relevance=context_relevance,
         reference_evidence_text=reference_evidence_text,
     )
@@ -1147,7 +1147,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     if citation_eval_limit is not None:
         meta.update(
             {
-                "citation_eval_limit": int(citation_eval_limit),
+                "citation_eval_limit": citation_eval_limit,
                 "citation_total_count": len(citations_ranked_all),
                 "citation_evaluated_count": len(citations_ranked),
             }
@@ -1252,7 +1252,7 @@ def build_regression_item_meta(
         "retrieval_evaluated_records",
     ):
         if key in meta:
-            out[key] = meta.get(key)
+            out[key] = meta[key]
     for key in (
         "parse_quality_alert",
         "parse_quality_low_ratio",
@@ -1262,7 +1262,7 @@ def build_regression_item_meta(
         "parse_quality_gate_blocked",
     ):
         if key in meta:
-            out[key] = meta.get(key)
+            out[key] = meta[key]
     for key in (
         "expected_metadata_hit",
         "expected_metadata_recall",
@@ -1271,5 +1271,5 @@ def build_regression_item_meta(
         "expected_metadata_missing_keys",
     ):
         if key in meta:
-            out[key] = meta.get(key)
+            out[key] = meta[key]
     return out

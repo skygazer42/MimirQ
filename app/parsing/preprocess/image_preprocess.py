@@ -12,6 +12,8 @@ Scope:
 - Best-effort PDF watermark annotation stripping (cheap path) before model-based removal.
 """
 
+from __future__ import annotations
+
 import re
 import time
 from dataclasses import dataclass
@@ -37,7 +39,7 @@ _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value).strip()
+    text = value.strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "preprocess"
     return text
 
@@ -91,7 +93,7 @@ def _run_handwriting_cleanup_stage(
     artifact_root: Path,
     output_stem: str,
     warnings: list[str],
-) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
+) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
     t0 = time.perf_counter()
     if not bool(settings.HANDWRITING_CLEANUP_ENABLED):
         return (
@@ -121,11 +123,11 @@ def _run_handwriting_cleanup_stage(
         warnings.append(warning)
     return (
         output_path if changed else current,
-        bool(changed),
+        changed,
         ImagePreprocessStepLog(
             id="handwriting_cleanup",
             applied=True,
-            changed=bool(changed),
+            changed=changed,
             note=note,
             elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
         ),
@@ -139,7 +141,7 @@ def _run_paddle_doc_preprocess_stage(
     artifact_root: Path,
     output_stem: str,
     warnings: list[str],
-) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
+) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
     t0 = time.perf_counter()
     if not bool(settings.PADDLE_OCR_PREPROCESS_ENABLED):
         return (
@@ -171,11 +173,11 @@ def _run_paddle_doc_preprocess_stage(
         warnings.append(warning)
     return (
         output_path if changed else current,
-        bool(changed),
+        changed,
         ImagePreprocessStepLog(
             id="paddle_ocr_preprocess",
             applied=True,
-            changed=bool(changed),
+            changed=changed,
             note=note,
             elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
         ),
@@ -207,7 +209,7 @@ def _preprocess_pdf_pages_via_raster(
                 document_id=f"{document_id or input_path.stem}-page-{page_index + 1}",
                 pdf_quality={"score": 0.0, "is_scanned": True, "page_count": 1},
             )
-            warnings.extend(f"pagewise:{warning}" for warning in (result.warnings or []))
+            warnings.extend(f"pagewise:{warning}" for warning in result.warnings)
             page_img_path = Path(result.output_path)
             with Image.open(page_img_path) as processed:
                 buf = BytesIO()
@@ -215,7 +217,7 @@ def _preprocess_pdf_pages_via_raster(
                 rect = fitz.Rect(0, 0, float(processed.width), float(processed.height))
                 out_page = out.new_page(width=rect.width, height=rect.height)
                 out_page.insert_image(rect, stream=buf.getvalue())
-            changed_any = changed_any or bool(result.changed)
+            changed_any = changed_any or result.changed
             processed_pages += 1
         if not changed_any:
             return False, "pagewise_no_change", {"backend": "pagewise_raster", "processed_pages": processed_pages}
@@ -255,19 +257,19 @@ class ImagePreprocessResult:
         return {
             "input_path": self.input_path,
             "output_path": self.output_path,
-            "changed": bool(self.changed),
+            "changed": self.changed,
             "steps": [
                 {
-                    "id": s.id,
-                    "applied": bool(s.applied),
-                    "changed": bool(s.changed),
-                    "note": s.note,
-                    "elapsed_ms": int(s.elapsed_ms or 0),
+                    "id": step.id,
+                    "applied": step.applied,
+                    "changed": step.changed,
+                    "note": step.note,
+                    "elapsed_ms": step.elapsed_ms,
                 }
-                for s in (self.steps or [])
+                for step in self.steps
             ],
-            "warnings": list(self.warnings or []),
-            "meta": dict(self.meta or {}),
+            "warnings": list(self.warnings),
+            "meta": dict(self.meta),
         }
 
 
@@ -491,8 +493,7 @@ def _append_pdf_watermark_steps(
             api_url=api_url,
             timeout_sec=timeout_sec,
         )
-    if isinstance(info, dict):
-        meta["watermark_removal"] = info
+    meta["watermark_removal"] = info
     warning = _watermark_warning(note)
     if warning:
         warnings.append(warning)
@@ -546,8 +547,7 @@ def _append_image_watermark_step(
         api_url=api_url,
         timeout_sec=timeout_sec,
     )
-    if isinstance(info, dict):
-        meta["watermark_removal"] = info
+    meta["watermark_removal"] = info
     warning = _watermark_warning(note)
     if warning:
         warnings.append(warning)
@@ -587,7 +587,7 @@ def _finalize_preprocess_result(
     )
 
 
-def _preprocess_pdf_document(
+def _preprocess_document(
     *,
     input_path: Path,
     document_id: str | None,
@@ -595,6 +595,7 @@ def _preprocess_pdf_document(
     meta: dict[str, Any],
     warnings: list[str],
     steps: list[ImagePreprocessStepLog],
+    is_pdf: bool,
 ) -> ImagePreprocessResult:
     artifact_root = _artifact_root(input_path, document_id=document_id)
     current = input_path
@@ -607,7 +608,7 @@ def _preprocess_pdf_document(
         sample_pages=sample_pages,
         meta=meta,
         steps=steps,
-        is_pdf=True,
+        is_pdf=is_pdf,
     )
     changed_any = changed_any or changed
 
@@ -617,7 +618,7 @@ def _preprocess_pdf_document(
         output_stem=input_path.stem,
         warnings=warnings,
     )
-    if isinstance(info, dict):
+    if info is not None:
         meta["paddle_ocr_preprocess"] = info
     changed_any = changed_any or changed
     steps.append(step)
@@ -627,7 +628,7 @@ def _preprocess_pdf_document(
         artifact_root=artifact_root,
         input_path=input_path,
         steps=steps,
-        is_pdf=True,
+        is_pdf=is_pdf,
     )
     changed_any = changed_any or changed
 
@@ -637,96 +638,31 @@ def _preprocess_pdf_document(
         output_stem=input_path.stem,
         warnings=warnings,
     )
-    if isinstance(info, dict):
+    if info is not None:
         meta["handwriting_cleanup"] = info
     changed_any = changed_any or changed
     steps.append(step)
 
-    current, changed = _append_pdf_watermark_steps(
-        current=current,
-        artifact_root=artifact_root,
-        input_path=input_path,
-        document_id=document_id,
-        sample_pages=sample_pages,
-        warnings=warnings,
-        steps=steps,
-        meta=meta,
-    )
-    changed_any = changed_any or changed
-
-    return _finalize_preprocess_result(
-        input_path=input_path,
-        current=current,
-        changed_any=changed_any,
-        artifact_root=artifact_root,
-        steps=steps,
-        warnings=warnings,
-        meta=meta,
-    )
-
-
-def _preprocess_raster_document(
-    *,
-    input_path: Path,
-    document_id: str | None,
-    meta: dict[str, Any],
-    warnings: list[str],
-    steps: list[ImagePreprocessStepLog],
-) -> ImagePreprocessResult:
-    artifact_root = _artifact_root(input_path, document_id=document_id)
-    current = input_path
-    changed_any = False
-
-    current, changed = _append_orientation_step(
-        current=current,
-        artifact_root=artifact_root,
-        input_path=input_path,
-        sample_pages=0,
-        meta=meta,
-        steps=steps,
-        is_pdf=False,
-    )
-    changed_any = changed_any or changed
-
-    current, changed, step, info = _run_paddle_doc_preprocess_stage(
-        current=current,
-        artifact_root=artifact_root,
-        output_stem=input_path.stem,
-        warnings=warnings,
-    )
-    if isinstance(info, dict):
-        meta["paddle_ocr_preprocess"] = info
-    changed_any = changed_any or changed
-    steps.append(step)
-
-    current, changed = _append_deskew_step(
-        current=current,
-        artifact_root=artifact_root,
-        input_path=input_path,
-        steps=steps,
-        is_pdf=False,
-    )
-    changed_any = changed_any or changed
-
-    current, changed, step, info = _run_handwriting_cleanup_stage(
-        current=current,
-        artifact_root=artifact_root,
-        output_stem=input_path.stem,
-        warnings=warnings,
-    )
-    if isinstance(info, dict):
-        meta["handwriting_cleanup"] = info
-    changed_any = changed_any or changed
-    steps.append(step)
-
-    current, changed = _append_image_watermark_step(
-        current=current,
-        artifact_root=artifact_root,
-        input_path=input_path,
-        warnings=warnings,
-        steps=steps,
-        meta=meta,
-    )
+    if is_pdf:
+        current, changed = _append_pdf_watermark_steps(
+            current=current,
+            artifact_root=artifact_root,
+            input_path=input_path,
+            document_id=document_id,
+            sample_pages=sample_pages,
+            warnings=warnings,
+            steps=steps,
+            meta=meta,
+        )
+    else:
+        current, changed = _append_image_watermark_step(
+            current=current,
+            artifact_root=artifact_root,
+            input_path=input_path,
+            warnings=warnings,
+            steps=steps,
+            meta=meta,
+        )
     changed_any = changed_any or changed
 
     return _finalize_preprocess_result(
@@ -793,22 +729,25 @@ def preprocess_image_document(
             if score >= 0.8 and not is_scanned:
                 return _high_quality_pdf_skip_result(input_path, meta=meta)
 
-        return _preprocess_pdf_document(
+        return _preprocess_document(
             input_path=input_path,
             document_id=document_id,
             sample_pages=sample_pages,
             meta=meta,
             warnings=warnings,
             steps=steps,
+            is_pdf=True,
         )
 
     if ext not in _IMAGE_EXTS:
         return _unsupported_preprocess_result(input_path, meta=meta)
 
-    return _preprocess_raster_document(
+    return _preprocess_document(
         input_path=input_path,
         document_id=document_id,
+        sample_pages=0,
         meta=meta,
         warnings=warnings,
         steps=steps,
+        is_pdf=False,
     )

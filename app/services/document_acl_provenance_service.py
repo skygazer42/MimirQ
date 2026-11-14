@@ -139,7 +139,7 @@ def build_document_acl_provenance(
         },
         "effective_access": {
             "mode": effective_mode,
-            "partial_member_count": int(member_count),
+            "partial_member_count": member_count,
             "partial_group_ids": effective_group_ids,
         },
         "source_acl": {
@@ -147,10 +147,10 @@ def build_document_acl_provenance(
             "fallback_mode": _normalize_mode(source_acl_fallback_mode, default="partial_members"),
             "fallback_used": bool(fallback_used),
             "mapping_strategy": "tenant_groups.external_id",
-            "principal_count": int(len(principals_norm)),
+            "principal_count": len(principals_norm),
             "principal_hash_alg": "sha256",
             "principal_hashes": principal_hashes,
-            "mapped_group_count": int(len(mapped_groups_norm)),
+            "mapped_group_count": len(mapped_groups_norm),
             "mapped_group_ids": mapped_groups_norm,
         },
     }

@@ -55,7 +55,7 @@ def _iter_entries(text: str, *, kind: str) -> list[_Entry]:
             continue
         start = sm.start()
         end = em.end()
-        if end < len(text) and text[end : end + 1] == "\n":
+        if text[end : end + 1] == "\n":
             end += 1
         blk_text = text[start:end]
         entries.append(
@@ -157,8 +157,6 @@ class SitemapXMLChunker(BaseChunker):
 
             for ent in entries:
                 ent_text = text[ent.start : ent.end]
-                if not ent_text.strip():
-                    continue
                 split_docs = self._fallback_splitter.create_documents(texts=[ent_text], metadatas=[base_meta])
                 extra_meta: dict[str, Any] = {
                     "sitemap_kind": ent.kind,

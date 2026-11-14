@@ -261,9 +261,7 @@ def _apply_exact_content_bonus_to_result(
     metadata = result.get("metadata") if isinstance(result, dict) else None
     indexed_content = metadata.get(_RETRIEVAL_TEXT_KEY) if isinstance(metadata, dict) else None
     content = (
-        str(indexed_content)
-        if isinstance(indexed_content, str) and indexed_content.strip()
-        else result["content"]
+        str(indexed_content) if isinstance(indexed_content, str) and indexed_content.strip() else result["content"]
     )
     query_norm = _normalize_exact_anchor(query)
     content_norm = _normalize_exact_anchor(content)

@@ -13,11 +13,11 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
-from app.rag.core.metadata import _stringified_metadata_text
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.errors import ConfigError
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.fallback import FallbackLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
@@ -97,27 +97,18 @@ class OpenAIChatClient(BaseLLMClient):
 
     def _convert_messages(self, messages: list[LLMMessage]) -> list[BaseMessage]:
         converted: list[BaseMessage] = []
-        cached_count = 0
         for msg in messages:
-            content, applied = annotate_prompt_cache_content(
+            content, _ = annotate_prompt_cache_content(
                 role=str(msg.role),
                 content=msg.content,
                 anthropic_compatible=self._is_anthropic_compatible,
             )
-            if applied:
-                cached_count += 1
             if msg.role == LLMRole.SYSTEM:
                 converted.append(SystemMessage(content=content))
             elif msg.role == LLMRole.ASSISTANT:
                 converted.append(AIMessage(content=content))
             else:
                 converted.append(HumanMessage(content=content))
-        self._last_invocation_meta = {
-            "selected_model": self.model_name,
-            "prompt_cache_applied": bool(cached_count),
-            "prompt_cache_message_count": cached_count,
-            "provider_anthropic_compatible": self._is_anthropic_compatible,
-        }
         return converted
 
     async def chat(
@@ -283,8 +274,8 @@ async def _build_fallback_clients(
     clients: list[BaseLLMClient] = [primary]
     seen_models = {primary_model} if primary_model else set()
     for spec in specs:
-        model_name = spec["model"].strip()
-        if not model_name or model_name in seen_models:
+        model_name = spec["model"]
+        if model_name in seen_models:
             continue
         try:
             fallback_client = await asyncio.to_thread(

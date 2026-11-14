@@ -39,6 +39,20 @@ _HINT_BY_KEY: dict[str, str] = {
     "rate_limited": "You are being rate limited. Retry later, or reduce concurrent requests / embedding concurrency.",
 }
 
+_HTTP_ERROR_CODE_BY_STATUS: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "AUTHENTICATION_ERROR",
+    403: "AUTHORIZATION_ERROR",
+    404: "NOT_FOUND",
+    409: "CONFLICT",
+    416: "RANGE_NOT_SATISFIABLE",
+    422: "VALIDATION_ERROR",
+    413: "PAYLOAD_TOO_LARGE",
+    429: "RATE_LIMIT_EXCEEDED",
+    500: "INTERNAL_ERROR",
+    503: "SERVICE_UNAVAILABLE",
+}
+
 
 def _derive_hint(
     *,
@@ -63,19 +77,19 @@ def _derive_hint(
     norm = message.strip().lower()
 
     if status_code == HTTP_413_CONTENT_TOO_LARGE or "file too large" in norm:
-        return _HINT_BY_KEY.get("payload_too_large")
+        return _HINT_BY_KEY["payload_too_large"]
 
     if status_code == HTTP_429_TOO_MANY_REQUESTS or error_code == "RATE_LIMIT_EXCEEDED":
-        return _HINT_BY_KEY.get("rate_limited")
+        return _HINT_BY_KEY["rate_limited"]
 
     if "worker_timeout" in norm or "timeout" in norm:
-        return _HINT_BY_KEY.get("timeout")
+        return _HINT_BY_KEY["timeout"]
 
     if "preprocess_failed" in norm:
-        return _HINT_BY_KEY.get("preprocess_failed")
+        return _HINT_BY_KEY["preprocess_failed"]
 
     if "parse_failed" in norm or "failed to parse" in norm:
-        return _HINT_BY_KEY.get("parse_failed")
+        return _HINT_BY_KEY["parse_failed"]
 
     return None
 
@@ -266,37 +280,23 @@ def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse
         exc.message,
         request_id,
     )
-    hint = _derive_hint(
+    response = exc.to_response(request_id)
+    response.hint = _derive_hint(
         status_code=exc.status_code,
-        error_code=exc.error_code or "INTERNAL_ERROR",
-        message=exc.message,
-        detail=exc.detail if isinstance(exc.detail, dict) else None,
+        error_code=response.error,
+        message=response.message,
+        detail=response.detail,
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=exc.to_response(request_id).model_dump(exclude_none=True) | ({"hint": hint} if hint else {}),
+        content=response.model_dump(exclude_none=True),
     )
 
 
 def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = get_request_id(request)
 
-    error_code_map = {
-        400: "BAD_REQUEST",
-        401: "AUTHENTICATION_ERROR",
-        403: "AUTHORIZATION_ERROR",
-        404: "NOT_FOUND",
-        409: "CONFLICT",
-        416: "RANGE_NOT_SATISFIABLE",
-        422: "VALIDATION_ERROR",
-        413: "PAYLOAD_TOO_LARGE",
-        429: "RATE_LIMIT_EXCEEDED",
-        500: "INTERNAL_ERROR",
-        503: "SERVICE_UNAVAILABLE",
-    }
-
-    error_code = error_code_map.get(exc.status_code, "HTTP_ERROR")
-    message = ""
+    error_code = _HTTP_ERROR_CODE_BY_STATUS.get(exc.status_code, "HTTP_ERROR")
     detail: dict[str, Any] | None = None
     if isinstance(exc.detail, dict):
         detail = dict(exc.detail)

@@ -108,10 +108,10 @@ def _score_decoded_text(text: str) -> tuple[float, float, float]:
             cjk += 1
 
     printable = max(0, total - control - nul)
-    printable_ratio = printable / max(1, total)
-    nul_ratio = nul / max(1, total)
+    printable_ratio = printable / total
+    nul_ratio = nul / total
 
-    cjk_ratio = cjk / max(1, total)
+    cjk_ratio = cjk / total
     # Only boost CJK if it is clearly present; avoids picking GB encodings for mostly Latin text.
     effective_cjk_ratio = cjk_ratio if (cjk >= 20 and cjk_ratio >= 0.10) else 0.0
 
@@ -140,10 +140,7 @@ def _iter_candidate_encodings(*, detected: str | None, default_encoding: str, bl
         push(detected)
 
     # If the file looks like UTF-16/32 without BOM (common on Windows exports), try these early.
-    try:
-        nul_ratio = blob.count(b"\x00") / max(1, len(blob))
-    except Exception:
-        nul_ratio = 0.0
+    nul_ratio = blob.count(b"\x00") / max(1, len(blob))
     if nul_ratio >= 0.10:
         push("utf-16")
         push("utf-32")

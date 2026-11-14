@@ -18,14 +18,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -77,19 +70,6 @@ def _parse_toml_key_line(line: str) -> str | None:
     return key
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text).splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text, plain=text))
-    return out
-
-
 def _build_sections(text: str) -> list[_Section]:
     lines = _iter_lines(text)
     headers: list[tuple[int, str]] = []
@@ -108,7 +88,6 @@ def _build_sections(text: str) -> list[_Section]:
     if not headers:
         return [_Section(start=0, end=len(text), name=None)]
 
-    headers = sorted(headers, key=lambda x: x[0])
     sections: list[_Section] = []
     if headers[0][0] > 0:
         sections.append(_Section(start=0, end=headers[0][0], name=None))
@@ -174,7 +153,7 @@ def _entry_window_end(entries: list[_Entry], *, start_idx: int, chunk_size: int)
         if end_idx != start_idx and length > chunk_size:
             break
         end_idx += 1
-    return max(start_idx + 1, end_idx)
+    return end_idx
 
 
 def _unique_entry_keys(entries: list[_Entry], *, start_idx: int, end_idx: int) -> list[str]:
@@ -201,7 +180,7 @@ def _next_entry_start(
                 break
             desired -= 1
         next_start = desired if desired > start_idx else end_idx - 1
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 class TOMLConfigChunker(BaseChunker):
@@ -317,7 +296,7 @@ class TOMLConfigChunker(BaseChunker):
         text = doc.page_content
         if not text.strip():
             return
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         for section in _build_sections(text):
             if not text[section.start : section.end].strip():
                 continue

@@ -171,7 +171,7 @@ def _load_columns_by_table(
         )
         .all()
     )
-    for column in cols or []:
+    for column in cols:
         table_id = column.table_id
         if table_id is None:
             continue
@@ -206,12 +206,12 @@ def _load_latest_profiles_by_table(
         )
         .all()
     )
-    for snapshot in snaps or []:
+    for snapshot in snaps:
         table_id = snapshot.table_id
         if table_id is None or table_id in latest_profile_by_table:
             continue
         profile = snapshot.profile
-        latest_profile_by_table[table_id] = dict(profile or {}) if isinstance(profile, dict) else {}
+        latest_profile_by_table[table_id] = dict(profile) if isinstance(profile, dict) else {}
     return latest_profile_by_table
 
 
@@ -222,7 +222,7 @@ def _build_virtual_schema_tables(
     latest_profile_by_table: dict[UUID, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     table_dicts: list[dict[str, Any]] = []
-    for table in tables or []:
+    for table in tables:
         table_id = table.id
         if table_id is None:
             continue

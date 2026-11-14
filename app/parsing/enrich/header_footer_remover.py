@@ -5,8 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.parsing.utils.scalars import coerce_float as _coerce_float
-from app.parsing.utils.scalars import coerce_int as _coerce_int
+from app.parsing.utils.block_schema import block_bbox_value, block_page, block_text
 
 _DIGIT_RE = re.compile(r"\d+")
 _SPACE_RE = re.compile(r"\s+")
@@ -34,86 +33,59 @@ class HeaderFooterRemovalResult:
         }
 
 
-def _bbox_value(element: Mapping[str, Any], key: str) -> float | None:
-    bbox = element.get("bbox")
-    if isinstance(bbox, Mapping):
-        return _coerce_float(bbox.get(key))
-    return None
-
-
-def _page_value(element: Mapping[str, Any]) -> int | None:
-    page = _coerce_int(element.get("page"))
-    if page is not None and page > 0:
-        return int(page)
-    pages = element.get("pages")
-    if isinstance(pages, list) and pages:
-        first = _coerce_int(pages[0])
-        if first is not None and first > 0:
-            return int(first)
-    return None
-
-
-def _text_value(element: Mapping[str, Any]) -> str:
-    value = element.get("text")
-    if value is None:
-        value = element.get("element_text")
-    return str(value).strip() if value is not None else ""
-
-
 def _normalize_repeated_text(text: str) -> str:
     normalized = _SPACE_RE.sub(" ", text.strip().lower())
     normalized = _DIGIT_RE.sub("#", normalized)
     return normalized.strip()
 
 
-def _normalize_elements(elements: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _normalize_elements(elements: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
     valid: list[dict[str, Any]] = []
-    invalid: list[dict[str, Any]] = []
+    missing_geometry = False
     for index, raw in enumerate(elements):
         element = dict(raw)
-        page = _page_value(element)
-        x0 = _bbox_value(element, "x0")
-        x1 = _bbox_value(element, "x1")
-        y0 = _bbox_value(element, "y0")
-        y1 = _bbox_value(element, "y1")
-        text = _text_value(element)
+        page = block_page(element)
+        x0 = block_bbox_value(element, "x0")
+        x1 = block_bbox_value(element, "x1")
+        y0 = block_bbox_value(element, "y0")
+        y1 = block_bbox_value(element, "y1")
+        text = block_text(element)
         if page is None or x0 is None or x1 is None or y0 is None or y1 is None or not text:
-            invalid.append({"index": index, "element": element})
+            missing_geometry = True
             continue
         valid.append(
             {
                 "index": index,
-                "page": int(page),
-                "x0": float(x0),
-                "x1": float(x1),
-                "y0": float(y0),
-                "y1": float(y1),
+                "page": page,
+                "x0": x0,
+                "x1": x1,
+                "y0": y0,
+                "y1": y1,
                 "text": text,
                 "element": element,
             }
         )
-    return valid, invalid
+    return valid, missing_geometry
 
 
 def _page_bounds(valid: Sequence[dict[str, Any]]) -> dict[int, tuple[float, float]]:
     by_page: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for item in valid:
-        by_page[int(item["page"])].append(item)
+        by_page[item["page"]].append(item)
     bounds: dict[int, tuple[float, float]] = {}
     for page, items in by_page.items():
-        top = min(float(item["y0"]) for item in items)
-        bottom = max(float(item["y1"]) for item in items)
-        bounds[int(page)] = (float(top), float(bottom))
+        top = min(item["y0"] for item in items)
+        bottom = max(item["y1"] for item in items)
+        bounds[page] = (top, bottom)
     return bounds
 
 
 def _edge_zone(item: Mapping[str, Any], bounds: Mapping[int, tuple[float, float]], *, band_ratio: float) -> str | None:
-    page = int(item["page"])
-    page_top, page_bottom = bounds.get(page, (0.0, 0.0))
-    height = max(1.0, float(page_bottom) - float(page_top))
+    page_top, page_bottom = bounds[item["page"]]
+    height = max(1.0, page_bottom - page_top)
     band = max(8.0, height * max(0.01, float(band_ratio)))
-    y0 = float(item["y0"])
-    y1 = float(item["y1"])
+    y0 = item["y0"]
+    y1 = item["y1"]
     if y1 <= page_top + band:
         return "header"
     if y0 >= page_bottom - band:
@@ -132,7 +104,7 @@ def remove_repeated_header_footer_elements(
     if not original:
         return HeaderFooterRemovalResult(elements=[], changed=False, removed_count=0, removed_ids=[], pages=[])
 
-    valid, invalid = _normalize_elements(original)
+    valid, missing_geometry = _normalize_elements(original)
     bounds = _page_bounds(valid)
     pages = sorted(bounds)
     if len(pages) < int(min_pages):
@@ -141,7 +113,7 @@ def remove_repeated_header_footer_elements(
             changed=False,
             removed_count=0,
             removed_ids=[],
-            pages=[int(page) for page in pages],
+            pages=pages,
             warnings=["insufficient_pages"],
         )
 
@@ -153,22 +125,20 @@ def remove_repeated_header_footer_elements(
         if zone is None:
             continue
         key_text = _normalize_repeated_text(item["text"])
-        if not key_text:
-            continue
         key = (zone, key_text)
         candidates.append({"key": key, "item": item})
-        seen_pages_by_key[key].add(int(item["page"]))
+        seen_pages_by_key[key].add(item["page"])
 
     repeated_keys = {key for key, key_pages in seen_pages_by_key.items() if len(key_pages) >= threshold}
-    remove_indexes = {int(candidate["item"]["index"]) for candidate in candidates if candidate["key"] in repeated_keys}
+    remove_indexes = {candidate["item"]["index"] for candidate in candidates if candidate["key"] in repeated_keys}
     if not remove_indexes:
         return HeaderFooterRemovalResult(
             elements=original,
             changed=False,
             removed_count=0,
             removed_ids=[],
-            pages=[int(page) for page in pages],
-            warnings=["missing_geometry"] if invalid else [],
+            pages=pages,
+            warnings=["missing_geometry"] if missing_geometry else [],
         )
 
     kept: list[dict[str, Any]] = []
@@ -181,10 +151,10 @@ def remove_repeated_header_footer_elements(
     return HeaderFooterRemovalResult(
         elements=kept,
         changed=True,
-        removed_count=int(len(remove_indexes)),
+        removed_count=len(remove_indexes),
         removed_ids=removed_ids,
-        pages=[int(page) for page in pages],
-        warnings=["missing_geometry"] if invalid else [],
+        pages=pages,
+        warnings=["missing_geometry"] if missing_geometry else [],
     )
 
 

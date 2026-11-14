@@ -17,7 +17,7 @@ def list_chunk_presets(
     limit: int,
     dataset_id: UUID | None,
     include_global: bool,
-    readable_dataset_ids: set[UUID] | None = None,
+    readable_dataset_ids: set[UUID] | None,
 ) -> list[ChunkPreset]:
     if q is not None:
         q = q.strip()
@@ -42,11 +42,13 @@ def list_chunk_presets(
 
 def get_chunk_preset(*, db: Session, tenant_id: UUID, preset_id: str) -> ChunkPreset | None:
     try:
-        pid = UUID(preset_id)
+        preset_uuid = UUID(preset_id)
     except ValueError:
         return None
 
-    return db.query(ChunkPreset).filter(ChunkPreset.tenant_id == tenant_id).filter(ChunkPreset.id == pid).first()
+    return (
+        db.query(ChunkPreset).filter(ChunkPreset.tenant_id == tenant_id).filter(ChunkPreset.id == preset_uuid).first()
+    )
 
 
 def create_chunk_preset(
@@ -74,31 +76,22 @@ def create_chunk_preset(
 def update_chunk_preset(
     *,
     db: Session,
-    tenant_id: UUID,
-    preset_id: str,
+    preset: ChunkPreset,
     dataset_id: UUID | None,
     name: str,
     description: str | None,
     payload: dict[str, Any],
-) -> ChunkPreset | None:
-    row = get_chunk_preset(db=db, tenant_id=tenant_id, preset_id=preset_id)
-    if not row:
-        return None
-
-    row.dataset_id = dataset_id
-    row.name = name.strip()
-    row.description = description
-    row.payload = payload
+) -> ChunkPreset:
+    preset.dataset_id = dataset_id
+    preset.name = name.strip()
+    preset.description = description
+    preset.payload = payload
 
     db.commit()
-    db.refresh(row)
-    return row
+    db.refresh(preset)
+    return preset
 
 
-def delete_chunk_preset(*, db: Session, tenant_id: UUID, preset_id: str) -> bool:
-    row = get_chunk_preset(db=db, tenant_id=tenant_id, preset_id=preset_id)
-    if not row:
-        return False
-    db.delete(row)
+def delete_chunk_preset(*, db: Session, preset: ChunkPreset) -> None:
+    db.delete(preset)
     db.commit()
-    return True

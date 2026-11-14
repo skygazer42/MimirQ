@@ -1,7 +1,8 @@
 """Deterministic helpers for chained query decomposition retrieval."""
 
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
+
+from app.rag.core.metadata import _stringified_metadata_text
 
 
 def summarize_chain_step(citations: list[dict[str, Any]]) -> str:

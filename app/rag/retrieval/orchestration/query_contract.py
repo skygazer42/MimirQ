@@ -93,14 +93,9 @@ def _requested_score_threshold(state: Mapping[str, Any], defaults: QueryContract
 def _resolve_request_retrieval_mode(*, state: Mapping[str, Any], query_for_retrieval: str) -> tuple[str, bool]:
     effective_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     request_retrieval_mode = normalize_retrieval_mode(effective_retrieval_mode)
-    mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
-    if mode_norm == "auto":
-        routed_mode = guess_retrieval_mode(query_for_retrieval)
-        mode_norm = str(routed_mode or "hybrid").lower().strip()
-        return (routed_mode if mode_norm in ("hybrid", "vector", "keyword", "mmr") else "hybrid"), True
-    if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
-        return "hybrid", False
-    return str(request_retrieval_mode or "hybrid"), False
+    if request_retrieval_mode == "auto":
+        return guess_retrieval_mode(query_for_retrieval), True
+    return request_retrieval_mode, False
 
 
 def _apply_hierarchy_profile_overrides(

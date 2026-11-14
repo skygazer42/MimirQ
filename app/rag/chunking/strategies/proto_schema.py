@@ -66,8 +66,6 @@ def _iter_blocks(text: str) -> list[_Block]:
             continue
         kind = (m.group("kind")).strip().lower()
         name = (m.group("name")).strip()
-        if not kind or not name:
-            continue
         blocks.append(_Block(start=m.start(), end=end, kind=kind, name=name, index=len(blocks)))
     return blocks
 
@@ -122,7 +120,7 @@ class ProtoSchemaChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

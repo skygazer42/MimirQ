@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document_ingestion import UrlUploadRequest
+from app.api.schemas.documents import UrlUploadRequest
 from app.core.database import SessionLocal
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
@@ -37,6 +37,9 @@ from app.services.connector_execution.shared.external import _build_auth_headers
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _web_crawl_run_cancelled,
 )
 from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_web_crawl_run,
@@ -88,12 +91,6 @@ def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         ),
         "auth_headers": _build_auth_headers(cfg),
     }
-
-
-def _web_crawl_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
-    with contextlib.suppress(Exception):
-        db.refresh(run)
-    return run.status.lower() == "cancelled"
 
 
 async def _ingest_web_crawl_url(
@@ -171,7 +168,7 @@ def _persist_web_crawl_progress(
     succeeded: bool,
     ingested_doc: Document | None,
 ) -> None:
-    discovered_manifest = dict(plan.get("discovered_manifest") or {})
+    discovered_manifest = dict(plan["discovered_manifest"])
     if succeeded and url and url in discovered_manifest:
         token = discovered_manifest[url].strip()
         if ingested_doc is not None:
@@ -183,20 +180,20 @@ def _persist_web_crawl_progress(
                 )
         source_manifest_state[url] = token or discovered_manifest[url]
 
-    processed = int(plan.get("cursor_in") or 0) + idx + 1
-    processed_visible = int(plan.get("skipped_unchanged") or 0) + processed
+    processed = plan["cursor_in"] + idx + 1
+    processed_visible = plan["skipped_unchanged"] + processed
     stats = dict(run.stats or {})
     stats.update(
         {
-            "mode": plan.get("mode"),
-            "total_urls": int(len(plan.get("discovered_urls") or [])),
-            "delta_urls": int(len(plan.get("delta_urls") or [])),
-            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "mode": plan["mode"],
+            "total_urls": len(plan["discovered_urls"]),
+            "delta_urls": len(plan["delta_urls"]),
+            "skipped_unchanged": plan["skipped_unchanged"],
             "processed_urls": int(processed_visible),
             "cursor": int(processed),
             "created": int(created),
             "failed": int(failed),
-            "removed_paths": int(len(plan.get("removed_urls") or [])),
+            "removed_paths": len(plan["removed_urls"]),
             "removed_paths_reconciled": int(removed_urls_reconciled),
             "removed_documents_disabled": int(removed_documents_disabled),
             "source_manifest": dict(source_manifest_state),
@@ -219,9 +216,9 @@ async def _process_web_crawl_urls(
     created = 0
     failed = 0
     created_doc_ids: list[UUID] = []
-    source_manifest_state = dict(plan.get("source_manifest_state") or {})
+    source_manifest_state = dict(plan["source_manifest_state"])
 
-    for idx, url in enumerate(plan.get("crawl_urls") or []):
+    for idx, url in enumerate(plan["crawl_urls"]):
         if _web_crawl_run_cancelled(db, run=run):
             break
 
@@ -311,10 +308,10 @@ def _finalize_web_crawl_run_success(
     stats = dict(run.stats or {})
     stats.update(
         {
-            "mode": plan.get("mode"),
-            "delta_urls": int(len(plan.get("delta_urls") or [])),
-            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
-            "removed_paths": int(len(plan.get("removed_urls") or [])),
+            "mode": plan["mode"],
+            "delta_urls": len(plan["delta_urls"]),
+            "skipped_unchanged": plan["skipped_unchanged"],
+            "removed_paths": len(plan["removed_urls"]),
             "removed_paths_reconciled": int(removed_urls_reconciled),
             "removed_documents_disabled": int(removed_documents_disabled),
             "source_manifest": dict(source_manifest_state),
@@ -377,8 +374,8 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
 
         removed_urls_reconciled = 0
         removed_documents_disabled = 0
-        removed_urls = list(plan.get("removed_urls") or [])
-        if plan.get("mode") == "incremental" and removed_urls:
+        removed_urls = list(plan["removed_urls"])
+        if plan["mode"] == "incremental" and removed_urls:
             removed_urls_reconciled, removed_documents_disabled = _reconcile_removed_web_crawl_urls(
                 db,
                 run=run,

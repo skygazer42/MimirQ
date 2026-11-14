@@ -28,11 +28,7 @@ def canonical_json_sha256(value: Any) -> str:
 
 
 def _coerce_versions_dict(meta: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
-    raw = (
-        (dict((meta if meta is not None else {})).get("pipeline_provenance_versions") or {})
-        if isinstance(meta, Mapping)
-        else {}
-    )
+    raw = (dict(meta).get("pipeline_provenance_versions") or {}) if isinstance(meta, Mapping) else {}
     if not isinstance(raw, dict):
         return {}
     out: dict[str, dict[str, Any]] = {}

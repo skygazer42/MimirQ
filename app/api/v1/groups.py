@@ -2,18 +2,18 @@
 Tenant groups API (enterprise directory primitive).
 """
 
-import contextlib
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.group import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.identity import (
     TenantGroupCreateRequest,
+    TenantGroupListQuery,
     TenantGroupListResponse,
+    TenantGroupMemberListQuery,
     TenantGroupMemberListResponse,
     TenantGroupMemberOut,
     TenantGroupMembersUpdateRequest,
@@ -21,33 +21,58 @@ from app.api.schemas.group import (
     TenantGroupOut,
     TenantGroupUpdateRequest,
 )
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
 from app.services import tenant_group_service
 from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
 
 _NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL = "No permission to manage groups"
 
 
-@router.get("/", response_model=TenantGroupListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _commit_group_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    action: str,
+    group_id: UUID,
+    details: dict[str, object],
+) -> None:
+    """Commit the audit sidecar after the service has committed the group change."""
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="tenant_group",
+            resource_id=str(group_id),
+            details=details,
+        )
+        db.commit()
+    except Exception:
+        logger.warning(
+            "Group operation committed but audit logging failed: action=%s group_id=%s",
+            action,
+            group_id,
+            exc_info=True,
+        )
+        db.rollback()
+
+
+@router.get("/", response_model=TenantGroupListResponse)
 def list_groups(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    query: Annotated[TenantGroupListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupListResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -55,18 +80,18 @@ def list_groups(
         TenantPermissions.SETTINGS_READ,
         detail="No permission to view groups",
     )
-    total, groups = tenant_group_service.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
-    return TenantGroupListResponse(total=total, items=[TenantGroupOut.model_validate(g) for g in groups])
+    total, groups = tenant_group_service.list_groups(db, tenant_id=tenant_id, skip=query.skip, limit=query.limit)
+    return TenantGroupListResponse(total=total, items=[TenantGroupOut.model_validate(group) for group in groups])
 
 
-@router.post("/", response_model=TenantGroupOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/", response_model=TenantGroupOut, status_code=status.HTTP_201_CREATED)
 def create_group(
     payload: TenantGroupCreateRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupOut:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -77,31 +102,29 @@ def create_group(
     group = tenant_group_service.create_group(
         db, tenant_id=tenant_id, name=payload.name, external_id=payload.external_id
     )
-    audit_log_event(
+    response = TenantGroupOut.model_validate(group)
+    _commit_group_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="group.create",
-        resource_type="tenant_group",
-        resource_id=str(group.id),
+        group_id=group.id,
         details={
             "name": group.name[:255],
-            "has_external_id": bool(getattr(group, "external_id", None)),
+            "has_external_id": bool(group.external_id),
         },
     )
-    with contextlib.suppress(Exception):
-        db.commit()
-    return TenantGroupOut.model_validate(group)
+    return response
 
 
-@router.get("/{group_id}", response_model=TenantGroupOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{group_id}", response_model=TenantGroupOut)
 def get_group(
     group_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupOut:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -113,7 +136,7 @@ def get_group(
     return TenantGroupOut.model_validate(group)
 
 
-@router.patch("/{group_id}", response_model=TenantGroupOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.patch("/{group_id}", response_model=TenantGroupOut)
 def patch_group(
     group_id: UUID,
     payload: TenantGroupUpdateRequest,
@@ -121,7 +144,7 @@ def patch_group(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupOut:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -136,31 +159,29 @@ def patch_group(
         name=payload.name,
         external_id=payload.external_id,
     )
-    audit_log_event(
+    response = TenantGroupOut.model_validate(group)
+    _commit_group_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="group.update",
-        resource_type="tenant_group",
-        resource_id=str(group_id),
+        group_id=group_id,
         details={
             "name": group.name[:255],
-            "has_external_id": bool(getattr(group, "external_id", None)),
+            "has_external_id": bool(group.external_id),
         },
     )
-    with contextlib.suppress(Exception):
-        db.commit()
-    return TenantGroupOut.model_validate(group)
+    return response
 
 
-@router.delete("/{group_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_group(
     group_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Response:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -169,32 +190,26 @@ def delete_group(
         detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
     tenant_group_service.delete_group(db, tenant_id=tenant_id, group_id=group_id)
-    audit_log_event(
+    _commit_group_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="group.delete",
-        resource_type="tenant_group",
-        resource_id=str(group_id),
+        group_id=group_id,
         details={},
     )
-    with contextlib.suppress(Exception):
-        db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get(
-    "/{group_id}/members", response_model=TenantGroupMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.get("/{group_id}/members", response_model=TenantGroupMemberListResponse)
 def list_group_members(
     group_id: UUID,
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    query: Annotated[TenantGroupMemberListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupMemberListResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -202,14 +217,15 @@ def list_group_members(
         TenantPermissions.SETTINGS_READ,
         detail="No permission to view group members",
     )
-    total, rows = tenant_group_service.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=skip, limit=limit)
-    items = [TenantGroupMemberOut(user_id=r.user_id, created_at=r.created_at) for r in rows]
-    return TenantGroupMemberListResponse(total=total, items=items)
+    total, members = tenant_group_service.list_members(
+        db, tenant_id=tenant_id, group_id=group_id, skip=query.skip, limit=query.limit
+    )
+    return TenantGroupMemberListResponse(
+        total=total, items=[TenantGroupMemberOut.model_validate(member) for member in members]
+    )
 
 
-@router.post(
-    "/{group_id}/members", response_model=TenantGroupMembersUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.post("/{group_id}/members", response_model=TenantGroupMembersUpdateResponse)
 def add_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,
@@ -217,7 +233,7 @@ def add_group_members(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupMembersUpdateResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -226,27 +242,23 @@ def add_group_members(
         detail="No permission to manage group members",
     )
     added = tenant_group_service.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
-    audit_log_event(
+    _commit_group_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="group.members.add",
-        resource_type="tenant_group",
-        resource_id=str(group_id),
+        group_id=group_id,
         details={
-            "member_count_requested": int(len(payload.member_ids or [])),
-            "member_count_updated": int(added or 0),
+            "member_count_requested": len(payload.member_ids),
+            "member_count_updated": added,
         },
     )
-    with contextlib.suppress(Exception):
-        db.commit()
-    return TenantGroupMembersUpdateResponse(updated=int(added))
+    return TenantGroupMembersUpdateResponse(updated=added)
 
 
 @router.post(
     "/{group_id}/members/remove",
     response_model=TenantGroupMembersUpdateResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def remove_group_members(
     group_id: UUID,
@@ -255,7 +267,7 @@ def remove_group_members(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantGroupMembersUpdateResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -266,18 +278,15 @@ def remove_group_members(
     removed = tenant_group_service.remove_members(
         db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids
     )
-    audit_log_event(
+    _commit_group_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="group.members.remove",
-        resource_type="tenant_group",
-        resource_id=str(group_id),
+        group_id=group_id,
         details={
-            "member_count_requested": int(len(payload.member_ids or [])),
-            "member_count_updated": int(removed or 0),
+            "member_count_requested": len(payload.member_ids),
+            "member_count_updated": removed,
         },
     )
-    with contextlib.suppress(Exception):
-        db.commit()
-    return TenantGroupMembersUpdateResponse(updated=int(removed))
+    return TenantGroupMembersUpdateResponse(updated=removed)

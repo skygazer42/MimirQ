@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document_ingestion import UrlUploadRequest
+from app.api.schemas.documents import UrlUploadRequest
 from app.core.database import SessionLocal
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
@@ -23,15 +23,18 @@ from app.services.connector_execution.shared.artifacts import (
     _normalize_connector_string_list,
 )
 from app.services.connector_execution.shared.common import (
-    _optional_source_text,
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    _optional_source_text,
     build_ingestion_options,
 )
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _minio_bucket_run_cancelled,
 )
 from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_minio_bucket_run,
@@ -149,7 +152,7 @@ def _build_minio_bucket_execution_plan(
     scope_hash: str,
 ) -> dict[str, Any]:
     existing_manifest = normalize_source_manifest(state.get("source_manifest"))
-    existing_scope_hash = _optional_source_text(state.get('source_scope_hash'))
+    existing_scope_hash = _optional_source_text(state.get("source_scope_hash"))
     if existing_scope_hash and existing_scope_hash != scope_hash:
         existing_manifest = {}
 
@@ -167,7 +170,7 @@ def _build_minio_bucket_execution_plan(
     objects_to_process: list[tuple[str, str]] = []
 
     for raw in listed_objects:
-        name = raw['name'].strip()
+        name = raw["name"].strip()
         if not name:
             continue
 
@@ -230,16 +233,10 @@ def _initialize_minio_bucket_run_stats(*, run: ConnectorRun, plan: dict[str, Any
             "removed_documents_disabled": 0,
             "updated_documents_disabled": 0,
             "source_manifest": dict(plan.get("source_manifest_state") or {}),
-            "source_scope_hash": plan['scope_hash'],
+            "source_scope_hash": plan["scope_hash"],
         }
     )
     return stats
-
-
-def _minio_bucket_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
-    with contextlib.suppress(Exception):
-        db.refresh(run)
-    return run.status.lower() == "cancelled"
 
 
 async def _ingest_minio_bucket_object(
@@ -255,9 +252,9 @@ async def _ingest_minio_bucket_object(
     source_manifest_state: dict[str, str],
 ) -> dict[str, Any]:
     url = client.presigned_get_object(
-        bucket_name=settings_map['bucket_name'],
+        bucket_name=settings_map["bucket_name"],
         object_name=object_name,
-        expires=int(settings_map.get("expiry") or 3600),
+        expires=timedelta(seconds=int(settings_map.get("expiry") or 3600)),
     )
     body = UrlUploadRequest(
         url=url,
@@ -350,7 +347,7 @@ def _persist_minio_bucket_progress(
             "removed_documents_disabled": int(removed_documents_disabled),
             "updated_documents_disabled": int(updated_documents_disabled),
             "source_manifest": dict(source_manifest_state),
-            "source_scope_hash": plan['scope_hash'],
+            "source_scope_hash": plan["scope_hash"],
             "document_ids": [str(doc_id) for doc_id in created_doc_ids],
         }
     )
@@ -377,7 +374,7 @@ async def _process_minio_bucket_objects(
     updated_documents_disabled = 0
     source_manifest_state = dict(plan.get("source_manifest_state") or {})
     cursor_in = int(plan.get("cursor_in") or 0)
-    mode = plan['mode']
+    mode = plan["mode"]
 
     for idx, item in enumerate(plan.get("objects_to_process") or []):
         object_name, object_token = item
@@ -392,7 +389,7 @@ async def _process_minio_bucket_objects(
                 tenant_id=tenant_id,
                 requested_by=requested_by,
                 object_name=object_name,
-                settings_map={**settings_map, "mode_hint": mode},
+                settings_map=settings_map,
                 connector_config_id=connector_config_id,
                 source_manifest_state=source_manifest_state if mode == "incremental" else {},
             )
@@ -478,7 +475,7 @@ def _finalize_minio_bucket_run_success(
             "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
             "updated_documents_disabled": int(progress.get("updated_documents_disabled") or 0),
             "source_manifest": dict(progress.get("source_manifest_state") or {}),
-            "source_scope_hash": plan['scope_hash'],
+            "source_scope_hash": plan["scope_hash"],
             "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
         }
     )
@@ -515,7 +512,7 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
         connector_config_id = _minio_connector_config_id(dict(run.stats or {}))
         listed_objects = _list_minio_bucket_objects(
             client,
-            bucket_name=settings_map['bucket_name'],
+            bucket_name=settings_map["bucket_name"],
             prefix=(settings_map.get("prefix") if isinstance(settings_map.get("prefix"), str) else None),
         )
         plan = _build_minio_bucket_execution_plan(
@@ -524,7 +521,7 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
             listed_objects=listed_objects,
             include_set=set(settings_map.get("include_set") or set()),
             max_objects=int(settings_map.get("max_objects") or 50),
-            scope_hash=settings_map['scope_hash'],
+            scope_hash=settings_map["scope_hash"],
         )
         run.stats = _initialize_minio_bucket_run_stats(run=run, plan=plan)
         db.commit()

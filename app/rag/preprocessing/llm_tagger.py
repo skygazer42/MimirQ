@@ -83,7 +83,7 @@ def _iter_text_values(value: Any) -> list[str]:
 def _coerce_confidence(value: Any, default: float = 0.85) -> float:
     try:
         score = float(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         score = default
     return min(1.0, max(0.0, score))
 
@@ -186,7 +186,9 @@ async def extract_llm_tags(
 ) -> LLMTaggingResult:
     context = build_tagger_context(text, max_chars=max_chars)
     model_config = {"model": model} if model else None
-    llm = llm_client or await create_llm_client(scenario="governance_auto_tagging", model_config=model_config)
+    llm = llm_client
+    if llm is None:
+        llm = await create_llm_client(scenario="governance_auto_tagging", model_config=model_config)
     raw = await llm.chat_with_schema(
         [
             LLMMessage(role=LLMRole.SYSTEM, content=AUTO_TAGGER_SYSTEM_PROMPT),
@@ -197,7 +199,7 @@ async def extract_llm_tags(
         max_tokens=1200,
     )
     if not isinstance(raw, dict):
-        raw = {}
+        raise TypeError("LLM auto-tagging response must be an object")
 
     summary = raw.get("summary")
     document_tags = _normalize_document_tags(raw, max_items=max(1, int(max_items or 16)))

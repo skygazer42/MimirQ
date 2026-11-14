@@ -1,8 +1,7 @@
 """
 LangGraph pipeline for RAG (retrieve -> generate).
 
-This module is the canonical home for the non-streaming LangGraph-based runner.
-`app.rag.graph` remains as a backward-compatible import path.
+This module owns the non-streaming LangGraph-based runner.
 
 Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decorators.
 """
@@ -29,7 +28,6 @@ from langgraph.runtime import Runtime, get_runtime
 from langgraph.types import CachePolicy, RetryPolicy
 
 from app.core.config import settings
-from app.rag.core.metadata import _stringified_metadata_text
 from app.core.database import SessionLocal
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
@@ -40,6 +38,7 @@ from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.pipeline_scope import (
     apply_active_pipeline_metadata_filter as _apply_active_pipeline_metadata_filter,
 )
@@ -254,7 +253,9 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "enable_reranker": bool(
             settings.ENABLE_RERANKER if state.get("enable_reranker") is None else state.get("enable_reranker")
         ),
-        "reranker_provider": settings.RERANKER_PROVIDER if state.get("reranker_provider") is None else state["reranker_provider"],
+        "reranker_provider": settings.RERANKER_PROVIDER
+        if state.get("reranker_provider") is None
+        else state["reranker_provider"],
         "reranker_top_n": int(
             settings.RERANKER_TOP_N if state.get("reranker_top_n") is None else state.get("reranker_top_n")
         ),
@@ -412,11 +413,15 @@ def _build_context_part(
     max_per_chunk_chars: int,
     max_per_chunk_tokens: int,
 ) -> str:
-    meta = doc.metadata or {}
+    meta = doc.metadata
     filename = _stringified_metadata_text(meta, "filename")
     source = str(meta.get("source") or filename or "Unknown")
     info_parts: list[str] = []
-    title = _stringified_metadata_text(meta, "document_title") or _stringified_metadata_text(meta, "doc_title") or _stringified_metadata_text(meta, "title")
+    title = (
+        _stringified_metadata_text(meta, "document_title")
+        or _stringified_metadata_text(meta, "doc_title")
+        or _stringified_metadata_text(meta, "title")
+    )
     if title:
         info_parts.append(f"Title: {title}")
     if filename:
@@ -606,7 +611,7 @@ def _generate_standard_result(state: RAGState) -> RAGState:
         "model_used": model_used,
         "routing_reason": reason,
         "metrics": metrics,
-        "followup_questions": list(followup_questions or []),
+        "followup_questions": list(followup_questions),
     }
 
 
@@ -632,7 +637,7 @@ def _build_structured_citations(citations: list[dict[str, Any]], *, top_k: int) 
             "page_number": citation.get("page_number"),
             "relevance_score": citation.get("relevance_score"),
         }
-        for citation in citations[: max(0, int(top_k or 0))]
+        for citation in citations[: max(0, top_k)]
     ]
 
 
@@ -760,7 +765,7 @@ def _apply_text_claim_check(*, answer: str, claim_ctx: dict[str, Any]) -> tuple[
             kept.append(claim)
             continue
         if len(removed_reasons) < 64:
-            diag = result.diagnostics if isinstance(result.diagnostics, dict) else {}
+            diag = result.diagnostics
             removed_reasons.append(
                 {
                     "claim": claim[:300],
@@ -802,11 +807,7 @@ def _apply_structured_claim_check(
         max_claims=int(claim_ctx["claim_check_max_claims"]),
         **_claim_verifier_kwargs(claim_ctx),
     )
-    if (
-        isinstance(scrubbed, dict)
-        and isinstance(scrubbed.get("answer"), str)
-        and not scrubbed["answer"].strip()
-    ):
+    if isinstance(scrubbed, dict) and isinstance(scrubbed.get("answer"), str) and not scrubbed["answer"].strip():
         scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
     removed_reasons = []
     if isinstance(scrub_meta, dict) and isinstance(scrub_meta.get("claim_check_removed_reasons"), list):
@@ -919,7 +920,7 @@ def _render_inline_sentence_citations(
     inline_text, rendered_count = render_sentence_citations_inline(claim_evidence, **limits)
     if inline_text:
         sentence_meta["used"] = True
-        sentence_meta["count"] = int(rendered_count or 0)
+        sentence_meta["count"] = rendered_count
         return inline_text, sentence_meta
     sentence_meta["style"] = "appendix"
     sentence_meta["fallback_reason"] = "inline_render_empty"
@@ -939,7 +940,7 @@ def _render_appendix_sentence_citations(
         return answer, sentence_meta
     answer = (answer) + (redact_text(suffix_md) if pii_on else suffix_md)
     sentence_meta["used"] = True
-    sentence_meta["count"] = int(rendered_count or 0)
+    sentence_meta["count"] = rendered_count
     return answer, sentence_meta
 
 
@@ -970,11 +971,7 @@ def _answer_image_urls(citations: list[dict[str, Any]]) -> list[str]:
 
 
 def _generation_evidence_text(docs: list[Document]) -> str:
-    evidence_text = "\n".join(
-        doc.page_content
-        for doc in docs
-        if doc.page_content.strip()
-    )
+    evidence_text = "\n".join(doc.page_content for doc in docs if doc.page_content.strip())
     max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000))
     if max_evidence_chars and len(evidence_text) > max_evidence_chars:
         return evidence_text[:max_evidence_chars]
@@ -1061,7 +1058,7 @@ def _apply_common_generation_metrics(
     metrics["confidence_score"] = confidence_meta.get("score")
     metrics["confidence_band"] = confidence_meta.get("band")
     metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
-    metrics["followup_questions"] = list(followup_questions or [])
+    metrics["followup_questions"] = list(followup_questions)
     metrics["elapsed_sec"] = round(
         float(generation_elapsed)
         + float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
@@ -1112,7 +1109,7 @@ def _populate_standard_generation_metrics(
     metrics["context_tokens"] = num_tokens_from_string(ctx)
     metrics.update(
         compute_context_cliff_metrics(
-            context_tokens=int(metrics["context_tokens"] or 0),
+            context_tokens=metrics["context_tokens"],
             threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS),
         )
     )
@@ -1140,7 +1137,7 @@ def _populate_standard_generation_metrics(
         "model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
     }
     metrics["claim_evidence"] = claim_evidence
-    metrics["sentence_citations_count"] = int(len(claim_evidence or []))
+    metrics["sentence_citations_count"] = len(claim_evidence)
     metrics["sentence_citations"] = claim_evidence
     metrics["sentence_citations_inline_enabled"] = bool(sentence_meta["enabled"])
     metrics["sentence_citations_inline_style"] = str(sentence_meta["style"])
@@ -1156,17 +1153,6 @@ def _populate_standard_generation_metrics(
 # =============================================================================
 # LangGraph 1.0+ Functional API Implementation
 # =============================================================================
-
-# Global checkpointer for Functional API
-_functional_checkpointer = None
-
-
-def _get_checkpointer():
-    """Get or create global checkpointer instance."""
-    global _functional_checkpointer
-    if _functional_checkpointer is None:
-        _functional_checkpointer = get_checkpointer()
-    return _functional_checkpointer
 
 
 @task(retry_policy=_RAG_TASK_RETRY_POLICY, cache_policy=_RAG_RETRIEVE_CACHE_POLICY)
@@ -1352,7 +1338,7 @@ def _run_corrective_loop(
     second_mq_count = int(settings.RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT)
     second_mq_count = max(0, min(second_mq_count, int(settings.MULTI_QUERY_COUNT_CAP)))
 
-    base_state = dict(state or {})
+    base_state = dict(state)
     metrics0 = dict(base_state.get("metrics") or {})
     attempt_summaries: list[dict[str, Any]] = []
     reason_codes: list[str] = []
@@ -1381,7 +1367,7 @@ def _run_corrective_loop(
         last_state = attempt_result["state"]
         metrics0 = dict(last_state.get("metrics") or {})
         attempt_summaries.append(attempt_result["summary"])
-        used = bool(used or attempt_result["used_second_pass"])
+        used = used or attempt_result["used_second_pass"]
         reason_code = attempt_result["reason_code"]
         if reason_code and reason_code not in reason_codes:
             reason_codes.append(reason_code)
@@ -1393,7 +1379,7 @@ def _run_corrective_loop(
     metrics_final["corrective_enabled"] = corrective_enabled
     metrics_final["corrective_used"] = used
     metrics_final["corrective_max_attempts"] = max_attempts
-    metrics_final["corrective_reason_codes"] = list(reason_codes or [])[:8]
+    metrics_final["corrective_reason_codes"] = reason_codes[:8]
     metrics_final["corrective_attempts"] = attempt_summaries[:3]
     metrics_final["corrective_second_pass"] = {
         "retrieval_profile": second_profile,
@@ -1428,7 +1414,7 @@ def _run_corrective_attempt(
             attempt_state["enable_multi_query"] = True
             attempt_state["multi_query_count"] = int(second_mq_count)
 
-    retrieved = dict(retrieve_fn(attempt_state) or {})
+    retrieved = dict(retrieve_fn(attempt_state))
     retrieval_metrics = dict(retrieved.get("metrics") or {})
     summary = {
         "attempt": int(attempt),
@@ -1446,7 +1432,7 @@ def _run_corrective_attempt(
             "retry": attempt < max_attempts,
         }
 
-    generated = dict(generate_fn(retrieved) or {})
+    generated = dict(generate_fn(retrieved))
     generation_metrics = dict(generated.get("metrics") or {})
     faithfulness_score = generation_metrics.get("faithfulness_score")
     summary.update(
@@ -1476,7 +1462,7 @@ def _faithfulness_below_threshold(*, faithfulness_score: Any, min_faithfulness: 
         return False
 
 
-@entrypoint(checkpointer=_get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
+@entrypoint(checkpointer=get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
 def rag_workflow(state: dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> dict[str, Any]:
     """
     RAG workflow entrypoint - using Functional API @entrypoint decorator.
@@ -1699,26 +1685,10 @@ class RagStateBuildOptions:
     db: Any | None = None
 
 
-def _resolve_rag_state_build_options(
-    *,
-    options: RagStateBuildOptions | None,
-    legacy_overrides: dict[str, Any],
-) -> RagStateBuildOptions:
-    if options is None:
-        return RagStateBuildOptions(**legacy_overrides)
-    if not legacy_overrides:
-        return options
-    return cast(RagStateBuildOptions, replace(options, **legacy_overrides))
-
-
-def build_rag_state(
-    *,
-    options: RagStateBuildOptions | None = None,
-    **legacy_overrides: Any,
-) -> dict[str, Any]:
+def build_rag_state(**state_fields: Any) -> dict[str, Any]:
     """Build initial RAG graph state shared by run/stream entrypoints."""
 
-    resolved = _resolve_rag_state_build_options(options=options, legacy_overrides=legacy_overrides)
+    resolved = RagStateBuildOptions(**state_fields)
     # ``db`` is a live SQLAlchemy session and can contain module objects that
     # ``dataclasses.asdict`` cannot deepcopy. Keep deep-copy semantics for the
     # serializable graph inputs while excluding this execution-only dependency.
@@ -1788,9 +1758,9 @@ def _resolve_prompt_template_fields(
         {
             "prompt_template_content": chosen.content,
             "prompt_template_id": str(chosen.id),
-            "prompt_template_key": getattr(chosen, "template_key", None),
-            "prompt_ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
-            "prompt_ab_variant": getattr(chosen, "ab_variant", None),
+            "prompt_template_key": chosen.template_key,
+            "prompt_ab_experiment_key": chosen.ab_experiment_key,
+            "prompt_ab_variant": chosen.ab_variant,
         }
     )
     return fields
@@ -1835,68 +1805,17 @@ def run_rag_graph(
     question: str,
     history: list[dict[str, str]] | None = None,
     document_ids: list[UUID] | None = None,
-    *args: Any,
+    *,
     thread_id: str | None = None,
     runtime_context: dict[str, Any] | None = None,
-    **kwargs: Any,
+    **state_fields: Any,
 ) -> dict[str, Any]:
     """Execute LangGraph RAG flow, return answer/citations/model info."""
-    # Backward compatibility: legacy signature supported a long list of positional args.
-    legacy_positional_keys = [
-        "tenant_id",
-        "account_id",
-        "dataset_id",
-        "top_k",
-        "score_threshold",
-        "retrieval_mode",
-        "retrieval_contract_mode",
-        "thread_id",
-        "runtime_context",
-        "alpha",
-        "enable_weight_rerank",
-        "vector_weight",
-        "keyword_weight",
-        "mmr_lambda",
-        "enable_reranker",
-        "reranker_provider",
-        "reranker_top_n",
-        "metadata_filter",
-        "structured_output",
-        "structured_preset",
-        "prompt_template_id",
-        "prompt_template_key",
-        "prompt_ab_experiment_key",
-        "ab_user_key",
-        "db",
-    ]
-    if args:
-        if len(args) > len(legacy_positional_keys):
-            raise TypeError(f"run_rag_graph() takes at most {3 + len(legacy_positional_keys)} positional arguments")
-        for key, value in zip(legacy_positional_keys, args, strict=False):
-            if key == "thread_id" and thread_id is None:
-                thread_id = value if value is None else str(value)
-                continue
-            if key == "runtime_context" and runtime_context is None:
-                runtime_context = value if value is None else dict(value)
-                continue
-            kwargs.setdefault(key, value)
-
-    # Do not forward execution-only kwargs into build_rag_state.
-    if "thread_id" in kwargs and thread_id is None:
-        thread_id = kwargs.pop("thread_id")
-    else:
-        kwargs.pop("thread_id", None)
-
-    if "runtime_context" in kwargs and runtime_context is None:
-        runtime_context = kwargs.pop("runtime_context")
-    else:
-        kwargs.pop("runtime_context", None)
-
     state = build_rag_state(
         question=question,
         history=history or [],
         document_ids=document_ids,
-        **kwargs,
+        **state_fields,
     )
 
     # Use Functional API (LangGraph 1.0+)
@@ -1931,7 +1850,7 @@ def run_rag_graph(
 __all__ = [
     # State types
     "RAGState",
-    # Legacy API (backward compatible)
+    # Graph API
     "build_rag_graph",
     "run_rag_graph",
     # LangGraph 1.0+ Functional API

@@ -41,7 +41,7 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
 
         compact = "".join(character for character in normalized if not character.isspace())
         for width, weight in ((2, 0.35), (3, 0.5)):
-            for index in range(max(0, len(compact) - width + 1)):
+            for index in range(len(compact) - width + 1):
                 self._add_feature(vector, f"char:{width}:{compact[index : index + width]}", weight)
                 features += 1
 

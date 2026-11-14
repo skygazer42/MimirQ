@@ -20,6 +20,7 @@ Usage:
     from app.third_party.integrated_pipeline.nlp import rag_tokenizer, find_codec
     from app.third_party.integrated_pipeline.common import num_tokens_from_string
 """
+
 from app.third_party.integrated_pipeline.bridge import ChunkStrategy, chunk_file
 
 __all__ = [

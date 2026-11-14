@@ -96,8 +96,6 @@ def _build_blocks(text: str) -> list[_Block]:
     if not text:
         return []
     lines = _iter_lines(text)
-    if not lines:
-        return []
 
     starts: list[int] = []
     for i in range(len(lines)):
@@ -111,7 +109,7 @@ def _build_blocks(text: str) -> list[_Block]:
     for idx, i in enumerate(starts):
         j = starts[idx + 1] if idx + 1 < len(starts) else len(lines)
         start_pos = lines[i].start
-        end_pos = lines[j - 1].end if j - 1 >= i else lines[i].end
+        end_pos = lines[j - 1].end
         block_text = text[start_pos:end_pos]
         kind = _infer_kind(block_text)
         exc = _infer_exception(lines, i, j)

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.rag.core.logging import get_logger
-from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, feedback_polarity_from_score
+from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, _safe_str, feedback_polarity_from_score
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -30,30 +30,21 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
     return out
 
 
-def _safe_str(value: Any, *, max_len: int = 255) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text[: max(1, int(max_len or 1))]
-
-
 def _assistant_request_id(message: dict[str, Any]) -> str | None:
     meta = _coerce_mapping(message.get("message_metadata"))
-    return _safe_str(meta.get("request_id"))
+    return _safe_str(meta.get("request_id"), max_len=255)
 
 
 def _feedback_request_id(feedback: dict[str, Any]) -> str | None:
     extra = _coerce_mapping(feedback.get("extra"))
-    return _safe_str(extra.get("retrieval_trace_request_id") or feedback.get("request_id"))
+    return _safe_str(extra.get("retrieval_trace_request_id") or feedback.get("request_id"), max_len=255)
 
 
 def _index_conversations(conversations: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
     return {
         conversation_id: row
         for row in (_coerce_mapping(item) for item in (conversations or []))
-        if (conversation_id := _safe_str(row.get("id"))) is not None
+        if (conversation_id := _safe_str(row.get("id"), max_len=255)) is not None
     }
 
 
@@ -77,7 +68,7 @@ def _index_messages(
     users_by_conversation: dict[str, list[dict[str, Any]]] = {}
     for raw in messages or []:
         row = _coerce_mapping(raw)
-        conversation_id = _safe_str(row.get("conversation_id"))
+        conversation_id = _safe_str(row.get("conversation_id"), max_len=255)
         if conversation_id is None:
             continue
         role = row.get("role")
@@ -85,7 +76,7 @@ def _index_messages(
             role = role.strip().lower()
         if role == "assistant":
             assistants_by_conversation.setdefault(conversation_id, []).append(row)
-            message_id = _safe_str(row.get("id"))
+            message_id = _safe_str(row.get("id"), max_len=255)
             if message_id is not None:
                 assistant_by_id[message_id] = row
             request_id = _assistant_request_id(row)
@@ -113,10 +104,10 @@ def _index_feedback(
         request_id = _feedback_request_id(row)
         if request_id is not None and request_id not in feedback_by_request_id:
             feedback_by_request_id[request_id] = row
-        message_id = _safe_str(row.get("message_id"))
+        message_id = _safe_str(row.get("message_id"), max_len=255)
         if message_id is not None and message_id not in feedback_by_message_id:
             feedback_by_message_id[message_id] = row
-        conversation_id = _safe_str(row.get("conversation_id"))
+        conversation_id = _safe_str(row.get("conversation_id"), max_len=255)
         if conversation_id is not None:
             feedback_by_conversation_id.setdefault(conversation_id, []).append(row)
     return feedback_by_request_id, feedback_by_message_id, feedback_by_conversation_id
@@ -150,7 +141,7 @@ def _match_feedback(
     if request_id and request_id in by_request_id:
         return by_request_id[request_id], "request_id"
     if assistant_message is not None:
-        assistant_id = _safe_str(assistant_message.get("id"))
+        assistant_id = _safe_str(assistant_message.get("id"), max_len=255)
         if assistant_id and assistant_id in by_message_id:
             return by_message_id[assistant_id], "message_id"
         return None, None
@@ -169,7 +160,7 @@ def _backfill_assistant_message(
 ) -> tuple[dict[str, Any] | None, str | None]:
     if assistant_message is not None or feedback is None:
         return assistant_message, assistant_match
-    assistant_id = _safe_str(_coerce_mapping(feedback).get("message_id"))
+    assistant_id = _safe_str(feedback.get("message_id"), max_len=255)
     if assistant_id and assistant_id in assistant_by_id:
         return assistant_by_id[assistant_id], "message_id"
     return None, assistant_match
@@ -216,8 +207,8 @@ def build_dataset_analysis_sources(
     attributable_feedback_interactions = 0
     for raw_trace in traces or []:
         trace = _coerce_mapping(raw_trace)
-        request_id = _safe_str(trace.get("request_id"))
-        conversation_id = _safe_str(trace.get("conversation_id"))
+        request_id = _safe_str(trace.get("request_id"), max_len=255)
+        conversation_id = _safe_str(trace.get("conversation_id"), max_len=255)
         conversation = conversation_by_id.get(conversation_id, {})
         assistant_message, assistant_match = _match_assistant_message(
             request_id=request_id,
@@ -258,7 +249,7 @@ def build_dataset_analysis_sources(
         rows.append(row)
         if feedback:
             feedback_interactions += 1
-            polarity = feedback_polarity_from_score(_coerce_mapping(feedback).get("rating"))
+            polarity = feedback_polarity_from_score(feedback.get("rating"))
             if polarity == "negative":
                 attributable_feedback_interactions += 1
 

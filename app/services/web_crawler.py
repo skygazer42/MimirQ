@@ -21,7 +21,7 @@ import httpx
 from defusedxml import ElementTree as DefusedET
 from fastapi import HTTPException
 
-from app.api.utils.url_ingest import _validated_fetch_target, _ValidatedFetchTarget, validate_url_for_ingest
+from app.api.utils.url_ingest import ValidatedFetchTarget, validate_fetch_target, validate_url_for_ingest
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.http_client import get_http_client_pool
@@ -324,23 +324,32 @@ def _max_redirects() -> int:
 
 async def _client_for_fetch_target(
     *,
-    target: _ValidatedFetchTarget,
-    pooled_client: httpx.AsyncClient,
-    pinned_https_client: httpx.AsyncClient | None,
-    pinned_https_host: str | None,
-) -> tuple[httpx.AsyncClient, httpx.AsyncClient | None, str | None]:
-    if urlsplit(target.raw).scheme != "https":
-        return pooled_client, pinned_https_client, pinned_https_host
-    if pinned_https_client is not None and pinned_https_host == target.host_header:
-        return pinned_https_client, pinned_https_client, pinned_https_host
-    if pinned_https_client is not None:
-        await pinned_https_client.aclose()
-    pinned_https_client = httpx.AsyncClient(
-        http2=False,
-        follow_redirects=False,
-        trust_env=httpx_trust_env(logger=logger),
-    )
-    return pinned_https_client, pinned_https_client, target.host_header
+    target: ValidatedFetchTarget,
+    owned_client: httpx.AsyncClient | None,
+    owned_origin: tuple[str, str, int | None] | None,
+) -> tuple[httpx.AsyncClient, httpx.AsyncClient, tuple[str, str, int | None] | None]:
+    origin = _request_origin(target.raw)
+    if owned_client is not None and owned_origin == origin:
+        return owned_client, owned_client, owned_origin
+    if owned_client is not None:
+        await owned_client.aclose()
+    if urlsplit(target.raw).scheme == "https":
+        client = httpx.AsyncClient(
+            http2=False,
+            follow_redirects=False,
+            trust_env=httpx_trust_env(logger=logger),
+        )
+    else:
+        pool = get_http_client_pool()
+        client = httpx.AsyncClient(
+            limits=pool._build_limits(),
+            timeout=pool._build_timeout(),
+            http2=pool._build_http2(),
+            trust_env=pool._build_trust_env(),
+            follow_redirects=False,
+            event_hooks={"request": [pool._ainject_external_context_headers]},
+        )
+    return client, client, origin
 
 
 async def _resolve_redirect_hop(
@@ -352,7 +361,7 @@ async def _resolve_redirect_hop(
     hops: int,
     follow_redirects: bool,
     max_redirects: int,
-) -> tuple[_ValidatedFetchTarget, str, tuple[str, str, int | None] | None, dict[str, str], int]:
+) -> tuple[ValidatedFetchTarget, str, tuple[str, str, int | None] | None, dict[str, str], int]:
     if not follow_redirects:
         raise HTTPException(status_code=400, detail="redirects are not allowed")
     if hops >= max_redirects:
@@ -362,7 +371,7 @@ async def _resolve_redirect_hop(
         loc = loc.strip()
     if not loc:
         raise HTTPException(status_code=400, detail="redirect location missing")
-    next_target = await _validated_fetch_target(urljoin(current_url, loc))
+    next_target = await validate_fetch_target(urljoin(current_url, loc))
     next_url = next_target.raw
     next_origin = _request_origin(next_url)
     if next_origin != current_origin:
@@ -396,27 +405,22 @@ async def _fetch_page_text(
 
     Redirect handling is explicit to preserve SSRF checks per hop.
     """
-    pool = get_http_client_pool()
-    # Security/compliance: do not propagate internal tenant/user headers to crawled websites.
-    pooled_client = await pool.get_external_client()
-
-    current_target = await _validated_fetch_target(url)
+    current_target = await validate_fetch_target(url)
     current = current_target.raw
     request_headers = dict(headers)
     current_origin = _request_origin(current)
     hops = 0
     max_redirects = _max_redirects()
-    pinned_https_client: httpx.AsyncClient | None = None
-    pinned_https_host: str | None = None
+    owned_client: httpx.AsyncClient | None = None
+    owned_origin: tuple[str, str, int | None] | None = None
 
     try:
         while True:
             target = current_target
-            client, pinned_https_client, pinned_https_host = await _client_for_fetch_target(
+            client, owned_client, owned_origin = await _client_for_fetch_target(
                 target=target,
-                pooled_client=pooled_client,
-                pinned_https_client=pinned_https_client,
-                pinned_https_host=pinned_https_host,
+                owned_client=owned_client,
+                owned_origin=owned_origin,
             )
             pinned_headers = {**request_headers, "Host": target.host_header}
             async with client.stream(
@@ -447,8 +451,8 @@ async def _fetch_page_text(
                     content_type = content_type.split(";", 1)[0].strip().lower()
                 return await _read_response_text(resp, max_bytes=max_bytes), current, content_type
     finally:
-        if pinned_https_client is not None:
-            await pinned_https_client.aclose()
+        if owned_client is not None:
+            await owned_client.aclose()
 
 
 def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], _CrawlDegradation | None]:
@@ -754,6 +758,7 @@ async def _discover_pages_from_sitemaps(
     )
 
     discovered_pages: list[str] = []
+    discovered_page_keys: set[str] = set()
     errors: list[dict[str, Any]] = []
     sitemap_hops = 0
     while sitemap_queue and len(discovered_pages) < runtime.max_pages:
@@ -776,9 +781,11 @@ async def _discover_pages_from_sitemaps(
                 candidate = _normalize_url(urljoin(base_url, raw_page.strip()))
                 if (
                     candidate
+                    and candidate not in discovered_page_keys
                     and _url_passes_filters(candidate, runtime=runtime)
                     and await _robots_allow_url(candidate, runtime=runtime)
                 ):
+                    discovered_page_keys.add(candidate)
                     discovered_pages.append(candidate)
         _enqueue_unique_urls(
             sitemap_queue,

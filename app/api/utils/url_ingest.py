@@ -1,471 +1,325 @@
-"""
-URL ingestion helpers (connector skeleton).
+"""校验外部网址，并在大小和超时限制内下载为本地文件。
 
-This module is intentionally conservative to reduce SSRF risk:
-- Only http/https
-- Block private/loopback/link-local by default (configurable)
-- Redirect following disabled by default (configurable)
-- Streaming download with hard size limit
+供网址入库、网站采集和模型连接测试共用。连接使用已校验的 IP，
+HTTP Host 和 TLS SNI 仍使用原域名。
 """
 
 import asyncio
-import contextlib
 import ipaddress
 import re
 import socket
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse
 
-import aiofiles
+import anyio
 import httpx
 from fastapi import HTTPException
 
+from app.api.utils.file_io import _close_transfer_resources, cleanup_partial_file
 from app.core.config import settings
 
-_ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
-_BLOCKED_HOSTS = {
-    "localhost",
-    "localhost.localdomain",
-    _ALL_INTERFACES_HOST,
-    "127.0.0.1",
-    "::1",
-}
-
-_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\\-]{0,49}$")
-_BLOCKED_EXTRA_HEADERS = {
-    "host",
-    "connection",
-    "content-length",
-    "transfer-encoding",
-    "proxy-connection",
-    "proxy-authorization",
-}
+_BLOCKED_HOSTS = frozenset({"localhost", "localhost.localdomain", "0.0.0.0", "127.0.0.1", "::1"})
+_HEADER_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,49}")
+_BLOCKED_EXTRA_HEADERS = frozenset(
+    {
+        "host",
+        "connection",
+        "content-length",
+        "transfer-encoding",
+        "proxy-connection",
+        "proxy-authorization",
+    }
+)
 _MAX_HEADER_VALUE_CHARS = 20_000
-
+_DEFAULT_USER_AGENT = "MimirQ/1.0 (+url-ingest)"
+_SENSITIVE_REQUEST_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
 _URL_HOST_NOT_ALLOWED_DETAIL = "url host is not allowed"
-_URL_HOST_RESOLUTION_FAILED_DETAIL = "failed to resolve url host"
-_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
-
-
-def _sanitize_extra_headers(extra: dict[str, str] | None) -> dict[str, str]:
-    """
-    Best-effort header allowlist for URL ingestion/crawling.
-
-    This is intentionally conservative to avoid request smuggling / SSRF bypass footguns.
-    """
-    if not extra or not isinstance(extra, dict):
-        return {}
-    out: dict[str, str] = {}
-    for k, v in extra.items():
-        if not isinstance(k, str):
-            continue
-        name = k.strip()
-        if not name:
-            continue
-        if not _HEADER_NAME_RE.match(name):
-            continue
-        if name.lower() in _BLOCKED_EXTRA_HEADERS:
-            continue
-        val = v
-        if len(val) > _MAX_HEADER_VALUE_CHARS:
-            val = val[:_MAX_HEADER_VALUE_CHARS]
-        out[name] = val
-    return out
-
-
-def _parse_csv(raw: str) -> list[str]:
-    parts = [p.strip() for p in (raw).split(",")]
-    return [p for p in parts if p]
-
-
-def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
-    """
-    Match host against an allowlist with optional wildcard suffix patterns.
-
-    - "example.com" matches exactly.
-    - "*.foo.com" matches "a.foo.com" but NOT "foo.com".
-    """
-    h = (host).strip().lower()
-    if not h:
-        return False
-    for raw in allowlist:
-        pat = (raw).strip().lower()
-        if not pat:
-            continue
-        if pat.startswith("*.") and len(pat) > 2:
-            suffix = pat[2:]
-            if h == suffix:
-                continue
-            if h.endswith("." + suffix):
-                return True
-            continue
-        if h == pat:
-            return True
-    return False
-
-
-def _parse_allowed_ports(raw: str) -> list[int]:
-    ports: list[int] = []
-    for item in _parse_csv(raw):
-        try:
-            p = int(item)
-        except ValueError as exc:
-            raise ValueError("invalid_port_allowlist") from exc
-        if p <= 0 or p > 65535:
-            raise ValueError("invalid_port_allowlist")
-        if p not in ports:
-            ports.append(p)
-    return ports
-
-
-def _is_allowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool) -> bool:
-    if allow_private:
-        return True
-    # `is_global` is the most practical "public routable" signal.
-    return ip.is_global
+_REDIRECT_STATUS_CODES = frozenset(
+    {
+        HTTPStatus.MOVED_PERMANENTLY,
+        HTTPStatus.FOUND,
+        HTTPStatus.SEE_OTHER,
+        HTTPStatus.TEMPORARY_REDIRECT,
+        HTTPStatus.PERMANENT_REDIRECT,
+    }
+)
 
 
 @dataclass(frozen=True)
-class _ParsedIngestURL:
-    raw: str
-    scheme: str
-    host: str
-    port: int
+class ValidatedFetchTarget:
+    """保留原始网址与域名，connect_url 只将连接目标替换为已验证的 IP。"""
 
-
-def _parse_ingest_url(url: str) -> _ParsedIngestURL:
-    raw = (url).strip()
-    if not raw:
-        raise HTTPException(status_code=400, detail="url is required")
-
-    parsed = urlparse(raw)
-    scheme = (parsed.scheme).lower().strip()
-    if scheme not in {"http", "https"}:
-        raise HTTPException(status_code=400, detail="url scheme must be http or https")
-    if not parsed.hostname:
-        raise HTTPException(status_code=400, detail="url hostname is required")
-    if parsed.username is not None or parsed.password is not None:
-        raise HTTPException(status_code=400, detail="url credentials are not allowed")
-
-    host = parsed.hostname.strip().lower()
-    try:
-        port = parsed.port or (443 if scheme == "https" else 80)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="url port is not allowed") from exc
-    return _ParsedIngestURL(raw=raw, scheme=scheme, host=host, port=port)
-
-
-def _validate_blocked_host(host: str) -> None:
-    if host in _BLOCKED_HOSTS or host.endswith(".local"):
-        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
-
-
-def _validate_host_allowlist(host: str) -> None:
-    allowed_hosts = _parse_csv(settings.URL_INGEST_ALLOWED_HOSTS)
-    if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
-        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
-
-
-def _validate_port_allowlist(port: int) -> None:
-    allowed_ports_raw = settings.URL_INGEST_ALLOWED_PORTS
-    if not allowed_ports_raw.strip():
-        return
-    try:
-        allowed_ports = _parse_allowed_ports(allowed_ports_raw)
-    except ValueError as exc:
-        # Misconfiguration should fail closed (server-side error).
-        raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured") from exc
-    if port not in allowed_ports:
-        raise HTTPException(status_code=400, detail="url port is not allowed")
-
-
-def _ip_literal_or_none(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
-    try:
-        return ipaddress.ip_address(host)
-    except ValueError:
-        return None
-
-
-def _validate_ip_allowed(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool) -> None:
-    if not _is_allowed_ip(ip, allow_private=allow_private):
-        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
-
-
-def _resolve_host_sync(host: str, port: int) -> list[str]:
-    out: list[str] = []
-    for fam, _, _, _, sockaddr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
-        if fam not in (socket.AF_INET, socket.AF_INET6):
-            continue
-        ip_str = sockaddr[0]
-        if ip_str and ip_str not in out:
-            out.append(ip_str)
-    return out
-
-
-async def _resolve_host_ips(host: str, port: int) -> list[str]:
-    try:
-        ips = await asyncio.to_thread(_resolve_host_sync, host, port)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=_URL_HOST_RESOLUTION_FAILED_DETAIL) from exc
-    if not ips:
-        raise HTTPException(status_code=400, detail=_URL_HOST_RESOLUTION_FAILED_DETAIL)
-    return ips
-
-
-def _validate_resolved_ips(ips: list[str], *, allow_private: bool) -> None:
-    for ip_str in ips:
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=_URL_HOST_RESOLUTION_FAILED_DETAIL) from exc
-        _validate_ip_allowed(ip, allow_private=allow_private)
-
-
-@dataclass(frozen=True)
-class _ValidatedFetchTarget:
     raw: str
     connect_url: str
     host: str
     host_header: str
 
 
-def _build_pinned_http_clients(
-    target: _ValidatedFetchTarget,
-    *,
-    trust_env: bool,
-    timeout: httpx.Timeout | float,
-) -> tuple[httpx.Client, httpx.AsyncClient]:
-    def hook(request: httpx.Request) -> None:
-        request.headers["Host"] = target.host_header
-        request.extensions["sni_hostname"] = target.host
-
-    async def async_hook(request: httpx.Request) -> None:
-        hook(request)
-
-    client_kwargs = {
-        "follow_redirects": False,
-        "trust_env": trust_env,
-        "timeout": timeout,
-    }
-    return (
-        httpx.Client(
-            **client_kwargs,
-            event_hooks={"request": [hook]},
-        ),
-        httpx.AsyncClient(
-            **client_kwargs,
-            event_hooks={"request": [async_hook]},
-        ),
-    )
-
-
-async def _validated_fetch_target(url: str, *, enforce_allowlists: bool = True) -> _ValidatedFetchTarget:
-    parsed_url = _parse_ingest_url(url)
-    _validate_blocked_host(parsed_url.host)
-    if enforce_allowlists:
-        _validate_host_allowlist(parsed_url.host)
-        _validate_port_allowlist(parsed_url.port)
-    allow_private = settings.URL_INGEST_ALLOW_PRIVATE_IPS
-
-    if ip := _ip_literal_or_none(parsed_url.host):
-        _validate_ip_allowed(ip, allow_private=allow_private)
-        connect_host = str(ip)
-    else:
-        ips = await _resolve_host_ips(parsed_url.host, parsed_url.port)
-        _validate_resolved_ips(ips, allow_private=allow_private)
-        connect_host = ips[0]
-
-    rendered_connect_host = f"[{connect_host}]" if ":" in connect_host else connect_host
-    rendered_original_host = f"[{parsed_url.host}]" if ":" in parsed_url.host else parsed_url.host
-    parsed = urlparse(parsed_url.raw)
-    connect_url = urlunparse(parsed._replace(netloc=f"{rendered_connect_host}:{parsed_url.port}"))
-    return _ValidatedFetchTarget(
-        raw=parsed_url.raw,
-        connect_url=connect_url,
-        host=parsed_url.host,
-        host_header=f"{rendered_original_host}:{parsed_url.port}",
-    )
-
-
-async def validate_url_for_ingest(url: str) -> str:
-    """Validate an ingestion URL and its current DNS answers."""
-    return (await _validated_fetch_target(url)).raw
-
-
 @dataclass(frozen=True)
 class DownloadedURL:
+    """下载结果及用于来源更新检查的 HTTP 元数据。"""
+
     size_bytes: int
     content_type: str | None
     final_url: str
-    # Best-effort HTTP origin metadata (used by connector staleness checks).
     last_modified: str | None = None
     etag: str | None = None
 
 
-@dataclass(frozen=True)
-class URLDownloadOptions:
-    max_bytes: int | None = None
-    timeout_sec: float | None = None
-    follow_redirects: bool | None = None
-    user_agent: str | None = None
-    extra_headers: dict[str, str] | None = None
+async def validate_fetch_target(url: str, *, enforce_allowlists: bool = True) -> ValidatedFetchTarget:
+    """依次检查网址、访问范围和所有 DNS 地址，返回固定连接目标。"""
+    url = url.strip()
+    try:
+        parsed_url = urlparse(url)
+        host = parsed_url.hostname
+        port = parsed_url.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid URL") from exc
+
+    scheme = parsed_url.scheme
+    if scheme not in {"http", "https"} or not host or port == 0:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    if parsed_url.username is not None or parsed_url.password is not None:
+        raise HTTPException(status_code=400, detail="url credentials are not allowed")
+
+    try:
+        host = _normalize_host(host.strip())
+    except (httpx.InvalidURL, UnicodeEncodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid URL") from exc
+    if port is None:
+        port = 443 if scheme == "https" else 80
+
+    if host in _BLOCKED_HOSTS or host.endswith(".local"):
+        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
+    if enforce_allowlists:
+        allowed_hosts = _parse_csv(settings.URL_INGEST_ALLOWED_HOSTS)
+        if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
+            raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
+        _validate_port_allowlist(port)
+
+    addresses = await _resolve_host_addresses(host, port)
+    if not settings.URL_INGEST_ALLOW_PRIVATE_IPS and any(not address.is_global for address in addresses):
+        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
+
+    # IPv6 在 URL 和 Host 头中需要方括号；HTTP 域名身份不能被连接 IP 替换。
+    connect_host = str(addresses[0])
+    connection_authority = f"[{connect_host}]:{port}" if ":" in connect_host else f"{connect_host}:{port}"
+    host_header = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    connect_url = parsed_url._replace(netloc=connection_authority).geturl()
+    return ValidatedFetchTarget(raw=url, connect_url=connect_url, host=host, host_header=host_header)
 
 
-@dataclass(frozen=True)
-class _DownloadOptions:
-    max_bytes: int
-    timeout_sec: float
-    follow_redirects: bool
-    headers: dict[str, str]
-    max_redirects: int
+async def validate_url_for_ingest(url: str) -> str:
+    """验证网址与当前 DNS 结果，返回去除首尾空白的原始网址。"""
+    target = await validate_fetch_target(url)
+    return target.raw
 
 
-def _effective_max_bytes(max_bytes: int | None) -> int:
-    max_bytes_eff = max_bytes if max_bytes is not None else settings.URL_INGEST_MAX_BYTES
-    if max_bytes_eff <= 0:
-        return settings.MAX_FILE_SIZE
-    return max_bytes_eff
+def build_pinned_http_clients(
+    target: ValidatedFetchTarget,
+    *,
+    trust_env: bool,
+    timeout: httpx.Timeout | float,
+) -> tuple[httpx.Client, httpx.AsyncClient]:
+    """为模型连接测试固定 Host／SNI；调用方负责关闭两个客户端。"""
 
+    def set_host_and_sni(request: httpx.Request) -> None:
+        request.headers["Host"] = target.host_header
+        request.extensions["sni_hostname"] = target.host
 
-def _build_download_headers(*, user_agent: str | None, extra_headers: dict[str, str] | None) -> dict[str, str]:
-    ua = "MimirQ/1.0 (+url-ingest)" if user_agent is None else user_agent.strip()
-    ua = ua or "MimirQ/1.0 (+url-ingest)"
-    headers = {"Accept": "*/*", "User-Agent": ua}
-    headers.update(_sanitize_extra_headers(extra_headers))
-    return headers
+    async def set_host_and_sni_async(request: httpx.Request) -> None:
+        set_host_and_sni(request)
 
-
-def _download_options(options: URLDownloadOptions | None) -> _DownloadOptions:
-    raw = options or URLDownloadOptions()
-    max_redirects = settings.URL_INGEST_MAX_REDIRECTS
-    return _DownloadOptions(
-        max_bytes=_effective_max_bytes(raw.max_bytes),
-        timeout_sec=float(raw.timeout_sec if raw.timeout_sec is not None else settings.URL_INGEST_TIMEOUT_SEC),
-        follow_redirects=(
-            raw.follow_redirects if raw.follow_redirects is not None else settings.URL_INGEST_FOLLOW_REDIRECTS
-        ),
-        headers=_build_download_headers(user_agent=raw.user_agent, extra_headers=raw.extra_headers),
-        max_redirects=max(0, min(max_redirects, 20)),
+    client_options = {"follow_redirects": False, "trust_env": trust_env, "timeout": timeout}
+    return (
+        httpx.Client(**client_options, event_hooks={"request": [set_host_and_sni]}),
+        httpx.AsyncClient(**client_options, event_hooks={"request": [set_host_and_sni_async]}),
     )
 
 
-async def _validated_redirect_url(
-    resp: httpx.Response,
+async def download_url_to_path(
+    target: ValidatedFetchTarget,
+    destination: Path,
+    *,
+    max_bytes: int,
+    timeout_sec: float,
+    follow_redirects: bool,
+    user_agent: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> DownloadedURL:
+    """下载已验证的目标；大小和超时由调用方从已验证配置传入。"""
+    request_headers = _build_request_headers(user_agent, extra_headers)
+    redirects_remaining = max(0, min(settings.URL_INGEST_MAX_REDIRECTS, 20))
+    try:
+        await anyio.Path(destination.parent).mkdir(parents=True, exist_ok=True)
+
+        while True:
+            # 每跳使用独立客户端，防止不同域名复用同一 IP 上的 TLS 连接。
+            async with (
+                httpx.AsyncClient(http2=False, follow_redirects=False, trust_env=False) as client,
+                client.stream(
+                    "GET",
+                    target.connect_url,
+                    headers={**request_headers, "Host": target.host_header},
+                    timeout=httpx.Timeout(timeout_sec),
+                    extensions={"sni_hostname": target.host},
+                ) as response,
+            ):
+                if response.status_code in _REDIRECT_STATUS_CODES:
+                    redirect_url = _redirect_url(
+                        response,
+                        request_url=target.raw,
+                        follow_redirects=follow_redirects,
+                        redirects_remaining=redirects_remaining,
+                    )
+                else:
+                    downloaded = await _save_download_response(
+                        response, destination=destination, max_bytes=max_bytes, final_url=target.raw
+                    )
+                    break
+
+            next_target = await validate_fetch_target(redirect_url)
+            current_origin = (urlparse(target.raw).scheme, target.host_header)
+            next_origin = (urlparse(next_target.raw).scheme, next_target.host_header)
+            if current_origin != next_origin:
+                # 凭据只属于原请求的协议、域名和端口。
+                request_headers = {
+                    name: value
+                    for name, value in request_headers.items()
+                    if name.lower() not in _SENSITIVE_REQUEST_HEADERS
+                }
+            target = next_target
+            redirects_remaining -= 1
+
+    except BaseException:
+        # 包含取消；清理后继续抛出原异常，不能返回下载成功。
+        await cleanup_partial_file(destination, operation="download")
+        raise
+
+    return downloaded
+
+
+def _redirect_url(
+    response: httpx.Response,
     *,
     request_url: str,
-    follow: bool,
-    hops: int,
-    max_redirects: int,
-) -> str | None:
-    if resp.status_code not in _REDIRECT_STATUS_CODES:
-        return None
-    if not follow:
+    follow_redirects: bool,
+    redirects_remaining: int,
+) -> str:
+    if not follow_redirects:
         raise HTTPException(status_code=400, detail="redirects are not allowed")
-    if hops >= max_redirects:
+    if redirects_remaining <= 0:
         raise HTTPException(status_code=400, detail="too many redirects")
-    loc = resp.headers.get("location")
-    if loc is None or not loc.strip():
+
+    location = response.headers.get("location", "").strip()
+    if not location:
         raise HTTPException(status_code=400, detail="redirect location missing")
-    return urljoin(request_url, loc.strip())
+    return urljoin(request_url, location)
 
 
-def _raise_for_fetch_status(resp: httpx.Response) -> None:
-    if resp.status_code >= 400:
-        raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
+async def _save_download_response(
+    response: httpx.Response, *, destination: Path, max_bytes: int, final_url: str
+) -> DownloadedURL:
+    """检查远端响应，限量写入文件，再组装下载结果。"""
+    if response.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"failed to fetch url (status={response.status_code})")
 
-
-def _enforce_content_length(resp: httpx.Response, *, max_bytes: int) -> None:
-    content_length = resp.headers.get("content-length")
-    if not content_length:
-        return
-    with contextlib.suppress(ValueError):
-        if int(content_length) > max_bytes:
-            raise HTTPException(status_code=413, detail="remote file too large")
-
-
-async def _write_response_body(resp: httpx.Response, *, destination: Path, max_bytes: int) -> int:
-    size = 0
-    async with aiofiles.open(destination, "wb") as f:
-        async for chunk in resp.aiter_bytes():
-            if not chunk:
-                continue
-            size += len(chunk)
-            if size > max_bytes:
+    size_bytes = 0
+    output = await anyio.open_file(destination, "wb")
+    primary_error: BaseException | None = None
+    try:
+        async for chunk in response.aiter_bytes():
+            size_bytes += len(chunk)
+            if size_bytes > max_bytes:
                 raise HTTPException(status_code=413, detail="remote file too large")
-            await f.write(chunk)
-    return size
+            await output.write(chunk)
+    except BaseException as exc:  # noqa: BLE001 - Cancellation must also close the output.
+        primary_error = exc
 
+    primary_error = await _close_transfer_resources([("output", output.aclose)], primary_error=primary_error)
+    if primary_error is not None:
+        raise primary_error
 
-def _download_result(resp: httpx.Response, *, size_bytes: int, final_url: str) -> DownloadedURL:
-    last_modified = resp.headers.get("last-modified")
-    etag = resp.headers.get("etag")
-    if etag and len(etag) > 500:
+    etag = response.headers.get("etag")
+    if etag is not None:
         etag = etag[:500]
     return DownloadedURL(
         size_bytes=size_bytes,
-        content_type=resp.headers.get("content-type"),
+        content_type=response.headers.get("content-type"),
         final_url=final_url,
-        last_modified=last_modified,
+        last_modified=response.headers.get("last-modified"),
         etag=etag,
     )
 
 
-def _cleanup_partial_download(destination: Path) -> None:
-    with contextlib.suppress(OSError):
-        destination.unlink(missing_ok=True)
+def _build_request_headers(user_agent: str | None, extra: dict[str, str] | None) -> dict[str, str]:
+    """过滤不可覆盖的传输头，拒绝换行，限制外部请求头长度。"""
+    headers = {"Accept": "*/*", "User-Agent": _DEFAULT_USER_AGENT}
+    if user_agent is not None and user_agent.strip():
+        headers["User-Agent"] = user_agent.strip()
+    if extra is None:
+        return headers
+    for raw_name, value in extra.items():
+        name = raw_name.strip()
+        if not _HEADER_NAME_RE.fullmatch(name) or name.lower() in _BLOCKED_EXTRA_HEADERS:
+            continue
+        if "\r" in value or "\n" in value:
+            raise HTTPException(status_code=400, detail="invalid fetch header value")
+        headers[name] = value[:_MAX_HEADER_VALUE_CHARS]
+    return headers
 
 
-async def download_url_to_path(
-    url: str,
-    destination: Path,
-    *,
-    options: URLDownloadOptions | None = None,
-) -> DownloadedURL:
-    """
-    Stream-download URL content to a local file with a hard size limit.
-    """
-    options = _download_options(options)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    current = url
+def _parse_csv(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
+
+def _normalize_host(host: str) -> str:
+    """域名遵循 HTTPX 的 IDNA 规则；ASCII 和 IP 保留原有匹配语义。"""
+    host = host.lower()
+    if host.isascii():
+        return host
+    return httpx.URL(host=host).raw_host.decode("ascii")
+
+
+def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
+    """host 已规范化，规则已去空白；*.example.com 只匹配子域名。"""
+    for pattern in allowlist:
+        wildcard = pattern.startswith("*.") and len(pattern) > 2
+        try:
+            pattern = _normalize_host(pattern[2:] if wildcard else pattern)
+        except (httpx.InvalidURL, UnicodeEncodeError) as exc:
+            raise HTTPException(status_code=500, detail="url ingest host allowlist misconfigured") from exc
+        if wildcard:
+            if host.endswith(f".{pattern}"):
+                return True
+        elif host == pattern:
+            return True
+    return False
+
+
+def _validate_port_allowlist(port: int) -> None:
+    configured_ports = settings.URL_INGEST_ALLOWED_PORTS
+    if not configured_ports.strip():
+        return
     try:
-        hops = 0
-        while True:
-            target = await _validated_fetch_target(current)
-            headers = {**options.headers, "Host": target.host_header}
-            # A short-lived HTTP/1.1 client prevents a TLS connection pinned for one
-            # hostname from being reused for another hostname on the same address.
-            async with httpx.AsyncClient(
-                http2=False,
-                follow_redirects=False,
-                trust_env=False,
-            ) as client:
-                async with client.stream(
-                    "GET",
-                    target.connect_url,
-                    headers=headers,
-                    timeout=httpx.Timeout(options.timeout_sec),
-                    extensions={"sni_hostname": target.host},
-                ) as resp:
-                    if redirect_url := await _validated_redirect_url(
-                        resp,
-                        request_url=current,
-                        follow=options.follow_redirects,
-                        hops=hops,
-                        max_redirects=options.max_redirects,
-                    ):
-                        current = redirect_url
-                        hops += 1
-                        continue
+        allowed_ports = {int(item) for item in _parse_csv(configured_ports)}
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured") from exc
+    if any(value < 1 or value > 65535 for value in allowed_ports):
+        raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured")
+    if port not in allowed_ports:
+        raise HTTPException(status_code=400, detail="url port is not allowed")
 
-                    _raise_for_fetch_status(resp)
-                    _enforce_content_length(resp, max_bytes=options.max_bytes)
-                    size = await _write_response_body(resp, destination=destination, max_bytes=options.max_bytes)
-                    return _download_result(resp, size_bytes=size, final_url=current)
-    except HTTPException:
-        _cleanup_partial_download(destination)
-        raise
-    except Exception as exc:  # noqa: BLE001
-        _cleanup_partial_download(destination)
-        raise HTTPException(status_code=500, detail=f"failed to fetch url: {str(exc)[:120]}") from exc
+
+async def _resolve_host_addresses(host: str, port: int) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """IP 直接解析以保留 IPv6 网卡标识；域名解析结果保序去重。"""
+    try:
+        return [ipaddress.ip_address(host)]
+    except ValueError:
+        pass
+
+    resolved = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    resolved_ips = dict.fromkeys(sockaddr[0] for _, _, _, _, sockaddr in resolved)
+    return [ipaddress.ip_address(address) for address in resolved_ips]

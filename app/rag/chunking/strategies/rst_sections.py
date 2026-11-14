@@ -23,14 +23,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -53,20 +46,6 @@ _ADORN_CHARS = "=-~^\"`:.+'_*+#"
 _DIRECTIVE_HINT_RE = re.compile(r"(?m)^\s*\.\.\s*(toctree|rubric|note|warning|code-block)\s*::")
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text).splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        plain = raw.rstrip("\r\n")
-        out.append(_Line(start=start, end=end, text=raw, plain=plain))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text, plain=text))
-    return out
-
-
 def _detect_adornment_character(plain: str) -> str | None:
     s = (plain).strip()
     if len(s) < 3:
@@ -80,10 +59,7 @@ def _detect_adornment_character(plain: str) -> str | None:
 
 
 def _level_for_adorn(ch: str) -> int:
-    try:
-        return _ADORN_CHARS.index(ch) + 1
-    except ValueError:
-        return 10
+    return _ADORN_CHARS.index(ch) + 1
 
 
 def _iter_headings(text: str) -> list[RstHeading]:
@@ -133,14 +109,7 @@ def _iter_headings(text: str) -> list[RstHeading]:
 
         i += 1
 
-    deduped: list[RstHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[RstHeading]) -> list[_Section]:

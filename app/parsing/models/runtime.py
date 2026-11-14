@@ -75,10 +75,6 @@ def _path_size_bytes(path: Path) -> int:
     return total
 
 
-def _size_mb(size_bytes: int) -> float:
-    return round(float(size_bytes) / (1024.0 * 1024.0), 3)
-
-
 def _available_onnx_providers(ort: Any) -> list[str]:
     try:
         providers = ort.get_available_providers()
@@ -98,7 +94,6 @@ def _status(
     spec: SmallModelSpec,
     *,
     available: bool,
-    optional: bool,
     version: str,
     elapsed_ms: int,
     reason: str | None = None,
@@ -112,7 +107,7 @@ def _status(
         model_id=spec.model_id,
         kind=spec.kind,
         available=available,
-        optional=optional,
+        optional=spec.optional,
         reason=reason,
         path=path,
         repo_id=repo_id,
@@ -147,7 +142,7 @@ class SmallModelRuntime:
         if estimated_mb is not None and estimated_mb > limit_mb:
             return "model_too_large_for_cpu", round(estimated_mb, 3)
         if path is not None and path.exists():
-            size_mb = _size_mb(_path_size_bytes(path))
+            size_mb = round(float(_path_size_bytes(path)) / (1024.0 * 1024.0), 3)
             if size_mb > limit_mb:
                 return "model_too_large_for_cpu", size_mb
             return None, size_mb
@@ -184,7 +179,6 @@ class SmallModelRuntime:
             return _status(
                 spec,
                 available=False,
-                optional=spec.optional,
                 reason="local_model_missing",
                 path=path,
                 version=version,
@@ -194,7 +188,6 @@ class SmallModelRuntime:
         return _status(
             spec,
             available=rejection_reason is None,
-            optional=spec.optional,
             reason=rejection_reason,
             path=path,
             version=version,
@@ -216,7 +209,6 @@ class SmallModelRuntime:
             return _status(
                 spec,
                 available=rejection_reason is None,
-                optional=spec.optional,
                 reason=rejection_reason,
                 path=local_path,
                 repo_id=spec.repo_id,
@@ -230,7 +222,6 @@ class SmallModelRuntime:
             return _status(
                 spec,
                 available=False,
-                optional=spec.optional,
                 reason=rejection_reason,
                 repo_id=spec.repo_id,
                 revision=spec.revision,
@@ -242,7 +233,6 @@ class SmallModelRuntime:
             return _status(
                 spec,
                 available=False,
-                optional=spec.optional,
                 reason="hf_download_disabled",
                 repo_id=spec.repo_id,
                 revision=spec.revision,
@@ -253,7 +243,6 @@ class SmallModelRuntime:
             return _status(
                 spec,
                 available=False,
-                optional=spec.optional,
                 reason="hf_repo_missing",
                 version=version,
                 elapsed_ms=elapsed_ms,
@@ -263,7 +252,6 @@ class SmallModelRuntime:
         return _status(
             spec,
             available=rejection_reason is None,
-            optional=spec.optional,
             reason=rejection_reason,
             path=snapshot.path,
             repo_id=spec.repo_id,
@@ -295,7 +283,6 @@ class SmallModelRuntime:
         return _status(
             spec,
             available=False,
-            optional=spec.optional,
             reason="unsupported_model_kind",
             version=version,
             elapsed_ms=elapsed_ms(),

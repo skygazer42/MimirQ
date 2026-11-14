@@ -1,6 +1,5 @@
 """Query expansion phases for standard RAG streaming."""
 
-import time
 from typing import Any
 
 from app.core.config import settings
@@ -12,71 +11,6 @@ from app.rag.engine_support.standard_stream_state import (
 from app.rag.retrieval.orchestration.query_contracts import QueryExpansionRequest
 from app.rag.retrieval.orchestration.query_options import parse_query_expansion_budget
 from app.rag.retrieval.orchestration.query_planning import complete_query_plan_async
-
-
-async def expand_aliases_dictionary_and_init_kg(runtime: StandardStreamState) -> None:
-    # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
-    runtime.data.alias_elapsed = 0.0
-    runtime.data.alias_used = False
-    runtime.data.alias_meta: dict[str, Any] = {"enabled": False, "used": False}
-    runtime.data.alias_queries: list[str] = []
-
-    runtime.data.alias_enabled = runtime.data.enable_query_alias_expansion
-    if runtime.data.alias_enabled is None:
-        # Default behavior: if a dataset provided aliases, apply them unless explicitly disabled.
-        runtime.data.alias_enabled = bool(runtime.data.query_aliases)
-    if bool(runtime.data.alias_enabled):
-        runtime.data.t0 = time.time()
-        runtime.data.alias_queries, runtime.data.alias_meta = runtime.module.generate_alias_queries(
-            query=runtime.data.query_for_retrieval,
-            aliases=runtime.data.query_aliases,
-            max_queries=(
-                5 if runtime.data.query_alias_max_queries is None else int(runtime.data.query_alias_max_queries or 0)
-            ),
-        )
-        runtime.data.alias_elapsed = time.time() - runtime.data.t0
-        runtime.data.alias_used = bool(runtime.data.alias_queries)
-
-    # Deterministic dictionary expansion (bounded, auditable).
-    runtime.data.dict_elapsed = 0.0
-    runtime.data.dict_used = False
-    runtime.data.dict_meta: dict[str, Any] = {"enabled": False, "used": False}
-    runtime.data.dict_expansions: list[dict[str, Any]] = []
-    try:
-        from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
-
-        runtime.data.t0 = time.time()
-        runtime.data.dict_expansions, runtime.data.dict_meta = generate_dictionary_expansions(
-            query=runtime.data.query_for_retrieval,
-            rules=load_base_dictionary_rules(),
-            max_expansions_total=5,
-            max_expansions_per_rule=1,
-        )
-        runtime.data.dict_elapsed = time.time() - runtime.data.t0
-        runtime.data.dict_used = bool(runtime.data.dict_expansions)
-    except Exception as exc:  # noqa: BLE001
-        runtime.data.dict_elapsed = 0.0
-        runtime.data.dict_used = False
-        runtime.data.dict_expansions = []
-        runtime.data.dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
-
-    # KG query expansion (entity names, optional).
-    #
-    # Purpose: provide extra retrieval queries derived from KG entity recall
-    # to reduce false negatives, with clear attribution ("kgq").
-    runtime.data.kg_result_cached: dict[str, Any] | None = None
-    runtime.data.kg_query_expansion_enabled = (
-        bool(settings.RAG_KG_QUERY_EXPANSION_ENABLED)
-        if runtime.data.enable_kg_query_expansion is None
-        else bool(runtime.data.enable_kg_query_expansion)
-    )
-    runtime.data.kg_query_expansion_used = False
-    runtime.data.kg_query_expansion_elapsed = 0.0
-    runtime.data.kg_query_expansion_error: str | None = None
-    runtime.data.kg_query_expansion_entities_total = 0
-    runtime.data.kg_query_expansion_entities_selected = 0
-    runtime.data.kg_query_expansion_queries: list[str] = []
-    runtime.data.kg_query_expansion_entity_names: list[str] = []
 
 
 async def configure_corrective_retrieval(runtime: StandardStreamState) -> None:
@@ -198,8 +132,6 @@ async def prepare_query_plan(runtime: StandardStreamState) -> None:
     runtime.data.lightweight_subqueries = list(plan.lightweight_queries)
 
     variant_stage = plan.variant_stage
-    runtime.data.retrieval_queries_base = [item for item in plan.queries if item[0] != "mq"]
-    runtime.data.retrieval_queries = list(plan.queries)
     runtime.data.query_expansion_budget_meta = variant_stage.query_expansion_budget_meta
     runtime.data.query_expansion_budget_max_queries = variant_stage.query_expansion_budget_max_queries
     runtime.data.query_expansion_budget_max_candidates = variant_stage.query_expansion_budget_max_candidates

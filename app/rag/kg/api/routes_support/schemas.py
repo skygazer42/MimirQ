@@ -106,14 +106,6 @@ class KGMergeAffectedRows:
 
 
 @dataclass
-class KGMergeSideEffects:
-    deleted_assoc_rows: list[dict[str, Any]]
-    relation_deleted_rows: list[dict[str, Any]]
-    redirect_created: bool
-    vector_deleted: bool
-
-
-@dataclass
 class KGUndoStats:
     source_id: UUID | None
     target_id: UUID | None

@@ -57,7 +57,7 @@ def _extract_table_text(shape: object) -> str | None:
                 row.append(_escape_md_cell(cell_text))
             if any(row):
                 rows.append(row)
-        return _md_table(rows) if rows else ""
+        return _md_table(rows)
     except Exception as exc:
         # Best-effort: ignore table extraction errors.
         logger.debug("Failed to extract PPTX table; falling back to text frame handling: %s", exc)
@@ -121,7 +121,7 @@ class PptxParser:
 
         for idx, slide in enumerate(prs.slides):
             parts = _extract_slide_parts(slide)
-            content = "\n".join([p for p in parts if p]).strip()
+            content = "\n".join(parts).strip()
             if not content:
                 continue
 

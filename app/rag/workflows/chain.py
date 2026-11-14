@@ -112,7 +112,7 @@ class ChainWorkflow(BaseWorkflow):
 
             try:
                 logger.debug("Executing step: %s", step_name)
-                current_state = await step.execute(current_state)
+                current_state = await step.func(current_state)
                 execution_path.append(step_name)
 
                 # Check for error in state

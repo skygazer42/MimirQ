@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.stopwords import STOPWORDS

@@ -1,8 +1,6 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from app.rag.core.logging import get_logger
-
 
 class MissingCasesError(ValueError):
     pass
@@ -26,27 +24,12 @@ def validate_case_ids_belong_to_dataset(
     if not case_ids:
         return
 
-    ds_id = UUID(str(dataset_id))
-    want = {UUID(str(x)) for x in case_ids if x is not None}
-    found: dict[UUID, UUID | None] = {}
-    for cid, case_ds in rows or []:
-        try:
-            key = UUID(str(cid))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if case_ds is None:
-            found[key] = None
-            continue
-        try:
-            found[key] = UUID(str(case_ds))
-        except Exception:
-            found[key] = None
-
+    want = set(case_ids)
+    found = dict(rows)
     missing = want - set(found.keys())
     if missing:
         raise MissingCasesError("Some cases were not found")
 
-    mismatched = [cid for cid, case_ds in found.items() if case_ds is None or case_ds != ds_id]
+    mismatched = [cid for cid, case_ds in found.items() if case_ds is None or case_ds != dataset_id]
     if mismatched:
         raise DatasetMismatchError("Some cases do not belong to dataset_id")

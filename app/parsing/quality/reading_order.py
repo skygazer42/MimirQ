@@ -131,14 +131,10 @@ def _score_reading_order_items(items: Sequence[Any] | None) -> dict[str, Any]:
         expected, is_multi_column = _expected_order_for_page(page_items)
         if is_multi_column:
             multi_column_pages += 1
-        expected_rank = {item["obs_index"]: idx for idx, item in enumerate(expected)}
-        observed = sorted(page_items, key=lambda item: item["obs_index"])
-        n = len(observed)
+        expected_rank = {item["obs_index"]: idx + 1 for idx, item in enumerate(expected)}
+        n = len(page_items)
         total_pairs += max(0, n * (n - 1) // 2)
-        for idx, left in enumerate(observed):
-            for right in observed[idx + 1 :]:
-                if expected_rank[left["obs_index"]] > expected_rank[right["obs_index"]]:
-                    inversions += 1
+        inversions += _count_inversions([expected_rank[item["obs_index"]] for item in page_items])
 
     score = 1.0 if total_pairs <= 0 else max(0.0, 1.0 - (float(inversions) / float(total_pairs)))
     return {
@@ -195,27 +191,22 @@ def _parse_pages(raw: str) -> tuple[int, ...]:
     s = raw.strip()
     if not s:
         return ()
-    out: list[int] = []
+    pages: list[int] = []
+    seen: set[int] = set()
     for part in s.split("-"):
         part = part.strip()
         if not part:
             continue
         try:
             n = int(part)
-        except Exception:
+        except ValueError:
             get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
-        if n <= 0:
-            continue
-        out.append(n)
-    seen: set[int] = set()
-    uniq: list[int] = []
-    for n in out:
-        if n in seen:
+        if n <= 0 or n in seen:
             continue
         seen.add(n)
-        uniq.append(n)
-    return tuple(uniq)
+        pages.append(n)
+    return tuple(pages)
 
 
 def _parse_tag(match) -> _Tag | None:
@@ -225,7 +216,7 @@ def _parse_tag(match) -> _Tag | None:
         right = float(match.group(3))
         top = float(match.group(4))
         bottom = float(match.group(5))
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
     if not pages:
         return None
@@ -236,41 +227,39 @@ def _extract_blocks(markdown: str) -> tuple[list[_Block], int]:
     if not markdown:
         return [], 0
 
-    blocks_tags: list[list[_Tag]] = []
+    blocks_have_tags: list[bool] = []
     blocks_boxes: list[tuple[float, float, float, float]] = []
     blocks_pages: list[int] = []
     tag_count = 0
     cursor = 0
-    has_last_block = False
 
     for match in POSITION_TAG_RE.finditer(markdown):
         tag = _parse_tag(match)
         cursor_text = markdown[cursor : match.start()]
         has_text = bool(cursor_text.strip())
-        if has_text or not has_last_block:
-            blocks_tags.append([])
+        if has_text or not blocks_boxes:
+            blocks_have_tags.append(False)
             blocks_boxes.append((float("inf"), float("-inf"), float("inf"), float("-inf")))
             blocks_pages.append(0)
-            has_last_block = True
 
         if tag is not None:
             tag_count += 1
-            blocks_tags[-1].append(tag)
+            blocks_have_tags[-1] = True
             left, right, top, bottom = blocks_boxes[-1]
             left = min(left, tag.left)
             right = max(right, tag.right)
             top = min(top, tag.top)
             bottom = max(bottom, tag.bottom)
             blocks_boxes[-1] = (left, right, top, bottom)
-            page = min(tag.pages) if tag.pages else 0
+            page = min(tag.pages)
             if blocks_pages[-1] <= 0 or (page > 0 and page < blocks_pages[-1]):
                 blocks_pages[-1] = page
 
         cursor = match.end()
 
     out: list[_Block] = []
-    for idx, (tags, box, page) in enumerate(zip(blocks_tags, blocks_boxes, blocks_pages, strict=False)):
-        if not tags:
+    for idx, (has_tag, box, page) in enumerate(zip(blocks_have_tags, blocks_boxes, blocks_pages, strict=False)):
+        if not has_tag:
             continue
         left, right, top, bottom = box
         if page <= 0:
@@ -333,12 +322,11 @@ def _reading_order_empty_result(*, tag_count: int) -> dict[str, Any]:
 
 
 def _trim_blocks(blocks: list[_Block], *, max_blocks: int) -> list[_Block]:
-    if int(max_blocks or 0) <= 0 or len(blocks) <= int(max_blocks):
+    if max_blocks <= 0 or len(blocks) <= max_blocks:
         return blocks
-    keep = int(max_blocks)
-    head = keep // 2
-    tail = keep - head
-    return list(blocks[:head]) + list(blocks[-tail:])
+    head = max_blocks // 2
+    tail = max_blocks - head
+    return blocks[:head] + blocks[-tail:]
 
 
 def _reading_order_insufficient_blocks_result(blocks: list[_Block], *, tag_count: int) -> dict[str, Any]:
@@ -366,7 +354,7 @@ def _blocks_by_page(blocks: list[_Block]) -> dict[int, list[_Block]]:
 def _page_widths(by_page: Mapping[int, Sequence[_Block]]) -> dict[int, float]:
     page_width: dict[int, float] = {}
     for page, items in by_page.items():
-        width = max((item.right for item in items), default=0.0)
+        width = max(item.right for item in items)
         page_width[page] = width if width > 0.0 else 1.0
     return page_width
 
@@ -380,27 +368,14 @@ def _page_layout_stats(
     page_min_top: dict[int, float] = {}
     page_max_bottom: dict[int, float] = {}
     for page, items in by_page.items():
-        width = page_width.get(page, 1.0) or 1.0
+        width = page_width[page]
         centers = [((item.left + item.right) / 2.0) / width for item in items]
         left_any = any(center < 0.45 for center in centers)
         right_any = any(center > 0.55 for center in centers)
         page_is_two_col[page] = left_any and right_any
-        page_min_top[page] = min((item.top for item in items), default=0.0)
-        page_max_bottom[page] = max((item.bottom for item in items), default=0.0)
+        page_min_top[page] = min(item.top for item in items)
+        page_max_bottom[page] = max(item.bottom for item in items)
     return page_is_two_col, page_min_top, page_max_bottom
-
-
-def _column_index(
-    block: _Block,
-    *,
-    page_is_two_col: Mapping[int, bool],
-    page_width: Mapping[int, float],
-) -> int:
-    if not page_is_two_col.get(block.page, False):
-        return 0
-    width = page_width.get(block.page, 1.0) or 1.0
-    center = ((block.left + block.right) / 2.0) / width
-    return 1 if center > 0.5 else 0
 
 
 def _flow_group(
@@ -411,14 +386,15 @@ def _flow_group(
     page_min_top: Mapping[int, float],
     page_max_bottom: Mapping[int, float],
 ) -> int:
-    if not page_is_two_col.get(block.page, False):
+    if not page_is_two_col[block.page]:
         return 0
-    width = page_width.get(block.page, 1.0) or 1.0
+    width = page_width[block.page]
     span_ratio = max(0.0, block.right - block.left) / width
     if span_ratio < 0.75:
-        return _column_index(block, page_is_two_col=page_is_two_col, page_width=page_width)
-    top_min = page_min_top.get(block.page, 0.0)
-    bottom_max = page_max_bottom.get(block.page, block.bottom)
+        center = ((block.left + block.right) / 2.0) / width
+        return 1 if center > 0.5 else 0
+    top_min = page_min_top[block.page]
+    bottom_max = page_max_bottom[block.page]
     vertical_span = max(1.0, bottom_max - top_min)
     if block.top <= top_min + vertical_span * 0.12:
         return -1
@@ -456,7 +432,7 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
         ),
     )
     expected_rank = {block.idx: index + 1 for index, block in enumerate(expected)}
-    observed_ranks = [expected_rank.get(block.idx, 0) for block in blocks]
+    observed_ranks = [expected_rank[block.idx] for block in blocks]
     inversions = _count_inversions(observed_ranks)
 
     n = len(observed_ranks)
@@ -465,7 +441,7 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
     nid = max(0.0, min(1.0, nid))
     score = 1.0 - nid
     pages = sorted({block.page for block in blocks if block.page > 0})
-    column_pages = sum(1 for page in pages if page_is_two_col.get(page, False))
+    column_pages = sum(1 for page in pages if page_is_two_col[page])
 
     return {
         "schema": _READING_ORDER_SCHEMA,

@@ -69,9 +69,7 @@ def _filename_from_src(src: str) -> str:
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for alt, src in _MD_IMAGE_RE.findall(line):
-        out.append((alt, src))
+    out: list[tuple[str, str]] = _MD_IMAGE_RE.findall(line)
     # Reference-style image doesn't include src; keep alt only.
     for alt, _ref in _MD_IMAGE_REF_RE.findall(line):
         if alt:
@@ -105,8 +103,6 @@ def _build_caption_text(images: list[tuple[str, str]], *, max_caption_chars: int
             cap = _clean_caption_text(_filename_from_src(src), max_chars=max_caption_chars)
         if cap:
             captions.append(cap)
-    if not captions:
-        return ""
     return _clean_caption_text("; ".join(captions), max_chars=max_caption_chars)
 
 
@@ -135,7 +131,7 @@ def _build_caption_line(
         return ""
 
     prefix0 = str(prefix or _IMAGE_CAPTION_PREFIX).strip() or _IMAGE_CAPTION_PREFIX
-    lead = line[:token_start] if token_start >= 0 else ""
+    lead = line[:token_start]
     return f"{lead}{prefix0} {caption_text}"
 
 

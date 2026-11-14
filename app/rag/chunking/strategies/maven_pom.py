@@ -33,8 +33,7 @@ _ARTIFACT_ID_RE = re.compile(r"(?is)<artifactId\b[^>]*>(?P<body>.*?)</artifactId
 
 
 def _clean_text(s: str) -> str:
-    out = re.sub(r"\s+", " ", (s).strip())
-    return out
+    return re.sub(r"\s+", " ", s.strip())
 
 
 def _extract_ga(block_text: str) -> str | None:
@@ -102,12 +101,15 @@ def looks_like_maven_pom(text: str) -> bool:
 
 def _record_window_end(records: list[_Record], *, start_idx: int, chunk_size: int) -> int:
     end_idx = start_idx
+    covered_end = records[start_idx].end
     while end_idx < len(records):
-        length = records[end_idx].end - records[start_idx].start
+        candidate_end = max(covered_end, records[end_idx].end)
+        length = candidate_end - records[start_idx].start
         if end_idx != start_idx and length > chunk_size:
             break
+        covered_end = candidate_end
         end_idx += 1
-    return max(start_idx + 1, end_idx)
+    return end_idx
 
 
 def _record_labels(
@@ -135,14 +137,15 @@ def _next_record_start(
 ) -> int:
     next_start = end_idx
     if chunk_overlap > 0 and end_idx - start_idx > 1:
+        covered_end = max(record.end for record in records[start_idx:end_idx])
         desired = end_idx - 1
         while desired > start_idx:
-            overlap_length = records[end_idx - 1].end - records[desired - 1].start
+            overlap_length = covered_end - records[desired - 1].start
             if overlap_length > chunk_overlap:
                 break
             desired -= 1
         next_start = desired if desired > start_idx else end_idx - 1
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 class MavenPOMChunker(BaseChunker):
@@ -202,7 +205,7 @@ class MavenPOMChunker(BaseChunker):
             {
                 "chunk_strategy": "maven_pom",
                 "start_char": first.start,
-                "end_char": last.end,
+                "end_char": max(record.end for record in records[start_idx:end_idx]),
                 "maven_record_count": end_idx - start_idx,
                 "maven_first_index": first.index,
                 "maven_last_index": last.index,
@@ -253,7 +256,7 @@ class MavenPOMChunker(BaseChunker):
         text = doc.page_content
         if not text.strip():
             return
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         records = _iter_records(text)
         if not records:
             self._append_fallback_chunks(

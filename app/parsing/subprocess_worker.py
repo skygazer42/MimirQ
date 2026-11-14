@@ -12,6 +12,7 @@ import json
 import time
 import traceback
 import uuid
+from contextlib import ExitStack
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -30,18 +31,6 @@ logger = get_logger("parsing.subprocess_worker")
 @lru_cache(maxsize=1)
 def _get_pil_image():  # noqa: ANN202
     return optional_import("PIL.Image", feature="parse_ingest_image_materialize", pip_name="Pillow")
-
-
-def _get_parser_factory():  # noqa: ANN202
-    from app.parsing.factory import parser_factory
-
-    return parser_factory
-
-
-def _get_document_parser_service():  # noqa: ANN202
-    from app.parsing.processors.parser_service import document_parser_service
-
-    return document_parser_service
 
 
 def _as_uuid(value: Any) -> UUID:
@@ -87,8 +76,8 @@ def _write_result(
 
 def _documents_need_image_persist(documents: list[Document]) -> bool:
     for doc in documents:
-        meta = getattr(doc, "metadata", None) or {}
-        if not isinstance(meta, dict) or meta.get("image") is None:
+        meta = doc.metadata
+        if meta.get("image") is None:
             continue
         doc_type = meta.get("doc_type_kwd")
         if isinstance(doc_type, str) and doc_type.lower() == "image":
@@ -115,11 +104,6 @@ def _prepare_ingest_image_dir(
     return artifact_root, images_dir
 
 
-def _finalize_non_image_metadata(doc: Document, meta: dict[str, Any]) -> None:
-    meta.pop("image", None)
-    doc.metadata = meta
-
-
 def _assign_ingest_image_metadata(
     doc: Document,
     *,
@@ -127,7 +111,7 @@ def _assign_ingest_image_metadata(
     tenant_id: UUID,
     artifact_root: Path | None,
     images_dir: Path | None,
-) -> tuple[dict[str, Any], Path]:
+) -> Path:
     if artifact_root is not None:
         meta["artifact_dir"] = str(artifact_root)
     out_id = uuid.uuid4().hex
@@ -135,7 +119,7 @@ def _assign_ingest_image_metadata(
     meta["image_path"] = str(out_path)
     meta.pop("image", None)
     doc.metadata = meta
-    return meta, out_path
+    return out_path
 
 
 def _persist_ingest_image(raw: Any, *, out_path: Path, pil_image: Any | None) -> None:
@@ -144,13 +128,20 @@ def _persist_ingest_image(raw: Any, *, out_path: Path, pil_image: Any | None) ->
 
     from io import BytesIO
 
-    image_obj = pil_image.open(BytesIO(bytes(raw))) if isinstance(raw, (bytes, bytearray)) else raw
-    try:
-        if getattr(image_obj, "mode", None) != "RGB":
-            image_obj = image_obj.convert("RGB")
-    except Exception as exc:
-        logger.debug("Ignoring non-critical subprocess worker image conversion failure: %s", exc)
-    image_obj.save(out_path, format="JPEG", quality=85, optimize=True)
+    with ExitStack() as cleanup:
+        image_obj = raw
+        if isinstance(raw, (bytes, bytearray)):
+            image_obj = pil_image.open(BytesIO(bytes(raw)))
+            cleanup.callback(image_obj.close)
+        try:
+            if getattr(image_obj, "mode", None) != "RGB":
+                converted = image_obj.convert("RGB")
+                if converted is not image_obj:
+                    cleanup.callback(converted.close)
+                image_obj = converted
+        except Exception as exc:
+            logger.debug("Ignoring non-critical subprocess worker image conversion failure: %s", exc)
+        image_obj.save(out_path, format="JPEG", quality=85, optimize=True)
 
 
 def _close_ingest_image(raw: Any) -> None:
@@ -182,7 +173,7 @@ def _materialize_images_for_ingest(
     pil_image = _get_pil_image()
 
     for doc in documents:
-        meta = dict(getattr(doc, "metadata", None) or {})
+        meta = dict(doc.metadata)
         raw = meta.get("image")
         if raw is None:
             doc.metadata = meta
@@ -190,10 +181,11 @@ def _materialize_images_for_ingest(
 
         doc_type = meta.get("doc_type_kwd")
         if not isinstance(doc_type, str) or doc_type.lower() != "image":
-            _finalize_non_image_metadata(doc, meta)
+            meta.pop("image", None)
+            doc.metadata = meta
             continue
 
-        _meta, out_path = _assign_ingest_image_metadata(
+        out_path = _assign_ingest_image_metadata(
             doc,
             meta=meta,
             tenant_id=tenant_id,
@@ -225,6 +217,28 @@ def _serialize_documents(documents: list[Document]) -> list[dict[str, Any]]:
     return out
 
 
+def _materialize_documents_for_mode(
+    documents: list[Document],
+    *,
+    mode: str,
+    tenant_id: UUID,
+    account_id: str | None,
+    raw_artifact_root: Any,
+) -> list[Document]:
+    if mode == "preview":
+        from app.services.document_preview_utils import (
+            _materialize_extracted_images_for_preview,
+            _materialize_local_images_for_preview,
+        )
+
+        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
+        return _materialize_local_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
+    artifact_root = None
+    if isinstance(raw_artifact_root, str) and raw_artifact_root.strip():
+        artifact_root = Path(raw_artifact_root.strip())
+    return _materialize_images_for_ingest(documents, tenant_id=tenant_id, artifact_root=artifact_root)
+
+
 def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _as_uuid(payload["tenant_id"])
     file_path = Path(str(payload["file_path"]))
@@ -251,7 +265,8 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             effective_backend = requested
 
-    parser_factory = _get_parser_factory()
+    from app.parsing.factory import parser_factory
+
     documents, resolved_backend, provenance = parser_factory.parse_with_provenance(
         file_path,
         parser_backend=effective_backend,
@@ -262,28 +277,18 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         pdf_quality=pdf_quality,
         html_xpath=(payload.get("html_xpath") if isinstance(payload.get("html_xpath"), str) else None),
     )
-    if isinstance(provenance, dict):
-        # Echo routing decisions used inside the subprocess for audit/debug.
-        provenance = dict(provenance)
-        provenance.setdefault("payload_requested_backend", requested_backend)
-        provenance.setdefault("effective_backend", effective_backend)
+    # The factory returns a provenance dictionary; add this worker's routing choices.
+    provenance = dict(provenance)
+    provenance.setdefault("payload_requested_backend", requested_backend)
+    provenance.setdefault("effective_backend", effective_backend)
 
-    if mode == "preview":
-        # Reuse narrow preview helpers without importing the full documents router.
-        from app.services.document_preview_utils import (
-            _materialize_extracted_images_for_preview,
-            _materialize_local_images_for_preview,
-        )
-
-        account_id = payload.get("account_id")
-        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
-        documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
-    else:
-        artifact_root = None
-        raw_root = payload.get("artifact_root")
-        if isinstance(raw_root, str) and raw_root.strip():
-            artifact_root = Path(raw_root.strip())
-        documents = _materialize_images_for_ingest(documents, tenant_id=tenant_id, artifact_root=artifact_root)
+    documents = _materialize_documents_for_mode(
+        documents,
+        mode=mode,
+        tenant_id=tenant_id,
+        account_id=payload.get("account_id"),
+        raw_artifact_root=payload.get("artifact_root"),
+    )
 
     return {
         "resolved_backend": resolved_backend,
@@ -299,34 +304,17 @@ def _integrated_chunk(payload: dict[str, Any]) -> dict[str, Any]:
     strategy = str(payload["strategy"])
     mode = (payload.get("mode") or "preview").strip().lower()
 
-    from app.parsing.processors.processor import document_processor
+    from app.parsing.processors.processor import chunk_integrated_file
 
-    documents = document_processor._integrated_chunk_file(file_path, strategy)
+    documents = chunk_integrated_file(file_path, strategy)
 
-    if mode == "preview":
-        from app.services.document_preview_utils import (
-            _materialize_extracted_images_for_preview,
-            _materialize_local_images_for_preview,
-        )
-
-        account_id = payload.get("account_id")
-
-        documents = _materialize_extracted_images_for_preview(
-            documents,
-            tenant_id=tenant_id,
-            account_id=account_id,
-        )
-        documents = _materialize_local_images_for_preview(
-            documents,
-            tenant_id=tenant_id,
-            account_id=account_id,
-        )
-    else:
-        artifact_root = None
-        raw_root = payload.get("artifact_root")
-        if isinstance(raw_root, str) and raw_root.strip():
-            artifact_root = Path(raw_root.strip())
-        documents = _materialize_images_for_ingest(documents, tenant_id=tenant_id, artifact_root=artifact_root)
+    documents = _materialize_documents_for_mode(
+        documents,
+        mode=mode,
+        tenant_id=tenant_id,
+        account_id=payload.get("account_id"),
+        raw_artifact_root=payload.get("artifact_root"),
+    )
 
     return {"documents": _serialize_documents(documents)}
 
@@ -335,8 +323,9 @@ def _pipeline_parse_preview(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _as_uuid(payload["tenant_id"])
     file_path = Path(str(payload["file_path"]))
     parser_backend = payload.get("parser_backend")
-    document_parser_service = _get_document_parser_service()
-    result = document_parser_service.parse_for_preview(
+    from app.parsing.processors.parser_service import parse_for_preview
+
+    result = parse_for_preview(
         file_path=file_path,
         tenant_id=tenant_id,
         account_id=payload.get("account_id"),

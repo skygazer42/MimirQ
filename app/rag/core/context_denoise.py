@@ -179,7 +179,7 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
     return out
 
 
-def _compress_text_with_llm(*, text: str, query: str, target_ratio: float) -> str:
+def _compress_text_with_llm(*, text: str, query: str) -> str:
     if not text or not query:
         return text
 
@@ -192,10 +192,6 @@ def _compress_text_with_llm(*, text: str, query: str, target_ratio: float) -> st
     llm = engine.models.get("fast") or engine.models.get("default")
     if llm is None:
         return text
-
-    ratio = float(target_ratio or 0.0)
-    if ratio <= 0.0:
-        ratio = 0.5
 
     prompt = ChatPromptTemplate.from_template(
         """Extract only the information relevant to the query from the following text.
@@ -232,9 +228,6 @@ def compress_context_docs_with_llm(
     if not query_text:
         return list(docs)
 
-    ratio = settings.RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO
-    ratio = min(max(ratio, 0.1), 1.0)
-
     out: list[Document] = []
     for doc in docs:
         if doc is None:
@@ -242,7 +235,7 @@ def compress_context_docs_with_llm(
         text = doc.page_content.strip()
         if not text:
             continue
-        compressed = _compress_text_with_llm(text=text, query=query_text, target_ratio=ratio)
+        compressed = _compress_text_with_llm(text=text, query=query_text)
         out.append(Document(page_content=compressed, metadata=dict(doc.metadata or {}), id=doc.id))
     return out
 

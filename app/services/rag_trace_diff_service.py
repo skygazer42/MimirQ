@@ -18,43 +18,25 @@ from app.rag.trace_schema import RagTrace
 RAG_TRACE_DIFF_SCHEMA_V1 = "mimirq.rag_trace_diff.v1"
 
 
-def _to_int(v: Any) -> int:
-    try:
-        return int(v) if v is not None else 0
-    except Exception:
-        return 0
-
-
-def _to_float(v: Any) -> float | None:
-    try:
-        if v is None:
-            return None
-        return float(v)
-    except Exception:
+def _delta_float(a: float | None, b: float | None) -> float | None:
+    if a is None or b is None:
         return None
-
-
-def _delta_float(a: Any, b: Any) -> float | None:
-    fa = _to_float(a)
-    fb = _to_float(b)
-    if fa is None or fb is None:
-        return None
-    return round(fb - fa, 6)
+    return round(b - a, 6)
 
 
 def _counter_sorted(counter: Counter[str]) -> dict[str, int]:
     # Stable ordering: higher count first, then key.
     items = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
-    return {str(k): v for k, v in items if k}
+    return {k: v for k, v in items if k}
 
 
 def _delta_counter(a: Counter[str], b: Counter[str]) -> dict[str, int]:
     out: dict[str, int] = {}
     keys = sorted(set(a.keys()) | set(b.keys()))
     for k in keys:
-        d = b.get(k, 0) - a.get(k, 0)
+        d = b[k] - a[k]
         if d:
-            out[str(k)] = d
+            out[k] = d
     # Stable ordering: larger magnitude first, then key.
     return dict(sorted(out.items(), key=lambda x: (-abs(x[1]), x[0])))
 
@@ -65,15 +47,15 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
 
     Output shape is intentionally small and stable (v1).
     """
-    ta = a or RagTrace()
-    tb = b or RagTrace()
+    ta = a
+    tb = b
 
     hit_a: Counter[str] = Counter()
     hit_b: Counter[str] = Counter()
     role_a: Counter[str] = Counter()
     role_b: Counter[str] = Counter()
 
-    for c in ta.citations or []:
+    for c in ta.citations:
         ht = c.hit_type.strip() if c.hit_type is not None else None
         rr = c.retrieval_role.strip() if c.retrieval_role is not None else None
         if ht:
@@ -81,7 +63,7 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
         if rr:
             role_a[rr] += 1
 
-    for c in tb.citations or []:
+    for c in tb.citations:
         ht = c.hit_type.strip() if c.hit_type is not None else None
         rr = c.retrieval_role.strip() if c.retrieval_role is not None else None
         if ht:
@@ -96,7 +78,7 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
         "retrieval_config_hash_a": ta.retrieval.retrieval_config_hash,
         "retrieval_config_hash_b": tb.retrieval.retrieval_config_hash,
         "delta": {
-            "citations_count": _to_int(tb.citations_count) - _to_int(ta.citations_count),
+            "citations_count": tb.citations_count - ta.citations_count,
             "retrieval_elapsed_sec": _delta_float(ta.retrieval.elapsed_sec, tb.retrieval.elapsed_sec),
             "rerank_elapsed_sec": _delta_float(ta.rerank.elapsed_sec, tb.rerank.elapsed_sec),
         },

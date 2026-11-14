@@ -77,7 +77,7 @@ def _classify_connector_error(exc: Exception) -> tuple[str, str]:
         return code, msg
 
     if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)):
-        return "timeout", _safe_error_str(exc) or "timeout"
+        return "timeout", _safe_error_str(exc)
 
     msg = _safe_error_str(exc)
     return _connector_error_code_from_message(msg, default="error"), msg

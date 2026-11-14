@@ -4,7 +4,8 @@ Split out of ``app.rag.retrieval.orchestrator`` (see
 ``app.rag.retrieval.orchestration``).
 """
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypedDict
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -76,7 +77,7 @@ def _merge_optional_int(
     kg_meta: dict[str, Any],
     *,
     key: str,
-    reducer: Any,
+    reducer: Callable[[int, int], int],
 ) -> None:
     kg_value = _coerce_optional_int(kg_meta, key)
     if kg_value is None:
@@ -242,7 +243,17 @@ def _kg_chunk_boost_disabled_reason(
     return "no_docs"
 
 
-def _kg_boost_row(doc: Document, *, index: int, weight: float) -> dict[str, Any]:
+class _KGBoostRow(TypedDict):
+    idx: int
+    doc: Document
+    meta: dict[str, Any]
+    base_score: float
+    kg_score: float
+    boosted_score: float
+    is_kg: bool
+
+
+def _kg_boost_row(doc: Document, *, index: int, weight: float) -> _KGBoostRow:
     row_meta = dict(doc.metadata or {})
     base_raw = row_meta.get("retrieval_score")
     if base_raw is None:
@@ -254,22 +265,22 @@ def _kg_boost_row(doc: Document, *, index: int, weight: float) -> dict[str, Any]
     if kg_raw is None and role == "kg":
         kg_raw = row_meta.get("score", 0.0)
     kg_score = _safe_float(kg_raw, default=0.0, minimum=0.0)
-    is_kg = bool(role == "kg" or kg_score > 0.0)
-    boosted_score = float(base_score) + (float(weight) * float(kg_score)) if is_kg else float(base_score)
+    is_kg = role == "kg" or kg_score > 0.0
+    boosted_score = base_score + (float(weight) * kg_score) if is_kg else base_score
     return {
-        "idx": int(index),
+        "idx": index,
         "doc": doc,
         "meta": row_meta,
-        "base_score": float(base_score),
-        "kg_score": float(kg_score),
-        "boosted_score": float(boosted_score),
-        "is_kg": bool(is_kg),
+        "base_score": base_score,
+        "kg_score": kg_score,
+        "boosted_score": boosted_score,
+        "is_kg": is_kg,
     }
 
 
-def _kg_boost_rows(docs: list[Document], *, weight: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    rows: list[dict[str, Any]] = []
-    eligible_rows: list[dict[str, Any]] = []
+def _kg_boost_rows(docs: list[Document], *, weight: float) -> tuple[list[_KGBoostRow], list[_KGBoostRow]]:
+    rows: list[_KGBoostRow] = []
+    eligible_rows: list[_KGBoostRow] = []
     for index, doc in enumerate(docs):
         if not isinstance(doc, Document):
             continue
@@ -280,40 +291,34 @@ def _kg_boost_rows(docs: list[Document], *, weight: float) -> tuple[list[dict[st
     return rows, eligible_rows
 
 
-def _kg_boost_promoted_indexes(eligible_rows: list[dict[str, Any]], *, max_promoted: int) -> set[int]:
+def _kg_boost_promoted_indexes(eligible_rows: list[_KGBoostRow], *, max_promoted: int) -> set[int]:
     eligible_rows.sort(
         key=lambda row: (
-            -(float(row.get("boosted_score") or 0.0) - float(row.get("base_score") or 0.0)),
-            -float(row.get("kg_score") or 0.0),
-            int(row.get("idx") or 0),
+            -(row["boosted_score"] - row["base_score"]),
+            -row["kg_score"],
+            row["idx"],
         )
     )
-    return {int(row["idx"]) for row in eligible_rows[:max_promoted]}
+    return {row["idx"] for row in eligible_rows[:max_promoted]}
 
 
-def _kg_boost_ranked_rows(rows: list[dict[str, Any]], *, promoted_indexes: set[int]) -> list[dict[str, Any]]:
+def _kg_boost_ranked_rows(rows: list[_KGBoostRow], *, promoted_indexes: set[int]) -> list[_KGBoostRow]:
     return sorted(
         rows,
         key=lambda row: (
-            -(
-                float(row.get("boosted_score") or 0.0)
-                if int(row.get("idx") or 0) in promoted_indexes
-                else float(row.get("base_score") or 0.0)
-            ),
-            int(row.get("idx") or 0),
+            -(row["boosted_score"] if row["idx"] in promoted_indexes else row["base_score"]),
+            row["idx"],
         ),
     )
 
 
-def _kg_boost_document(row: dict[str, Any], *, promoted_indexes: set[int]) -> tuple[Document | None, int]:
-    doc = row.get("doc")
-    if not isinstance(doc, Document):
-        return None, 0
-    doc_meta = dict(row.get("meta") or {})
-    original_index = int(row.get("idx") or 0)
+def _kg_boost_document(row: _KGBoostRow, *, promoted_indexes: set[int]) -> tuple[Document, int]:
+    doc = row["doc"]
+    doc_meta = dict(row["meta"])
+    original_index = row["idx"]
     if original_index in promoted_indexes:
         doc_meta["kg_boost_applied"] = True
-        doc_meta["kg_boost_score"] = round(float(row.get("boosted_score") or 0.0), 6)
+        doc_meta["kg_boost_score"] = round(row["boosted_score"], 6)
     out_doc = Document(
         page_content=doc.page_content,
         metadata=doc_meta,
@@ -322,13 +327,11 @@ def _kg_boost_document(row: dict[str, Any], *, promoted_indexes: set[int]) -> tu
     return out_doc, original_index
 
 
-def _kg_boost_output(ranked_rows: list[dict[str, Any]], *, promoted_indexes: set[int]) -> tuple[list[Document], int]:
+def _kg_boost_output(ranked_rows: list[_KGBoostRow], *, promoted_indexes: set[int]) -> tuple[list[Document], int]:
     out: list[Document] = []
     promoted = 0
     for new_index, row in enumerate(ranked_rows):
         doc, original_index = _kg_boost_document(row, promoted_indexes=promoted_indexes)
-        if doc is None:
-            continue
         if original_index in promoted_indexes and new_index < original_index:
             promoted += 1
         out.append(doc)
@@ -359,13 +362,13 @@ def _apply_kg_chunk_boost(
         return docs, meta
 
     promoted_indexes = _kg_boost_promoted_indexes(eligible_rows, max_promoted=max_promoted)
-    meta["eligible"] = int(len(eligible_rows))
+    meta["eligible"] = len(eligible_rows)
     out, promoted = _kg_boost_output(
         _kg_boost_ranked_rows(rows, promoted_indexes=promoted_indexes),
         promoted_indexes=promoted_indexes,
     )
 
-    meta["promoted"] = int(promoted)
+    meta["promoted"] = promoted
     meta["top_changed"] = bool(out and docs and _doc_key(out[0]) != _doc_key(docs[0]))
     meta["reason"] = "applied"
     return out, meta

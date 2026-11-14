@@ -1,11 +1,11 @@
 """Plugin-policy and response-compaction support for ``HybridRetriever``."""
 
 from functools import lru_cache
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.hybrid.common import (
     _PIPELINE_PLUGIN_METADATA_KEYS,
     _PLATFORM_METADATA_VIEW_KEYS,

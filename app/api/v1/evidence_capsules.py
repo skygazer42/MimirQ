@@ -10,24 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
 from app.services import dataset_service
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-
-_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{5,127}$")
+_SAFE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{5,127}")
 
 
 class EvidenceCapsulePersistRequest(BaseModel):
@@ -56,13 +48,12 @@ class EvidenceCapsuleVerifyResponse(BaseModel):
 
 
 def _store_dir() -> Path:
-    root = Path(str(settings.EVIDENCE_CAPSULE_STORE_DIR))
-    return root.resolve()
+    return Path(settings.EVIDENCE_CAPSULE_STORE_DIR).resolve()
 
 
 def _normalize_capsule_id(value: str) -> str:
     cid = value.strip()
-    if not _SAFE_ID_RE.match(cid):
+    if not _SAFE_ID_RE.fullmatch(cid):
         raise HTTPException(status_code=400, detail="invalid_capsule_id")
     return cid
 
@@ -78,9 +69,8 @@ def _tenant_store_dir(tenant_id: UUID) -> Path:
 
 
 def _capsule_path(*, tenant_id: UUID, capsule_id: str) -> Path:
-    cid = _normalize_capsule_id(capsule_id)
     root = _tenant_store_dir(tenant_id)
-    path = (root / f"{cid}.json").resolve()
+    path = (root / f"{capsule_id}.json").resolve()
     try:
         path.relative_to(root)
     except ValueError as exc:
@@ -89,9 +79,8 @@ def _capsule_path(*, tenant_id: UUID, capsule_id: str) -> Path:
 
 
 def _legacy_capsule_path(*, capsule_id: str) -> Path:
-    cid = _normalize_capsule_id(capsule_id)
     root = _store_dir()
-    path = (root / f"{cid}.json").resolve()
+    path = (root / f"{capsule_id}.json").resolve()
     try:
         path.relative_to(root)
     except ValueError as exc:
@@ -101,54 +90,25 @@ def _legacy_capsule_path(*, capsule_id: str) -> Path:
 
 def _capsule_envelope(*, capsule: dict[str, Any], tenant_id: UUID, capsule_id: str, account_id: str) -> dict[str, Any]:
     bound_tenant_id = str(tenant_id)
-    bound_owner_account_id = account_id
     existing_tenant_id = capsule.get("tenant_id")
     if existing_tenant_id is not None and existing_tenant_id != bound_tenant_id:
         raise HTTPException(status_code=400, detail="capsule_tenant_id_mismatch")
     existing_owner_account_id = capsule.get("owner_account_id")
-    if existing_owner_account_id is not None and existing_owner_account_id != bound_owner_account_id:
+    if existing_owner_account_id is not None and existing_owner_account_id != account_id:
         raise HTTPException(status_code=400, detail="capsule_owner_account_id_mismatch")
     return {
         "tenant_id": bound_tenant_id,
-        "owner_account_id": bound_owner_account_id,
+        "owner_account_id": account_id,
         "capsule_id": capsule_id,
-        "capsule": dict(capsule),
+        "capsule": capsule,
     }
 
 
-def _read_capsule_payload(path: Path) -> Any:
+def _read_capsule_payload(path: Path) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=500, detail=f"capsule_read_failed:{exc.__class__.__name__}") from exc
-
-
-def _extract_capsule_binding(
-    payload: Any,
-    *,
-    allow_legacy_raw: bool,
-) -> tuple[str | None, str | None, dict[str, Any]]:
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
-
-    if "capsule" in payload:
-        capsule = payload.get("capsule")
-        if not isinstance(capsule, dict):
-            raise HTTPException(status_code=500, detail="capsule_invalid_payload")
-        return (
-            payload.get("tenant_id"),
-            payload.get("owner_account_id"),
-            capsule,
-        )
-
-    if not allow_legacy_raw:
-        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
-
-    return (
-        payload.get("tenant_id"),
-        payload.get("owner_account_id"),
-        dict(payload),
-    )
 
 
 def _load_authorized_capsule(
@@ -159,11 +119,18 @@ def _load_authorized_capsule(
     allow_legacy_raw: bool,
 ) -> dict[str, Any]:
     payload = _read_capsule_payload(path)
-    bound_tenant_id, bound_owner_account_id, capsule = _extract_capsule_binding(
-        payload,
-        allow_legacy_raw=allow_legacy_raw,
-    )
-    if bound_tenant_id != str(tenant_id) or bound_owner_account_id != str(account_id):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+
+    if "capsule" in payload:
+        capsule = payload["capsule"]
+        if not isinstance(capsule, dict):
+            raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+    elif allow_legacy_raw:
+        capsule = payload
+    else:
+        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+    if payload.get("tenant_id") != str(tenant_id) or payload.get("owner_account_id") != account_id:
         raise HTTPException(status_code=404, detail="capsule_not_found")
     return capsule
 
@@ -206,27 +173,24 @@ def _atomic_replace_text(path: Path, content: str) -> None:
             pass
 
 
-@router.post("/capsules", response_model=EvidenceCapsulePersistResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/capsules", response_model=EvidenceCapsulePersistResponse)
 def persist_evidence_capsule(
     body: EvidenceCapsulePersistRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(settings.EVIDENCE_CAPSULE_PERSIST_ENABLED):
+) -> EvidenceCapsulePersistResponse:
+    if not settings.EVIDENCE_CAPSULE_PERSIST_ENABLED:
         raise HTTPException(status_code=400, detail="EVIDENCE_CAPSULE_PERSIST_ENABLED=false")
 
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    strict_validation = bool(settings.EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED)
-    verify_signature = bool(settings.EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST)
-    verify_hash_on_persist = bool(settings.EVIDENCE_CAPSULE_VERIFY_HASH_ON_PERSIST)
-    strict = strict_validation or verify_hash_on_persist
+    strict = settings.EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED or settings.EVIDENCE_CAPSULE_VERIFY_HASH_ON_PERSIST
     ok, reason = validate_evidence_capsule(
         body.capsule,
         strict=strict,
-        verify_signature=verify_signature,
+        verify_signature=settings.EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST,
     )
     if not ok:
         raise HTTPException(status_code=400, detail=f"invalid_capsule:{reason}")
@@ -237,27 +201,22 @@ def persist_evidence_capsule(
     legacy_path = _legacy_capsule_path(capsule_id=capsule_id)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    allow_overwrite = bool(settings.EVIDENCE_CAPSULE_ALLOW_OVERWRITE)
-    existed = False
-    overwrite_source_path: Path | None = None
-
     if path.exists():
-        existed = True
         overwrite_source_path = path
     elif legacy_path.exists():
-        existed = True
         overwrite_source_path = legacy_path
+    else:
+        overwrite_source_path = None
 
-    if existed:
-        if not bool(body.overwrite) or not allow_overwrite:
+    if overwrite_source_path is not None:
+        if not body.overwrite or not settings.EVIDENCE_CAPSULE_ALLOW_OVERWRITE:
             raise HTTPException(status_code=409, detail="capsule_exists")
-        if overwrite_source_path is not None:
-            _load_authorized_capsule(
-                overwrite_source_path,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                allow_legacy_raw=overwrite_source_path == legacy_path,
-            )
+        _load_authorized_capsule(
+            overwrite_source_path,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            allow_legacy_raw=overwrite_source_path == legacy_path,
+        )
 
     payload = _capsule_envelope(
         capsule=body.capsule,
@@ -266,32 +225,31 @@ def persist_evidence_capsule(
         account_id=account_id,
     )
     serialized_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-    if existed:
-        _atomic_replace_text(path, serialized_payload)
-    else:
+    if overwrite_source_path is None:
         if not _atomic_create_text(path, serialized_payload):
             raise HTTPException(status_code=409, detail="capsule_exists")
+    else:
+        _atomic_replace_text(path, serialized_payload)
     return EvidenceCapsulePersistResponse(
         capsule_id=capsule_id,
         capsule_hash=capsule_hash,
         path=str(path),
-        overwritten=existed,
+        overwritten=overwrite_source_path is not None,
     )
 
 
-@router.get(
-    "/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.get("/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse)
 def get_evidence_capsule(
     capsule_id: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> EvidenceCapsuleGetResponse:
     dataset_service.ensure_member(db, tenant_id, account_id)
-    path = _capsule_path(tenant_id=tenant_id, capsule_id=capsule_id)
-    legacy_path = _legacy_capsule_path(capsule_id=capsule_id)
+    normalized_id = _normalize_capsule_id(capsule_id)
+    path = _capsule_path(tenant_id=tenant_id, capsule_id=normalized_id)
+    legacy_path = _legacy_capsule_path(capsule_id=normalized_id)
 
     if path.exists():
         capsule = _load_authorized_capsule(
@@ -317,22 +275,22 @@ def get_evidence_capsule(
     )
 
 
-@router.post(
-    "/capsules/verify", response_model=EvidenceCapsuleVerifyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.post("/capsules/verify", response_model=EvidenceCapsuleVerifyResponse)
 def verify_evidence_capsule_payload(
     body: EvidenceCapsulePersistRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> EvidenceCapsuleVerifyResponse:
     dataset_service.ensure_member(db, tenant_id, account_id)
-    strict = bool(settings.EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED)
-    require_sig = bool(settings.EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST)
-    ok, reason = validate_evidence_capsule(body.capsule, strict=strict, verify_signature=require_sig)
+    ok, reason = validate_evidence_capsule(
+        body.capsule,
+        strict=settings.EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED,
+        verify_signature=settings.EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST,
+    )
     return EvidenceCapsuleVerifyResponse(
-        capsule_id=(body.capsule_id),
-        valid=bool(ok),
-        reason=str(reason),
+        capsule_id=body.capsule_id,
+        valid=ok,
+        reason=reason,
     )

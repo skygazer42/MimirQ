@@ -42,7 +42,7 @@ def _coerce_scalar(value: str) -> Any:
     if v.isdigit() and 1 <= len(v) <= 18:
         try:
             return int(v)
-        except Exception:
+        except ValueError:
             return v
 
     return v
@@ -216,9 +216,6 @@ def extract_markdown_frontmatter(
         return None
 
     lines = raw.splitlines(keepends=True)
-    if not lines:
-        return None
-
     # Frontmatter must be the very first non-empty line (BOM allowed).
     first = lines[0].rstrip("\r\n")
     if not _FRONTMATTER_START_RE.match(first.strip()):

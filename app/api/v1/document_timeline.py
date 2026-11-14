@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -6,27 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTimelineResponse
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.documents import DocumentTimelineItem, DocumentTimelineQuery, DocumentTimelineResponse
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
-from app.models.dataset import Dataset
-from app.models.document import Document as DBDocument
+from app.models.document import Document
 from app.services import dataset_service
-from app.services.document_access_service import assert_document_acl_readable
+from app.services.document_access_service import assert_document_readable_for_lifecycle
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
-DOC_NOT_FOUND_DETAIL = "Document not found"
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _TIMELINE_REDACT_KEYS = {
     "content",
@@ -87,12 +75,10 @@ def _sanitize_timeline_value(value: Any, *, depth: int) -> Any:
     return _TIMELINE_VALUE_SKIPPED
 
 
-@router.get(
-    "/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
-)
+@router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse)
 def get_document_timeline(
     document_id: UUID,
-    limit: Annotated[int, Query(ge=1, le=200)] = 200,
+    params: Annotated[DocumentTimelineQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -101,15 +87,10 @@ def get_document_timeline(
     """User-facing document timeline (audit logs + synthetic document state events)."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
-        dataset_service.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+    document = db.query(Document).filter(Document.id == document_id, Document.tenant_id == tenant_id).first()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    assert_document_readable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=document)
 
     audit_rows = (
         db.query(AuditLog)
@@ -119,7 +100,7 @@ def get_document_timeline(
             AuditLog.resource_id == str(document_id),
         )
         .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
-        .limit(limit or 200)
+        .limit(params.limit)
         .all()
     )
 
@@ -158,8 +139,8 @@ def get_document_timeline(
         raw_details = row.details
         safe_details = _sanitize_timeline_details(raw_details)
 
-        stage = safe_details.get("stage") if isinstance(safe_details.get("stage"), str) else None
-        status = safe_details.get("status") if isinstance(safe_details.get("status"), str) else None
+        stage = safe_details.get("stage")
+        status = safe_details.get("status")
         progress_val = safe_details.get("progress")
         progress = int(progress_val) if isinstance(progress_val, (int, float)) else None
 
@@ -171,20 +152,22 @@ def get_document_timeline(
                 source="audit",
                 actor_id=row.actor_id,
                 request_id=row.request_id,
-                stage=stage,
-                status=status,
+                stage=stage if isinstance(stage, str) else None,
+                status=status if isinstance(status, str) else None,
                 progress=progress,
                 details=safe_details,
             )
         )
 
-    def _dt_ts(value: datetime | None) -> float:
-        try:
-            return value.timestamp() if value is not None else 0.0
-        except Exception:
-            return 0.0
-
-    items.sort(key=lambda item: (_dt_ts(item.created_at), item.id), reverse=True)
-    items = items[: limit or 200]
+    items.sort(key=_timeline_sort_key, reverse=True)
+    items = items[: params.limit]
 
     return DocumentTimelineResponse(total=len(items), items=items)
+
+
+def _timeline_sort_key(item: DocumentTimelineItem) -> tuple[float, str]:
+    try:
+        timestamp = item.created_at.timestamp()
+    except (ValueError, OverflowError, OSError):
+        timestamp = 0.0
+    return timestamp, item.id

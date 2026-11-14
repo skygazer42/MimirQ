@@ -60,7 +60,7 @@ def _init_hash_buckets(*, node_count: int, dim: int, seed: int) -> tuple[np.ndar
     sign = np.ones((node_count,), dtype=np.float32)
     base = _mix32(seed ^ 0x9E3779B9)
     for idx in range(node_count):
-        mixed = _mix32(int(idx) ^ int(base))
+        mixed = _mix32(idx ^ int(base))
         bucket[idx] = int(mixed % dim)
         sign[idx] = -1.0 if (mixed & 0x80000000) else 1.0
     return bucket, sign
@@ -106,7 +106,7 @@ def _accumulate_walk_context(
             ctx = walk[ctx_index]
             dist = abs(ctx_index - index)
             weight = 1.0 / float(dist)
-            emb[center, bucket[ctx]] += float(sign[ctx]) * float(weight)
+            emb[center, bucket[ctx]] += float(sign[ctx]) * weight
 
 
 def _normalize_embeddings(emb: np.ndarray) -> np.ndarray:

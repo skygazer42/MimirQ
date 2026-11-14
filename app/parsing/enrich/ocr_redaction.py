@@ -44,7 +44,7 @@ def redact_ocr_text(
         mode=secrets_mode_norm,
         mask=str(secrets_mask or "[SECRET]"),
     )
-    return sec_res.text, dict(pii_res.hits or {}), dict(sec_res.hits or {})
+    return sec_res.text, dict(pii_res.hits), dict(sec_res.hits)
 
 
 __all__ = ["redact_ocr_text"]

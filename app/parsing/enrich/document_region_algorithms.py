@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import math
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image as PILImage
+
+if TYPE_CHECKING:
+    from app.parsing.models.runtime import SmallModelRuntime
 
 _FORMULA_TEXT_RE = re.compile(r"(\\[a-zA-Z]+|[=∑√∞≈≤≥]|\$[^$]+\$)")
 _CHART_TEXT_RE = re.compile(
@@ -16,13 +21,14 @@ def _region_from_element(element: Mapping[str, Any], *, region_type: str) -> dic
     source_id = element.get("id")
     if source_id is None:
         source_id = element.get("source_element_id")
+    bbox = element.get("bbox")
     return {
         "region_type": region_type,
         "source_element_id": str(source_id) if source_id is not None else None,
         "kind": element["kind"],
         "text": element["text"][:500],
         "page": element.get("page"),
-        "bbox": dict(element.get("bbox") or {}) if isinstance(element.get("bbox"), Mapping) else None,
+        "bbox": dict(bbox) if isinstance(bbox, Mapping) else None,
     }
 
 
@@ -42,7 +48,11 @@ def detect_chart_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, Any
         kind = element["kind"].lower()
         text = element["text"]
         attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
-        hint = " ".join(str(value) for value in (text, attrs.get("caption_text"), attrs.get("source_content_type")) if value is not None)
+        hint = " ".join(
+            str(value)
+            for value in (text, attrs.get("caption_text"), attrs.get("source_content_type"))
+            if value is not None
+        )
         if kind in {"chart", "plot"} or (kind in {"image", "figure"} and _CHART_TEXT_RE.search(hint)):
             regions.append(_region_from_element(element, region_type="chart"))
     return {"schema": "mimirq.chart_regions.v1", "count": len(regions), "regions": regions}
@@ -84,8 +94,6 @@ def _orientation_angle_from_textline(angle: float) -> int:
     abs_angle = abs(float(angle))
     if abs_angle >= 67.5:
         return 90 if angle > 0 else 270
-    if abs_angle <= 22.5:
-        return 0
     return 0
 
 
@@ -101,11 +109,11 @@ def profile_document_image(image: PILImage.Image) -> dict[str, Any]:
     return {
         "schema": "mimirq.document_image_profile.v1",
         "orientation": {
-            "angle": int(orientation_angle),
+            "angle": orientation_angle,
             "confidence": 0.7 if orientation_angle else 0.55,
         },
         "textline_orientation": {
-            "angle": int(_orientation_angle_from_textline(textline_angle)),
+            "angle": orientation_angle,
             "skew_degrees": round(float(skew), 3),
         },
         "unwarp": {
@@ -118,7 +126,7 @@ def profile_document_image(image: PILImage.Image) -> dict[str, Any]:
 def profile_document_image_with_models(
     image: PILImage.Image,
     *,
-    runtime: Any | None = None,
+    runtime: SmallModelRuntime | None = None,
     run_unwarp: bool = True,
 ) -> dict[str, Any]:
     profile = profile_document_image(image)
@@ -157,7 +165,7 @@ def profile_document_image_with_models(
         profile["models"]["document_rectification"] = {"applied": False, "reason": "disabled"}
         return profile
 
-    if not bool(profile.get("unwarp", {}).get("needed")):
+    if not profile["unwarp"]["needed"]:
         profile["models"]["document_rectification"] = {"applied": False, "reason": "not_needed"}
         return profile
 

@@ -31,7 +31,7 @@ def _normalize_rows(rows: Sequence[Sequence[Any]], col_count: int) -> list[list[
     out: list[list[str]] = []
     for raw in rows:
         row = [_text_grid_cell(cell) for cell in list(raw)[:col_count]]
-        row += [""] * max(0, int(col_count) - len(row))
+        row += [""] * max(0, col_count - len(row))
         if any(row):
             out.append(row)
     return out
@@ -81,16 +81,6 @@ def _intersection(a: Mapping[str, float], b: Mapping[str, float]) -> dict[str, f
     }
 
 
-def _is_row(label: str) -> bool:
-    normalized = label.lower()
-    return "row" in normalized and "header" not in normalized and "spanning" not in normalized
-
-
-def _is_column(label: str) -> bool:
-    normalized = label.lower()
-    return "column" in normalized and "header" not in normalized and "spanning" not in normalized
-
-
 def table_extraction_from_text_grid(
     *,
     columns: Sequence[Any],
@@ -134,22 +124,24 @@ def table_extraction_from_structure_detections(
     source_element_id: str | None = None,
     min_score: float = 0.2,
 ) -> TableExtraction | None:
-    rows: list[dict[str, Any]] = []
-    columns: list[dict[str, Any]] = []
+    rows: list[dict[str, float]] = []
+    columns: list[dict[str, float]] = []
     for detection in detections:
         if detection.score < min_score:
             continue
         box = _bbox_xyxy(detection.bbox, image_size=image_size)
         if box is None:
             continue
-        label = detection.label
-        if _is_row(label):
-            rows.append({"bbox": box, "detection": detection})
-        elif _is_column(label):
-            columns.append({"bbox": box, "detection": detection})
+        label = detection.label.lower()
+        if "header" in label or "spanning" in label:
+            continue
+        if "row" in label:
+            rows.append(box)
+        elif "column" in label:
+            columns.append(box)
 
-    rows.sort(key=lambda item: (float(item["bbox"]["top"]), float(item["bbox"]["left"])))
-    columns.sort(key=lambda item: (float(item["bbox"]["left"]), float(item["bbox"]["top"])))
+    rows.sort(key=lambda box: (box["top"], box["left"]))
+    columns.sort(key=lambda box: (box["left"], box["top"]))
     if not rows or not columns:
         return None
 
@@ -162,7 +154,7 @@ def table_extraction_from_structure_detections(
         target_row_index = 0 if header_rows and row_index == 0 else row_index - header_rows + 1
         is_header = bool(header_rows and row_index == 0)
         for col_index, column in enumerate(columns):
-            cell_box = _intersection(row["bbox"], column["bbox"])
+            cell_box = _intersection(row, column)
             if cell_box is None:
                 continue
             cells.append(

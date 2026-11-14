@@ -15,13 +15,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -72,28 +67,15 @@ def _looks_like_align_row(line: str) -> bool:
 def _is_table_start(lines: list[_Line], i: int) -> bool:
     if i + 1 >= len(lines):
         return False
-    a = lines[i].text.rstrip("\r\n")
-    b = lines[i + 1].text.rstrip("\r\n")
+    a = lines[i].plain
+    b = lines[i + 1].plain
     if "|" not in a or "|" not in b:
         return False
     return _looks_like_align_row(b)
 
 
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text).splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
-
-
 def _is_table_body_line(line: _Line) -> bool:
-    text = line.text.rstrip("\r\n")
+    text = line.plain
     return bool(text.strip()) and "|" in text
 
 

@@ -49,7 +49,9 @@ def _filter_manifest_cases(manifest_path: Path, docs_arg: str) -> tuple[Path, Pa
 
     requested = {item.strip() for item in docs_raw.split(",") if item.strip()}
     filtered = [
-        row for row in rows if isinstance(row, dict) and row.get("id") is not None and str(row["id"]).strip().lower() in requested
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("id") is not None and str(row["id"]).strip().lower() in requested
     ]
     if not filtered:
         raise ValueError("docs_filter_empty")
@@ -104,7 +106,7 @@ def run(argv: list[str] | None = None) -> int:
         bench_argv.extend(["--baseline", str(Path(args.baseline).resolve())])
     if args.strict_profile.strip():
         bench_argv.extend(["--strict-profile", str(Path(args.strict_profile).resolve())])
-    if bool(args.strict):
+    if args.strict:
         bench_argv.append("--strict")
 
     parser_benchmark_script = _load_parser_benchmark_module()

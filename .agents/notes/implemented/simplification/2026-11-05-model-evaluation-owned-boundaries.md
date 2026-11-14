@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+回归比较／导出后来按实际 ORM 与 Pydantic 输入进一步收窄，见[回归原生契约](2026-11-14-regression-native-contracts.md)。本篇的 evaluator、raw score 与实际资源边界继续成立，不能按数字或类型注解盲删。
+
 上下文相关性与三项轨迹算法归 agent_evals 原模块函数；四个操作不读取 self，完整参数、公式、stopword、分支、返回值与调用顺序保持。BaseEvaluator 及具体策略类继续承担实际多态接口，LLM 实例、RAGEvaluator 的可修改注册表、单例和数据类保持。退出的私有方法在全库只有对应四个 self 调用，没有额外的旧测试或注册引用。
 
 reference_match_state 用原模块内 TypedDict 描述已有十二字段字典；引用和 citation 使用既有 _stable_ref_key，退出的函数在参数名映射后整份 AST 相同。dict／Pydantic／ORM、原始引用、记录标识、semantic keys、quote、元数据、排序与截断仍按原政策处理。引用匹配的优先序和先按 chunk 去重再 limit 的规则不与其他指标合并。

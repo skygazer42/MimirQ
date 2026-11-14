@@ -228,12 +228,12 @@ def _changed_examples_for_kind(
 
     changed = 0
     examples: list[dict[str, Any]] = []
-    fp_map_a = fps_a.get(kind) or {}
-    fp_map_b = fps_b.get(kind) or {}
+    fp_map_a = fps_a[kind]
+    fp_map_b = fps_b[kind]
     for key in a_keys & b_keys:
-        fp_a = fp_map_a.get(key)
-        fp_b = fp_map_b.get(key)
-        if fp_a is None or fp_b is None or fp_a == fp_b:
+        fp_a = fp_map_a[key]
+        fp_b = fp_map_b[key]
+        if fp_a == fp_b:
             continue
         changed += 1
         if len(examples) < max_examples:

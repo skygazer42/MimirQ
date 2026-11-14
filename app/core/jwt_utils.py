@@ -10,22 +10,18 @@ import jwt
 from app.core.config import settings
 
 
-def _normalize_claim_key(value: str) -> str:
-    return (value).strip()
-
-
 def _merge_extra_claims(payload: dict[str, Any], extra_claims: dict[str, Any] | None) -> None:
     if not extra_claims:
         return
     for key, claim_value in extra_claims.items():
-        claim_key = _normalize_claim_key(key)
+        claim_key = key.strip()
         if not claim_key or claim_key in payload:
             continue
         payload[claim_key] = claim_value
 
 
 def _set_string_claim(payload: dict[str, Any], key: str, value: str | None) -> None:
-    claim_key = _normalize_claim_key(key)
+    claim_key = key.strip()
     if not claim_key:
         return
     claim_value = value.strip() if value is not None else None
@@ -45,7 +41,7 @@ def create_access_token(
 
     Returns (token, expires_in_seconds).
     """
-    minutes = expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES if expires_minutes is None else expires_minutes
     expires_delta = timedelta(minutes=max(1, minutes))
     now = datetime.now(UTC)
     expire_at = now + expires_delta

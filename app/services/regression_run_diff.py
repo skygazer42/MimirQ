@@ -10,10 +10,6 @@ from typing import Any
 from uuid import UUID
 
 
-def _now_utc() -> datetime:
-    return datetime.now(UTC)
-
-
 def _as_float(v: Any) -> float | None:
     if v is None:
         return None
@@ -36,7 +32,7 @@ def _diff_metric(*, key: str, before: Any, after: Any) -> dict[str, Any]:
     delta: float | None = None
     if b is not None and a is not None:
         delta = round(a - b, 6)
-    return {"key": str(key), "before": before, "after": after, "delta": delta}
+    return {"key": key, "before": before, "after": after, "delta": delta}
 
 
 _RETRIEVAL_DIFF_KEYS = (
@@ -108,13 +104,10 @@ def _build_diff_score(*, base_summary: dict[str, Any], target_summary: dict[str,
             "target_metrics": {},
         }
 
-    weight_sum = sum(float(_DIFF_SCORE_WEIGHTS_V1.get(k) or 0.0) for k in used_keys)
-    if weight_sum <= 0:
-        weight_sum = 1.0
-
-    weights_used = {k: round(float(_DIFF_SCORE_WEIGHTS_V1.get(k) or 0.0) / weight_sum, 6) for k in used_keys}
-    base_score = sum(float(weights_used.get(k) or 0.0) * float(base_vals.get(k) or 0.0) for k in used_keys)
-    target_score = sum(float(weights_used.get(k) or 0.0) * float(target_vals.get(k) or 0.0) for k in used_keys)
+    weight_sum = sum(_DIFF_SCORE_WEIGHTS_V1[k] for k in used_keys)
+    weights_used = {k: round(_DIFF_SCORE_WEIGHTS_V1[k] / weight_sum, 6) for k in used_keys}
+    base_score = sum(weights_used[k] * base_vals[k] for k in used_keys)
+    target_score = sum(weights_used[k] * target_vals[k] for k in used_keys)
     delta = round(target_score - base_score, 6)
 
     return {
@@ -158,7 +151,7 @@ def _build_metric_diffs(
             continue
         metric_diffs.append(_diff_metric(key=key, before=before, after=after))
 
-    metric_diffs.sort(key=lambda d: (-abs(d.get("delta") or 0.0), d["key"]))
+    metric_diffs.sort(key=lambda item: (-abs(item["delta"] or 0.0), item["key"]))
     return metric_diffs
 
 
@@ -275,7 +268,7 @@ def diff_regression_run_summaries(
     return {
         "base_run_id": str(base_run_id),
         "target_run_id": str(target_run_id),
-        "generated_at": _now_utc().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "metric_diffs": metric_diffs,
         "diff_score": diff_score,
         "slice_diffs": slice_diffs,

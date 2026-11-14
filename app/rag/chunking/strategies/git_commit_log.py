@@ -69,17 +69,13 @@ def _scan_commit_headers(chunk: str) -> tuple[str | None, str | None]:
 
 
 def _iter_commits(text: str) -> list[_Commit]:
-    starts = [m.start() for m in _COMMIT_RE.finditer(text)]
-    if not starts:
-        return []
+    matches = list(_COMMIT_RE.finditer(text))
     commits: list[_Commit] = []
-    for idx, start in enumerate(starts):
-        end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
+    for idx, m in enumerate(matches):
+        start = m.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         chunk = (text)[start:end]
-        m = _COMMIT_RE.search(chunk)
-        if not m:
-            continue
-        sha = (m.group("sha")).strip()
+        sha = m.group("sha")
         author, date = _scan_commit_headers(chunk)
         commits.append(_Commit(start=start, end=end, index=len(commits), sha=sha, author=author, date=date))
     return commits
@@ -93,11 +89,8 @@ def _build_sections(text: str, commits: list[_Commit]) -> list[_Section]:
     first = commits[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, commit=None))
-    for idx, c in enumerate(commits):
-        start = c.start
-        end = commits[idx + 1].start if idx + 1 < len(commits) else len(text)
-        end = max(end, c.end)
-        sections.append(_Section(start=start, end=end, commit=c))
+    for c in commits:
+        sections.append(_Section(start=c.start, end=c.end, commit=c))
     return sections
 
 

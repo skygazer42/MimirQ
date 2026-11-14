@@ -182,14 +182,6 @@ class _DocumentState:
     keywords: list[str] | None = None
 
 
-def _resolved_options(
-    options: GovernanceCleanOptions | None,
-    legacy_overrides: dict[str, Any],
-) -> GovernanceCleanOptions:
-    resolved = options or GovernanceCleanOptions()
-    return replace(resolved, **legacy_overrides) if legacy_overrides else resolved
-
-
 def _global_common_lines(
     documents: Sequence[Document],
     options: GovernanceCleanOptions,
@@ -218,7 +210,8 @@ def _extract_frontmatter(
         return
     try:
         frontmatter = extract_markdown_frontmatter_fn(state.original_text, strip=bool(options.strip_frontmatter))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Governance frontmatter extraction failed: %s", type(exc).__name__)
         frontmatter = None
     if frontmatter is None:
         return
@@ -424,7 +417,8 @@ def _extract_title(state: _DocumentState) -> None:
         return
     try:
         state.title = extract_markdown_title_fn(state.text)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Governance title extraction failed: %s", type(exc).__name__)
         state.title = None
 
 
@@ -434,7 +428,8 @@ def _extract_language_and_keywords(state: _DocumentState, options: GovernanceCle
             result = detect_language_fn(state.text, min_chars=int(options.language_min_chars or 0))
             state.language = result.language
             state.language_confidence = result.confidence
-        except Exception:
+        except Exception as exc:
+            logger.debug("Governance language detection failed: %s", type(exc).__name__)
             state.language = None
             state.language_confidence = None
     if options.extract_keywords:
@@ -447,7 +442,8 @@ def _extract_language_and_keywords(state: _DocumentState, options: GovernanceCle
                 top_k=int(options.keywords_top_k or 10),
             )
             state.keywords = list(keywords) if keywords else None
-        except Exception:
+        except Exception as exc:
+            logger.debug("Governance keyword extraction failed: %s", type(exc).__name__)
             state.keywords = None
 
 
@@ -469,7 +465,7 @@ def _add_frontmatter_metadata(meta: dict[str, Any], state: _DocumentState, optio
     if not state.frontmatter_present:
         return
     meta["frontmatter_present"] = True
-    if state.frontmatter_end_char and state.frontmatter_end_char > 0:
+    if state.frontmatter_end_char is not None and state.frontmatter_end_char > 0:
         meta["frontmatter_end_char"] = state.frontmatter_end_char
     if options.strip_frontmatter:
         meta["frontmatter_stripped"] = True
@@ -542,7 +538,7 @@ def _add_quality_metadata(meta: dict[str, Any], text: str) -> None:
 
 
 def _build_clean_document(state: _DocumentState, options: GovernanceCleanOptions) -> Document:
-    meta = dict(state.source.metadata or {})
+    meta = dict(state.source.metadata)
     meta.update(
         {
             "governance_version": GOVERNANCE_RULESET_VERSION,
@@ -657,9 +653,11 @@ class GovernanceProcessor:
         *,
         rules: Iterable[RegexRule] | None = None,
         options: GovernanceCleanOptions | None = None,
-        **legacy_overrides: Any,
+        **overrides: Any,
     ) -> tuple[list[Document], GovernanceStats]:
-        resolved = _resolved_options(options, legacy_overrides)
+        resolved = GovernanceCleanOptions() if options is None else options
+        if overrides:
+            resolved = replace(resolved, **overrides)
         if not documents:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0, dropped=0, drop_reasons={})
 

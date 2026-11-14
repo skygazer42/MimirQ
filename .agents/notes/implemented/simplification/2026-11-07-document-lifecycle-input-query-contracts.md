@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+未分配文档删除的后续权限修正见[文档写入边界](../bug-fix/2026-11-14-document-write-boundaries.md)：沿用已有编辑角色与 owner，内部显式 bypass 保留。本篇 PATCH 与单列清理责任不变。
+
 DocumentLifecycleMetadataUpdateRequest 的字段校验器在现有类型与 255 字符限制之后处理负责人：保留 None，去空白，空字符串归空。服务直接使用模型值和已校验的发布状态；响应模型继续使用原发布状态校验器。省略字段不修改、显式 null 清空和 model_fields_set 保持，负责人最终落盘值与原服务规则相同。
 
 图片清理直接迭代实际 SQLAlchemy Query.yield_per 返回的单列 Row 并解包 img_id，退出本模块的 _iter_query_rows 和 _row_named_value。SQL 标签、租户／文档过滤、批大小、原字符串筛选、集合去重、排序和 MinIO 批次保持；不回退到一次性 all() 或空结果。

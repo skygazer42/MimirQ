@@ -56,9 +56,9 @@ def _line_stats(text: str) -> tuple[int, float, float, float]:
         return 0, 0.0, 0.0, 0.0
     lengths = [len(ln) for ln in lines]
     n = len(lengths)
-    avg = sum(lengths) / max(1, n)
-    short_ratio = sum(1 for x in lengths if x <= 80) / max(1, n)
-    very_short_ratio = sum(1 for x in lengths if x <= 40) / max(1, n)
+    avg = sum(lengths) / n
+    short_ratio = sum(1 for x in lengths if x <= 80) / n
+    very_short_ratio = sum(1 for x in lengths if x <= 40) / n
     return n, avg, short_ratio, very_short_ratio
 
 
@@ -127,14 +127,14 @@ def _soft_line_break_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue | 
 
 
 def _hyphenation_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue | None:
-    hyphen_breaks = list(_HYPHEN_BREAK_RE.finditer(raw))
-    if len(hyphen_breaks) < 5:
+    hyphen_breaks = len(_HYPHEN_BREAK_RE.findall(raw))
+    if hyphen_breaks < 5:
         return None
     return GovernanceIssue(
         code="pdf_hyphenation_breaks",
         severity="info",
         message="检测到较多断字连字符（'-\n'）：合并软换行/去连字符可改善连贯性。",
-        count=len(hyphen_breaks),
+        count=hyphen_breaks,
         samples=[],
         suggested_pipeline_patch=_unwrap_patch(opts),
     )
@@ -243,12 +243,15 @@ def _low_density_risk_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue |
 
 
 def _after_clean_density_issue(raw_after: str) -> GovernanceIssue | None:
-    if not raw_after or _density(raw_after) >= 0.08:
+    if not raw_after:
+        return None
+    density = _density(raw_after)
+    if density >= 0.08:
         return None
     return GovernanceIssue(
         code="low_density_after_clean",
         severity="warning",
-        message=f"清洗后文本密度仍偏低（density={_density(raw_after):.3f}）：建议检查解析器/是否为扫描件。",
+        message=f"清洗后文本密度仍偏低（density={density:.3f}）：建议检查解析器/是否为扫描件。",
         count=0,
         samples=[],
         suggested_pipeline_patch={},
@@ -271,8 +274,9 @@ def analyze_governance(
       actions that are already enabled.
     """
     opts = options or {}
-    raw_before = (before)[: max(0, int(max_chars))]
-    raw_after = (after)[: max(0, int(max_chars))]
+    limit = max(0, int(max_chars))
+    raw_before = before[:limit]
+    raw_after = after[:limit]
 
     issues: list[GovernanceIssue] = []
     patch: dict[str, Any] = {}

@@ -52,7 +52,7 @@ def _base_retrieval_meta(
             "abstain_reason": None,
         },
     )
-    return dict(meta or {})
+    return dict(meta)
 
 
 def _must_recall_result(meta: dict[str, Any]) -> tuple[bool | None, str]:
@@ -79,7 +79,7 @@ def _copy_parse_quality_metrics(out: dict[str, Any], metrics: dict[str, Any]) ->
         "parse_quality_gate_blocked",
     ):
         if key in metrics:
-            out[key] = metrics.get(key)
+            out[key] = metrics[key]
 
 
 def _item_evidence_capsule(

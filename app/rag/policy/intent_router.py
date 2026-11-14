@@ -112,7 +112,7 @@ def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> list[str]:
     for item in raw:
         if item is None:
             continue
-        term = " ".join(str(item).strip().split())
+        term = " ".join(str(item).split())
         if not term:
             continue
         key = term.casefold()
@@ -262,8 +262,8 @@ def _query_matches_policy_rule(query: str, rule: dict[str, Any]) -> bool:
     if not q:
         return False
 
-    match_any = [x.casefold() for x in (rule.get("match_any") or []) if x.strip()]
-    match_all = [x.casefold() for x in (rule.get("match_all") or []) if x.strip()]
+    match_any = [x.casefold() for x in rule["match_any"]]
+    match_all = [x.casefold() for x in rule["match_all"]]
 
     any_ok = True if not match_any else any(term in q for term in match_any)
     all_ok = all(term in q for term in match_all)
@@ -399,12 +399,11 @@ def _apply_matching_policy_rules(
     policy: dict[str, Any] | None,
 ) -> list[str]:
     rule_ids: list[str] = []
-    for rule in (policy or {}).get("rules", []):
-        if not isinstance(rule, dict) or not _query_matches_policy_rule(query, rule):
+    for rule in policy["rules"] if policy is not None else []:
+        if not _query_matches_policy_rule(query, rule):
             continue
-        rule_ids.append(rule["rule_id"][:40])
-        for key, value in dict(rule.get("overrides") or {}).items():
-            overrides[str(key)] = value
+        rule_ids.append(rule["rule_id"])
+        overrides.update(rule["overrides"])
     return rule_ids
 
 
@@ -441,12 +440,11 @@ def _apply_learned_router_hint(
 
     meta["enabled"] = True
     hint = predict_learned_router_hint(query=query, model=learned_model)
-    confidence = min(1.0, max(0.0, float(hint.get("confidence") or 0.0)))
+    confidence = min(1.0, max(0.0, hint["confidence"]))
     meta["confidence"] = round(confidence, 6)
-    rule_id = hint.get("rule_id")
-    meta["rule_id"] = rule_id[:40] if rule_id is not None else None
-    hint_overrides = _sanitize_policy_overrides(hint.get("overrides"))
-    gate = float(meta.get("confidence_gate") or 0.0)
+    meta["rule_id"] = hint["rule_id"]
+    hint_overrides = _sanitize_policy_overrides(hint["overrides"])
+    gate = meta["confidence_gate"]
     if confidence < gate:
         meta["skipped_reason"] = "confidence_below_gate"
         return meta
@@ -458,8 +456,8 @@ def _apply_learned_router_hint(
     for key, value in hint_overrides.items():
         if key in overrides:
             continue
-        overrides[str(key)] = value
-        applied.append(str(key))
+        overrides[key] = value
+        applied.append(key)
     meta["applied_overrides"] = sorted(applied)
     meta["used"] = bool(applied)
     if not applied:
@@ -482,15 +480,17 @@ def _enforce_profile_contract(
     supported = {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}
     if effective not in supported:
         return
+    effective_top_k = int(overrides.get("top_k") or top_k)
+    effective_threshold = float(overrides.get("score_threshold") or score_threshold)
     contracted_top_k, contracted_threshold = _apply_profile_contract(
         profile=effective,
-        top_k=int(overrides.get("top_k") or top_k),
-        score_threshold=float(overrides.get("score_threshold") or score_threshold),
+        top_k=effective_top_k,
+        score_threshold=effective_threshold,
     )
-    if int(contracted_top_k) != int(top_k):
-        overrides["top_k"] = int(contracted_top_k)
-    if float(contracted_threshold) != float(score_threshold):
-        overrides["score_threshold"] = float(contracted_threshold)
+    if contracted_top_k != effective_top_k:
+        overrides["top_k"] = contracted_top_k
+    if contracted_threshold != effective_threshold:
+        overrides["score_threshold"] = contracted_threshold
 
 
 def route_retrieval_preset(
@@ -552,7 +552,7 @@ def route_retrieval_preset(
         "policy_used": bool(policy_rule_ids),
         "policy_rule_ids": policy_rule_ids,
         "learned_router": learned_meta,
-        "overrides": sorted(overrides.keys()),
+        "overrides": sorted(overrides),
     }
     return overrides, meta
 
@@ -650,8 +650,7 @@ def normalize_adaptive_router_policy(policy: Any) -> dict[str, Any] | None:
 
 
 def _query_len_bucket(query: str) -> str:
-    q = query
-    n = len(q)
+    n = len(query)
     if n <= 40:
         return "short"
     if n <= 120:
@@ -667,25 +666,24 @@ def _adaptive_rule_matches(
     len_bucket: str,
     rule: dict[str, Any],
 ) -> bool:
-    when = rule.get("when")
-    when = when if isinstance(when, dict) else {}
+    when = rule["when"]
 
-    intent_in = [str(v) for v in (when.get("intent_in") or []) if str(v).strip()]
-    if intent_in and intent.strip().lower() not in {v.lower() for v in intent_in}:
+    intent_in = when.get("intent_in")
+    if intent_in and intent.strip().lower() not in intent_in:
         return False
 
-    mode_in = [str(v) for v in (when.get("retrieval_mode_in") or []) if str(v).strip()]
-    if mode_in and retrieval_mode.strip().lower() not in {v.lower() for v in mode_in}:
+    mode_in = when.get("retrieval_mode_in")
+    if mode_in and retrieval_mode.strip().lower() not in mode_in:
         return False
 
-    bucket_in = [str(v) for v in (when.get("query_len_bucket_in") or []) if str(v).strip()]
-    if bucket_in and len_bucket.strip().lower() not in {v.lower() for v in bucket_in}:
+    bucket_in = when.get("query_len_bucket_in")
+    if bucket_in and len_bucket.strip().lower() not in bucket_in:
         return False
 
-    contains_any = [str(v) for v in (when.get("contains_any") or []) if str(v).strip()]
+    contains_any = when.get("contains_any")
     if contains_any:
         q_fold = query.casefold()
-        if not any(str(token).casefold() in q_fold for token in contains_any):
+        if not any(token.casefold() in q_fold for token in contains_any):
             return False
 
     has_quotes = when.get("has_quotes")
@@ -729,9 +727,7 @@ def route_adaptive_retrieval_overrides(
 
     matched_rule_ids: list[str] = []
     overrides: dict[str, Any] = {}
-    for rule in policy.get("rules") or []:
-        if not isinstance(rule, dict):
-            continue
+    for rule in policy["rules"]:
         if not _adaptive_rule_matches(
             query=query,
             intent=intent,
@@ -740,16 +736,13 @@ def route_adaptive_retrieval_overrides(
             rule=rule,
         ):
             continue
-        rid = rule["rule_id"][:40]
-        if rid:
-            matched_rule_ids.append(rid)
-        for key, value in dict(rule.get("overrides") or {}).items():
-            overrides[str(key)] = value
+        matched_rule_ids.append(rule["rule_id"])
+        overrides.update(rule["overrides"])
 
     meta = {
         "enabled": True,
         "used": bool(overrides),
-        "rule_count": int(len(list(policy.get("rules") or []))),
+        "rule_count": len(policy["rules"]),
         "matched_rule_ids": matched_rule_ids[:8],
         "signals": {
             "intent": str(intent or "general"),
@@ -758,7 +751,7 @@ def route_adaptive_retrieval_overrides(
             "has_quotes": bool(any(ch in query for ch in ("'", '"', "“", "”", "‘", "’", "`"))),
             "has_digits": bool(any(ch.isdigit() for ch in query)),
         },
-        "overrides": sorted(overrides.keys()),
+        "overrides": sorted(overrides),
     }
     return overrides, meta
 

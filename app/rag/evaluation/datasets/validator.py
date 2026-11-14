@@ -5,9 +5,7 @@ from app.rag.evaluation.datasets.schema import (
     _ANNOTATION_STATUS,
     _QUERY_TYPES,
     _REVIEW_STATUS,
-    _ROUTES,
     _SOURCE_TYPES,
-    EVAL_DATASET_SCHEMA_V1,
     normalize_eval_dataset_sample,
 )
 
@@ -43,11 +41,6 @@ def _validate_row(
         if value not in allowed:
             errors.append(f"{row_prefix}.{field} invalid")
 
-    if row["expected_route"] is not None and row["expected_route"] not in _ROUTES:
-        errors.append(f"{row_prefix}.expected_route invalid")
-    if not row["is_unanswerable"] and not isinstance(row["gold_chunk_ids"], list):
-        errors.append(f"{row_prefix}.gold_chunk_ids invalid")
-
     query_counts[row["query_type"]] += 1
     source_counts[row["source_type"]] += 1
 
@@ -78,8 +71,6 @@ def validate_eval_dataset(*, rows: list[dict[str, Any]], manifest: dict[str, Any
     query_counts: Counter[str] = Counter()
     source_counts: Counter[str] = Counter()
     for index, row in enumerate(normalized_rows, start=1):
-        if row["schema_version"] != EVAL_DATASET_SCHEMA_V1:
-            errors.append(f"row[{index}].schema_version invalid")
         _validate_row(
             row=row,
             index=index,

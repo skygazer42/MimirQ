@@ -134,8 +134,6 @@ def metadata_condition_to_filter(
             raise MetadataConditionValidationError("Invalid Dify metadata_condition condition")
         parts.append(dify_metadata_condition_item_to_filter(raw_condition))
 
-    if not parts:
-        return None
     metadata_filter = parts[0] if len(parts) == 1 else {"$or" if logical_operator == "or" else "$and": parts}
     validate_metadata_filter_fields(metadata_filter, allowed_fields=allowed_fields)
     return metadata_filter

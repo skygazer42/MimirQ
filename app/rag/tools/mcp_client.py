@@ -564,8 +564,14 @@ def get_mcp_client() -> MCPClient:
     """Get or create the default MCP client."""
     global _default_client
     if _default_client is None:
-        _default_client = MCPClient()
+        _default_client = MCPClient(timeout=MCP_TIMEOUT, max_retries=MCP_MAX_RETRIES)
     return _default_client
+
+
+async def close_mcp_client() -> None:
+    """Close the default client's connection when it has been created."""
+    if _default_client is not None:
+        await _default_client.close()
 
 
 def get_mcp_registry() -> MCPToolRegistry:

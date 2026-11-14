@@ -6,23 +6,30 @@ It provides a thin optional-dependency wrapper that can be used by deployments
 that choose to run DocTr/LaMa/etc in-process.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.core.optional_deps import optional_import, require_dependency
+from app.core.optional_deps import require_dependency
 
-
-@lru_cache(maxsize=1)
-def _onnxruntime():  # noqa: ANN202
-    return optional_import("onnxruntime", feature="preprocess_onnxruntime", pip_name="onnxruntime")
+if TYPE_CHECKING:
+    from onnxruntime import InferenceSession
 
 
 @dataclass(frozen=True, slots=True)
 class LoadedModel:
     name: str
     backend: str
-    handle: Any
+    handle: InferenceSession
+
+
+def positive_onnx_dimension(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except Exception:
+        return None
+    return number if number > 0 else None
 
 
 class PreprocessModelLoader:
@@ -58,4 +65,4 @@ def get_preprocess_model_loader() -> PreprocessModelLoader:
     return _LOADER
 
 
-__all__ = ["LoadedModel", "PreprocessModelLoader", "get_preprocess_model_loader"]
+__all__ = ["LoadedModel", "PreprocessModelLoader", "get_preprocess_model_loader", "positive_onnx_dimension"]

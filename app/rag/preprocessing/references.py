@@ -35,15 +35,6 @@ _CITATION_LINE_RE = re.compile(r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,4}\u3
 _CITATION_TOKEN_RE = re.compile(r"(?:^|\s)(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,4}\u3011)\s+")
 
 
-def _normalized_heading_title(line: str) -> str:
-    stripped = (line).strip()
-    parsed_heading = parse_markdown_hash_heading(stripped)
-    if parsed_heading is None:
-        return stripped
-    _level, heading_title = parsed_heading
-    return heading_title
-
-
 def _has_enough_reference_tail(lines: list[str], start_idx: int, min_lines_eff: int) -> bool:
     remaining = len(lines) - start_idx - 1
     if remaining >= min_lines_eff:
@@ -60,12 +51,14 @@ def _find_reference_heading_index(
 ) -> int | None:
     line_count = len(lines)
     for idx, line in enumerate(lines):
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
-        title = _normalized_heading_title(line).casefold()
+        heading = parse_markdown_hash_heading(stripped)
+        title = (heading[1] if heading is not None else stripped).casefold()
         if title not in _HEADING_TEXTS:
             continue
-        if (idx / max(1, line_count)) < min_position_ratio:
+        if (idx / line_count) < min_position_ratio:
             continue
         if not _has_enough_reference_tail(lines, idx, min_lines_eff):
             continue
@@ -77,15 +70,8 @@ def _citation_ratio_ok(tail: list[str], citation_like_ratio: float) -> bool:
     if not tail:
         return True
     cite_like = sum(1 for line in tail if _CITATION_LINE_RE.match(line))
-    ratio = cite_like / max(1, len(tail))
+    ratio = cite_like / len(tail)
     return ratio >= citation_like_ratio
-
-
-def _trim_trailing_blank_lines(lines: list[str]) -> list[str]:
-    trimmed = list(lines)
-    while trimmed and not (trimmed[-1]).strip():
-        trimmed.pop()
-    return trimmed
 
 
 def trim_references_section(
@@ -101,9 +87,6 @@ def trim_references_section(
 
     lines = original.splitlines()
     n = len(lines)
-    if n <= 0:
-        return ReferencesTrimResult(text=original, removed_lines=0, changed=False)
-
     min_lines_eff = max(0, int(min_lines_after or 0))
     candidate_idx = _find_reference_heading_index(
         lines,
@@ -117,7 +100,9 @@ def trim_references_section(
     if not _citation_ratio_ok(tail, float(citation_like_ratio or 0.0)):
         return ReferencesTrimResult(text=original, removed_lines=0, changed=False)
 
-    kept_lines = _trim_trailing_blank_lines(lines[:candidate_idx])
+    kept_lines = lines[:candidate_idx]
+    while kept_lines and not kept_lines[-1].strip():
+        kept_lines.pop()
     out = "\n".join(kept_lines)
     removed = n - len(kept_lines)
     return ReferencesTrimResult(text=out, removed_lines=removed, changed=(out != original))

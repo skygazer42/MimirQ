@@ -162,7 +162,9 @@ def _build_entity_payload(
             "role": (role.strip() or None) if role is not None else None,
             "weight": weight if isinstance(weight, (int, float)) else None,
             "evidence_quote": (evidence_quote.strip() or None) if evidence_quote is not None else None,
-            "evidence_source": (source_span["source"].strip() or None) if source_span.get("source") is not None else None,
+            "evidence_source": (source_span["source"].strip() or None)
+            if source_span.get("source") is not None
+            else None,
             "evidence_start_char": source_span.get("start_char")
             if isinstance(source_span.get("start_char"), int)
             else None,

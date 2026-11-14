@@ -30,6 +30,8 @@ QueryProvider 明确禁用 focus refetch，并启用 reconnect refetch。缓慢�
 - 继续依赖 onSend effect 重建识别器，能获得最新 callback，但真实父组件每次 render 都传新函数，会泄漏仍在工作的识别器，因此只更新 callback ref，资源随打开状态管理。
 - 点击停止立刻发送当前 transcript，响应更快，但浏览器在 stop 后仍会交付最后的 final 结果，因此等待原生结束事件。关闭与错误保留为取消边界，避免误提交。
 - 扩大修改共享 ConfirmDialog 可以统一全站异步确认，但影响超出本批五个所有者；本处使用既有 primitives 完成当前动作生命周期，共享组件及其他调用方不被迁移。
+
+共享确认后续在完整前端目标中由[确认结果所有权](2026-11-13-confirmation-mutation-results.md)接管实际生产调用链；本篇会话专属并发、查询取消与确认的独立决定保持。
 - 只检查当前会话字符串，简单且能隔离不同会话，但同 key 查询可以在身份范围变化后重建，因此缓存写入还必须匹配实际查询实体；不另建身份或摘要数据源。
 - 从最新 mutation observer 的 variables 推导 busy，改动更小，但它在启动 B 后会失去 A 的待处理状态；只按当前 key 调整 useIsMutating 筛选，在现有 TanStack 版本中还可能等下一次 mutation cache 事件才重算快照。因此使用稳定动作 key 的全部 pending 快照，再在当前 render 按原会话和实体选择。
 

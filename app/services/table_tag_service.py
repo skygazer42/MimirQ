@@ -17,11 +17,7 @@ from langchain_openai import ChatOpenAI
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.code_fence import extract_first_code_fence
-from app.rag.core.logging import get_logger
 from app.services.table_join_stats import build_join_statistics_snapshot
-from app.services.table_schema_graph import (
-    infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
-)
 from app.services.table_schema_graph import (
     score_join_plan_candidates,
     score_multi_join_plan_candidates,
@@ -48,11 +44,7 @@ class _SchemaLinkDiagnostics(TypedDict):
 
 
 def _table_column_names(columns: list[dict[str, Any]]) -> list[str]:
-    return [
-        column['name'].strip()
-        for column in (columns or [])
-        if isinstance(column, dict) and column['name'].strip()
-    ]
+    return [column["name"].strip() for column in columns if isinstance(column, dict) and column["name"].strip()]
 
 
 def _column_is_numeric(column: dict[str, Any]) -> bool:
@@ -64,15 +56,15 @@ def _column_is_numeric(column: dict[str, Any]) -> bool:
 
 
 def _iter_named_columns(columns: list[dict[str, Any]]) -> Iterator[tuple[dict[str, Any], str]]:
-    for column in columns or []:
+    for column in columns:
         if not isinstance(column, dict):
             continue
-        name = column['name'].strip()
+        name = column["name"].strip()
         if name:
             yield column, name
 
 
-def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
+def create_table_chat_model(*, temperature: float = 0.0) -> ChatOpenAI:
     model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL).strip()
     if not model_name:
         model_name = "gpt-5.4-mini"
@@ -82,7 +74,7 @@ def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
         base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=float(temperature),
         timeout=float(settings.LLM_TIMEOUT),
-        max_retries=settings.LLM_MAX_RETRIES or 2,
+        max_retries=settings.LLM_MAX_RETRIES,
         streaming=False,
     )
 
@@ -137,10 +129,10 @@ def _iter_filtered_named_columns(
 def _iter_table_named_columns(
     tables: list[dict[str, Any]], *, numeric: bool | None = None
 ) -> Iterator[tuple[str, dict[str, Any], str]]:
-    for table in tables or []:
+    for table in tables:
         if not isinstance(table, dict):
             continue
-        table_name = table['table_name'].strip()
+        table_name = table["table_name"].strip()
         for column, name in _iter_named_columns(table.get("columns") or []):
             is_numeric = _column_is_numeric(column)
             if numeric is True and not is_numeric:
@@ -315,7 +307,7 @@ def score_schema_link_diagnostics(
     Diagnostics are intentionally compact and PII-safe: only matched schema/value signals,
     score, strategy, and reason.
     """
-    q = " ".join((question).strip().split())
+    q = " ".join(question.strip().split())
     col_names = _table_column_names(columns)
     table_names = _unique_keep_order([sql_table.strip(), *list(table_aliases or [])])
     terms = _extract_schema_terms(q, max_terms=20)
@@ -352,15 +344,6 @@ def score_schema_link_diagnostics(
     }
 
 
-def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Best-effort relationship inference for multi-table TAG planning.
-
-    Output is intentionally compact and deterministic to keep traces auditable.
-    """
-    return infer_schema_relationships_from_graph(tables=tables)
-
-
 def _pick_join_group_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     q = question
     if not q:
@@ -383,36 +366,17 @@ def _pick_join_metric_column(question: str, tables: list[dict[str, Any]]) -> tup
     return None, None
 
 
-def _to_float(value: Any, default: float = 0.0) -> float:
-    try:
-        if value is None:
-            return float(default)
-        return float(value)
-    except Exception:
-        return float(default)
-
-
-def _to_int(value: Any, default: int = 0) -> int:
-    try:
-        if value is None:
-            return int(default)
-        return int(value)
-    except Exception:
-        return int(default)
-
-
 def _build_join_plan_risk_contract(
     *,
-    selected_candidate: dict[str, Any] | None,
-    dry_run_cardinality: dict[str, Any] | None,
+    selected_candidate: dict[str, Any],
+    dry_run_cardinality: dict[str, Any],
 ) -> dict[str, Any]:
-    candidate = selected_candidate if isinstance(selected_candidate, dict) else {}
-    cost_signals = candidate.get("cost_signals") if isinstance(candidate.get("cost_signals"), dict) else {}
-    fanout_ratio = _to_float(cost_signals.get("fanout_ratio"), 0.0)
+    cost_signals = selected_candidate.get("cost_signals", {})
+    fanout_ratio = cost_signals.get("fanout_ratio", 0.0)
     left_sel = cost_signals.get("left_selectivity")
     right_sel = cost_signals.get("right_selectivity")
     selectivity_unknown = left_sel is None or right_sel is None
-    fanout_explosive = fanout_ratio >= 20.0 or bool((dry_run_cardinality or {}).get("explosive"))
+    fanout_explosive = fanout_ratio >= 20.0 or dry_run_cardinality["explosive"]
 
     reason_codes: list[str] = []
     if fanout_explosive:
@@ -430,26 +394,25 @@ def _build_join_plan_risk_contract(
 
 def _dry_run_join_cardinality(
     *,
-    selected_candidate: dict[str, Any] | None,
+    selected_candidate: dict[str, Any],
     max_rows: int,
 ) -> dict[str, Any]:
-    candidate = selected_candidate if isinstance(selected_candidate, dict) else {}
-    join = candidate.get("join") if isinstance(candidate.get("join"), dict) else {}
-    left_rows = max(0, _to_int(join.get("left_row_count"), 0))
-    right_rows = max(0, _to_int(join.get("right_row_count"), 0))
-    cost_signals = candidate.get("cost_signals") if isinstance(candidate.get("cost_signals"), dict) else {}
-    fanout_ratio = _to_float(cost_signals.get("fanout_ratio"), 1.0)
+    join = selected_candidate.get("join", {})
+    left_rows = max(0, join.get("left_row_count") or 0)
+    right_rows = max(0, join.get("right_row_count") or 0)
+    cost_signals = selected_candidate.get("cost_signals", {})
+    fanout_ratio = cost_signals.get("fanout_ratio", 1.0)
     left_sel = cost_signals.get("left_selectivity")
     right_sel = cost_signals.get("right_selectivity")
-    left_sel_v = _to_float(left_sel, -1.0)
-    right_sel_v = _to_float(right_sel, -1.0)
+    left_sel_v = -1.0 if left_sel is None else left_sel
+    right_sel_v = -1.0 if right_sel is None else right_sel
     selectivity_known = left_sel_v >= 0.0 and right_sel_v >= 0.0
     min_sel = min(left_sel_v, right_sel_v) if selectivity_known else 0.1
     min_sel = min(1.0, max(0.001, min_sel))
 
-    base_rows = max(left_rows, right_rows, int(max_rows or 1))
+    base_rows = max(left_rows, right_rows, max_rows or 1)
     estimated_upper_rows = int(max(1.0, float(base_rows) * max(1.0, fanout_ratio) / min_sel))
-    explosive = estimated_upper_rows > max(1, int(max_rows or 1)) * 10
+    explosive = estimated_upper_rows > max(1, max_rows) * 10
 
     return {
         "schema": "mimirq.tag_join_cardinality_dryrun.v1",
@@ -459,7 +422,7 @@ def _dry_run_join_cardinality(
         "left_selectivity": (round(left_sel_v, 6) if left_sel_v >= 0.0 else None),
         "right_selectivity": (round(right_sel_v, 6) if right_sel_v >= 0.0 else None),
         "estimated_upper_rows": estimated_upper_rows,
-        "max_rows_budget": max(1, int(max_rows or 1)),
+        "max_rows_budget": max(1, max_rows),
         "explosive": explosive,
     }
 
@@ -484,16 +447,16 @@ class _JoinCandidateSelection:
 
 def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     valid_tables: list[dict[str, Any]] = []
-    for raw in tables or []:
+    for raw in tables:
         if not isinstance(raw, dict):
             continue
-        table_name = raw['table_name'].strip()
+        table_name = raw["table_name"].strip()
         columns = raw.get("columns")
         if not table_name or not isinstance(columns, list):
             continue
         try:
             row_count = int(raw.get("row_count") or 0)
-        except Exception:
+        except (OverflowError, TypeError, ValueError):
             row_count = 0
         sample_rows_raw = raw.get("sample_rows")
         sample_rows = (
@@ -548,25 +511,14 @@ def _select_join_candidate(
     if not state.candidate_rows:
         raise ValueError("no_join_relationship_found")
 
-    selected_candidate = (
-        state.plan_candidates.get("selected")
-        if isinstance(state.plan_candidates.get("selected"), dict)
-        else state.candidate_rows[0]
-    )
+    selected_candidate = state.candidate_rows[0]
     if len(valid_tables) <= 2 or not state.multi_candidate_rows:
         return _JoinCandidateSelection(candidate=selected_candidate, selected_from_multi=False)
 
-    multi_selected = (
-        state.multi_plan_candidates.get("selected")
-        if isinstance(state.multi_plan_candidates.get("selected"), dict)
-        else state.multi_candidate_rows[0]
-    )
-    if not isinstance(multi_selected, dict):
-        return _JoinCandidateSelection(candidate=selected_candidate, selected_from_multi=False)
-
-    multi_tables = [str(v) for v in (multi_selected.get("selected_tables") or []) if str(v).strip()]
-    pair_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
-    multi_score = float(multi_selected.get("score") or 0.0)
+    multi_selected = state.multi_candidate_rows[0]
+    multi_tables = multi_selected["selected_tables"]
+    pair_score = selected_candidate["score"]
+    multi_score = multi_selected["score"]
     if len(multi_tables) >= 3 and multi_score >= (pair_score * 0.9):
         return _JoinCandidateSelection(candidate=multi_selected, selected_from_multi=True)
     return _JoinCandidateSelection(candidate=selected_candidate, selected_from_multi=False)
@@ -580,7 +532,7 @@ def _selected_plan_candidates(
 
 
 def _join_confidence_state(selected_candidate: dict[str, Any]) -> tuple[float, float, bool, bool]:
-    selected_score = float(selected_candidate.get("score") or 0.0)
+    selected_score = selected_candidate["score"]
     low_confidence_threshold = settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD or 0.55
     low_confidence_threshold = min(1.0, max(0.0, low_confidence_threshold))
     low_confidence = selected_score < low_confidence_threshold
@@ -589,24 +541,16 @@ def _join_confidence_state(selected_candidate: dict[str, Any]) -> tuple[float, f
 
 
 def _selected_join_payload(selected_candidate: dict[str, Any]) -> dict[str, Any]:
-    selected_join = selected_candidate.get("join")
-    if isinstance(selected_join, dict):
-        return selected_join
-    joins_path = [join for join in (selected_candidate.get("joins") or []) if isinstance(join, dict)]
-    return joins_path[0] if joins_path else {}
+    if "join" in selected_candidate:
+        return selected_candidate["join"]
+    return selected_candidate["joins"][0]
 
 
 def _dedupe_join_relationships(
     selected_candidate: dict[str, Any],
     candidate_rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    relationships: list[dict[str, Any]] = []
-    if isinstance(selected_candidate.get("joins"), list):
-        relationships.extend(join for join in (selected_candidate.get("joins") or []) if isinstance(join, dict))
-    for candidate in candidate_rows:
-        join = candidate.get("join") if isinstance(candidate, dict) else None
-        if isinstance(join, dict):
-            relationships.append(join)
+    relationships = [*selected_candidate.get("joins", []), *(candidate["join"] for candidate in candidate_rows)]
 
     dedupe_keys: set[str] = set()
     unique_relationships: list[dict[str, Any]] = []
@@ -627,11 +571,10 @@ def _dedupe_join_relationships(
 def _join_group_expr(
     *,
     alias_map: dict[str, str],
-    group_table: str | None,
+    group_table: str,
     group_col: str,
-    right_alias: str,
 ) -> str:
-    return f"{alias_map.get(str(group_table), right_alias)}.{_quote_ident(group_col)}"
+    return f"{alias_map[group_table]}.{_quote_ident(group_col)}"
 
 
 def _join_metric_expr(
@@ -639,15 +582,12 @@ def _join_metric_expr(
     alias_map: dict[str, str],
     metric_table: str,
     metric_col: str,
-    left_alias: str,
 ) -> str:
-    return f"{alias_map.get(metric_table, left_alias)}.{_quote_ident(metric_col)}"
+    return f"{alias_map[metric_table]}.{_quote_ident(metric_col)}"
 
 
 def _join_metric_aggregation(question: str, *, question_fold: str, group_col: str | None) -> str | None:
-    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question)) or (
-        group_col is not None and "金额" in question
-    ):
+    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question)) or (group_col is not None and "金额" in question):
         return "sum"
     if any(k in question_fold for k in ("avg", "average", "均值", "平均")):
         return "avg"
@@ -685,9 +625,7 @@ def _build_join_query_sql(
     aggregation_column = metric_col if metric_table and metric_col else None
     if bool(_TABLE_PICK_COUNT_INTENT_RE.search(question)):
         if group_table and group_col:
-            group_expr = _join_group_expr(
-                alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
-            )
+            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col)
             sql = (
                 f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -714,13 +652,9 @@ def _build_join_query_sql(
         group_col=group_col,
     )
     if aggregation == "sum":
-        metric_expr = _join_metric_expr(
-            alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias
-        )
+        metric_expr = _join_metric_expr(alias_map=alias_map, metric_table=metric_table, metric_col=metric_col)
         if group_table and group_col:
-            group_expr = _join_group_expr(
-                alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
-            )
+            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col)
             sql = (
                 f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -739,14 +673,10 @@ def _build_join_query_sql(
         return sql, "join_aggregation", "sum", aggregation_column, None
 
     if aggregation in {"avg", "min", "max"}:
-        metric_expr = _join_metric_expr(
-            alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias
-        )
+        metric_expr = _join_metric_expr(alias_map=alias_map, metric_table=metric_table, metric_col=metric_col)
         agg_sql = aggregation.upper()
         if group_table and group_col:
-            group_expr = _join_group_expr(
-                alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
-            )
+            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col)
             sql = (
                 f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS value "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -775,6 +705,7 @@ def _build_join_query_sql(
 
 def _build_join_planner(
     *,
+    reason: str,
     state: _JoinPlanningState,
     selection: _JoinCandidateSelection,
     selected_score: float,
@@ -800,19 +731,15 @@ def _build_join_planner(
         # Keep strategy stable for downstream compatibility; expose beam usage via mode.
         "strategy": "deterministic_join",
         "planner_mode": ("beam" if selection.selected_from_multi else "pairwise"),
-        "reason": (
-            "join_projection"
-            if aggregation is None and order_by is None and not bool(_TABLE_PICK_COUNT_INTENT_RE.search(""))
-            else None
-        ),
+        "reason": reason,
         "joins": relationships[: max(1, state.max_join_tables - 1)],
         "selected_tables": selected_tables,
         "candidates": state.candidate_rows[: state.top_n],
         "multi_candidates": state.multi_candidate_rows[: state.top_n],
         "selected_candidate_id": candidate_id,
         "selected_score": round(selected_score, 6),
-        "ambiguous": bool(selected_plan.get("ambiguous")),
-        "ambiguity_gap": selected_plan.get("ambiguity_gap"),
+        "ambiguous": selected_plan["ambiguous"],
+        "ambiguity_gap": selected_plan["ambiguity_gap"],
         "strict_ambiguity": state.strict_ambiguity,
         "low_confidence": low_confidence,
         "low_confidence_threshold": round(low_confidence_threshold, 6),
@@ -832,7 +759,7 @@ def _build_join_planner(
             else None
         ),
         "order_by": order_by,
-        "limit": int(limit),
+        "limit": limit,
         "sql_fingerprint": sql_fingerprint,
     }
 
@@ -848,7 +775,7 @@ def plan_join_query_for_tables(
 
     Returns: {"sql": "...", "planner": {...}}.
     """
-    max_rows_i = max(1, int(max_rows or 1))
+    max_rows_i = max(1, max_rows)
     limit = min(max_rows_i, _extract_question_limit(question, default_limit=min(max_rows_i, 20)))
     valid_tables = _normalize_join_tables(tables)
     if len(valid_tables) < 2:
@@ -857,7 +784,7 @@ def plan_join_query_for_tables(
     state = _build_join_planning_state(valid_tables)
     selection = _select_join_candidate(valid_tables, state)
     selected_plan = _selected_plan_candidates(state, selection)
-    if state.strict_ambiguity and bool(selected_plan.get("ambiguous")):
+    if state.strict_ambiguity and selected_plan["ambiguous"]:
         raise ValueError("ambiguous_join_plan")
 
     selected_score, low_confidence_threshold, low_confidence, low_confidence_strict = _join_confidence_state(
@@ -867,22 +794,16 @@ def plan_join_query_for_tables(
         raise ValueError("low_confidence_join_plan")
 
     rel = _selected_join_payload(selection.candidate)
-    left_table = rel['left_table'].strip()
-    right_table = rel['right_table'].strip()
-    left_column = rel['left_column'].strip()
-    right_column = rel['right_column'].strip()
+    left_table = rel["left_table"].strip()
+    right_table = rel["right_table"].strip()
+    left_column = rel["left_column"].strip()
+    right_column = rel["right_column"].strip()
     if not left_table or not right_table or not left_column or not right_column:
         raise ValueError("invalid_join_relationship")
 
     relationships = _dedupe_join_relationships(selection.candidate, state.candidate_rows)
-    table_map = {t['table_name']: t for t in valid_tables}
-    selected_tables = [
-        str(v)
-        for v in ((selection.candidate or {}).get("selected_tables") or [left_table, right_table])
-        if str(v).strip()
-    ]
-    if not selected_tables:
-        selected_tables = [left_table, right_table]
+    table_map = {t["table_name"]: t for t in valid_tables}
+    selected_tables = list(selection.candidate["selected_tables"])
 
     alias_map = {left_table: "t0", right_table: "t1"}
     left_alias = alias_map[left_table]
@@ -922,6 +843,7 @@ def plan_join_query_for_tables(
         max_states=max(8, state.max_join_tables * 8),
     )
     planner = _build_join_planner(
+        reason=reason,
         state=state,
         selection=selection,
         selected_score=selected_score,
@@ -941,14 +863,13 @@ def plan_join_query_for_tables(
         limit=limit,
         sql_fingerprint=sql_fingerprint,
     )
-    planner["reason"] = reason
     return {"sql": sql, "planner": planner}
 
 
 def _extract_question_limit(question: str, *, default_limit: int) -> int:
     q = question.strip()
     if not q:
-        return max(1, int(default_limit or 1))
+        return max(1, default_limit)
 
     patterns = [
         re.compile(r"(?i)\btop\s*(\d{1,4})\b"),
@@ -959,21 +880,17 @@ def _extract_question_limit(question: str, *, default_limit: int) -> int:
         m = p.search(q)
         if not m:
             continue
-        try:
-            n = int(m.group(1))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
+        n = int(m.group(1))
         if n > 0:
             return max(1, n)
-    return max(1, int(default_limit or 1))
+    return max(1, default_limit)
 
 
 def _pick_numeric_column(columns: list[dict[str, Any]]) -> str | None:
-    for c in columns or []:
+    for c in columns:
         if not isinstance(c, dict):
             continue
-        name = c['name'].strip()
+        name = c["name"].strip()
         if not name:
             continue
         if _column_is_numeric(c):
@@ -1222,12 +1139,12 @@ def _generate_deterministic_sql_with_diagnostics(
     max_rows: int,
     sample_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    q = " ".join((question).strip().split())
+    q = " ".join(question.strip().split())
     if not q:
         raise ValueError(_QUESTION_REQUIRED)
 
     q_fold = q.casefold()
-    max_rows_i = max(1, int(max_rows or 0))
+    max_rows_i = max(1, max_rows)
     limit = min(max_rows_i, _extract_question_limit(q, default_limit=min(max_rows_i, 20)))
 
     table_q = _quote_ident(sql_table)
@@ -1281,28 +1198,10 @@ def _generate_deterministic_sql_with_diagnostics(
         ),
         "group_by": group_col,
         "order_by": order_diag,
-        "limit": int(limit),
+        "limit": limit,
         "selected_column": selected_col,
     }
     return sql, planner
-
-
-def _generate_deterministic_sql(
-    *,
-    question: str,
-    sql_table: str,
-    columns: list[dict[str, Any]],
-    max_rows: int,
-    sample_rows: list[dict[str, Any]] | None = None,
-) -> str:
-    sql, _planner = _generate_deterministic_sql_with_diagnostics(
-        question=question,
-        sql_table=sql_table,
-        columns=columns,
-        max_rows=max_rows,
-        sample_rows=sample_rows,
-    )
-    return sql
 
 
 def _generate_sql_with_llm(
@@ -1315,13 +1214,13 @@ def _generate_sql_with_llm(
     """
     Generate a SELECT-only SQL query for a single SQLite table name.
     """
-    q = " ".join((question).strip().split())
+    q = " ".join(question.strip().split())
     if not q:
         raise ValueError(_QUESTION_REQUIRED)
 
-    max_rows_i = max(1, int(max_rows or 0))
+    max_rows_i = max(1, max_rows)
     schema_lines: list[str] = []
-    for column in columns or []:
+    for column in columns:
         if not isinstance(column, dict):
             continue
         name = column["name"].strip()
@@ -1349,29 +1248,29 @@ def _generate_sql_with_llm(
         content=(f'Table name: "{sql_table}"\nColumns:\n{cols_str if cols_str else "(unknown)"}\n\nQuestion: {q}\n')
     )
 
-    llm = _build_llm(temperature=0.0)
+    llm = create_table_chat_model(temperature=0.0)
     resp = llm.invoke([system, user])
     sql = extract_sql(resp.text)
     return sql
 
 
-def generate_sql_for_table_with_mode(
-    *,
-    question: str,
-    sql_table: str,
-    columns: list[dict[str, Any]],
-    max_rows: int,
-) -> tuple[str, str]:
-    """
-    Generate SQL with explicit mode metadata: ("llm" | "deterministic").
-    """
-    sql, mode, _metadata = generate_sql_for_table_with_metadata(
-        question=question,
-        sql_table=sql_table,
-        columns=columns,
-        max_rows=max_rows,
+def _sql_generation_result(
+    sql: str,
+    mode: str,
+    planner: dict[str, Any],
+    schema_link: _SchemaLinkDiagnostics,
+) -> tuple[str, str, dict[str, Any]]:
+    return (
+        sql,
+        mode,
+        {
+            "schema_link": schema_link,
+            "planner": planner,
+            "sql_fingerprint": planner["sql_fingerprint"],
+            "schema_link_score": schema_link["score"],
+            "schema_link_strategy": schema_link["strategy"],
+        },
     )
-    return sql, mode
 
 
 def generate_sql_for_table_with_metadata(
@@ -1386,12 +1285,10 @@ def generate_sql_for_table_with_metadata(
     """
     Generate SQL + mode + diagnostics metadata.
 
-    Backward compatibility: callers that only need `(sql, mode)` should keep using
-    `generate_sql_for_table_with_mode`.
     """
     deterministic_only = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY
     deterministic_fallback = settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
-    llm_key = (settings.LLM_API_KEY).strip()
+    llm_key = settings.LLM_API_KEY.strip()
 
     schema_link = score_schema_link_diagnostics(
         question=question,
@@ -1411,17 +1308,7 @@ def generate_sql_for_table_with_metadata(
         )
         planner = dict(planner)
         planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
-        return (
-            sql,
-            "deterministic",
-            {
-                "schema_link": schema_link,
-                "planner": planner,
-                "sql_fingerprint": planner.get("sql_fingerprint"),
-                "schema_link_score": schema_link.get("score"),
-                "schema_link_strategy": schema_link.get("strategy"),
-            },
-        )
+        return _sql_generation_result(sql, "deterministic", planner, schema_link)
 
     if llm_key:
         try:
@@ -1438,20 +1325,10 @@ def generate_sql_for_table_with_metadata(
                 "filter": None,
                 "group_by": None,
                 "order_by": None,
-                "limit": int(max(1, int(max_rows or 1))),
+                "limit": max(1, max_rows),
                 "sql_fingerprint": fingerprint_sql(sql, length=16),
             }
-            return (
-                sql,
-                "llm",
-                {
-                    "schema_link": schema_link,
-                    "planner": planner,
-                    "sql_fingerprint": planner.get("sql_fingerprint"),
-                    "schema_link_score": schema_link.get("score"),
-                    "schema_link_strategy": schema_link.get("strategy"),
-                },
-            )
+            return _sql_generation_result(sql, "llm", planner, schema_link)
         except Exception as exc:
             if not deterministic_fallback:
                 raise
@@ -1465,17 +1342,7 @@ def generate_sql_for_table_with_metadata(
             planner = dict(planner)
             planner["reason"] = f"llm_failed_fallback:{exc.__class__.__name__}"
             planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
-            return (
-                sql,
-                "deterministic",
-                {
-                    "schema_link": schema_link,
-                    "planner": planner,
-                    "sql_fingerprint": planner.get("sql_fingerprint"),
-                    "schema_link_score": schema_link.get("score"),
-                    "schema_link_strategy": schema_link.get("strategy"),
-                },
-            )
+            return _sql_generation_result(sql, "deterministic", planner, schema_link)
 
     if deterministic_fallback:
         sql, planner = _generate_deterministic_sql_with_diagnostics(
@@ -1488,17 +1355,7 @@ def generate_sql_for_table_with_metadata(
         planner = dict(planner)
         planner["reason"] = "no_llm_key_fallback"
         planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
-        return (
-            sql,
-            "deterministic",
-            {
-                "schema_link": schema_link,
-                "planner": planner,
-                "sql_fingerprint": planner.get("sql_fingerprint"),
-                "schema_link_score": schema_link.get("score"),
-                "schema_link_strategy": schema_link.get("strategy"),
-            },
-        )
+        return _sql_generation_result(sql, "deterministic", planner, schema_link)
 
     raise RuntimeError("LLM_API_KEY is not configured and deterministic fallback is disabled")
 
@@ -1511,9 +1368,9 @@ def generate_sql_for_table(
     max_rows: int,
 ) -> str:
     """
-    Backward-compatible wrapper that returns only SQL.
+    Generate SQL for callers that do not consume planning diagnostics.
     """
-    sql, _mode = generate_sql_for_table_with_mode(
+    sql, _mode, _metadata = generate_sql_for_table_with_metadata(
         question=question,
         sql_table=sql_table,
         columns=columns,
@@ -1534,20 +1391,16 @@ def generate_answer_from_result(
     if not settings.TABLE_LLM_ALLOW_RESULT_EGRESS:
         raise RuntimeError("TABLE_LLM_ALLOW_RESULT_EGRESS=false")
 
-    q = " ".join((question).strip().split())
+    q = " ".join(question.strip().split())
     if not q:
         raise ValueError(_QUESTION_REQUIRED)
-
-    cols = result.get("columns") if isinstance(result, dict) else None
-    rows = result.get("rows") if isinstance(result, dict) else None
-    truncated = bool(result.get("truncated")) if isinstance(result, dict) else False
 
     # Keep payload bounded; SQL executor already caps, but double-guard here.
     preview = {
         "sql": sql[:20_000],
-        "columns": cols if isinstance(cols, list) else [],
-        "rows": rows if isinstance(rows, list) else [],
-        "truncated": truncated,
+        "columns": result["columns"],
+        "rows": result["rows"],
+        "truncated": result["truncated"],
     }
     preview_text = str(preview)
     if len(preview_text) > 12_000:
@@ -1561,10 +1414,6 @@ def generate_answer_from_result(
         )
     )
     user = HumanMessage(content=(f"Question: {q}\n\nSQL: {sql.strip()}\n\nResult: {preview_text}\n"))
-    llm = _build_llm(temperature=0.0)
+    llm = create_table_chat_model(temperature=0.0)
     resp = llm.invoke([system, user])
     return resp.text.strip()
-
-
-def tag_enabled() -> bool:
-    return settings.TABLE_NL2SQL_ENABLED

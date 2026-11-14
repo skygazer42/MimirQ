@@ -5,9 +5,9 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.api.schemas.document_ingestion import LocalHtmlIngestRequest, UrlUploadRequest
+from app.api.schemas.documents import LocalHtmlIngestRequest, UrlUploadRequest
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.http_client import HTTPClientPool, get_http_client_pool
@@ -24,10 +24,10 @@ from app.services.connector_document_access import (
 )
 from app.services.connector_execution.shared.artifacts import _apply_connector_identity_metadata
 from app.services.connector_execution.shared.common import (
-    _optional_source_text,
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    _optional_source_text,
     build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import (
@@ -40,7 +40,13 @@ from app.services.connector_execution.shared.runtime import (
     _sync_connector_config_from_run,
 )
 from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _confluence_space_run_cancelled,
+)
+from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_confluence_space_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    get_active_connector_run as _load_confluence_run,
 )
 from app.services.connector_execution.shared.runtime import (
     mark_connector_run_failed as _mark_confluence_space_run_failed,
@@ -60,15 +66,6 @@ def _zero_confluence_attachment_result(*, failed: int = 0, attachments_failed: i
         "failed": int(failed),
         "created_doc_ids": [],
     }
-
-
-def _load_confluence_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
-    return (
-        db.query(ConnectorRun)
-        .options(selectinload(ConnectorRun.documents))
-        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-        .first()
-    )
 
 
 def _confluence_doc_connector_metadata(doc: DBDocument) -> dict[str, Any]:
@@ -211,7 +208,7 @@ def _confluence_restriction_group_names(group_obj: object, *, seen: set[str], ma
             break
         if not isinstance(group, dict):
             continue
-        name = _optional_source_text(group.get('name'))
+        name = _optional_source_text(group.get("name"))
         if name is None:
             continue
         key = name.lower()
@@ -313,9 +310,7 @@ def _confluence_effective_positive_limit(limit: int) -> int:
 
 def _confluence_attachment_link_base(data: dict, *, fallback: str) -> str:
     links = data.get("_links") if isinstance(data.get("_links"), dict) else {}
-    base = (
-        links["base"] if isinstance(links.get("base"), str) and links["base"].strip() else fallback
-    )
+    base = links["base"] if isinstance(links.get("base"), str) and links["base"].strip() else fallback
     return base
 
 
@@ -323,13 +318,13 @@ def _confluence_attachment_ref(raw: object, *, link_base: str) -> dict[str, str]
     if not isinstance(raw, dict):
         return None
 
-    attachment_id = _optional_source_text(raw.get('id'))
+    attachment_id = _optional_source_text(raw.get("id"))
     if not attachment_id:
         return None
 
-    filename = _optional_source_text(raw.get('title'), raw.get('filename'), raw.get('name'))
+    filename = _optional_source_text(raw.get("title"), raw.get("filename"), raw.get("name"))
     item_links = raw.get("_links") if isinstance(raw.get("_links"), dict) else {}
-    download = _optional_source_text(item_links.get('download'))
+    download = _optional_source_text(item_links.get("download"))
     download_url = _confluence_attachment_download_url(base=link_base, download=download)
     if not download_url:
         return None
@@ -454,6 +449,7 @@ def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     }
     headers.update(auth_headers)
 
+    api_base = _confluence_api_base_url(base_url)
     return {
         "base_url": base_url,
         "space_key": space_key,
@@ -476,8 +472,8 @@ def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "enable_source_acl": acl_settings["enable_source_acl"],
         "user_agent": user_agent,
         "auth_headers": auth_headers,
-        "api_base": _confluence_api_base_url(base_url),
-        "search_url": f"{_confluence_api_base_url(base_url)}/content/search",
+        "api_base": api_base,
+        "search_url": f"{api_base}/content/search",
         "headers": headers,
     }
 
@@ -522,12 +518,6 @@ def _initialize_confluence_space_run_stats(*, run: ConnectorRun, settings_map: d
     return stats
 
 
-def _confluence_space_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
-    with contextlib.suppress(Exception):
-        db.refresh(run)
-    return run.status.lower() == "cancelled"
-
-
 def _initialize_confluence_space_progress() -> dict[str, Any]:
     return {
         "created": 0,
@@ -554,7 +544,7 @@ async def _fetch_confluence_space_listing_page(
     start: int,
 ) -> tuple[list[dict[str, Any]], str]:
     params = {
-        "cql": settings_map['cql'],
+        "cql": settings_map["cql"],
         "start": int(start),
         "limit": int(settings_map.get("page_size") or 0),
         "expand": "version",
@@ -562,7 +552,7 @@ async def _fetch_confluence_space_listing_page(
     resp = await _confluence_request(
         pool,
         "GET",
-        settings_map['search_url'],
+        settings_map["search_url"],
         params=params,
         headers=dict(settings_map.get("headers") or {}),
     )
@@ -571,7 +561,7 @@ async def _fetch_confluence_space_listing_page(
     link_base = links.get("base") if isinstance(links, dict) and isinstance(links.get("base"), str) else None
     results = data.get("results") if isinstance(data, dict) else None
     pages = results if isinstance(results, list) else []
-    return pages, link_base or settings_map['base_url']
+    return pages, link_base or settings_map["base_url"]
 
 
 def _parse_confluence_listing_page(*, page: object, link_base: str, base_url: str) -> dict[str, str | None]:
@@ -580,9 +570,9 @@ def _parse_confluence_listing_page(*, page: object, link_base: str, base_url: st
     title = raw_page["title"].strip()
     last_modified = _confluence_extract_last_modified(raw_page)
     page_links = raw_page.get("_links") if isinstance(raw_page.get("_links"), dict) else None
-    webui = _optional_source_text(page_links.get('webui')) if isinstance(page_links, dict) else None
+    webui = _optional_source_text(page_links.get("webui")) if isinstance(page_links, dict) else None
     if not webui and isinstance(page_links, dict):
-        webui = _optional_source_text(page_links.get('tinyui'))
+        webui = _optional_source_text(page_links.get("tinyui"))
     page_url = _confluence_join_webui(base=str(link_base or base_url), webui=webui)
     return {
         "page_id": page_id,
@@ -716,8 +706,8 @@ def _delta_sync_confluence_page_acl(
             db,
             tenant_id=tenant_id,
             dataset_id=run.dataset_id,
-            base_url=settings_map['base_url'],
-            space_key=settings_map['space_key'],
+            base_url=settings_map["base_url"],
+            space_key=settings_map["space_key"],
             page_id=page_id,
             requested_by=requested_by,
             access=effective_access,
@@ -948,7 +938,7 @@ async def _ingest_confluence_page_document(
     filename: str | None,
     settings_map: dict[str, Any],
 ) -> DBDocument:
-    if settings_map['ingest_method'] == "webui":
+    if settings_map["ingest_method"] == "webui":
         return await _ingest_confluence_page_webui(
             db,
             run=run,
@@ -1003,9 +993,9 @@ async def _ingest_confluence_page(
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> UUID:
-    page_id = page_info['page_id']
-    title = page_info['title']
-    page_url = page_info['page_url']
+    page_id = page_info["page_id"]
+    title = page_info["title"]
+    page_url = page_info["page_url"]
     filename = _build_confluence_page_filename(page_id=page_id, title=title)
 
     doc = await _ingest_confluence_page_document(
@@ -1064,8 +1054,8 @@ def _patch_confluence_attachment_document_metadata(
         if isinstance(acl_provenance, dict):
             meta_att["acl_provenance"] = dict(acl_provenance)
         meta_att["connector"] = _confluence_attachment_connector_metadata(
-            base_url=settings_map['base_url'],
-            space_key=settings_map['space_key'],
+            base_url=settings_map["base_url"],
+            space_key=settings_map["space_key"],
             page_id=page_id,
             page_title=title,
             page_url=page_url,
@@ -1073,8 +1063,8 @@ def _patch_confluence_attachment_document_metadata(
             filename=filename,
             download_url=download_url,
             run_id=str(run.id),
-            mode=settings_map['effective_mode'],
-            ingest_method=settings_map['ingest_method'],
+            mode=settings_map["effective_mode"],
+            ingest_method=settings_map["ingest_method"],
         )
         att_doc.doc_metadata = meta_att
         _apply_connector_identity_metadata(
@@ -1102,9 +1092,9 @@ async def _ingest_single_confluence_attachment(
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> UUID:
-    attachment_id = attachment_ref['attachment_id'].strip()
-    filename = attachment_ref['filename'].strip()
-    download_url = attachment_ref['download_url'].strip()
+    attachment_id = attachment_ref["attachment_id"].strip()
+    filename = attachment_ref["filename"].strip()
+    download_url = attachment_ref["download_url"].strip()
     att_body = UrlUploadRequest(
         url=download_url,
         dataset_id=run.dataset_id,
@@ -1188,15 +1178,15 @@ async def _fetch_confluence_attachment_refs(
     att_data = att_resp.json() if att_resp is not None else {}
     return _confluence_extract_attachments(
         att_data if isinstance(att_data, dict) else {},
-        link_base_fallback=link_base or settings_map['base_url'],
+        link_base_fallback=link_base or settings_map["base_url"],
         limit=limit,
     )
 
 
 def _confluence_attachment_ref_skipped(attachment_ref: dict[str, str]) -> bool:
-    attachment_id = attachment_ref['attachment_id'].strip()
-    filename = attachment_ref['filename'].strip()
-    download_url = attachment_ref['download_url'].strip()
+    attachment_id = attachment_ref["attachment_id"].strip()
+    filename = attachment_ref["filename"].strip()
+    download_url = attachment_ref["download_url"].strip()
     if not attachment_id or not download_url:
         return True
 
@@ -1237,9 +1227,9 @@ async def _process_confluence_attachment_ref(
             run=run,
             tenant_id=tenant_id,
             requested_by=requested_by,
-            page_id=page_info['page_id'],
-            title=page_info['title'],
-            page_url=page_info['page_url'],
+            page_id=page_info["page_id"],
+            title=page_info["title"],
+            page_url=page_info["page_url"],
             attachment_ref=attachment_ref,
             effective_access=effective_access,
             acl_provenance=acl_provenance,
@@ -1247,8 +1237,8 @@ async def _process_confluence_attachment_ref(
         )
         return doc_id, False
     except Exception as exc:  # noqa: BLE001
-        attachment_id = attachment_ref['attachment_id'].strip()
-        download_url = attachment_ref['download_url'].strip()
+        attachment_id = attachment_ref["attachment_id"].strip()
+        download_url = attachment_ref["download_url"].strip()
         _append_confluence_attachment_error(run, url=(download_url or attachment_id), exc=exc)
         raise
 
@@ -1267,7 +1257,7 @@ async def _ingest_confluence_page_attachments(
     settings_map: dict[str, Any],
     progress: dict[str, Any],
 ) -> dict[str, Any]:
-    page_id = page_info['page_id']
+    page_id = page_info["page_id"]
     if _confluence_should_skip_attachments(db, run=run, page_id=page_id, settings_map=settings_map, progress=progress):
         return _zero_confluence_attachment_result()
 
@@ -1369,12 +1359,12 @@ def _confluence_page_limit_reached(progress: dict[str, Any], settings_map: dict[
 
 
 def _confluence_page_skipped_by_boundary(page_info: dict[str, str | None], settings_map: dict[str, Any]) -> bool:
-    if settings_map['effective_mode'] != "incremental":
+    if settings_map["effective_mode"] != "incremental":
         return False
     return _should_skip_timestamp_boundary_item(
-        item_id=page_info['page_id'],
+        item_id=page_info["page_id"],
         item_timestamp=page_info.get("last_modified"),
-        cursor_timestamp=settings_map['cursor_last_modified'],
+        cursor_timestamp=settings_map["cursor_last_modified"],
         boundary_ids=set(settings_map.get("cursor_last_modified_ids") or set()),
     )
 
@@ -1385,7 +1375,7 @@ def _record_confluence_boundary_skip(db: Session, *, run: ConnectorRun, progress
 
 
 def _advance_confluence_progress_boundary(progress: dict[str, Any], *, page_info: dict[str, str | None]) -> None:
-    last_modified = _optional_source_text(page_info.get('last_modified'))
+    last_modified = _optional_source_text(page_info.get("last_modified"))
     if not last_modified:
         return
 
@@ -1393,7 +1383,7 @@ def _advance_confluence_progress_boundary(progress: dict[str, Any], *, page_info
         last_timestamp=progress.get("last_modified_seen"),
         boundary_ids=set(progress.get("last_modified_ids_seen") or set()),
         item_timestamp=last_modified,
-        item_id=page_info['page_id'],
+        item_id=page_info["page_id"],
     )
     progress["last_modified_seen"] = last_seen
     progress["last_modified_ids_seen"] = ids_seen
@@ -1446,7 +1436,7 @@ async def _process_single_confluence_page(
     link_base: str,
     progress: dict[str, Any],
 ) -> None:
-    page_id = page_info['page_id']
+    page_id = page_info["page_id"]
     effective_access, acl_provenance, updated_existing = await _resolve_confluence_page_acl(
         pool,
         db,
@@ -1474,8 +1464,6 @@ async def _process_single_confluence_page(
     )
     progress["created"] = int(progress.get("created") or 0) + 1
     progress.setdefault("created_doc_ids", []).append(doc_id)
-    if page_id:
-        progress.setdefault("observed_page_ids", set()).add(page_id)
 
     attachments = await _ingest_confluence_page_attachments(
         pool,
@@ -1515,11 +1503,13 @@ async def _process_confluence_space_page_batch(
         page_info = _parse_confluence_listing_page(
             page=page,
             link_base=link_base,
-            base_url=settings_map['base_url'],
+            base_url=settings_map["base_url"],
         )
-        page_id = page_info['page_id']
-        title = page_info['title']
-        page_url = page_info['page_url']
+        page_id = page_info["page_id"]
+        title = page_info["title"]
+        page_url = page_info["page_url"]
+        if page_id:
+            progress["observed_page_ids"].add(page_id)
 
         if _confluence_page_skipped_by_boundary(page_info, settings_map):
             _record_confluence_boundary_skip(db, run=run, progress=progress)
@@ -1570,8 +1560,8 @@ async def _probe_confluence_space_listing_complete(
         probe = await _confluence_request(
             pool,
             "GET",
-            settings_map['search_url'],
-            params={"cql": settings_map['cql'], "start": int(start), "limit": 1},
+            settings_map["search_url"],
+            params={"cql": settings_map["cql"], "start": int(start), "limit": 1},
             headers=dict(settings_map.get("headers") or {}),
         )
         probe_data = probe.json() if probe is not None else {}
@@ -1597,8 +1587,8 @@ def _confluence_space_metadata_query(
             DBDocument.archived_at.is_(None),
         )
         .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "confluence_space")  # type: ignore[attr-defined]
-        .filter(DBDocument.doc_metadata["connector"]["space_key"].astext == settings_map['space_key'])  # type: ignore[attr-defined]
-        .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == settings_map['base_url'])  # type: ignore[attr-defined]
+        .filter(DBDocument.doc_metadata["connector"]["space_key"].astext == settings_map["space_key"])  # type: ignore[attr-defined]
+        .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == settings_map["base_url"])  # type: ignore[attr-defined]
     )
 
 
@@ -1631,9 +1621,9 @@ def _confluence_doc_missing_from_full_sync(
     conn = _confluence_doc_connector_metadata(doc)
     if conn.get("connector_id") != "confluence_space":
         return False
-    if conn.get("space_key") != settings_map['space_key']:
+    if conn.get("space_key") != settings_map["space_key"]:
         return False
-    if conn.get("base_url") != settings_map['base_url']:
+    if conn.get("base_url") != settings_map["base_url"]:
         return False
     page_id = _optional_source_text(conn.get("page_id"))
     return bool(page_id and page_id not in observed_page_ids)
@@ -1686,9 +1676,9 @@ def _emit_confluence_source_acl_delta_sync_audit(
             details={
                 "dataset_id": str(run.dataset_id),
                 "connector_id": "confluence_space",
-                "base_url": settings_map['base_url'],
-                "space_key": settings_map['space_key'],
-                "mode": settings_map['effective_mode'],
+                "base_url": settings_map["base_url"],
+                "space_key": settings_map["space_key"],
+                "mode": settings_map["effective_mode"],
                 "updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
                 "updated_pages": int(progress.get("delta_acl_pages_updated") or 0),
                 "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
@@ -1747,9 +1737,9 @@ def _prepare_confluence_space_run(db: Session, *, run: ConnectorRun) -> dict[str
 
     settings_map = _build_confluence_space_run_settings(decrypt_connector_config_secrets(dict(run.config or {})))
     settings_map["cql"] = _build_confluence_space_search_cql(
-        space_key=settings_map['space_key'],
-        effective_mode=settings_map['effective_mode'],
-        cursor_last_modified=settings_map['cursor_last_modified'],
+        space_key=settings_map["space_key"],
+        effective_mode=settings_map["effective_mode"],
+        cursor_last_modified=settings_map["cursor_last_modified"],
     )
     run.stats = _finalize_connector_stats(_initialize_confluence_space_run_stats(run=run, settings_map=settings_map))
     db.commit()
@@ -1821,7 +1811,7 @@ def _should_probe_confluence_listing(
     cancelled: bool,
 ) -> bool:
     return (
-        settings_map['effective_mode'] == "full"
+        settings_map["effective_mode"] == "full"
         and bool(settings_map.get("soft_delete"))
         and bool(run.dataset_id)
         and bool(progress.get("observed_page_ids"))
@@ -1840,7 +1830,7 @@ def _should_soft_delete_confluence_pages(
     listing_complete: bool,
 ) -> bool:
     return (
-        settings_map['effective_mode'] == "full"
+        settings_map["effective_mode"] == "full"
         and bool(settings_map.get("soft_delete"))
         and bool(run.dataset_id)
         and bool(progress.get("observed_page_ids"))
@@ -1860,8 +1850,6 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     try:
         run = _load_confluence_run(db, run_id=run_id, tenant_id=tenant_id)
         if not run:
-            return
-        if run.status.lower() in {"cancelled", "completed", "failed"}:
             return
 
         settings_map = _prepare_confluence_space_run(db, run=run)

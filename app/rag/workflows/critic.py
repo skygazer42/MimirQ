@@ -44,18 +44,11 @@ def _detect_style_issues(answer: str) -> list[dict[str, str]]:
         return []
 
     issues: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
     for code, pattern in _STYLE_RULES:
         match = pattern.search(raw)
         if match is None:
             continue
         span = match.group(0).strip()
-        if not span:
-            continue
-        key = (code, span.casefold() if span.isascii() else span)
-        if key in seen:
-            continue
-        seen.add(key)
         issues.append({"code": code, "span": span})
     return issues
 
@@ -105,7 +98,7 @@ def run_critic_review(
         )
 
     total_claims = len(claim_results)
-    faithfulness_score = round(float(supported_claims) / float(total_claims), 4) if total_claims > 0 else None
+    faithfulness_score = round(supported_claims / total_claims, 4) if total_claims > 0 else None
     citation_missing = len(citations or []) <= 0
     style_issues = _detect_style_issues(raw_answer)
 

@@ -12,10 +12,12 @@ from fastapi import BackgroundTasks, HTTPException
 from minio.error import S3Error
 from sqlalchemy.orm import Session
 
+from app.api.schemas.documents import DocumentStatus
 from app.core.async_bridge import run_blocking_in_thread, run_coroutine_in_thread
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
-from app.parsing.processors.processor import document_processor
+from app.parsing.processors.support.process_document_flow import process_document
 from app.rag.core.logging import get_logger
 from app.storage.object.minio import MinIOService
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
@@ -40,6 +42,16 @@ class StoredProcessingSource:
     uri: str
     store: MinIOService
     object_name: str
+
+
+@dataclass(frozen=True)
+class RetryDocumentPlan:
+    document_id: UUID
+    source: LocalProcessingSource | StoredProcessingSource
+    pipeline_hash: str
+    file_type: str
+    parser_backend: str | None
+    chunk_strategy: str | None
 
 
 def resolve_retry_source(
@@ -102,9 +114,7 @@ async def run_document_processing_limited(
     # remain owned until the worker finishes, including repeated cancellation.
     async with _get_background_processing_semaphore():
         return await run_coroutine_in_thread(
-            lambda: document_processor.process_document(
-                file_path, document_id, tenant_id, parser_backend, chunk_strategy
-            ),
+            lambda: process_document(file_path, document_id, tenant_id, parser_backend, chunk_strategy),
             on_cancelled_worker_error=_log_cancelled_background_processing_error,
         )
 
@@ -132,12 +142,12 @@ def _raise_queue_unavailable(*, db: Session, document: DBDocument, exc: Exceptio
     raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL)
 
 
-async def _enqueue(*, tenant_id: UUID, document: DBDocument, requested_by: str, pipeline_hash: str) -> str | None:
+async def _enqueue_document(*, tenant_id: UUID, document_id: UUID, requested_by: str, pipeline_hash: str) -> str | None:
     return await enqueue_document_processing(
         tenant_id=tenant_id,
-        document_id=document.id,
+        document_id=document_id,
         requested_by=requested_by,
-        job_id=f"doc:{tenant_id}:{document.id}:{pipeline_hash}",
+        job_id=f"doc:{tenant_id}:{document_id}:{pipeline_hash}",
     )
 
 
@@ -176,8 +186,8 @@ async def dispatch_uploaded_document(
     queue_required = settings.TASK_QUEUE_ENABLED
     task_id = None
     try:
-        task_id = await _enqueue(
-            tenant_id=tenant_id, document=document, requested_by=requested_by, pipeline_hash=pipeline_hash
+        task_id = await _enqueue_document(
+            tenant_id=tenant_id, document_id=document.id, requested_by=requested_by, pipeline_hash=pipeline_hash
         )
     except Exception as exc:
         if queue_required:
@@ -244,54 +254,78 @@ async def _process_stored_retry(
             temp_path.unlink(missing_ok=True)
 
 
+def _get_retry_dispatch_document(db: Session, *, tenant_id: UUID, document_id: UUID) -> DBDocument:
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return document
+
+
+def _persist_retry_task_id(*, tenant_id: UUID, document_id: UUID, task_id: str) -> DocumentStatus:
+    with SessionLocal() as db:
+        document = _get_retry_dispatch_document(db, tenant_id=tenant_id, document_id=document_id)
+        _persist_task_id(db=db, document=document, task_id=task_id)
+        return DocumentStatus.model_validate(document)
+
+
+def _mark_retry_schedule_failed(*, tenant_id: UUID, document_id: UUID) -> None:
+    with SessionLocal() as db:
+        document = _get_retry_dispatch_document(db, tenant_id=tenant_id, document_id=document_id)
+        mark_document_processing_schedule_failed(db=db, document=document)
+
+
 async def dispatch_retry_document(
     *,
-    source: LocalProcessingSource | StoredProcessingSource,
+    plan: RetryDocumentPlan,
     background_tasks: BackgroundTasks,
-    document: DBDocument,
-    db: Session,
     tenant_id: UUID,
     requested_by: str,
-    pipeline_hash: str,
-) -> None:
+) -> DocumentStatus | None:
     try:
-        task_id = await _enqueue(
-            tenant_id=tenant_id, document=document, requested_by=requested_by, pipeline_hash=pipeline_hash
+        task_id = await _enqueue_document(
+            tenant_id=tenant_id,
+            document_id=plan.document_id,
+            requested_by=requested_by,
+            pipeline_hash=plan.pipeline_hash,
         )
     except Exception as exc:
         if settings.TASK_QUEUE_ENABLED:
             logger.error(
                 "Document queue unavailable while retry handoff is required for document %s: %s",
-                document.id,
+                plan.document_id,
                 str(exc)[:200],
             )
-            _raise_queue_unavailable(db=db, document=document, exc=exc)
+            await run_blocking_in_thread(_mark_retry_schedule_failed, tenant_id=tenant_id, document_id=plan.document_id)
+            raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL) from exc
         raise
     if task_id:
-        _persist_task_id(db=db, document=document, task_id=task_id)
-        return
+        return await run_blocking_in_thread(
+            _persist_retry_task_id, tenant_id=tenant_id, document_id=plan.document_id, task_id=task_id
+        )
     if settings.TASK_QUEUE_ENABLED:
-        logger.error("Document queue returned no task id while retry handoff is required for document %s", document.id)
-        _raise_queue_unavailable(db=db, document=document)
-    meta = document.doc_metadata or {}
-    if isinstance(source, LocalProcessingSource):
+        logger.error(
+            "Document queue returned no task id while retry handoff is required for document %s", plan.document_id
+        )
+        await run_blocking_in_thread(_mark_retry_schedule_failed, tenant_id=tenant_id, document_id=plan.document_id)
+        raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL)
+    if isinstance(plan.source, LocalProcessingSource):
         background_tasks.add_task(
             run_document_processing_limited,
-            source.path,
-            document.id,
+            plan.source.path,
+            plan.document_id,
             tenant_id,
-            meta.get("parser_backend"),
-            meta.get("chunk_strategy"),
+            plan.parser_backend,
+            plan.chunk_strategy,
         )
         return
     temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
-    temp_path = temp_dir / f"{document.id}.{uuid.uuid4().hex}.{(document.file_type).lower()}"
+    temp_path = temp_dir / f"{plan.document_id}.{uuid.uuid4().hex}.{plan.file_type.lower()}"
     background_tasks.add_task(
         _process_stored_retry,
-        source=source,
+        source=plan.source,
         temp_path=temp_path,
-        document_id=document.id,
+        document_id=plan.document_id,
         tenant_id=tenant_id,
-        parser_backend=meta.get("parser_backend"),
-        chunk_strategy=meta.get("chunk_strategy"),
+        parser_backend=plan.parser_backend,
+        chunk_strategy=plan.chunk_strategy,
     )

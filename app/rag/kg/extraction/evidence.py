@@ -47,7 +47,7 @@ def clamp_confidence(value: object, *, default: float) -> float:
         return float(default)
     if math.isnan(f):
         return float(default)
-    return max(0.0, min(1.0, float(f)))
+    return max(0.0, min(1.0, f))
 
 
 @dataclass(frozen=True)

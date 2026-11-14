@@ -1,5 +1,4 @@
 import threading
-from collections.abc import Mapping
 from typing import TypedDict
 
 from app.core.config import (
@@ -28,21 +27,17 @@ class _ObjectStoreConfig(TypedDict):
     documents_enabled: bool
 
 
-def _normalize_region(region: str | None = None) -> str:
-    return (region or settings.DATA_REGION).strip().lower()
-
-
-def _load_region_profiles() -> dict[str, dict[str, object]]:
-    return parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES)
-
-
 def normalize_object_store_provider(provider: str | None = None) -> str:
     return normalize_object_storage_provider_name(provider or settings.OBJECT_STORAGE_PROVIDER or "minio")
 
 
 def _resolve_object_store_config(provider: str | None = None, *, region: str | None = None) -> _ObjectStoreConfig:
-    region_key = _normalize_region(region)
-    region_profile = _load_region_profiles().get(region_key, {}) if region_key else {}
+    region_key = (region or settings.DATA_REGION).strip().lower()
+    region_profile = (
+        parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES).get(region_key, {})
+        if region_key
+        else {}
+    )
 
     return {
         "region": region_key or None,
@@ -64,36 +59,18 @@ def _resolve_object_store_config(provider: str | None = None, *, region: str | N
     }
 
 
-def _build_s3_compatible_store(provider: str, *, config: _ObjectStoreConfig) -> S3CompatibleObjectStore:
-    return S3CompatibleObjectStore(
-        provider_name=provider,
-        enabled=config["enabled"],
-        endpoint=config["endpoint"],
-        access_key=config["access_key"],
-        secret_key=config["secret_key"],
-        bucket_name=config["bucket_name"],
-        use_ssl=config["use_ssl"],
-        metrics_log_path=config["metrics_log_path"],
-        documents_enabled=config["documents_enabled"],
-        region=config["region"],
-    )
-
-
-def _object_store_cache_key(config: Mapping[str, object]) -> tuple[object, ...]:
-    return tuple(
-        config.get(key)
-        for key in (
-            "provider",
-            "region",
-            "enabled",
-            "endpoint",
-            "access_key",
-            "secret_key",
-            "bucket_name",
-            "use_ssl",
-            "metrics_log_path",
-            "documents_enabled",
-        )
+def _object_store_cache_key(config: _ObjectStoreConfig) -> tuple[object, ...]:
+    return (
+        config["provider"],
+        config["region"],
+        config["enabled"],
+        config["endpoint"],
+        config["access_key"],
+        config["secret_key"],
+        config["bucket_name"],
+        config["use_ssl"],
+        config["metrics_log_path"],
+        config["documents_enabled"],
     )
 
 
@@ -108,16 +85,26 @@ def get_object_store(
     region: str | None = None,
     prefer_legacy_minio: bool = True,
 ) -> MinIOService:
-    cfg = _resolve_object_store_config(provider, region=region)
-    normalized = cfg["provider"]
-    if prefer_legacy_minio and normalized == "minio" and not cfg["region"]:
+    config = _resolve_object_store_config(provider, region=region)
+    if prefer_legacy_minio and config["provider"] == "minio" and not config["region"]:
         return minio_service
-    cache_key = _object_store_cache_key(cfg)
+    cache_key = _object_store_cache_key(config)
     with _OBJECT_STORE_CACHE_LOCK:
         cached = _OBJECT_STORE_CACHE.get(cache_key)
         if cached is not None:
             return cached
-        store = _build_s3_compatible_store(normalized, config=cfg)
+        store = S3CompatibleObjectStore(
+            provider_name=config["provider"],
+            enabled=config["enabled"],
+            endpoint=config["endpoint"],
+            access_key=config["access_key"],
+            secret_key=config["secret_key"],
+            bucket_name=config["bucket_name"],
+            use_ssl=config["use_ssl"],
+            metrics_log_path=config["metrics_log_path"],
+            documents_enabled=config["documents_enabled"],
+            region=config["region"],
+        )
         _OBJECT_STORE_CACHE[cache_key] = store
         return store
 

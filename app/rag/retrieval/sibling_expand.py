@@ -1,5 +1,6 @@
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
+
+from app.rag.core.metadata import _stringified_metadata_text
 
 
 def select_document_expansion_mode(*, total_chunks: int, short_doc_max_chunks: int) -> str:
@@ -17,7 +18,6 @@ def select_document_expansion_mode(*, total_chunks: int, short_doc_max_chunks: i
 
 
 def _result_chunk_id(result: dict[str, Any]) -> str:
-    metadata = result.get("metadata") or {}
     return str(result["chunk_id"]).strip()
 
 
@@ -38,7 +38,9 @@ def _original_results_map(
 
 
 def _metadata_header_path(metadata: dict[str, Any]) -> str | None:
-    header_path = _stringified_metadata_text(metadata, "header_path") or _stringified_metadata_text(metadata, "header_context")
+    header_path = _stringified_metadata_text(metadata, "header_path") or _stringified_metadata_text(
+        metadata, "header_context"
+    )
     return header_path if header_path else None
 
 
@@ -87,7 +89,7 @@ def _sibling_result(
         "chunk_id": chunk_id,
         "content": row.content,
         "metadata": metadata,
-        "score": float(anchor_score * 0.8) if anchor_score else 0.0,
+        "score": anchor_score * 0.8 if anchor_score else 0.0,
     }
 
 

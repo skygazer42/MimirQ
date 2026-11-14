@@ -126,9 +126,9 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
         score = min(1.0, max(0.45, float(len(anchor_norm)) / float(max(1, len(query_norm)))))
         matches.append(
             {
-                "field": str(field),
-                "value": str(anchor_text),
-                "score": round(float(score), 6),
+                "field": field,
+                "value": anchor_text,
+                "score": round(score, 6),
                 "norm": anchor_norm,
             }
         )
@@ -155,22 +155,22 @@ def _apply_metadata_exact_anchor_to_result(
     if not metadata_match:
         return False
 
-    match_score = float(metadata_match.get("score") or 0.0)
+    match_score = metadata_match["score"]
     metadata_boost = match_score * max(0.0, float(phrase_boost_weight or 0.0))
     result["metadata_exact_match_score"] = match_score
-    result["metadata_exact_match_primary_score"] = float(metadata_match.get("primary_score") or 0.0)
-    result["metadata_exact_match_boost"] = float(metadata_boost)
+    result["metadata_exact_match_primary_score"] = metadata_match["primary_score"]
+    result["metadata_exact_match_boost"] = metadata_boost
     result["metadata_exact_match_field"] = metadata_match["field"]
     result["metadata_exact_match_value"] = metadata_match["value"]
-    result["metadata_exact_match_fields"] = list(metadata_match.get("fields") or [])
-    result["metadata_exact_match_values"] = list(metadata_match.get("values") or [])
+    result["metadata_exact_match_fields"] = list(metadata_match["fields"])
+    result["metadata_exact_match_values"] = list(metadata_match["values"])
 
     if promote_score:
         current_score = _float_or_default(result.get("score"), 0.0)
         promoted_score = max(current_score, match_score)
         if promoted_score > current_score:
-            result["score"] = round(float(promoted_score), 6)
-            result["metadata_exact_match_promoted_score"] = round(float(promoted_score), 6)
+            result["score"] = round(promoted_score, 6)
+            result["metadata_exact_match_promoted_score"] = round(promoted_score, 6)
     return True
 
 
@@ -242,8 +242,8 @@ def _metadata_exact_anchor_sort_key(
     metadata_score = _float_or_default(doc_meta.get("metadata_exact_match_score"), 0.0)
     score = _float_or_default(doc_meta.get("score"), 0.0)
     if best_anchor_score >= 0.65:
-        return (-metadata_score, -score, int(idx))
-    return (-score, -metadata_score, int(idx))
+        return (-metadata_score, -score, idx)
+    return (-score, -metadata_score, idx)
 
 
 def _apply_metadata_exact_anchor_doc_ordering(
@@ -280,8 +280,8 @@ def _apply_metadata_exact_anchor_doc_ordering(
     out = [doc for doc, _idx in rows]
     after_top = _doc_key(out[0]) if out else ""
     meta["applied"] = True
-    meta["annotated"] = int(annotated)
-    meta["score_promoted"] = int(promoted)
+    meta["annotated"] = annotated
+    meta["score_promoted"] = promoted
     meta["top_changed"] = bool(before_top and after_top and before_top != after_top)
     meta["reason"] = "applied"
     return out, meta

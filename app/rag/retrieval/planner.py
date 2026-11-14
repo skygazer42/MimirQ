@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 from uuid import UUID
+
+from app.rag.core.metadata import _stringified_metadata_text
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ def safe_positive_int(value: Any, *, default: int, minimum: int = 1, maximum: in
         out = int(value)
     except (TypeError, ValueError):
         out = int(default)
-    return max(int(minimum), min(int(maximum), int(out)))
+    return max(int(minimum), min(int(maximum), out))
 
 
 def resolve_internal_candidate_top_k(
@@ -363,8 +364,6 @@ def _policy_value_matches_query(query: str, value: str, *, match_mode: str) -> b
         return query_text == value_text
     if match_mode == "fuzzy_overlap":
         return _policy_value_fuzzy_overlaps_query(query_text, value_text)
-    if match_mode == "overlap":
-        return value_text in query_text or query_text in value_text
     return value_text in query_text or query_text in value_text
 
 
@@ -609,7 +608,7 @@ def _policy_float(value: Any, *, default: float, minimum: float, maximum: float)
         out = float(value if value is not None else default)
     except (TypeError, ValueError):
         out = float(default)
-    return max(float(minimum), min(float(maximum), float(out)))
+    return max(float(minimum), min(float(maximum), out))
 
 
 def retrieval_policy_response_compaction(retrieval_policy: dict[str, Any] | None) -> dict[str, Any]:

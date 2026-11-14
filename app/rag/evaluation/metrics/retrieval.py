@@ -9,9 +9,7 @@ def evaluate_retrieval_metrics(
     recall_k: int,
 ) -> dict[str, Any]:
     gold = [str(item).strip() for item in gold_chunk_ids or [] if item.strip()]
-    retrieved = [str(item).strip() for item in retrieved_chunk_ids or [] if item.strip()][
-        : max(1, int(recall_k or 1))
-    ]
+    retrieved = [str(item).strip() for item in retrieved_chunk_ids or [] if item.strip()][: max(1, int(recall_k or 1))]
     cited = [str(item).strip() for item in cited_chunk_ids or [] if item.strip()]
 
     if not gold:

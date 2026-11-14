@@ -51,7 +51,7 @@ def _valid_ipv4(text: str) -> bool:
         return False
     try:
         nums = [int(p) for p in parts]
-    except Exception:
+    except ValueError:
         return False
     return all(0 <= n <= 255 for n in nums)
 
@@ -61,7 +61,7 @@ _CN_ID18_CHECK = "10X98765432"
 
 
 def _valid_cn_id18(text: str) -> bool:
-    if not text or len(text) != 18:
+    if len(text) != 18:
         return False
     body = text[:17]
     last = text[17].upper()
@@ -76,7 +76,7 @@ def _valid_cn_id18(text: str) -> bool:
         if year < 1900 or year > 2100:
             return False
         date(year, month, day)
-    except Exception:
+    except ValueError:
         return False
 
     # Checksum.
@@ -116,7 +116,18 @@ def _valid_phone_candidate(text: str) -> bool:
     if len(digits) < 8 or len(digits) > 15:
         return False
     # Require at least ~60% digits (avoid matching sentences with many separators).
-    return (len(digits) / max(1, len(text))) >= 0.6
+    return (len(digits) / len(text)) >= 0.6
+
+
+_PII_MATCH_PATTERNS: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] = [
+    ("email", _EMAIL_RE, None),
+    ("ip", _IPV4_RE, _valid_ipv4),
+    ("ssn", _SSN_RE, None),
+    ("cn_id", _CN_ID18_RE, _valid_cn_id18),
+    ("credit_card", _CREDIT_CARD_CANDIDATE_RE, _valid_credit_card),
+    ("phone", _CN_MOBILE_RE, None),
+    ("phone", _PHONE_GENERIC_RE, _valid_phone_candidate),
+]
 
 
 def anonymize_pii(text: str, *, enabled: bool, mode: PiiMode = "mask", mask: str = "[REDACTED]") -> PiiAnonymizeResult:
@@ -137,76 +148,20 @@ def anonymize_pii(text: str, *, enabled: bool, mode: PiiMode = "mask", mask: str
             hits[kind] = hits.get(kind, 0) + 1
             if mode == "mask":
                 return mask
-            key = raw
-            existing = token_map.get(key)
+            existing = token_map.get(raw)
             if existing:
                 return existing
             token = f"[PII_{kind.upper()}_{len(token_map) + 1}]"
-            token_map[key] = token
+            token_map[raw] = token
             return token
 
         return repl
 
     current = original
-    current = _EMAIL_RE.sub(make_replacer("email"), current)
-    current = _IPV4_RE.sub(make_replacer("ip", validator=_valid_ipv4), current)
-    current = _SSN_RE.sub(make_replacer("ssn"), current)
-    current = _CN_ID18_RE.sub(make_replacer("cn_id", validator=_valid_cn_id18), current)
-    current = _CREDIT_CARD_CANDIDATE_RE.sub(make_replacer("credit_card", validator=_valid_credit_card), current)
-    current = _CN_MOBILE_RE.sub(make_replacer("phone"), current)
-    current = _PHONE_GENERIC_RE.sub(make_replacer("phone", validator=_valid_phone_candidate), current)
+    for kind, pattern, validator in _PII_MATCH_PATTERNS:
+        current = pattern.sub(make_replacer(kind, validator=validator), current)
 
     return PiiAnonymizeResult(text=current, hits=hits, changed=(current != original))
-
-
-_PII_MATCH_PATTERNS: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] = [
-    ("email", _EMAIL_RE, None),
-    ("ip", _IPV4_RE, _valid_ipv4),
-    ("ssn", _SSN_RE, None),
-    ("cn_id", _CN_ID18_RE, _valid_cn_id18),
-    ("credit_card", _CREDIT_CARD_CANDIDATE_RE, _valid_credit_card),
-    ("phone", _CN_MOBILE_RE, None),
-    ("phone", _PHONE_GENERIC_RE, _valid_phone_candidate),
-]
-
-
-def _clamp_match_limit(max_matches: int) -> int:
-    return max(0, min(int(max_matches or 0), 200))
-
-
-def _overlaps_taken(taken: list[tuple[int, int]], start: int, end: int) -> bool:
-    for taken_start, taken_end in taken:
-        if start < taken_end and end > taken_start:
-            return True
-    return False
-
-
-def _append_pattern_matches(
-    text: str,
-    *,
-    kind: str,
-    pattern: re.Pattern[str],
-    validator: Callable[[str], bool] | None,
-    taken: list[tuple[int, int]],
-    out: list[PiiMatch],
-    max_matches: int,
-) -> bool:
-    for match in pattern.finditer(text):
-        raw = match.group(0)
-        if not raw:
-            continue
-        start, end = match.start(), match.end()
-        if start < 0 or end <= start:
-            continue
-        if _overlaps_taken(taken, start, end):
-            continue
-        if validator is not None and not validator(raw):
-            continue
-        out.append(PiiMatch(kind=kind, start=start, end=end, text=raw))
-        taken.append((start, end))
-        if len(out) >= max_matches:
-            return True
-    return False
 
 
 def find_pii_matches(text: str, *, max_matches: int = 50) -> list[PiiMatch]:
@@ -217,11 +172,10 @@ def find_pii_matches(text: str, *, max_matches: int = 50) -> list[PiiMatch]:
     best-effort and may include false positives; callers should show them as
     "needs review" rather than hard conclusions.
     """
-    s = text
-    if not s:
+    if not text:
         return []
 
-    max_matches = _clamp_match_limit(max_matches)
+    max_matches = max(0, min(int(max_matches or 0), 200))
     if max_matches == 0:
         return []
 
@@ -229,15 +183,18 @@ def find_pii_matches(text: str, *, max_matches: int = 50) -> list[PiiMatch]:
     out: list[PiiMatch] = []
 
     for kind, pattern, validator in _PII_MATCH_PATTERNS:
-        if _append_pattern_matches(
-            s,
-            kind=kind,
-            pattern=pattern,
-            validator=validator,
-            taken=taken,
-            out=out,
-            max_matches=max_matches,
-        ):
+        for match in pattern.finditer(text):
+            raw = match.group(0)
+            start, end = match.start(), match.end()
+            if any(start < taken_end and end > taken_start for taken_start, taken_end in taken):
+                continue
+            if validator is not None and not validator(raw):
+                continue
+            out.append(PiiMatch(kind=kind, start=start, end=end, text=raw))
+            taken.append((start, end))
+            if len(out) >= max_matches:
+                break
+        if len(out) >= max_matches:
             break
 
     out.sort(key=lambda x: (x.start, x.end))

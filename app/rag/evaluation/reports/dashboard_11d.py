@@ -257,7 +257,7 @@ def _compute_dimensions(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_eval_dashboard_11d(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    normalized_rows = [dict(row or {}) for row in (rows or []) if isinstance(row, dict)]
+    normalized_rows = [dict(row) for row in (rows or []) if isinstance(row, dict)]
     route_ids = sorted(
         {
             str(row["route_id"]).strip()

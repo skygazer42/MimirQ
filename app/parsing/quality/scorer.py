@@ -82,7 +82,7 @@ def score_pdf_quality(file_path: Path, sample_pages: int = 3, use_ocr_validation
             table_quality_score = _score_table_quality(pages_data)
 
             # Dimension 4: reading-order consistency (15%).
-            reading_order_score = score_pdfplumber_reading_order(pages_data)["score"] or 1.0
+            reading_order_score = score_pdfplumber_reading_order(pages_data)["score"]
 
     except Exception as e:
         logger.warning("PDF quality scoring failed: %s", e)
@@ -93,7 +93,7 @@ def score_pdf_quality(file_path: Path, sample_pages: int = 3, use_ocr_validation
         reading_order_score = 1.0
     finally:
         try:
-            preprocess_info.update(_detect_preprocess_info(file_path, sample_pages=sample_pages))
+            preprocess_info = _detect_preprocess_info(file_path, sample_pages=sample_pages)
         except Exception as exc:
             logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
 
@@ -133,18 +133,18 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
     doc = None
     try:
         doc = fitz.open(str(file_path))
-        n = int(getattr(doc, "page_count", 0) or 0)
+        n = doc.page_count
         k = max(1, min(int(sample_pages or 0) or 1, n if n > 0 else 1))
         rot_counts: dict[int, int] = {}
         watermark_annots = 0
         for i in range(k):
             page = doc.load_page(i)
-            rot = int(getattr(page, "rotation", 0) or 0) % 360
+            rot = page.rotation % 360
             rot_counts[rot] = rot_counts.get(rot, 0) + 1
             watermark_annots += _count_watermark_annots(page)
         orientation = max(rot_counts.items(), key=lambda kv: kv[1])[0] if rot_counts else 0
         info["orientation"] = orientation
-        info["rotation_counts"] = {str(k): v for k, v in sorted(rot_counts.items(), key=lambda kv: kv[0])}
+        info["rotation_counts"] = {str(k): v for k, v in sorted(rot_counts.items())}
         info["watermark_annots"] = watermark_annots
         info["watermark_detected"] = watermark_annots > 0
         return info
@@ -169,7 +169,7 @@ def _count_watermark_annots(page: Any) -> int:
             typ = getattr(annot, "type", None)
             name = typ[1] if isinstance(typ, (tuple, list)) and len(typ) >= 2 else ""
             meta = getattr(annot, "info", None) or {}
-            subject = str((meta or {}).get("subject") or (meta or {}).get("title") or "")
+            subject = str(meta.get("subject") or meta.get("title") or "")
             hint = f"{name} {subject}".lower()
             if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
                 count += 1
@@ -254,7 +254,7 @@ def _score_format_consistency(pages: list) -> float:
             chars = page.chars or []
             if chars:
                 # Font sizes.
-                font_sizes.extend([c.get("size", 0) for c in chars if c.get("size")])
+                font_sizes.extend(c["size"] for c in chars if c.get("size"))
 
                 # Line heights (group by y).
                 y_coords = sorted({c.get("top", 0) for c in chars})
@@ -315,8 +315,8 @@ def _score_table_quality(pages: list) -> float:
 
             for table in tables:
                 # Table rows/cols.
-                rows = len(table.rows) if hasattr(table, "rows") and table.rows else 0
-                cells = table.cells if hasattr(table, "cells") and table.cells else []
+                rows = len(table.rows)
+                cells = table.cells
 
                 # Consider "complete": at least 2x2 and reasonable cell count.
                 if rows >= 2 and len(cells) >= 4:
@@ -329,5 +329,5 @@ def _score_table_quality(pages: list) -> float:
         return 1.0
 
     # Proportion of well-formed tables.
-    table_ratio = well_formed_tables / max(1, total_tables)
+    table_ratio = well_formed_tables / total_tables
     return max(0.0, min(1.0, table_ratio))

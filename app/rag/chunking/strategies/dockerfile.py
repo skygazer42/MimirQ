@@ -70,20 +70,19 @@ def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:
 
 def _build_stages(text: str) -> list[_Stage]:
     lines = _iter_lines(text)
-    from_lines: list[int] = []
+    from_lines: list[tuple[int, re.Match[str]]] = []
     for i, ln in enumerate(lines):
-        if _FROM_RE.match(ln.plain):
-            from_lines.append(i)
+        if match := _FROM_RE.match(ln.plain):
+            from_lines.append((i, match))
     if not from_lines:
         return [_Stage(start=0, end=len(text), index=0, from_image=None, from_alias=None)]
 
     stages: list[_Stage] = []
-    for idx, i in enumerate(from_lines):
+    for idx, (i, match) in enumerate(from_lines):
         start = lines[i].start
-        end = lines[from_lines[idx + 1]].start if idx + 1 < len(from_lines) else len(text)
-        m = _FROM_RE.match(lines[i].plain)
-        img = (m.group("img")).strip() if m else ""
-        als = (m.group("as") or "").strip() if m else ""
+        end = lines[from_lines[idx + 1][0]].start if idx + 1 < len(from_lines) else len(text)
+        img = match.group("img").strip()
+        als = (match.group("as") or "").strip()
         stages.append(
             _Stage(
                 start=start,
@@ -132,13 +131,13 @@ def _instruction_window_end(instrs: list[_Instr], start_idx: int, chunk_size: in
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _window_instruction_keywords(instrs: list[_Instr], start_idx: int, end_idx: int) -> list[str]:
     uniq: list[str] = []
     for instr in instrs[start_idx:end_idx]:
-        if instr.keyword and instr.keyword not in uniq:
+        if instr.keyword not in uniq:
             uniq.append(instr.keyword)
     return uniq[:20]
 
@@ -156,7 +155,7 @@ def _next_instruction_start(instrs: list[_Instr], start_idx: int, end_idx: int, 
             continue
         break
     next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 class DockerfileChunker(BaseChunker):
@@ -182,7 +181,7 @@ class DockerfileChunker(BaseChunker):
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         chunks: list[Document] = []
         for stage in _build_stages(text):
             chunks.extend(self._split_stage(text, base_meta, stage))

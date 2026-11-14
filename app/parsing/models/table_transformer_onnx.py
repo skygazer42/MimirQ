@@ -11,21 +11,13 @@ from app.parsing.models.runtime import LoadedSmallModel, SmallModelRuntime
 _DEFAULT_TATR_ONNX_MODEL_ID = "tatr_v1_1_all_onnx"
 
 
-def _metadata_value(loaded: LoadedSmallModel, key: str) -> str | None:
+def _preprocessor_path(loaded: LoadedSmallModel) -> Path:
     metadata = loaded.metadata or {}
     nested = metadata.get("metadata")
-    if isinstance(nested, dict):
-        value = nested.get(key)
-        if value is not None:
-            return str(value)
-    value = metadata.get(key)
-    if value is not None:
-        return str(value)
-    return None
-
-
-def _preprocessor_path(loaded: LoadedSmallModel) -> Path:
-    explicit = _metadata_value(loaded, "preprocessor_path")
+    value = nested.get("preprocessor_path") if isinstance(nested, dict) else None
+    if value is None:
+        value = metadata.get("preprocessor_path")
+    explicit = str(value) if value is not None else None
     if explicit:
         return Path(explicit).resolve()
     if loaded.path is not None:

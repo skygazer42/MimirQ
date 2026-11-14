@@ -89,12 +89,12 @@ def _budget_meta(
 ) -> dict[str, Any]:
     return {
         "enabled": bool(max_queries or max_candidates or token_budget or latency_budget_ms),
-        "max_queries": int(max_queries or 0),
-        "max_candidates": int(max_candidates or 0),
-        "token_budget": int(token_budget or 0),
-        "latency_budget_ms": round(float(latency_budget_ms or 0.0), 3),
+        "max_queries": max_queries,
+        "max_candidates": max_candidates,
+        "token_budget": token_budget,
+        "latency_budget_ms": round(latency_budget_ms or 0.0, 3),
         "generation_elapsed_ms": round(float(elapsed_ms or 0.0), 3),
-        "candidate_count": int(max(0, len(retrieval_queries) - 1)),
+        "candidate_count": max(0, len(retrieval_queries) - 1),
         "selected_count": 0,
         "selected_tokens": 0,
         "dropped_count": 0,
@@ -119,7 +119,7 @@ def _filter_budgeted_queries(
     extra_queries = retrieval_queries[1:]
     filtered_extra_queries: list[tuple[str, str]] = []
     selected_tokens = 0
-    latency_budget_exceeded = bool(latency_budget_ms > 0.0 and elapsed_ms > latency_budget_ms)
+    latency_budget_exceeded = latency_budget_ms > 0.0 and elapsed_ms > latency_budget_ms
     if latency_budget_exceeded:
         budget_meta["reasons"].append("latency_budget_exceeded")
     for kind, query in extra_queries:
@@ -137,7 +137,7 @@ def _filter_budgeted_queries(
             budget_meta["reasons"].append(f"latency_budget_drop:{kind}")
             continue
         filtered_extra_queries.append((kind, query))
-        selected_tokens += int(query_tokens)
+        selected_tokens += query_tokens
     return [main_query] + filtered_extra_queries, selected_tokens
 
 
@@ -181,13 +181,13 @@ def build_query_variant_stage(payload: QueryVariantStageInput) -> QueryVariantSt
             latency_budget_ms=query_expansion_budget_latency_ms,
             elapsed_ms=payload.query_expansion_elapsed_ms,
         )
-        query_expansion_budget_meta["selected_count"] = int(max(0, len(retrieval_queries) - 1))
-        query_expansion_budget_meta["selected_tokens"] = int(selected_tokens)
-        query_expansion_budget_meta["dropped_count"] = int(
-            max(0, len(extra_queries) - query_expansion_budget_meta["selected_count"])
+        query_expansion_budget_meta["selected_count"] = max(0, len(retrieval_queries) - 1)
+        query_expansion_budget_meta["selected_tokens"] = selected_tokens
+        query_expansion_budget_meta["dropped_count"] = max(
+            0, len(extra_queries) - query_expansion_budget_meta["selected_count"]
         )
         query_expansion_budget_meta["reasons"] = list(dict.fromkeys(query_expansion_budget_meta["reasons"]))
-        query_expansion_budget_meta["degraded"] = bool(query_expansion_budget_meta["dropped_count"] > 0)
+        query_expansion_budget_meta["degraded"] = query_expansion_budget_meta["dropped_count"] > 0
 
     return QueryVariantStageOutput(
         retrieval_queries=retrieval_queries,

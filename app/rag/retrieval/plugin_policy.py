@@ -1,9 +1,14 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any, Literal, TypedDict
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.planner import (
+    _as_dict,
+    _metadata_terms,
+    _metadata_value,
+    _normalize_policy_match_text,
+    _policy_string_list,
     _policy_value_fuzzy_overlaps_query,
     retrieval_policy_anchor_mismatch_penalty,
     retrieval_policy_boost_score,
@@ -12,7 +17,7 @@ from app.rag.retrieval.planner import (
     retrieval_policy_value_intent_mismatch_penalty,
 )
 
-PluginRefForRecord = Callable[[dict[str, Any]], str]
+PluginRefForRecord = Callable[[dict[str, Any]], str | None]
 MetadataLayersForRecord = Callable[[dict[str, Any]], list[dict[str, Any]] | tuple[dict[str, Any], ...]]
 PolicyResolver = Callable[[str], dict[str, Any]]
 
@@ -52,59 +57,6 @@ class RetrievalPolicySignalScores:
     @property
     def positive_total(self) -> float:
         return self.boost_field + self.query_expansion + self.rerank_feature
-
-
-def _normalize_policy_match_text(value: str) -> str:
-    text = value.strip().casefold()
-    return "".join(char for char in text if char.isalnum())
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _policy_string_list(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, list | tuple | set):
-        return ()
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in value:
-        if item is None:
-            continue
-        text = str(item).strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
-
-
-def _metadata_value(meta: dict[str, Any], key: str) -> Any:
-    if key in meta:
-        return meta.get(key)
-    if "." not in key:
-        return meta.get(key)
-    cur: Any = meta
-    for part in key.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
-
-
-def _metadata_terms(value: Any) -> tuple[str, ...]:
-    raw_items = value if isinstance(value, list | tuple | set) else [value]
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in raw_items:
-        if raw is None:
-            continue
-        text = str(raw).strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
 
 
 def _policy_float(value: Any, *, default: float, minimum: float = 0.0, maximum: float = 2.0) -> float:

@@ -126,7 +126,7 @@ def score_multihop_citation_chain(
         "matched_chain_steps": matched_steps,
         "path_completeness": completeness,
         "order_consistency": order_consistency,
-        "chain_hit": matched_steps == expected_steps and expected_steps > 0,
+        "chain_hit": matched_steps == expected_steps,
         "missing_chain_ids": missing_chain_ids[:20],
         "matched_chain_ids": matched_chain_ids[:20],
     }

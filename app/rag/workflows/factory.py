@@ -79,7 +79,7 @@ def resolve_mode(mode: str | WorkflowMode) -> WorkflowMode:
     except ValueError:
         pass
 
-    valid_modes = list(MODE_ALIASES.keys())
+    valid_modes = list(MODE_ALIASES)
     raise ValueError(f"Unknown workflow mode: '{mode}'. Valid modes: {valid_modes}")
 
 

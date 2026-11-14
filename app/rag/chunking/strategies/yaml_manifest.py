@@ -20,14 +20,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -91,19 +84,6 @@ def _parse_yaml_kv_line(line: str) -> tuple[str, str] | None:
     if " #" in val:
         val = val.split(" #", 1)[0].strip()
     return key, val
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text).splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text, plain=text))
-    return out
 
 
 def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None]:
@@ -206,7 +186,7 @@ def _looks_like_structured_yaml(text: str) -> bool:
     if key_lines < 6:
         return False
 
-    ratio = key_lines / max(1, stats.total_lines)
+    ratio = key_lines / stats.total_lines
     if ratio < 0.25:
         return False
 
@@ -274,7 +254,7 @@ class YAMLManifestChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

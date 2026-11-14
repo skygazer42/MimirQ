@@ -30,7 +30,11 @@ from app.parsing.utils.mineru_layout import (
     extract_position_tagged_markdown_from_zip_bytes,
     extract_position_tagged_markdown_from_zip_path,
 )
-from app.parsing.utils.zip_processor import zip_image_processor
+from app.parsing.utils.zip_processor import (
+    normalize_zip_image_ref,
+    process_zip_with_images,
+    replace_zip_image_refs,
+)
 from app.rag.core.logging import get_logger
 from app.services.document_preview_utils import _write_preview_owner_binding
 
@@ -160,7 +164,7 @@ def _preview_zip_member_for_ref(ref: str, member_by_key: dict[str, str]) -> tupl
         return None
     if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
         return None
-    normalized_ref = zip_image_processor._normalize_ref_path(ref)
+    normalized_ref = normalize_zip_image_ref(ref)
     if not normalized_ref:
         return None
     member = member_by_key.get(normalized_ref)
@@ -702,7 +706,7 @@ class MinerUService:
             if state == "done":
                 return item
             if state == "failed":
-                err = (item or {}).get("err_msg") or UNKNOWN_ERROR
+                err = item.get("err_msg") or UNKNOWN_ERROR
                 raise RuntimeError(f"Task {batch_id} failed: {err}")
 
             # Exponential backoff with jitter (best-effort)
@@ -837,7 +841,7 @@ class MinerUService:
                 account_id=account_id,
             )
             if mapping:
-                markdown = zip_image_processor._replace_image_refs(markdown, mapping)
+                markdown = replace_zip_image_refs(markdown, mapping)
             return markdown, extracted
         finally:
             try:
@@ -863,7 +867,7 @@ class MinerUService:
                 tmp_zip_path = Path(tmp_dir) / "result.zip"
                 tmp_zip_path.write_bytes(zip_bytes)
 
-                result = zip_image_processor.process_zip_with_images(
+                result = process_zip_with_images(
                     zip_path=tmp_zip_path,
                     tenant_id=str(tenant_id) if tenant_id else None,
                     dataset_id=str(dataset_id),
@@ -936,7 +940,7 @@ class MinerUService:
             poll_interval=5,
         )
 
-        zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
+        zip_url = item.get("full_zip_url") or item.get("zip_url")
         if not zip_url:
             raise RuntimeError("No result ZIP URL in response")
 
@@ -950,7 +954,7 @@ class MinerUService:
                 await asyncio.to_thread(tmp_zip_path.write_bytes, zip_bytes)
 
                 result = await asyncio.to_thread(
-                    zip_image_processor.process_zip_with_images,
+                    process_zip_with_images,
                     zip_path=tmp_zip_path,
                     tenant_id=str(tenant_id) if tenant_id else None,
                     dataset_id=str(dataset_id),
@@ -1052,7 +1056,9 @@ class MinerUService:
                 except Exception as exc:
                     logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
-            if content_type is None or (("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower())):
+            if content_type is None or (
+                ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower())
+            ):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
             return await asyncio.to_thread(

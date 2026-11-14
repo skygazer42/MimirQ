@@ -84,11 +84,11 @@ def load_answer_lineage_trace(
 
     records = _read_jsonl_tail(path, max_bytes=5_000_000)
     for record in reversed(records):
-        if record.get('event') != "rag_trace":
+        if record.get("event") != "rag_trace":
             continue
-        if record.get('tenant_id') != tenant_key:
+        if record.get("tenant_id") != tenant_key:
             continue
-        if record.get('request_id') == request_key:
+        if record.get("request_id") == request_key:
             return dict(record)
     return None
 
@@ -144,7 +144,7 @@ def authorize_answer_lineage_access(
     if _can_read_observability(member):
         return True
 
-    owns_trace = trace_record.get('account_id') == account_id
+    owns_trace = trace_record.get("account_id") == account_id
     if not owns_trace:
         conversation_raw = _safe_str(trace_record.get("conversation_id"), max_len=120)
         if not conversation_raw:
@@ -221,9 +221,9 @@ def _eligible_retrieval_trace(
     cutoff_ms: int,
 ) -> tuple[dict[str, Any], int] | None:
     record = dict(raw) if isinstance(raw, Mapping) else {}
-    if record.get('event') != "rag_trace":
+    if record.get("event") != "rag_trace":
         return None
-    if record.get('tenant_id') != tenant_id:
+    if record.get("tenant_id") != tenant_id:
         return None
     ts_ms = _to_int(record.get("ts_ms")) or 0
     if ts_ms and ts_ms < cutoff_ms:
@@ -380,9 +380,9 @@ def summarize_chunk_retrieval_usage_from_records(
         "traces_with_hits": traces_with_hits,
         "citations_matched": citations_matched,
         "last_seen_ts_ms": last_seen_ts_ms,
-        "request_ids": request_ids[: max(0, int(max_hits or 0))],
+        "request_ids": request_ids[:hit_limit],
         "retrieval_modes": dict(sorted(retrieval_modes.items(), key=lambda kv: kv[0])),
-        "hits": hits[: max(0, int(max_hits or 0))],
+        "hits": hits[:hit_limit],
     }
 
 

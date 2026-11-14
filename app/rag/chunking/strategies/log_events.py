@@ -72,10 +72,8 @@ def _iter_entries(text: str) -> list[_Entry]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        ts = (m.group("ts")).strip() if "ts" in m.groupdict() else None
+        ts = m.group("ts").strip()
         level = (m.group("level")).strip().upper() if "level" in m.groupdict() else None
-        if not ts:
-            ts = None
         if not level:
             level = None
         entries.append(_Entry(start=start, end=end, ts=ts, level=level))
@@ -101,7 +99,7 @@ def _entry_window_end(entries: list[_Entry], *, start_idx: int, chunk_size: int)
         if end_idx != start_idx and candidate_length > chunk_size:
             break
         end_idx += 1
-    return max(start_idx + 1, end_idx)
+    return end_idx
 
 
 def _unique_entry_levels(entries: list[_Entry], *, start_idx: int, end_idx: int) -> list[str]:
@@ -128,7 +126,7 @@ def _next_entry_start(
                 break
             desired -= 1
         next_start = desired if desired > start_idx else end_idx - 1
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 class LogEventsChunker(BaseChunker):
@@ -156,9 +154,9 @@ class LogEventsChunker(BaseChunker):
             metadatas=[base_meta],
         )
         for split_doc in split_docs:
-            start = int(split_doc.metadata.pop("start_index", None) or 0)
+            start = split_doc.metadata.pop("start_index")
             meta: dict[str, Any] = dict(base_meta)
-            meta.update(split_doc.metadata or {})
+            meta.update(split_doc.metadata)
             meta.update(
                 {
                     "chunk_strategy": "log_events",
@@ -226,6 +224,8 @@ class LogEventsChunker(BaseChunker):
                     metadata=meta,
                 )
             )
+            if end_idx == len(entries):
+                break
             start_idx = _next_entry_start(
                 entries,
                 start_idx=start_idx,
@@ -237,7 +237,7 @@ class LogEventsChunker(BaseChunker):
         text = doc.page_content
         if not text.strip():
             return
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         entries = _iter_entries(text)
         if entries:
             self._append_entry_chunks(
@@ -254,7 +254,7 @@ class LogEventsChunker(BaseChunker):
         for doc in documents:
             self._split_document(doc, out)
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
         return out

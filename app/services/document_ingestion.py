@@ -4,7 +4,7 @@ import contextlib
 import json
 import logging
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -12,26 +12,16 @@ from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentPipelineOptions
-from app.api.schemas.document_ingestion import (
+from app.api.schemas.documents import (
+    DocumentPipelineOptions,
     LocalHtmlIngestRequest,
     PipelineOptionOverrides,
-    PipelineOverridesFormFields,
     UploadDocumentFormFields,
     UrlUploadRequest,
 )
+from app.api.utils import normalize_upload_key, sanitize_upload_filename, save_upload_file_with_hash
 from app.api.utils.document_pipeline_input import parse_pipeline_json
-from app.api.utils.upload import (
-    _normalize_upload_key as normalize_upload_key,
-)
-from app.api.utils.upload import (
-    _sanitize_filename,
-    save_upload_file_with_hash,
-)
-from app.api.utils.upload import (
-    _sanitize_filename as sanitize_filename,
-)
-from app.api.utils.url_ingest import validate_url_for_ingest
+from app.api.utils.url_ingest import validate_fetch_target
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
@@ -70,14 +60,6 @@ def _upload_extension_allowed(file_ext: str) -> bool:
     return file_ext in settings.allowed_extensions_list
 
 
-def _document_object_storage_enabled() -> bool:
-    return document_object_storage_enabled()
-
-
-def _unlink_upload(path: Path) -> None:
-    source_persistence.unlink_source(path)
-
-
 @dataclass
 class _UploadFileLease:
     path: Path | None = None
@@ -92,7 +74,7 @@ class _UploadFileLease:
 
     def cleanup(self) -> None:
         if self.owned and self.path is not None:
-            _unlink_upload(self.path)
+            source_persistence.unlink_source(self.path)
 
 
 def _create_ingestion_run_if_missing(
@@ -544,9 +526,9 @@ async def ingest_url(
     if not settings.URL_INGEST_ENABLED:
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
-    url = await validate_url_for_ingest(body.url)
+    target = await validate_fetch_target(body.url)
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
-    ingest_file = await ingestion_sources.download_url_ingest_file(url=url, body=body, tenant_id=tenant_id)
+    ingest_file = await ingestion_sources.download_url_ingest_file(target=target, body=body, tenant_id=tenant_id)
     source_lease = source_persistence.SourceFileLease(ingest_file.final_path)
     try:
         return await _ingest_url_upload_request_with_source(
@@ -558,7 +540,7 @@ async def ingest_url(
             ingestion_run_id=ingestion_run_id,
             ingestion_kind=ingestion_kind,
             ingest_file=ingest_file,
-            url=url,
+            url=target.raw,
             dataset=dataset,
             source_lease=source_lease,
         )
@@ -581,7 +563,7 @@ async def _ingest_url_upload_request_with_source(
     source_lease: source_persistence.SourceFileLease,
 ) -> DBDocument:
     source = await ingestion_sources.url_source_metadata(url=url, ingest_file=ingest_file)
-    safe_name = _sanitize_filename(body.filename or Path(ingest_file.final_path).name)
+    safe_name = sanitize_upload_filename(body.filename or Path(ingest_file.final_path).name)
     prepared = _prepare_document_ingestion(
         db=db,
         tenant_id=tenant_id,
@@ -698,7 +680,7 @@ async def ingest_file(
     background_tasks: BackgroundTasks,
     file: UploadFile,
     form: UploadDocumentFormFields,
-    overrides_form: PipelineOverridesFormFields,
+    overrides_form: PipelineOptionOverrides,
     tenant_id: UUID,
     account_id: str,
     db: Session,
@@ -744,7 +726,7 @@ class _IngestLockLease:
 
 def _document_upload_path(tenant_id: UUID, document_id: UUID, extension: str) -> Path:
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-    if _document_object_storage_enabled():
+    if document_object_storage_enabled():
         upload_dir /= ".tmp"
     upload_dir.mkdir(parents=True, exist_ok=True)
     return upload_dir / f"{document_id}{extension}"
@@ -873,7 +855,7 @@ def _normalize_upload_identity(file: UploadFile) -> _UploadIdentity:
     raw_filename = file.filename
     upload_key = normalize_upload_key(raw_filename)
     source_path = upload_key if "/" in upload_key else None
-    file.filename = sanitize_filename(raw_filename)
+    file.filename = sanitize_upload_filename(raw_filename)
     return _UploadIdentity(
         filename=file.filename,
         file_ext=Path(file.filename).suffix.lower(),
@@ -1228,7 +1210,7 @@ async def _ingest_file_impl(
     background_tasks: BackgroundTasks,
     file: UploadFile,
     form: UploadDocumentFormFields,
-    overrides_form: PipelineOverridesFormFields,
+    overrides_form: PipelineOptionOverrides,
     *,
     tenant_id: UUID,
     account_id: str,
@@ -1245,7 +1227,7 @@ async def _ingest_file_impl(
     dataset_meta = (dataset.dataset_metadata or {}) if dataset is not None else {}
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
     pipeline_parsed = parse_pipeline_json(form.pipeline)
-    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
+    pipeline_overrides = overrides_form
     dataset_default_pb, dataset_default_cs = ingestion_plan.dataset_upload_defaults(dataset_meta)
     defaults = ingestion_plan.select_upload_defaults(
         parser_backend=parser_backend,

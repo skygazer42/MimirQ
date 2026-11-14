@@ -149,10 +149,6 @@ def _clear_current_inflight_retrieval_candidates_key(key: str | None = None) -> 
     _inflight_candidate_leader_key.set(None)
 
 
-def _set_current_distributed_retrieval_lease(lease: _DistributedRetrievalLease | None) -> None:
-    _current_distributed_candidate_lease.set(lease)
-
-
 def _clear_current_distributed_retrieval_lease(lease: _DistributedRetrievalLease | None = None) -> None:
     current = _current_distributed_candidate_lease.get()
     if current is None:
@@ -208,7 +204,7 @@ def wait_for_inflight_retrieval_candidates(
     timeout_sec: float,
 ) -> list[dict[str, Any]]:
     try:
-        return copy.deepcopy(future.result(timeout=max(1.0, float(timeout_sec or 0.0))))
+        return copy.deepcopy(future.result(timeout=max(1.0, timeout_sec)))
     except concurrent.futures.TimeoutError as exc:
         raise RetrievalCandidateSingleflightTimeoutError(timeout_sec) from exc
 
@@ -218,8 +214,8 @@ def _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec: int) -> int:
         1,
         int(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC),
     )
-    response_ttl_sec = max(60, int(cache_ttl_sec or 0))
-    return max(60, min(300, max(response_ttl_sec, wait_timeout_sec)))
+    response_ttl_sec = max(60, cache_ttl_sec)
+    return min(300, max(response_ttl_sec, wait_timeout_sec))
 
 
 def _retrieval_candidate_singleflight_wait_timeout_sec() -> float:
@@ -376,12 +372,9 @@ def _start_distributed_retrieval_lease_heartbeat(lease: _DistributedRetrievalLea
 
 def _read_any_distributed_retrieval_candidates(key: str) -> list[dict[str, Any]] | None:
     cached = get_cached_retrieval_candidates(key)
-    if isinstance(cached, list):
+    if cached is not None:
         return cached
-    shared = get_distributed_inflight_retrieval_candidates(key)
-    if isinstance(shared, list):
-        return shared
-    return None
+    return get_distributed_inflight_retrieval_candidates(key)
 
 
 def _try_acquire_distributed_retrieval_lease(
@@ -412,9 +405,9 @@ def _claim_distributed_retrieval_lease(
     lease_ttl_sec: int,
 ) -> tuple[bool, list[dict[str, Any]] | None, _DistributedRetrievalLease | None]:
     lease = _DistributedRetrievalLease(lease_key=lease_key, owner=owner)
-    _set_current_distributed_retrieval_lease(lease)
+    _current_distributed_candidate_lease.set(lease)
     available = _read_any_distributed_retrieval_candidates(key)
-    if isinstance(available, list):
+    if available is not None:
         release_distributed_inflight_retrieval_candidates(lease)
         return False, available, None
     _start_distributed_retrieval_lease_heartbeat(lease, ttl_sec=lease_ttl_sec)
@@ -452,7 +445,7 @@ def acquire_or_wait_for_distributed_inflight_retrieval_candidates(
 
     while True:
         available = _read_any_distributed_retrieval_candidates(key)
-        if isinstance(available, list):
+        if available is not None:
             return False, available, None
 
         acquired = _try_acquire_distributed_retrieval_lease(

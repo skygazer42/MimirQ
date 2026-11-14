@@ -112,7 +112,7 @@ def _render_paragraph_block(block) -> str | None:  # noqa: ANN001
 
     if _is_list_paragraph(block):
         lvl = _list_level(block)
-        indent = "  " * max(0, min(6, lvl))
+        indent = "  " * min(6, lvl)
         marker = _list_marker(style_name)
         return f"{indent}{marker} {text}"
 
@@ -157,7 +157,7 @@ class DocxParser:
             if rendered:
                 parts.append(rendered)
 
-        content = "\n\n".join(p for p in parts if p)
+        content = "\n\n".join(parts)
         metadata = {
             "source": str(file_path.name),
             "file_type": "docx",

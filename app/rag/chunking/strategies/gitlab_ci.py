@@ -57,9 +57,7 @@ def _build_top_blocks(text: str) -> list[_TopBlock]:
         m = _TOP_KEY_RE.match(plain)
         if not m:
             continue
-        key = (m.group("key")).strip()
-        if not key:
-            continue
+        key = m.group("key")
         idxs.append(i)
         keys.append(key)
 
@@ -131,7 +129,7 @@ class GitLabCIChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

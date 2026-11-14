@@ -26,7 +26,7 @@ class _JobBlock:
     index: int
 
 
-_JOBS_RE = re.compile(r"(?m)^(?P<indent>\s*)jobs\s*:\s*(?:#.*)?$")
+_JOBS_RE = re.compile(r"(?m)^(?P<indent>[ \t]*)jobs\s*:\s*(?:#.*)?$")
 _KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
 _RUNS_ON_RE = re.compile(r"(?m)^\s*runs-on\s*:\s*")
 _ON_RE = re.compile(r"(?m)^(?P<indent>\s*)on\s*:\s*")
@@ -41,10 +41,7 @@ def _find_jobs_anchor(text: str) -> tuple[int, int] | None:
 
 def _extract_workflow_name(text: str) -> str | None:
     head = (text)[:8000]
-    offset = 0
     for raw_line in head.splitlines(keepends=True):
-        _ = offset
-        offset += len(raw_line)
         plain = raw_line.rstrip("\r\n")
         if not plain or plain.lstrip().startswith("#"):
             continue
@@ -85,8 +82,6 @@ def _build_job_blocks(text: str) -> list[_JobBlock]:
         return []
 
     job_keys = _job_keys_from_candidates(candidates)
-    if not job_keys:
-        return []
 
     blocks: list[_JobBlock] = []
     for idx, (i, key) in enumerate(job_keys):
@@ -127,8 +122,7 @@ def _job_candidate_for_line(line: _Line, *, base_indent: int) -> tuple[int, str]
     match = _KEY_RE.match(plain)
     if not match:
         return None
-    key = (match.group("key")).strip()
-    return (indent, key) if key else None
+    return indent, match.group("key")
 
 
 def _job_keys_from_candidates(candidates: list[tuple[int, int, str]]) -> list[tuple[int, str]]:
@@ -254,7 +248,7 @@ class GitHubActionsChunker(BaseChunker):
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         workflow_name = _extract_workflow_name(text)
         blocks = _build_job_blocks(text)
         if not blocks:

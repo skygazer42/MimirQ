@@ -110,10 +110,6 @@ def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
     return cleaned
 
 
-def _sanitize_stage_python_plugin_ref(value: Any, expected_stage: str) -> str | None:
-    return sanitize_python_plugin_ref(value, expected_stage=expected_stage)
-
-
 def _sanitize_regex_pattern(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -258,9 +254,13 @@ _PIPELINE_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
 
 _PIPELINE_METADATA_SANITIZED_FIELDS: tuple[_MetadataFieldSpec, ...] = (
     ("chunk_strategy_params", "chunk_strategy_params", _sanitize_chunk_strategy_params),
-    ("chunk_python_plugin", "chunk_python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "chunk")),
+    (
+        "chunk_python_plugin",
+        "chunk_python_plugin",
+        lambda value: sanitize_python_plugin_ref(value, expected_stage="chunk"),
+    ),
     ("chunk_python_params", "chunk_python_params", _sanitize_chunk_strategy_params),
-    ("kg_python_plugin", "kg_python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "kg")),
+    ("kg_python_plugin", "kg_python_plugin", lambda value: sanitize_python_plugin_ref(value, expected_stage="kg")),
     ("kg_python_params", "kg_python_params", _sanitize_chunk_strategy_params),
 )
 
@@ -342,7 +342,11 @@ _GOVERNANCE_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
 _GOVERNANCE_METADATA_SANITIZED_FIELDS: tuple[_MetadataFieldSpec, ...] = (
     ("governance_rule_packs", "rule_packs", _sanitize_rule_packs),
     ("governance_regex_rules", "regex_rules", _sanitize_regex_rules),
-    ("governance_python_plugin", "python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "governance")),
+    (
+        "governance_python_plugin",
+        "python_plugin",
+        lambda value: sanitize_python_plugin_ref(value, expected_stage="governance"),
+    ),
     ("governance_python_params", "python_params", _sanitize_chunk_strategy_params),
 )
 
@@ -548,7 +552,9 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_noise_ratio_threshold=_coerce_float(governance.get("noise_ratio_threshold")),
         governance_common_lines_min_docs=_coerce_int(governance.get("common_lines_min_docs")),
         governance_common_lines_min_ratio=_coerce_float(governance.get("common_lines_min_ratio")),
-        governance_python_plugin=_sanitize_stage_python_plugin_ref(governance.get("python_plugin"), "governance"),
+        governance_python_plugin=sanitize_python_plugin_ref(
+            governance.get("python_plugin"), expected_stage="governance"
+        ),
         governance_python_params=_sanitize_chunk_strategy_params(governance.get("python_params")),
         parse_fallback_enabled=_coerce_bool(pipeline.get("parse_fallback_enabled")),
         parse_fallback_min_content_chars=_coerce_int(pipeline.get("parse_fallback_min_content_chars")),
@@ -571,7 +577,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
         chunk_merge_small_min_chars=_coerce_int(pipeline.get("chunk_merge_small_min_chars")),
         chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
-        chunk_python_plugin=_sanitize_stage_python_plugin_ref(pipeline.get("chunk_python_plugin"), "chunk"),
+        chunk_python_plugin=sanitize_python_plugin_ref(pipeline.get("chunk_python_plugin"), expected_stage="chunk"),
         chunk_python_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_python_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
         embedding_contextual_retrieval_enabled=_coerce_bool(index.get("embedding_contextual_retrieval_enabled")),
@@ -580,7 +586,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
         kg_enabled=_coerce_bool(index.get("kg_enabled")),
-        kg_python_plugin=_sanitize_stage_python_plugin_ref(pipeline.get("kg_python_plugin"), "kg"),
+        kg_python_plugin=sanitize_python_plugin_ref(pipeline.get("kg_python_plugin"), expected_stage="kg"),
         kg_python_params=_sanitize_chunk_strategy_params(pipeline.get("kg_python_params")),
         event_vector_enabled=_coerce_bool(index.get("event_vector_enabled")),
         entity_vector_enabled=_coerce_bool(index.get("entity_vector_enabled")),
@@ -930,7 +936,9 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_common_lines_min_ratio is not None
         else settings.GOVERNANCE_COMMON_LINES_MIN_RATIO
     )
-    governance_python_plugin = _sanitize_stage_python_plugin_ref(options.governance_python_plugin, "governance") or ""
+    governance_python_plugin = (
+        sanitize_python_plugin_ref(options.governance_python_plugin, expected_stage="governance") or ""
+    )
     governance_python_params = _sanitize_chunk_strategy_params(options.governance_python_params) or {}
     parse_fallback_enabled = (
         settings.PARSE_FALLBACK_ENABLED
@@ -1020,9 +1028,9 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     )
     chunk_strategy_params = options.chunk_strategy_params
     chunk_strategy_params = _sanitize_chunk_strategy_params(chunk_strategy_params) or {}
-    chunk_python_plugin = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk") or ""
+    chunk_python_plugin = sanitize_python_plugin_ref(options.chunk_python_plugin, expected_stage="chunk") or ""
     chunk_python_params = _sanitize_chunk_strategy_params(options.chunk_python_params) or {}
-    kg_python_plugin = _sanitize_stage_python_plugin_ref(options.kg_python_plugin, "kg") or ""
+    kg_python_plugin = sanitize_python_plugin_ref(options.kg_python_plugin, expected_stage="kg") or ""
     kg_python_params = _sanitize_chunk_strategy_params(options.kg_python_params) or {}
     embedding_context_prefix_enabled = (
         settings.EMBEDDING_CONTEXT_PREFIX_ENABLED

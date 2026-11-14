@@ -27,6 +27,13 @@ def _ruleset_dir(name: str) -> Path | None:
     return base if base.parent == root else None
 
 
+def _require_ruleset_dir(name: str) -> Path:
+    base = _ruleset_dir(name)
+    if base is None or not base.is_dir():
+        raise FileNotFoundError(f"Unknown industry ruleset: {name or '<empty>'}")
+    return base
+
+
 def _load_yaml(path: Path) -> Any:
     if not path.exists():
         return {}
@@ -102,13 +109,11 @@ def ruleset_exists(name: str) -> bool:
 
 def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str, Any]:
     ruleset_name = name.strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    base = _require_ruleset_dir(ruleset_name)
 
     tokens: list[str] = []
     seen: set[str] = set()
-    for item in candidates or []:
+    for item in candidates:
         raw_token = item.get("token") if isinstance(item, dict) else item
         if raw_token is None:
             continue
@@ -147,9 +152,7 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
 
 def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
     ruleset_name = name.strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    base = _require_ruleset_dir(ruleset_name)
     normalized = dict(sorted(_normalize_glossary(glossary).items()))
     with _ruleset_write_lock(base):
         _write_yaml(base / _GLOSSARY_FILENAME, normalized)
@@ -158,9 +161,7 @@ def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
 
 def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
     ruleset_name = name.strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    base = _require_ruleset_dir(ruleset_name)
     normalized = [dict(item) for item in (patterns or []) if isinstance(item, dict)]
     with _ruleset_write_lock(base):
         _write_yaml(base / "patterns.yaml", normalized)
@@ -169,9 +170,7 @@ def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
 
 def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
     ruleset_name = name.strip()
-    base = _ruleset_dir(ruleset_name)
-    if base is None or not base.is_dir():
-        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    base = _require_ruleset_dir(ruleset_name)
     normalized = [dict(item) for item in (intents or []) if isinstance(item, dict)]
     with _ruleset_write_lock(base):
         _write_yaml(base / "intents.yaml", normalized)

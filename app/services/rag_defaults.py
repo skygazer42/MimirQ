@@ -9,48 +9,9 @@ We treat dataset defaults as *fallbacks*:
 from collections.abc import Iterable
 from typing import Any
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.api.schemas.dataset import DatasetRAGDefaults
-from app.services.rag_config_template_apply import validate_rag_config_patch
-
-
-def _coerce_dataset_defaults(raw_dataset_defaults: Any) -> DatasetRAGDefaults:
-    if isinstance(raw_dataset_defaults, DatasetRAGDefaults):
-        return raw_dataset_defaults
-    if isinstance(raw_dataset_defaults, dict):
-        return DatasetRAGDefaults(**raw_dataset_defaults)
-    raise TypeError("dataset RAG defaults must be an object")
-
-
-def _normalized_dataset_overrides(defaults: DatasetRAGDefaults) -> dict[str, Any]:
-    overrides = defaults.model_dump(exclude_none=True)
-    contract_mode = overrides.get("retrieval_contract_mode")
-    if (
-        contract_mode is not None
-        and contract_mode.strip().lower() == "evidence_strict"
-        and "visible_evidence_only" not in overrides
-    ):
-        overrides["visible_evidence_only"] = True
-    return overrides
-
-
-def _merge_dataset_rag_overrides(
-    *,
-    rag_config: ChatRAGConfig,
-    provided: set[str],
-    overrides: dict[str, Any],
-) -> tuple[ChatRAGConfig, list[str]]:
-    merged = dict(rag_config.model_dump())
-    applied: list[str] = []
-    for key, value in overrides.items():
-        if key in provided:
-            continue
-        merged[key] = value
-        applied.append(key)
-    if not applied:
-        return rag_config, []
-    validate_rag_config_patch(merged)
-    return ChatRAGConfig(**merged), applied
+from app.api.schemas.conversations import ChatRAGConfig
+from app.api.schemas.datasets import DatasetRAGDefaults
+from app.services.rag_config_template_apply import apply_rag_config_patch
 
 
 def merge_rag_config_with_dataset_defaults(
@@ -76,12 +37,24 @@ def merge_rag_config_with_dataset_defaults(
     if raw_dataset_defaults is None:
         return rag_config, []
 
-    if isinstance(raw_dataset_defaults, dict):
-        raw_dataset_defaults = {key: value for key, value in raw_dataset_defaults.items() if key not in provided}
-    defaults = _coerce_dataset_defaults(raw_dataset_defaults)
+    if isinstance(raw_dataset_defaults, DatasetRAGDefaults):
+        defaults = raw_dataset_defaults
+    elif isinstance(raw_dataset_defaults, dict):
+        defaults = DatasetRAGDefaults(
+            **{key: value for key, value in raw_dataset_defaults.items() if key not in provided}
+        )
+    else:
+        raise TypeError("dataset RAG defaults must be an object")
 
-    overrides = _normalized_dataset_overrides(defaults)
+    overrides = defaults.model_dump(exclude_none=True)
+    contract_mode = overrides.get("retrieval_contract_mode")
+    if (
+        contract_mode is not None
+        and contract_mode.strip().lower() == "evidence_strict"
+        and "visible_evidence_only" not in overrides
+    ):
+        overrides["visible_evidence_only"] = True
     if not overrides:
         return rag_config, []
 
-    return _merge_dataset_rag_overrides(rag_config=rag_config, provided=provided, overrides=overrides)
+    return apply_rag_config_patch(rag_config=rag_config, patch=overrides, request_fields_set=provided)

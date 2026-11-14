@@ -55,9 +55,7 @@ _CAPTURE_CITATION_KEYS = frozenset(
 
 
 def _sanitize_capture_citation(citation: dict[str, Any]) -> dict[str, Any]:
-    safe = {
-        key: citation.get(key) for key in _CAPTURE_CITATION_KEYS if key in citation and citation.get(key) is not None
-    }
+    safe = {key: citation[key] for key in _CAPTURE_CITATION_KEYS if key in citation and citation[key] is not None}
 
     return safe
 
@@ -151,7 +149,7 @@ def build_retrieval_replay_capture_record(
     rec: dict[str, Any] = {
         "schema": RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
         "query_hash": (qh),
-        "query_chars": len(q) if q else 0,
+        "query_chars": len(q),
         "dataset_id_hash": (stable_hash(str(dataset_id), length=16) if dataset_id else None),
         "document_ids_count": len(document_ids or []),
         "rag_config": dict(rag_config or {}),

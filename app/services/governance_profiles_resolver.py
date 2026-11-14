@@ -14,12 +14,13 @@ pipeline services without pulling in FastAPI-specific code.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.schemas.governance_profile import (
+from app.api.schemas.pipelines import (
     GovernanceProfileOut,
     GovernanceProfilePayload,
     GovernanceProfileSummary,
@@ -51,7 +52,7 @@ def _summary(profile: GovernanceProfileOut) -> GovernanceProfileSummary:
         key=profile.key,
         name=profile.name,
         description=profile.description,
-        is_system=bool(profile.is_system),
+        is_system=profile.is_system,
     )
 
 
@@ -83,33 +84,25 @@ def _resolve_profile_chain(
 
 
 def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfilePayload:
-    input_formats: list[str] = []
+    input_formats: list[Literal["markdown", "html"]] = []
     pipeline_patch: dict = {}
     regex_rules: list[RegexRuleModel] = []
     processing_scripts: list = []
 
     for profile in chain:
-        for fmt in profile.payload.input_formats or []:
-            value = fmt.strip().lower()
-            if value in {"markdown", "html"} and value not in input_formats:
-                input_formats.append(value)
+        payload = profile.payload
+        for fmt in payload.input_formats:
+            if fmt not in input_formats:
+                input_formats.append(fmt)
 
-        patch = profile.payload.pipeline_patch or {}
-        if isinstance(patch, dict):
-            pipeline_patch.update(dict(patch))
-
-        for rule in profile.payload.regex_rules or []:
-            if isinstance(rule, RegexRuleModel):
-                regex_rules.append(rule)
-            elif isinstance(rule, dict):
-                regex_rules.append(RegexRuleModel(**rule))
-
-        processing_scripts.extend(list(profile.payload.processing_scripts or []))
+        pipeline_patch.update(payload.pipeline_patch)
+        regex_rules.extend(payload.regex_rules)
+        processing_scripts.extend(payload.processing_scripts)
 
     return GovernanceProfilePayload(
         version="1",
         extends=None,
-        input_formats=input_formats or ["markdown"],  # type: ignore[arg-type]
+        input_formats=input_formats or ["markdown"],
         pipeline_patch=pipeline_patch,
         regex_rules=regex_rules,
         processing_scripts=processing_scripts[:10],
@@ -159,13 +152,13 @@ def _load_governance_profile_ref(
     # Allow UUID lookup.
     try:
         ref_uuid = UUID(ref)
-    except Exception:
+    except ValueError:
         ref_uuid = None
 
     q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
     row = (
         q.filter(DBGovernanceProfile.id == ref_uuid).first()
-        if ref_uuid
+        if ref_uuid is not None
         else q.filter(DBGovernanceProfile.key == ref).first()
     )
     if row is None:
@@ -175,10 +168,11 @@ def _load_governance_profile_ref(
     if not isinstance(payload_raw, dict):
         payload_raw = {}
 
+    key = row.key.strip() if row.key is not None else None
     try:
         return GovernanceProfileOut(
             id=row.id,
-            key=row.key.strip() or f"custom:{str(row.id)}",
+            key=key or f"custom:{row.id}",
             name=row.name,
             description=row.description,
             is_system=bool(row.is_system),

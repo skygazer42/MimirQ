@@ -409,9 +409,9 @@ def build_dataset_analysis_examples(
     top_examples = bundle["top_examples"]
     if category:
         top_examples = {str(category): list(top_examples.get(str(category), []))[:example_limit]}
-        manual_review = [
-            row for row in bundle["manual_review_candidates"] if row["category"] == str(category)
-        ][:example_limit]
+        manual_review = [row for row in bundle["manual_review_candidates"] if row["category"] == str(category)][
+            :example_limit
+        ]
     else:
         manual_review = list(bundle["manual_review_candidates"])[:example_limit]
     bundle["meta"]["schema_version"] = _EXAMPLES_SCHEMA

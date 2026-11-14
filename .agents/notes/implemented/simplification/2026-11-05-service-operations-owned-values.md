@@ -45,7 +45,7 @@ Connector 执行链直接传递自身构造的认证头、来源引用和 proven
 - 计数出错时写 1 能让死信流程继续，但它会把失效对象或内部错误变成一个可提交的次数，掩盖问题；已有处理器会记录非关键死信写入失败，因此不再伪造计数。
 ## Consequences
 
-内部记录和资源边界更明确，未添加空值分支、重试、配置或默认成功。两个真正的原始边界模块 db_catalog_observability 与 evidence_drift_audit 逐字节保留。数字转换仍可出现在同一个调用链中，维护者应根据实际生产者判断，而不能按外观或注解批量删除。
+内部记录和资源边界更明确，未添加空值分支、重试、配置或默认成功。evidence_drift_audit 的原始边界保持；db_catalog_observability 后续已按真实执行 wrapper 收窄必有 ID／耗时／result 输入，真正可空 catalog metadata 仍保留转换，见[服务输入实际所有者](2026-11-14-service-input-owners.md)。数字转换仍可出现在同一个调用链中，维护者应根据实际生产者判断，而不能按外观或注解批量删除。
 
 本记录与[配置服务内部值](2026-11-05-service-configuration-owned-values.md)部分相邻，各自持有独立类别；[缓存失效事务](../bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md)继续持有原重试与事务规则。[引用未扫描后缀修复](../bug-fix/2026-11-05-evidence-repair-preserves-unscanned-references.md)和[周期审计单列 Row 修复](../bug-fix/2026-11-05-periodic-audit-single-column-rows.md)是前置的独立行为提交，不归入本次风格差异。活跃笔记检索未发现需吸收或归档的同一运维决定。
 

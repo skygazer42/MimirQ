@@ -42,10 +42,6 @@ class MarkdownParser:
         decoded = read_text_file(file_path)
         md_content = decoded.text
 
-        # If you need plain text later, enable the lines below:
-        # html = markdown.markdown(md_content)
-        # text = BeautifulSoup(html, "html.parser").get_text()
-
         metadata = {
             "source": str(file_path.name),
             "file_type": "md",

@@ -321,6 +321,76 @@ def _assemble_document_content(
     return "".join(parts), returned_chunks, pages, truncated
 
 
+def _load_scoped_document_content_chunks(
+    db: "Session",
+    *,
+    document_id: str,
+    document_uuid: UUID,
+    dataset_uuid: UUID,
+    tenant_uuid: UUID,
+    page: int | None,
+    account_id: str | None,
+) -> "tuple[DBDocument, list[DocumentChunk]] | dict[str, Any]":
+    from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
+
+    document = _load_scoped_document(
+        db,
+        DBDocument,
+        document_id=document_uuid,
+        tenant_id=tenant_uuid,
+        dataset_id=dataset_uuid,
+    )
+    if document is None:
+        return _document_content_error(document_id, page, _DOCUMENT_NOT_FOUND_ERROR)
+    if not _can_read_document_content(
+        db,
+        document,
+        tenant_id=tenant_uuid,
+        document_id=document_uuid,
+        account_id=account_id,
+    ):
+        return _document_content_error(document_id, page, _NO_DOCUMENT_ACCESS_ERROR)
+    active_hash = get_active_pipeline_hash(document.doc_metadata)
+    active_key = build_doc_pipeline_key(document_uuid, active_hash) if active_hash else None
+    chunks = _load_document_content_chunks(
+        db,
+        DocumentChunk,
+        tenant_id=tenant_uuid,
+        document_id=document_uuid,
+        active_key=active_key,
+    )
+    chunks = _filter_document_chunks_by_page(chunks, page)
+    if chunks is None:
+        return _document_content_error(document_id, page, "page must be an integer")
+    return document, chunks
+
+
+def _build_document_content_result(
+    document: "DBDocument",
+    chunks: list["DocumentChunk"],
+    *,
+    document_id: str,
+    dataset_uuid: UUID,
+    page: int | None,
+    max_chars: int,
+) -> dict[str, Any]:
+    content, returned_chunks, pages, truncated = _assemble_document_content(chunks, max_chars=max_chars)
+    return {
+        "document_id": document_id,
+        "dataset_id": str(dataset_uuid),
+        "filename": document.filename,
+        "file_type": document.file_type,
+        "page": page,
+        "chunk_count": len(chunks),
+        "returned_chunks": returned_chunks,
+        "pages": sorted(set(pages)),
+        "truncated": truncated,
+        "content": content,
+    }
+
+
 def _get_document_content_sync(
     document_id: str,
     page: int | None = None,
@@ -330,10 +400,6 @@ def _get_document_content_sync(
     max_chars: int = 50_000,
 ) -> dict[str, Any]:
     try:
-        from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
-        from app.models.document import Document as DBDocument
-        from app.models.document import DocumentChunk
-
         identifiers = _document_content_ids(
             document_id=document_id,
             dataset_id=dataset_id,
@@ -343,51 +409,26 @@ def _get_document_content_sync(
             return identifiers
         dataset_uuid, document_uuid, tenant_uuid = identifiers
         with _db_session() as db:
-            document = _load_scoped_document(
+            loaded = _load_scoped_document_content_chunks(
                 db,
-                DBDocument,
-                document_id=document_uuid,
-                tenant_id=tenant_uuid,
-                dataset_id=dataset_uuid,
-            )
-            if document is None:
-                return _document_content_error(document_id, page, _DOCUMENT_NOT_FOUND_ERROR)
-            if not _can_read_document_content(
-                db,
-                document,
-                tenant_id=tenant_uuid,
-                document_id=document_uuid,
+                document_id=document_id,
+                document_uuid=document_uuid,
+                tenant_uuid=tenant_uuid,
+                dataset_uuid=dataset_uuid,
+                page=page,
                 account_id=account_id,
-            ):
-                return _document_content_error(document_id, page, _NO_DOCUMENT_ACCESS_ERROR)
-            active_hash = get_active_pipeline_hash(document.doc_metadata)
-            active_key = build_doc_pipeline_key(document_uuid, active_hash) if active_hash else None
-            chunks = _load_document_content_chunks(
-                db,
-                DocumentChunk,
-                tenant_id=tenant_uuid,
-                document_id=document_uuid,
-                active_key=active_key,
             )
-            chunks = _filter_document_chunks_by_page(chunks, page)
-            if chunks is None:
-                return _document_content_error(document_id, page, "page must be an integer")
-            content, returned_chunks, pages, truncated = _assemble_document_content(
+            if isinstance(loaded, dict):
+                return loaded
+            document, chunks = loaded
+            return _build_document_content_result(
+                document,
                 chunks,
+                document_id=document_id,
+                dataset_uuid=dataset_uuid,
+                page=page,
                 max_chars=_document_content_limit(max_chars),
             )
-        return {
-            "document_id": document_id,
-            "dataset_id": str(dataset_uuid),
-            "filename": document.filename,
-            "file_type": document.file_type,
-            "page": page,
-            "chunk_count": len(chunks),
-            "returned_chunks": returned_chunks,
-            "pages": sorted(set(pages)),
-            "truncated": truncated,
-            "content": content,
-        }
     except Exception as exc:
         logger.exception("Failed to get document: %s", exc)
         return {"document_id": document_id, "error": str(exc)}
@@ -614,26 +655,47 @@ def _get_page_content_sync(
     remaining = max(1_000, min(int(max_chars or 50_000), 500_000))
     last: dict[str, Any] = {"document_id": document_id, "dataset_id": dataset_id}
     for page in selected_pages:
-        if remaining <= 0:
+        prefix = f"\n\n[page {page}]\n" if parts else f"[page {page}]\n"
+        content_limit = remaining - len(prefix)
+        if content_limit <= 0:
             truncated = True
             break
-        result = _get_document_content_sync(
-            document_id=document_id,
-            page=page,
-            dataset_id=dataset_id,
-            account_id=account_id,
-            max_chars=remaining,
-        )
+        try:
+            identifiers = _document_content_ids(document_id=document_id, dataset_id=dataset_id, page=page)
+            if isinstance(identifiers, dict):
+                return {**identifiers, "pages_requested": selected_pages}
+            dataset_uuid, document_uuid, tenant_uuid = identifiers
+            with _db_session() as db:
+                loaded = _load_scoped_document_content_chunks(
+                    db,
+                    document_id=document_id,
+                    document_uuid=document_uuid,
+                    dataset_uuid=dataset_uuid,
+                    tenant_uuid=tenant_uuid,
+                    page=page,
+                    account_id=account_id,
+                )
+                if isinstance(loaded, dict):
+                    return {**loaded, "pages_requested": selected_pages}
+                document, chunks = loaded
+                result = _build_document_content_result(
+                    document,
+                    chunks,
+                    document_id=document_id,
+                    dataset_uuid=dataset_uuid,
+                    page=page,
+                    max_chars=content_limit,
+                )
+        except Exception as exc:
+            logger.exception("Failed to get document: %s", exc)
+            return {"document_id": document_id, "error": str(exc), "pages_requested": selected_pages}
         last = result
-        if result.get("error"):
-            return {**result, "pages_requested": selected_pages}
         text = result["content"]
         if text.strip():
-            prefix = f"\n\n[page {page}]\n" if parts else f"[page {page}]\n"
             parts.append(prefix + text)
             remaining -= len(prefix) + len(text)
-        returned_chunks += int(result.get("returned_chunks") or 0)
-        if result.get("truncated"):
+            returned_chunks += result["returned_chunks"]
+        if result["truncated"]:
             truncated = True
             break
 

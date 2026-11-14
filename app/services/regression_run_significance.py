@@ -4,17 +4,14 @@ import hashlib
 import math
 import statistics
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.models.evaluation import RagasRegressionItem
 
 
-def _get_value(item: Any, key: str) -> Any:
-    if isinstance(item, Mapping):
-        return item.get(key)
-    return getattr(item, key, None)
-
-
-def _scores(item: Any) -> dict[str, Any]:
-    raw = _get_value(item, "scores")
+def _scores(item: "RagasRegressionItem") -> dict[str, Any]:
+    raw = item.scores
     return dict(raw) if isinstance(raw, Mapping) else {}
 
 
@@ -33,12 +30,9 @@ def _deterministic_bootstrap_index(metric_key: str, iteration: int, offset: int,
     return int.from_bytes(digest[:8], "big") % size
 
 
-def _case_id(item: Any) -> str | None:
-    value = _get_value(item, "case_id")
-    return str(value).strip() if value is not None else None
-
-
-def _infer_metric_keys(base_items: Iterable[Any], target_items: Iterable[Any]) -> list[str]:
+def _infer_metric_keys(
+    base_items: "Iterable[RagasRegressionItem]", target_items: "Iterable[RagasRegressionItem]"
+) -> list[str]:
     keys: set[str] = set()
     for item in [*base_items, *target_items]:
         for key, value in _scores(item).items():
@@ -48,19 +42,19 @@ def _infer_metric_keys(base_items: Iterable[Any], target_items: Iterable[Any]) -
 
 
 def _mean(values: list[float]) -> float | None:
-    return round(float(sum(values) / len(values)), 6) if values else None
+    return round(sum(values) / len(values), 6) if values else None
 
 
 def _sample_stdev(values: list[float]) -> float | None:
     if len(values) < 2:
         return None
-    return float(statistics.stdev(values))
+    return statistics.stdev(values)
 
 
 def _paired_t_p_value(deltas: list[float]) -> float | None:
     if len(deltas) < 2:
         return None
-    mean_delta = float(sum(deltas) / len(deltas))
+    mean_delta = sum(deltas) / len(deltas)
     stdev = _sample_stdev(deltas)
     if stdev is None or stdev <= 0:
         return 1.0 if abs(mean_delta) <= 1e-12 else 0.0
@@ -169,8 +163,8 @@ def _bh_adjust(rows: list[dict[str, Any]]) -> None:
 def _collect_metric_pairs(
     *,
     case_ids: list[str],
-    base_by_case: Mapping[str, Any],
-    target_by_case: Mapping[str, Any],
+    base_by_case: "Mapping[str, RagasRegressionItem]",
+    target_by_case: "Mapping[str, RagasRegressionItem]",
     key: str,
 ) -> list[tuple[float, float]]:
     pairs: list[tuple[float, float]] = []
@@ -192,7 +186,7 @@ def _build_significance_row(
     base_values = [base for base, _target in pairs]
     target_values = [target for _base, target in pairs]
     deltas = [target - base for base, target in pairs]
-    delta_mean = float(sum(deltas) / len(deltas))
+    delta_mean = sum(deltas) / len(deltas)
     stdev = _sample_stdev(deltas)
     ci_low, ci_high = _bootstrap_ci(key, deltas, bootstrap_iterations)
     return {
@@ -216,8 +210,8 @@ def _build_significance_row(
 def _metric_diffs_for_case(
     *,
     keys: list[str],
-    base_item: Any,
-    target_item: Any,
+    base_item: "RagasRegressionItem",
+    target_item: "RagasRegressionItem",
 ) -> tuple[list[dict[str, Any]], list[float]]:
     metric_diffs: list[dict[str, Any]] = []
     deltas: list[float] = []
@@ -244,22 +238,21 @@ def _case_diff_label(mean_delta: float | None) -> str:
 
 def compare_regression_items(
     *,
-    base_items: Iterable[Any],
-    target_items: Iterable[Any],
+    base_items: "Iterable[RagasRegressionItem]",
+    target_items: "Iterable[RagasRegressionItem]",
     metric_keys: list[str] | None = None,
     bootstrap_iterations: int = 1000,
     max_case_diffs: int = 500,
 ) -> dict[str, Any]:
     """Compare two run item collections by case_id and return per-metric/per-case diffs."""
-    base_list = list(base_items or [])
-    target_list = list(target_items or [])
-    base_by_case = {_case_id(item): item for item in base_list if _case_id(item)}
-    target_by_case = {_case_id(item): item for item in target_list if _case_id(item)}
+    base_list = list(base_items)
+    target_list = list(target_items)
+    base_by_case = {str(item.case_id): item for item in base_list}
+    target_by_case = {str(item.case_id): item for item in target_list}
     case_ids = sorted(set(base_by_case) & set(target_by_case))
     keys = list(metric_keys or []) or _infer_metric_keys(base_list, target_list)
 
     significance: list[dict[str, Any]] = []
-    metric_pairs: dict[str, list[tuple[float, float]]] = {}
     for key in keys:
         pairs = _collect_metric_pairs(
             case_ids=case_ids,
@@ -270,7 +263,6 @@ def compare_regression_items(
         if not pairs:
             continue
 
-        metric_pairs[key] = pairs
         significance.append(_build_significance_row(key=key, pairs=pairs, bootstrap_iterations=bootstrap_iterations))
     _bh_adjust(significance)
 
@@ -280,9 +272,9 @@ def compare_regression_items(
         target_item = target_by_case[case_id]
         metric_diffs, deltas = _metric_diffs_for_case(keys=keys, base_item=base_item, target_item=target_item)
         mean_delta = _mean(deltas)
-        question = _get_value(target_item, "question")
+        question = target_item.question
         if question is None:
-            question = _get_value(base_item, "question")
+            question = base_item.question
         case_diffs.append(
             {
                 "case_id": case_id,

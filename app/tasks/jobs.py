@@ -16,6 +16,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.core.async_bridge import run_coroutine_in_thread
 from app.core.config import settings
@@ -24,7 +25,8 @@ from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
-from app.parsing.processors.processor import document_processor
+from app.parsing.processors.processor import update_document_status
+from app.parsing.processors.support.process_document_flow import process_document
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.connector_run_executor import execute_connector_run
@@ -43,10 +45,12 @@ from app.tasks.locks import (
     is_semaphore_busy_retry,
     make_lock_value,
     release_lock,
-    task_job_lock_ttl_sec,
     task_semaphore_lease_ttl_sec,
     tenant_acquire,
     tenant_release,
+)
+from app.tasks.locks import (
+    task_job_lock_ttl_sec as _task_job_lock_ttl_sec,
 )
 
 logger = get_logger("tasks.jobs")
@@ -74,7 +78,7 @@ async def _run_document_processing_without_blocking_event_loop(
     chunk_strategy: str | None,
 ) -> dict[str, Any]:
     return await run_coroutine_in_thread(
-        lambda: document_processor.process_document(
+        lambda: process_document(
             file_path,
             document_id,
             tenant_id,
@@ -85,28 +89,20 @@ async def _run_document_processing_without_blocking_event_loop(
     )
 
 
-def _task_job_lock_ttl_sec(*, minimum_sec: int = 40 * 60) -> int:
-    return task_job_lock_ttl_sec(minimum_sec=minimum_sec)
-
-
 def _kg_lock_flag(value: bool | None) -> str:
     if value is None:
         return "auto"
-    return "1" if bool(value) else "0"
+    return "1" if value else "0"
 
 
 def _transition_document_index_channel_best_effort(
-    db: Any,
+    db: Session,
     *,
-    document: DBDocument | None,
+    document: DBDocument,
     channel: str,
     status: str,
     error: str | None = None,
-    increment_attempt: bool = False,
-    commit: bool = True,
 ) -> None:
-    if document is None:
-        return
     try:
         from app.services.document_index_channel_service import transition_document_index_channel
 
@@ -116,15 +112,14 @@ def _transition_document_index_channel_best_effort(
             channel=channel,
             status=status,
             error=error,
-            increment_attempt=increment_attempt,
-            commit=commit,
+            commit=True,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "Failed to persist document index channel transition in worker "
             "tenant=%s document=%s channel=%s status=%s: %s",
-            getattr(document, "tenant_id", None),
-            getattr(document, "id", None),
+            document.tenant_id,
+            document.id,
             channel,
             status,
             str(exc)[:200],
@@ -146,11 +141,8 @@ def _job_progress(*, stage: str, done: int | None = None, total: int | None = No
     return payload
 
 
-async def _record_job_outcome(ctx, payload: dict[str, Any]) -> None:  # noqa: ANN001
-    try:
-        redis = ctx.get("redis") if isinstance(ctx, dict) else None
-    except Exception:  # noqa: BLE001
-        redis = None
+async def _record_job_outcome(ctx: dict[str, Any], payload: dict[str, Any]) -> None:
+    redis = ctx.get("redis")
     if redis is None:
         return
 
@@ -192,13 +184,8 @@ async def _job_result(
     return payload
 
 
-def _current_job_try(ctx) -> int:  # noqa: ANN001
-    if not isinstance(ctx, dict):
-        return 1
-    try:
-        return max(1, int(ctx.get("job_try") or 1))
-    except (TypeError, ValueError):
-        return 1
+def _current_job_try(ctx: dict[str, Any]) -> int:
+    return max(1, ctx.get("job_try", 1))
 
 
 def _document_job_max_tries() -> int:
@@ -213,22 +200,12 @@ def _kg_job_max_tries() -> int:
     return max(1, settings.TASK_KG_JOB_MAX_TRIES or 80)
 
 
-def _raise_task_retry(*, defer_sec: int, cause: Exception | None = None) -> None:
-    retry_cls = get_retry_exc()
-    if cause is None:
-        raise retry_cls(defer=int(defer_sec))
-    raise retry_cls(defer=int(defer_sec)) from cause
-
-
-def _task_queue_redis_or_retry(ctx, *, retry_defer_sec: int):  # noqa: ANN001, ANN201
-    try:
-        redis = ctx.get("redis") if isinstance(ctx, dict) else None
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Task job redis lookup failed (retry): %s", str(exc)[:200])
-        _raise_task_retry(defer_sec=retry_defer_sec, cause=exc)
+def _task_queue_redis_or_retry(ctx: dict[str, Any], *, retry_defer_sec: int):  # noqa: ANN201
+    redis = ctx.get("redis")
     if redis is None:
         logger.warning("Task job redis unavailable (retry)")
-        _raise_task_retry(defer_sec=retry_defer_sec)
+        retry_cls = get_retry_exc()
+        raise retry_cls(defer=retry_defer_sec)
     return redis
 
 
@@ -261,7 +238,7 @@ async def _mark_document_failed_on_exhausted_retry(
     if _current_job_try(ctx) < _document_job_max_tries():
         return False
     try:
-        await document_processor._update_status(
+        await update_document_status(
             db,
             tenant_id,
             document_id,
@@ -277,8 +254,7 @@ async def _mark_document_failed_on_exhausted_retry(
 
 
 def _is_retry_error(exc: Exception) -> bool:
-    retry_cls = get_retry_exc()
-    return bool(retry_cls) and isinstance(exc, retry_cls)
+    return isinstance(exc, get_retry_exc())
 
 
 def _coordination_retry_reason(exc: Exception) -> str:
@@ -339,7 +315,7 @@ async def _fail_document_job_with_status(
     pipeline_hash: str | None = None,
     error_message: str | None = None,
 ) -> dict[str, Any]:
-    await document_processor._update_status(
+    await update_document_status(
         db,
         tid,
         did,
@@ -378,92 +354,103 @@ async def _acquire_document_job_coordination(
     lock_val = make_lock_value(requested_by)
     lock_ttl = _task_job_lock_ttl_sec()
     retry_defer_sec = settings.TASK_DOCUMENT_RETRY_DEFER_SEC or 30
+    redis = None
+    sem_key = None
+    dataset_sem_key = None
+    acquired = False
     try:
-        redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
-        sem_key = await tenant_acquire(
-            redis,
-            tenant_id=tenant_id,
-            kind="doc",
-            limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
-            ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
-            retry_defer_sec=retry_defer_sec,
-            wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
-        )
-        dataset_sem_key = await dataset_acquire(
-            redis,
-            tenant_id=tenant_id,
-            dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
-            kind="doc",
-            limit=settings.TASK_DATASET_MAX_CONCURRENCY_DOC,
-            ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
-            retry_defer_sec=retry_defer_sec,
-            wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
-        )
-        acquired = await _acquire_task_lock_or_retry(
-            redis,
-            key=lock_key,
-            value=lock_val,
-            ttl_sec=lock_ttl,
-            retry_defer_sec=retry_defer_sec,
-        )
-    except Exception as exc:
-        if not _is_retry_error(exc):
-            raise
-        reason = _coordination_retry_reason(exc)
+        try:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
+            sem_key = await tenant_acquire(
+                redis,
+                tenant_id=tenant_id,
+                kind="doc",
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
+            )
+            dataset_sem_key = await dataset_acquire(
+                redis,
+                tenant_id=tenant_id,
+                dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
+                kind="doc",
+                limit=settings.TASK_DATASET_MAX_CONCURRENCY_DOC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
+            )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc):
+                raise
+            reason = _coordination_retry_reason(exc)
+            exhausted = await _mark_document_failed_on_exhausted_retry(
+                ctx=ctx,
+                db=db,
+                tenant_id=tid,
+                document_id=did,
+                reason=reason,
+            )
+            if not exhausted:
+                raise
+            return await _process_document_job_result(
+                ctx,
+                started_at=started_at,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                ok=False,
+                reason=reason,
+                stage="failed",
+                done=0,
+                pipeline_hash=pipeline_hash,
+            )
+        if acquired:
+            return redis, sem_key, dataset_sem_key, lock_key, lock_val
         exhausted = await _mark_document_failed_on_exhausted_retry(
             ctx=ctx,
             db=db,
             tenant_id=tid,
             document_id=did,
-            reason=reason,
-        )
-        if not exhausted:
-            raise
-        return await _process_document_job_result(
-            ctx,
-            started_at=started_at,
-            tenant_id=tenant_id,
-            document_id=document_id,
-            ok=False,
-            reason=reason,
-            stage="failed",
-            done=0,
-            pipeline_hash=pipeline_hash,
-        )
-    if acquired:
-        return redis, sem_key, dataset_sem_key, lock_key, lock_val
-    exhausted = await _mark_document_failed_on_exhausted_retry(
-        ctx=ctx,
-        db=db,
-        tenant_id=tid,
-        document_id=did,
-        reason="document_processing_lock_timeout",
-    )
-    if exhausted:
-        return await _process_document_job_result(
-            ctx,
-            started_at=started_at,
-            tenant_id=tenant_id,
-            document_id=document_id,
-            ok=False,
             reason="document_processing_lock_timeout",
-            stage="failed",
+        )
+        if exhausted:
+            return await _process_document_job_result(
+                ctx,
+                started_at=started_at,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                ok=False,
+                reason="document_processing_lock_timeout",
+                stage="failed",
+                done=0,
+                pipeline_hash=pipeline_hash,
+            )
+        logger.info("Skip document job due to active lock: %s", lock_key)
+        return await _process_document_job_result(
+            ctx,
+            started_at=started_at,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            ok=True,
+            reason="locked",
+            stage="locked",
             done=0,
             pipeline_hash=pipeline_hash,
+            skipped="locked",
         )
-    logger.info("Skip document job due to active lock: %s", lock_key)
-    return await _process_document_job_result(
-        ctx,
-        started_at=started_at,
-        tenant_id=tenant_id,
-        document_id=document_id,
-        ok=True,
-        reason="locked",
-        stage="locked",
-        done=0,
-        pipeline_hash=pipeline_hash,
-        skipped="locked",
-    )
+    finally:
+        if not acquired:
+            try:
+                await dataset_release(redis, dataset_sem_key)
+            finally:
+                await tenant_release(redis, sem_key)
 
 
 async def _resolve_object_storage_document_path(
@@ -478,22 +465,18 @@ async def _resolve_object_storage_document_path(
     started_at: float,
     pipeline_hash: str | None,
     raw_path: str,
-) -> tuple[Path | None, Path | None, dict[str, Any] | None]:
+) -> tuple[Path, Path | None] | dict[str, Any]:
     if not settings.MINIO_ENABLED and not settings.OBJECT_STORAGE_ENABLED:
-        return (
-            None,
-            None,
-            await _fail_document_job_with_status(
-                ctx,
-                db=db,
-                tid=tid,
-                did=did,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                started_at=started_at,
-                reason="object_storage_disabled",
-                pipeline_hash=pipeline_hash,
-            ),
+        return await _fail_document_job_with_status(
+            ctx,
+            db=db,
+            tid=tid,
+            did=did,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            started_at=started_at,
+            reason="object_storage_disabled",
+            pipeline_hash=pipeline_hash,
         )
     try:
         store, ref = resolve_document_object_reference(
@@ -505,37 +488,29 @@ async def _resolve_object_storage_document_path(
             document_metadata=dict(doc.doc_metadata or {}),
         )
     except RuntimeError:
-        return (
-            None,
-            None,
-            await _fail_document_job_with_status(
-                ctx,
-                db=db,
-                tid=tid,
-                did=did,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                started_at=started_at,
-                reason="object_storage_disabled",
-                pipeline_hash=pipeline_hash,
-            ),
+        return await _fail_document_job_with_status(
+            ctx,
+            db=db,
+            tid=tid,
+            did=did,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            started_at=started_at,
+            reason="object_storage_disabled",
+            pipeline_hash=pipeline_hash,
         )
     except ValueError as exc:
         reason = str(exc) if str(exc) in {"object_bucket_denied", "object_key_denied"} else "invalid_object_path"
-        return (
-            None,
-            None,
-            await _fail_document_job_with_status(
-                ctx,
-                db=db,
-                tid=tid,
-                did=did,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                started_at=started_at,
-                reason=reason,
-                pipeline_hash=pipeline_hash,
-            ),
+        return await _fail_document_job_with_status(
+            ctx,
+            db=db,
+            tid=tid,
+            did=did,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            started_at=started_at,
+            reason=reason,
+            pipeline_hash=pipeline_hash,
         )
 
     temp_dir = (Path(settings.UPLOAD_DIR) / str(tid) / ".tmp").resolve(strict=False)
@@ -551,23 +526,19 @@ async def _resolve_object_storage_document_path(
     except Exception as exc:  # noqa: BLE001
         with contextlib.suppress(Exception):
             temp_path.unlink(missing_ok=True)
-        return (
-            None,
-            None,
-            await _fail_document_job_with_status(
-                ctx,
-                db=db,
-                tid=tid,
-                did=did,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                started_at=started_at,
-                reason="download_failed",
-                pipeline_hash=pipeline_hash,
-                error_message=str(exc)[:200],
-            ),
+        return await _fail_document_job_with_status(
+            ctx,
+            db=db,
+            tid=tid,
+            did=did,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            started_at=started_at,
+            reason="download_failed",
+            pipeline_hash=pipeline_hash,
+            error_message=str(exc)[:200],
         )
-    return temp_path, temp_path, None
+    return temp_path, temp_path
 
 
 async def _resolve_document_job_file_path(
@@ -581,23 +552,19 @@ async def _resolve_document_job_file_path(
     document_id: str,
     started_at: float,
     pipeline_hash: str | None,
-) -> tuple[Path | None, Path | None, dict[str, Any] | None]:
+) -> tuple[Path, Path | None] | dict[str, Any]:
     raw_path = doc.file_path.strip()
     if not raw_path or raw_path.startswith("manual://"):
-        return (
-            None,
-            None,
-            await _fail_document_job_with_status(
-                ctx,
-                db=db,
-                tid=tid,
-                did=did,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                started_at=started_at,
-                reason="document_file_not_available",
-                pipeline_hash=pipeline_hash,
-            ),
+        return await _fail_document_job_with_status(
+            ctx,
+            db=db,
+            tid=tid,
+            did=did,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            started_at=started_at,
+            reason="document_file_not_available",
+            pipeline_hash=pipeline_hash,
         )
     if is_object_storage_uri(raw_path):
         return await _resolve_object_storage_document_path(
@@ -615,22 +582,18 @@ async def _resolve_document_job_file_path(
 
     file_path = Path(raw_path)
     if file_path.exists() and file_path.is_file():
-        return file_path, None, None
-    return (
-        None,
-        None,
-        await _fail_document_job_with_status(
-            ctx,
-            db=db,
-            tid=tid,
-            did=did,
-            tenant_id=tenant_id,
-            document_id=document_id,
-            started_at=started_at,
-            reason="document_file_not_found",
-            stage="missing",
-            pipeline_hash=pipeline_hash,
-        ),
+        return file_path, None
+    return await _fail_document_job_with_status(
+        ctx,
+        db=db,
+        tid=tid,
+        did=did,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        started_at=started_at,
+        reason="document_file_not_found",
+        stage="missing",
+        pipeline_hash=pipeline_hash,
     )
 
 
@@ -743,6 +706,9 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                 suite_id=suite_id,
             )
 
+        max_items = int(max_items)
+        max_refs_per_item = int(max_refs_per_item)
+        max_changes = int(max_changes)
         try:
             result = repair_evidence_suite_reference_sources(
                 db,
@@ -751,9 +717,9 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                 apply=bool(apply),
                 allow_approved=bool(allow_approved),
                 include_archived_items=bool(include_archived_items),
-                max_items=int(max_items or 0),
-                max_refs_per_item=int(max_refs_per_item or 0),
-                max_changes=int(max_changes or 0),
+                max_items=max_items,
+                max_refs_per_item=max_refs_per_item,
+                max_changes=max_changes,
                 actor_id=requested_by,
             )
         except EvidenceSuiteNotFoundError:
@@ -782,14 +748,14 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                     "applied": bool(apply),
                     "allow_approved": bool(allow_approved),
                     "include_archived_items": bool(include_archived_items),
-                    "max_items": int(max_items or 0),
-                    "max_refs_per_item": int(max_refs_per_item or 0),
-                    "max_changes": int(max_changes or 0),
-                    "scanned_items": int(result.get("scanned_items") or 0),
-                    "scanned_references": int(result.get("scanned_references") or 0),
-                    "drifted_references": int(result.get("drifted_references") or 0),
-                    "repaired_references": int(result.get("repaired_references") or 0),
-                    "changes_truncated": bool(result.get("changes_truncated") is True),
+                    "max_items": max_items,
+                    "max_refs_per_item": max_refs_per_item,
+                    "max_changes": max_changes,
+                    "scanned_items": result["scanned_items"],
+                    "scanned_references": result["scanned_references"],
+                    "drifted_references": result["drifted_references"],
+                    "repaired_references": result["repaired_references"],
+                    "changes_truncated": result["changes_truncated"],
                 },
             )
             db.commit()
@@ -804,8 +770,8 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
             started_at=t0,
             progress=_job_progress(
                 stage="completed",
-                done=int(result.get("scanned_items") or 0),
-                total=int(result.get("scanned_items") or 0),
+                done=result["scanned_items"],
+                total=result["scanned_items"],
             ),
             tenant_id=tenant_id,
             suite_id=suite_id,
@@ -998,7 +964,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         redis, sem_key, dataset_sem_key, lock_key, lock_val = coordination
         parser_backend = (doc.doc_metadata or {}).get("parser_backend")
         chunk_strategy = (doc.doc_metadata or {}).get("chunk_strategy")
-        file_path, temp_path, resolved_result = await _resolve_document_job_file_path(
+        path_or_result = await _resolve_document_job_file_path(
             ctx,
             db=db,
             tid=tid,
@@ -1009,18 +975,9 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             started_at=t0,
             pipeline_hash=str(pipeline_hash),
         )
-        if resolved_result is not None or file_path is None:
-            return resolved_result or await _process_document_job_result(
-                ctx,
-                started_at=t0,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                ok=False,
-                reason="document_file_not_found",
-                stage="missing",
-                done=0,
-                pipeline_hash=str(pipeline_hash),
-            )
+        if isinstance(path_or_result, dict):
+            return path_or_result
+        file_path, temp_path = path_or_result
 
         logger.info(
             "Processing document job: tenant_id=%s document_id=%s requested_by=%s",
@@ -1040,7 +997,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             parser_backend=parser_backend,
             chunk_strategy=chunk_strategy,
         )
-        result_status = result["status"].strip().lower() if isinstance(result, dict) else ""
+        result_status = result["status"].strip().lower()
         succeeded = result_status == "success"
         return await _process_document_job_result(
             ctx,
@@ -1498,19 +1455,7 @@ async def _load_kg_document_or_result(
     if doc.status.lower() == "completed":
         return doc
     retry_cls = get_retry_exc()
-    if retry_cls:
-        raise retry_cls(defer=5)
-    return await _extract_kg_job_result(
-        ctx,
-        started_at=started_at,
-        tenant_id=tenant_id,
-        document_id=document_id,
-        ok=False,
-        reason="document_not_completed",
-        stage="waiting",
-        done=0,
-        status=doc.status,
-    )
+    raise retry_cls(defer=5)
 
 
 def _resolve_kg_job_state(
@@ -1573,81 +1518,86 @@ async def _acquire_kg_document_coordination(
     document_id: str,
     requested_by: str,
     retry_defer_sec: int,
-    selected_pipeline_hash: str,
+    selected_pipeline_hash: str | None,
     options_key: str,
 ) -> tuple[Any, str, str] | dict[str, Any]:
     pipeline_label = "unversioned" if selected_pipeline_hash is None else selected_pipeline_hash
     lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_label}:{options_key}"
     lock_val = make_lock_value(requested_by)
     lock_ttl = _task_job_lock_ttl_sec()
+    dataset_sem_key = None
+    acquired = False
     try:
-        dataset_sem_key = await dataset_acquire(
-            redis,
-            tenant_id=tenant_id,
-            dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
-            kind="kg",
-            limit=settings.TASK_DATASET_MAX_CONCURRENCY_KG,
-            ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
-            retry_defer_sec=retry_defer_sec,
-            wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
-        )
-        acquired = await _acquire_task_lock_or_retry(
-            redis,
-            key=lock_key,
-            value=lock_val,
-            ttl_sec=lock_ttl,
-            retry_defer_sec=retry_defer_sec,
-        )
-    except Exception as exc:
-        if not _is_retry_error(exc) or _current_job_try(ctx) < _kg_job_max_tries():
-            raise
-        reason = _coordination_retry_reason(exc)
-        _transition_document_index_channel_best_effort(db, document=doc, channel="kg", status="error", error=reason)
+        try:
+            dataset_sem_key = await dataset_acquire(
+                redis,
+                tenant_id=tenant_id,
+                dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
+                kind="kg",
+                limit=settings.TASK_DATASET_MAX_CONCURRENCY_KG,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
+            )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _kg_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            _transition_document_index_channel_best_effort(db, document=doc, channel="kg", status="error", error=reason)
+            return await _extract_kg_job_result(
+                ctx,
+                started_at=started_at,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                ok=False,
+                reason=reason,
+                stage="failed",
+                done=0,
+                pipeline_hash=selected_pipeline_hash,
+            )
+        if acquired:
+            return dataset_sem_key, lock_key, lock_val
+        logger.info("Skip KG job due to active lock: %s", lock_key)
         return await _extract_kg_job_result(
             ctx,
             started_at=started_at,
             tenant_id=tenant_id,
             document_id=document_id,
-            ok=False,
-            reason=reason,
-            stage="failed",
+            ok=True,
+            reason="locked",
+            stage="locked",
             done=0,
             pipeline_hash=selected_pipeline_hash,
+            skipped="locked",
         )
-    if acquired:
-        return dataset_sem_key, lock_key, lock_val
-    logger.info("Skip KG job due to active lock: %s", lock_key)
-    return await _extract_kg_job_result(
-        ctx,
-        started_at=started_at,
-        tenant_id=tenant_id,
-        document_id=document_id,
-        ok=True,
-        reason="locked",
-        stage="locked",
-        done=0,
-        pipeline_hash=selected_pipeline_hash,
-        skipped="locked",
-    )
+    finally:
+        if not acquired:
+            await dataset_release(redis, dataset_sem_key)
 
 
 def _scope_kg_chunks(
     chunks: list[Any],
     *,
-    selected_pipeline_hash: str,
+    selected_pipeline_hash: str | None,
     document_key: str,
     pipeline_scope_required: bool,
 ) -> list[Any]:
     from app.core.pipeline_versions import get_active_pipeline_hash
 
-    scoped_pipeline_hash = selected_pipeline_hash
-    if scoped_pipeline_hash is None:
+    if selected_pipeline_hash is None:
         if not pipeline_scope_required:
             return chunks
         return [chunk for chunk in chunks if get_active_pipeline_hash(chunk.doc_metadata) is None]
 
     def _chunk_matches(chunk: Any) -> bool:
-        metadata = getattr(chunk, "doc_metadata", None)
+        metadata = chunk.doc_metadata
         if not isinstance(metadata, dict):
             return False
         raw_key = metadata.get("doc_pipeline_key")
@@ -1658,7 +1608,7 @@ def _scope_kg_chunks(
         if raw_hash is None or raw_hash == "":
             raw_hash = metadata.get("active_pipeline_hash")
         pipeline_hash = raw_hash.strip() if isinstance(raw_hash, str) else None
-        return bool(pipeline_hash and pipeline_hash == scoped_pipeline_hash)
+        return bool(pipeline_hash and pipeline_hash == selected_pipeline_hash)
 
     scoped = [chunk for chunk in chunks if _chunk_matches(chunk)]
     if scoped or not pipeline_scope_required:
@@ -1676,7 +1626,7 @@ async def _load_scoped_kg_chunks_or_result(
     started_at: float,
     tenant_id: str,
     document_id: str,
-    selected_pipeline_hash: str,
+    selected_pipeline_hash: str | None,
     document_key: str,
     pipeline_scope_required: bool,
 ) -> list[Any] | dict[str, Any]:
@@ -1737,9 +1687,9 @@ def _dataset_metadata_for_kg_job(db: Any, *, doc: DBDocument, tid: UUID) -> dict
     if not doc.dataset_id:
         return {}
     dataset = db.query(Dataset).filter(Dataset.id == doc.dataset_id, Dataset.tenant_id == tid).first()
-    if dataset is None or not isinstance(getattr(dataset, "dataset_metadata", None), dict):
+    if dataset is None or not isinstance(dataset.dataset_metadata, dict):
         return {}
-    return dict(dataset.dataset_metadata or {})
+    return dict(dataset.dataset_metadata)
 
 
 def _kg_extraction_runtime(
@@ -1758,7 +1708,7 @@ def _kg_extraction_runtime(
             "prompt_ab_experiment_key": frozen_options["prompt_ab_experiment_key"],
             "extraction_backend": frozen_options["extraction_backend"],
             "kg_python_plugin": frozen_options["kg_python_plugin"],
-            "kg_python_params": dict(frozen_options["kg_python_params"] or {}),
+            "kg_python_params": dict(frozen_options["kg_python_params"]),
         }
     kg_python_plugin = effective.kg_python_plugin.strip()
     if not kg_python_plugin:
@@ -1772,7 +1722,7 @@ def _kg_extraction_runtime(
         "prompt_ab_experiment_key": None,
         "extraction_backend": None,
         "kg_python_plugin": kg_python_plugin,
-        "kg_python_params": dict(getattr(effective, "kg_python_params", {}) or {}),
+        "kg_python_params": dict(effective.kg_python_params),
     }
 
 
@@ -1826,7 +1776,7 @@ async def _finalize_kg_job_success(
     started_at: float,
     tenant_id: str,
     document_id: str,
-    selected_pipeline_hash: str,
+    selected_pipeline_hash: str | None,
     events: list[Any],
 ) -> dict[str, Any]:
     from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
@@ -2139,58 +2089,67 @@ async def _acquire_reconcile_job_coordination(
     dry_run: bool,
 ) -> tuple[Any, Any, str, str] | dict[str, Any]:
     retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
+    redis = None
+    sem_key = None
+    acquired = False
     try:
-        redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
-        sem_key = await tenant_acquire(
-            redis,
-            tenant_id=tenant_id,
-            kind="index_audit_reconcile",
-            limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
-            ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
-            retry_defer_sec=retry_defer_sec,
-            wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
-        )
-        lock_scope = (
-            str(document_uuid) if document_uuid is not None else f"{dataset_id}:{int(limit or 0)}:{int(bool(dry_run))}"
-        )
-        lock_key = f"lock:index-audit-reconcile:{tenant_id}:{lock_scope}"
-        lock_val = make_lock_value(requested_by)
-        acquired = await _acquire_task_lock_or_retry(
-            redis,
-            key=lock_key,
-            value=lock_val,
-            ttl_sec=_task_job_lock_ttl_sec(),
-            retry_defer_sec=retry_defer_sec,
-        )
-    except Exception as exc:
-        if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
-            raise
+        try:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
+            sem_key = await tenant_acquire(
+                redis,
+                tenant_id=tenant_id,
+                kind="index_audit_reconcile",
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
+            )
+            lock_scope = (
+                str(document_uuid)
+                if document_uuid is not None
+                else f"{dataset_id}:{int(limit or 0)}:{int(bool(dry_run))}"
+            )
+            lock_key = f"lock:index-audit-reconcile:{tenant_id}:{lock_scope}"
+            lock_val = make_lock_value(requested_by)
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=_task_job_lock_ttl_sec(),
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            return await _reconcile_index_audit_job_result(
+                ctx,
+                started_at=started_at,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                ok=False,
+                reason=_coordination_retry_reason(exc),
+                stage="failed",
+                done=0,
+            )
+        if acquired:
+            return redis, sem_key, lock_key, lock_val
+        logger.info("Skip index audit reconcile job due to active lock: %s", lock_key)
         return await _reconcile_index_audit_job_result(
             ctx,
             started_at=started_at,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             document_id=document_id,
-            ok=False,
-            reason=_coordination_retry_reason(exc),
-            stage="failed",
+            ok=True,
+            reason="locked",
+            stage="locked",
             done=0,
+            skipped="locked",
         )
-    if acquired:
-        return redis, sem_key, lock_key, lock_val
-    logger.info("Skip index audit reconcile job due to active lock: %s", lock_key)
-    return await _reconcile_index_audit_job_result(
-        ctx,
-        started_at=started_at,
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        document_id=document_id,
-        ok=True,
-        reason="locked",
-        stage="locked",
-        done=0,
-        skipped="locked",
-    )
+    finally:
+        if not acquired:
+            await tenant_release(redis, sem_key)
 
 
 async def _build_reconcile_report_items(
@@ -2205,11 +2164,9 @@ async def _build_reconcile_report_items(
 
     items_out: list[dict[str, Any]] = []
     counts = {"enqueued_count": 0, "already_queued_count": 0, "report_only_count": 0, "unsupported_count": 0}
-    for item in list(plan.get("items") or []):
-        if not isinstance(item, dict):
-            continue
+    for item in plan["items"]:
         row = dict(item)
-        action = str(row.get("action") or "report_only")
+        action = row["action"]
         if action != "enqueue_rebuild":
             row["enqueue_status"] = "report_only"
             counts["report_only_count"] += 1
@@ -2225,9 +2182,9 @@ async def _build_reconcile_report_items(
             document_id=UUID(str(row["document_id"])),
             requested_by=requested_by,
         )
-        row["enqueue_status"] = str(reconcile.get("status") or "unknown")
-        row["enqueue_reason"] = reconcile.get("reason")
-        row["task_id"] = reconcile.get("task_id")
+        row["enqueue_status"] = reconcile["status"]
+        row["enqueue_reason"] = reconcile["reason"]
+        row["task_id"] = reconcile["task_id"]
         if row["enqueue_status"] == "enqueued":
             counts["enqueued_count"] += 1
         elif row["enqueue_status"] == "already_queued":
@@ -2288,7 +2245,7 @@ async def reconcile_index_audit_job(
             limit=int(limit or 0),
             dry_run=bool(dry_run),
         )
-        if document_uuid is not None and int(plan.get("scanned_documents") or 0) <= 0:
+        if document_uuid is not None and plan["scanned_documents"] <= 0:
             return await _reconcile_index_audit_job_result(
                 ctx,
                 started_at=t0,
@@ -2318,20 +2275,17 @@ async def reconcile_index_audit_job(
             stage="planned" if bool(dry_run) else "completed",
             done=len(items_out),
             dry_run=bool(dry_run),
-            scan_limit=int(plan.get("scan_limit") or 0),
-            scanned_documents=int(plan.get("scanned_documents") or 0),
-            candidate_documents=int(
-                ((plan.get("counts") if isinstance(plan.get("counts"), dict) else {}) or {}).get("candidate_documents")
-                or 0
-            ),
+            scan_limit=plan["scan_limit"],
+            scanned_documents=plan["scanned_documents"],
+            candidate_documents=plan["counts"]["candidate_documents"],
             enqueued_count=counts["enqueued_count"],
             already_queued_count=counts["already_queued_count"],
             report_only_count=counts["report_only_count"],
             unsupported_count=counts["unsupported_count"],
             report={
-                "schema": str(plan.get("schema") or "mimirq.index_audit_reconcile_plan.v1"),
-                "scope": str(plan.get("scope") or ("document" if document_uuid is not None else "dataset")),
-                "counts": dict(plan.get("counts") or {}) if isinstance(plan.get("counts"), dict) else {},
+                "schema": plan["schema"],
+                "scope": plan["scope"],
+                "counts": dict(plan["counts"]),
                 "items": items_out,
             },
         )

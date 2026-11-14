@@ -99,9 +99,8 @@ if TYPE_CHECKING:
     from app.parsing.parsers.video_parser import VideoParser
 
 
-_PARSER_BACKEND_FAMILIES = iter_parser_backend_families()
 _USER_SELECTABLE_BACKEND_FAMILIES = tuple(
-    family for family in _PARSER_BACKEND_FAMILIES if family.user_selectable and not family.implicit_only
+    family for family in iter_parser_backend_families() if family.user_selectable and not family.implicit_only
 )
 
 
@@ -632,31 +631,6 @@ class ParserFactory:
             "selected": False,
         }
 
-    def _fallback_with_attempt(
-        self,
-        *,
-        file_path: Path,
-        file_ext: str,
-        backend: str,
-        error: Exception,
-        html_xpath: str | None,
-        attempts: list[dict[str, Any]],
-    ) -> tuple[list[Document], str] | None:
-        fb_t0 = time.perf_counter()
-        fallback_docs, fallback_backend = self._fallback_parse(
-            file_path=file_path,
-            file_ext=file_ext,
-            requested_backend=backend,
-            error=error,
-            html_xpath=html_xpath,
-        )
-        if fallback_docs is None:
-            return None
-        attempt = self._successful_attempt(backend=fallback_backend, started_at=fb_t0, documents=fallback_docs)
-        attempt["fallback_from"] = attempts[0].get("backend") if attempts else backend
-        attempts.append(attempt)
-        return fallback_docs, fallback_backend
-
     def parse(
         self,
         file_path: Path,
@@ -747,17 +721,22 @@ class ParserFactory:
             attempts.append(self._successful_attempt(backend=backend, started_at=primary_t0, documents=documents))
         except Exception as exc:
             attempts.append(self._failed_attempt(backend=backend, started_at=primary_t0, error=exc))
-            fallback = self._fallback_with_attempt(
+            fallback_t0 = time.perf_counter()
+            fallback_docs, fallback_backend = self._fallback_parse(
                 file_path=file_path,
                 file_ext=file_ext,
-                backend=backend,
+                requested_backend=backend,
                 error=exc,
                 html_xpath=html_xpath,
-                attempts=attempts,
             )
-            if fallback is None:
+            if fallback_docs is None:
                 raise
-            documents, backend = fallback
+            attempt = self._successful_attempt(
+                backend=fallback_backend, started_at=fallback_t0, documents=fallback_docs
+            )
+            attempt["fallback_from"] = backend
+            attempts.append(attempt)
+            documents, backend = fallback_docs, fallback_backend
 
         self._apply_document_metadata(documents, backend=backend, filename=str(file_path.name), file_ext=file_ext)
 
@@ -919,33 +898,39 @@ class ParserFactory:
         html_xpath: str | None,
     ) -> tuple[list[Document] | None, str]:
         if file_ext == DOCX_EXTENSION:
-            return self._parse_docx_file(file_path), "docx"
+            from app.parsing.parsers.docx_parser import DocxParser
+
+            return DocxParser().parse(file_path), "docx"
         if file_ext == PPTX_EXTENSION:
-            return self._parse_pptx_markitdown_fallback(file_path)
+            if settings.PANDOC_ENABLED:
+                return self._get_pandoc_parser().parse(file_path), "pandoc"
+            from app.parsing.parsers.pptx_parser import PptxParser
+
+            return PptxParser().parse(file_path), "pptx"
         if file_ext in {XLSX_EXTENSION, ".xls"}:
-            return self._parse_excel_file(file_path), "excel"
+            from app.parsing.parsers.excel_parser import ExcelParser
+
+            return ExcelParser().parse(file_path), "excel"
         if file_ext in {HTML_EXTENSION, ".htm"}:
-            return self._parse_html_file(file_path, html_xpath=html_xpath), "html"
+            from app.parsing.parsers.html_parser import HtmlParser
+
+            return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
         if file_ext == ".csv":
-            return self._parse_csv_file(file_path), "csv"
+            from app.parsing.parsers.csv_parser import CsvParser
+
+            return CsvParser().parse(file_path), "csv"
         if file_ext == JSON_EXTENSION:
-            return self._parse_json_file(file_path), "json"
+            from app.parsing.parsers.json_parser import JsonParser
+
+            return JsonParser().parse(file_path), "json"
         if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
-            return self._parse_extended_office_fallback(file_path)
+            if settings.PANDOC_ENABLED:
+                return self._get_pandoc_parser().parse(file_path), "pandoc"
+            return None, "markitdown"
         if file_ext in {".doc", ".ppt"}:
             return self._try_legacy_office_pandoc_fallback(file_path)
         if file_ext == ".pdf":
             return self._get_pdf_parser("basic").parse(file_path), "basic"
-        return None, "markitdown"
-
-    def _parse_pptx_markitdown_fallback(self, file_path: Path) -> tuple[list[Document], str]:
-        if settings.PANDOC_ENABLED:
-            return self._get_pandoc_parser().parse(file_path), "pandoc"
-        return self._parse_pptx_file(file_path), "pptx"
-
-    def _parse_extended_office_fallback(self, file_path: Path) -> tuple[list[Document] | None, str]:
-        if settings.PANDOC_ENABLED:
-            return self._get_pandoc_parser().parse(file_path), "pandoc"
         return None, "markitdown"
 
     @staticmethod
@@ -961,42 +946,6 @@ class ParserFactory:
                 str(exc)[:200],
             )
             return None, "markitdown"
-
-    @staticmethod
-    def _parse_docx_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.docx_parser import DocxParser
-
-        return DocxParser().parse(file_path)
-
-    @staticmethod
-    def _parse_pptx_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.pptx_parser import PptxParser
-
-        return PptxParser().parse(file_path)
-
-    @staticmethod
-    def _parse_excel_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.excel_parser import ExcelParser
-
-        return ExcelParser().parse(file_path)
-
-    @staticmethod
-    def _parse_html_file(file_path: Path, *, html_xpath: str | None) -> list[Document]:
-        from app.parsing.parsers.html_parser import HtmlParser
-
-        return HtmlParser().parse(file_path, html_xpath=html_xpath)
-
-    @staticmethod
-    def _parse_csv_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.csv_parser import CsvParser
-
-        return CsvParser().parse(file_path)
-
-    @staticmethod
-    def _parse_json_file(file_path: Path) -> list[Document]:
-        from app.parsing.parsers.json_parser import JsonParser
-
-        return JsonParser().parse(file_path)
 
     def _fallback_to_markitdown(
         self,

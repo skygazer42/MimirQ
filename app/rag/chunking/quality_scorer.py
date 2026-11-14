@@ -43,10 +43,7 @@ _PRONOUN_ZH_RE = re.compile(r"(?:上述|下文|本节|本段|此处|这里|那�
 
 
 def _clamp01(value: float) -> float:
-    try:
-        v = float(value)
-    except Exception:
-        return 0.0
+    v = float(value)
     if v < 0.0:
         return 0.0
     if v > 1.0:
@@ -64,14 +61,8 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 def _pronoun_count(text: str) -> int:
     if not text:
         return 0
-    try:
-        en = len(_PRONOUN_EN_RE.findall(text))
-    except Exception:
-        en = 0
-    try:
-        zh = sum(1 for _ in _PRONOUN_ZH_RE.finditer(text))
-    except Exception:
-        zh = 0
+    en = len(_PRONOUN_EN_RE.findall(text))
+    zh = sum(1 for _ in _PRONOUN_ZH_RE.finditer(text))
     return en + zh
 
 
@@ -103,12 +94,9 @@ def _semantic_completeness_score(text: str) -> float:
         start_score = 1.0
 
     balance_penalty = 1.0
-    try:
-        for op, cl in _OPENING_TO_CLOSING.items():
-            if raw.count(op) != raw.count(cl):
-                balance_penalty *= 0.85
-    except Exception:
-        balance_penalty = 0.9
+    for op, cl in _OPENING_TO_CLOSING.items():
+        if raw.count(op) != raw.count(cl):
+            balance_penalty *= 0.85
 
     return _clamp01(end_score * start_score * balance_penalty)
 
@@ -260,12 +248,12 @@ def score_chunk_semantic_quality(
 
     sample = trimmed[: max(0, int(max_tokenize_chars or 0))] if max_tokenize_chars else trimmed
     tokens = tokenize_lexical_text(sample)
-    token_set = set(tokens or [])
+    token_set = set(tokens)
     keyword_count = len(token_set)
 
     denom_tokens = int((tokens_est if tokens_est is not None else 0))
     if denom_tokens <= 0:
-        denom_tokens = max(1, len(tokens or []))
+        denom_tokens = max(1, len(tokens))
 
     # P0 Optimization: Validate chunk size bounds
     size_validation = validate_chunk_size_bounds(denom_tokens)
@@ -273,10 +261,10 @@ def score_chunk_semantic_quality(
     # P0 Optimization: Detect Context Cliff risk
     cliff_detection = detect_context_cliff(denom_tokens)
 
-    information_density = keyword_count / max(1, denom_tokens)
+    information_density = keyword_count / denom_tokens
 
     pronouns = _pronoun_count(trimmed)
-    pronoun_ratio = pronouns / max(1, denom_tokens)
+    pronoun_ratio = pronouns / denom_tokens
     # Map pronoun ratio to a "self-containedness" score (lower pronoun ratio => higher score).
     self_containedness = _clamp01(1.0 - (pronoun_ratio / 0.06))
 

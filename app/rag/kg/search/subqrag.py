@@ -25,7 +25,7 @@ def build_subqrag_plan(query: str, *, max_subqueries: int = 3) -> dict[str, Any]
                 "subquery_id": f"subq_{index}",
                 "query": subquery,
                 "method": route["method"],
-                "reason_codes": list(route.get("reason_codes") or []),
+                "reason_codes": list(route["reason_codes"]),
                 "complexity_label": route["complexity"]["label"],
                 "kg_mode": route["kg_mode"]["mode"],
             }

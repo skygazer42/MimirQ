@@ -1,12 +1,12 @@
 from collections.abc import Callable
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.core.model_execution import reject_retired_provider, reject_retired_rerank_providers
-from app.rag.reranker.types import RerankCandidate
+from app.rag.core.metadata import _stringified_metadata_text
+from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 def _annotate_retrieval_score(meta: dict[str, Any]) -> None:
@@ -35,7 +35,7 @@ def build_reranked_prefix(
     *,
     docs_prefix: list[Document],
     id_to_doc: dict[str, Document],
-    rerank_result: Any,
+    rerank_result: RerankResult,
     provider: str,
     elapsed_sec: float,
     model_used: str | None,
@@ -120,8 +120,8 @@ def run_post_rerank_single_mode(
     score_calibration_alpha: float,
     score_calibration_stats: dict[str, Any],
     build_candidates_fn: Callable[..., tuple[list[RerankCandidate], dict[str, Document]]],
-    get_cached_result_fn: Callable[..., tuple[Any, str | None, bool, int, int]],
-    execute_post_rerank_fn: Callable[..., tuple[Any, float]],
+    get_cached_result_fn: Callable[..., tuple[RerankResult | None, str | None, bool, int, int]],
+    execute_post_rerank_fn: Callable[..., tuple[RerankResult, float]],
     build_reranked_prefix_fn: Callable[..., list[Document]],
     calibrate_prefix_fn: Callable[..., tuple[list[Document], bool]],
 ) -> dict[str, Any]:
@@ -270,8 +270,8 @@ def run_post_rerank_pipeline_mode(
     score_calibration_alpha: float,
     score_calibration_stats: dict[str, Any],
     build_candidates_fn: Callable[..., tuple[list[RerankCandidate], dict[str, Document]]],
-    get_cached_result_fn: Callable[..., tuple[Any, str | None, bool, int, int]],
-    execute_post_rerank_fn: Callable[..., tuple[Any, float]],
+    get_cached_result_fn: Callable[..., tuple[RerankResult | None, str | None, bool, int, int]],
+    execute_post_rerank_fn: Callable[..., tuple[RerankResult, float]],
     build_reranked_prefix_fn: Callable[..., list[Document]],
     calibrate_prefix_fn: Callable[..., tuple[list[Document], bool]],
 ) -> dict[str, Any]:

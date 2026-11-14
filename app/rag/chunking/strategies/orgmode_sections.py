@@ -18,13 +18,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -45,19 +39,6 @@ class _Section:
 _FILE_KWD_RE = re.compile(r"(?mi)^\s*#\+(title|author|date|options|startup):")
 _ORG_TAG_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@#%:.-")
 _ORG_TODO_KEYWORDS = frozenset({"todo", "done", "next", "wait", "cancelled"})
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text).splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
 
 
 def _clean_title(raw: str) -> str:
@@ -119,7 +100,7 @@ def _parse_heading_line(line: str) -> tuple[int, str] | None:
 def _iter_headings(text: str) -> list[OrgHeading]:
     headings: list[OrgHeading] = []
     for ln in _iter_lines(text):
-        parsed = _parse_heading_line(ln.text)
+        parsed = _parse_heading_line(ln.plain)
         if not parsed:
             continue
         level, title = parsed
@@ -127,18 +108,11 @@ def _iter_headings(text: str) -> list[OrgHeading]:
             OrgHeading(
                 start=ln.start,
                 end=ln.end,
-                level=max(1, min(10, level)),
+                level=level,
                 title=title,
             )
         )
-    deduped: list[OrgHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[OrgHeading]) -> list[_Section]:

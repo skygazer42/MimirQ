@@ -56,7 +56,7 @@ def build_drift_slice_keys(*, document_file_type: object, document_metadata: obj
     quality_bucket = quality_bucket_from_governance_quality(meta.get("governance_quality"))
     directory = directory_bucket_from_source_path(meta.get("source_path"))
     return DriftSliceKeys(
-        file_type=file_type or "unknown",
+        file_type=file_type,
         language=language or "unknown",
         quality_bucket=quality_bucket or "unknown",
         directory=directory or "root",

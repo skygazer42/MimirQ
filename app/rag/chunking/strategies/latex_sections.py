@@ -60,11 +60,9 @@ def _iter_headings(text: str) -> list[LatexHeading]:
 
     headings: list[LatexHeading] = []
     for m in _CMD_RE.finditer(text):
-        cmd = (m.group("cmd")).strip().lower()
+        cmd = m.group("cmd")
         title = (m.group("title")).strip()
-        if not cmd:
-            continue
-        level = _CMD_LEVEL.get(cmd, 9)
+        level = _CMD_LEVEL[cmd]
         headings.append(
             LatexHeading(
                 start=m.start(),
@@ -75,14 +73,7 @@ def _iter_headings(text: str) -> list[LatexHeading]:
             )
         )
 
-    deduped: list[LatexHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[LatexHeading]) -> list[_Section]:

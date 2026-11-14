@@ -6,10 +6,8 @@ import logging
 import os
 import time
 import warnings
-from asyncio import Task
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from ipaddress import IPv4Address
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -46,10 +44,13 @@ from fastapi.openapi.utils import get_openapi
 
 import app.models._all  # noqa: F401
 from app import __version__
-from app.api.dependencies.logging import bind_route_context
-from app.api.middleware.process_time import ProcessTimeMiddleware
-from app.api.middleware.request_id import RequestIDMiddleware
-from app.api.v1 import router as api_v1_router
+from app.api.dependencies import bind_route_context
+from app.api.middleware.request_context import RequestContextMiddleware, RequestTimingMiddleware
+from app.api.middleware.response_headers import (
+    ResponseFingerprintSanitizerMiddleware,
+    ResponseSecurityHeadersMiddleware,
+)
+from app.api.v1 import get_router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.env import is_production_env
@@ -60,6 +61,7 @@ from app.core.migrations import apply_runtime_migrations
 from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
 from app.core.sentry import init_sentry
 from app.core.utils import parse_csv
+from app.rag.tools.mcp_client import close_mcp_client
 from app.services.initial_admin_service import (
     InitialAdminBootstrapError,
     bootstrap_initial_admin_if_configured,
@@ -75,15 +77,10 @@ _OPENAPI_EXPORT_MODE = os.getenv("MIMIRQ_OPENAPI_EXPORT", "").strip().lower() in
     "on",
 }
 _DEV_LOCAL_CORS_PORTS = {3000, 3001, 3100}
-_ALL_INTERFACES_HOST = str(IPv4Address(0))
+_ALL_INTERFACES_HOST = "0.0.0.0"
 _DOCS_PATH = "/docs"
 _LOCAL_DEV_HOSTS = {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}
 _LOCAL_DEV_SCHEMES = {"http", "https"}
-
-
-def _normalize_dev_origin(raw: str) -> str | None:
-    origin = (raw).strip().rstrip("/")
-    return origin if origin else None
 
 
 def _parse_local_dev_origin(origin: str) -> tuple[str, str, int | None] | None:
@@ -102,25 +99,6 @@ def _parse_local_dev_origin(origin: str) -> tuple[str, str, int | None] | None:
     return scheme, host, port
 
 
-def _expand_origin_aliases(expanded: set[str], origin: str) -> tuple[str, int | None] | None:
-    parsed_origin = _parse_local_dev_origin(origin)
-    if parsed_origin is None:
-        return None
-    scheme, host, port = parsed_origin
-    for alt in _LOCAL_DEV_HOSTS:
-        if alt == host:
-            continue
-        expanded.add(f"{scheme}://{alt}:{port}" if port is not None else f"{scheme}://{alt}")
-    return scheme, port
-
-
-def _expand_port_matrix(expanded: set[str], schemes: set[str], ports: set[int]) -> None:
-    for scheme in sorted(schemes):
-        for port in sorted(ports | _DEV_LOCAL_CORS_PORTS):
-            for host in sorted(_LOCAL_DEV_HOSTS):
-                expanded.add(f"{scheme}://{host}:{port}")
-
-
 def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     """
     Dev-friendly CORS: add localhost/IP aliases for local FE ports.
@@ -136,20 +114,26 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     if "*" in origins:
         return origins
 
-    expanded = {origin for raw in origins if (origin := _normalize_dev_origin(raw))}
+    expanded = {origin for raw in origins if (origin := raw.strip().rstrip("/"))}
 
     local_schemes: set[str] = set()
     local_ports: set[int] = set()
     for origin in tuple(expanded):
-        parsed_origin = _expand_origin_aliases(expanded, origin)
+        parsed_origin = _parse_local_dev_origin(origin)
         if parsed_origin is None:
             continue
-        scheme, port = parsed_origin
+        scheme, host, port = parsed_origin
+        for alias in _LOCAL_DEV_HOSTS:
+            if alias != host:
+                expanded.add(f"{scheme}://{alias}:{port}" if port is not None else f"{scheme}://{alias}")
         local_schemes.add(scheme)
         if port is not None:
             local_ports.add(port)
 
-    _expand_port_matrix(expanded, local_schemes, local_ports)
+    for scheme in sorted(local_schemes):
+        for port in sorted(local_ports | _DEV_LOCAL_CORS_PORTS):
+            for host in sorted(_LOCAL_DEV_HOSTS):
+                expanded.add(f"{scheme}://{host}:{port}")
 
     return sorted(expanded)
 
@@ -177,8 +161,8 @@ def _build_cors_expose_headers(raw_headers: str) -> list[str]:
 
 # Optional JSON logging (LOG_FORMAT=json).
 configure_logging(
-    log_level=settings.LOG_LEVEL or "INFO",
-    log_format=settings.LOG_FORMAT or "plain",
+    log_level=settings.LOG_LEVEL,
+    log_format=settings.LOG_FORMAT,
     include_trace_context=settings.OTEL_ENABLED,
 )
 
@@ -202,37 +186,22 @@ def _warmup_retrieval_tokenizer() -> None:
     logger.info("BM25 tokenizer initialized in %.3fs", time.perf_counter() - started_at)
 
 
-def start_rag_runtime_warmup() -> Task[None] | None:
-    from app.services.rag_runtime_warmup import start_rag_runtime_warmup as _impl
-
-    return _impl()
-
-
-def _start_runtime_warmup() -> Task[None] | None:
+def _start_runtime_warmup() -> None:
     if not settings.RAG_RUNTIME_WARMUP_ENABLED:
-        return None
-    return start_rag_runtime_warmup()
-
-
-def _iter_startup_directories() -> list[str | None]:
-    return [
-        settings.UPLOAD_DIR,
-        settings.TABLE_STORE_DIR,
-    ]
-
-
-def _ensure_directory(path_value: str | None, *, warning_prefix: str) -> None:
-    if not path_value:
         return
-    try:
-        Path(path_value).mkdir(parents=True, exist_ok=True)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("%s %s: %s", warning_prefix, path_value, str(exc)[:200])
+    from app.services.rag_runtime_warmup import start_rag_runtime_warmup
+
+    start_rag_runtime_warmup()
 
 
 def _ensure_startup_directories() -> None:
-    for dir_path in _iter_startup_directories():
-        _ensure_directory(dir_path, warning_prefix="Failed to ensure directory")
+    for directory in (settings.UPLOAD_DIR, settings.TABLE_STORE_DIR):
+        if not directory:
+            continue
+        try:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001 - startup directories retain their warning policy.
+            logger.warning("Failed to ensure directory %s: %s", directory, str(exc)[:200])
 
 
 def _ensure_parent_directory(path_value: str, *, warning_message: str) -> None:
@@ -282,12 +251,9 @@ def _initialize_database_for_startup() -> None:
 
 def _bootstrap_initial_admin() -> None:
     try:
-        db = SessionLocal()
-        try:
+        with SessionLocal() as db:
             if bootstrap_initial_admin_if_configured(db):
                 logger.info("Bootstrapped initial local administrator")
-        finally:
-            db.close()
     except InitialAdminBootstrapError as exc:
         raise RuntimeError(f"Initial administrator bootstrap failed: {exc}") from exc
 
@@ -342,41 +308,32 @@ def _dispose_database_engine() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Operations on app startup and shutdown."""
-    # Startup: create database tables.
     logger.info("Starting Ragvia backend...")
-    _ensure_startup_directories()
-    _ensure_optional_log_directories()
-    _setup_langsmith_tracing()
-    _initialize_database_for_startup()
-    _bootstrap_initial_admin()
-    await _initialize_task_queue()
-    _start_task_queue_observability_poller()
+    async with AsyncExitStack() as resources:
+        # Exit callbacks run in reverse order, including failed startup and cancellation.
+        resources.callback(shutdown_otel)
+        resources.callback(_dispose_database_engine)
+        resources.push_async_callback(close_queue)
+        resources.push_async_callback(_stop_task_queue_observability_poller)
+        resources.push_async_callback(close_http_client_pool)
+        resources.push_async_callback(close_mcp_client)
+        try:
+            _ensure_startup_directories()
+            _ensure_optional_log_directories()
+            _setup_langsmith_tracing()
+            _initialize_database_for_startup()
+            _bootstrap_initial_admin()
+            await _initialize_task_queue()
+            _start_task_queue_observability_poller()
 
-    # Tokenizer initialization is process-local. Complete it before readiness so a
-    # newly added API replica does not serialize its first concurrent requests.
-    _warmup_retrieval_tokenizer()
-    _start_runtime_warmup()
-    _schedule_dify_external_knowledge_warmup()
-
-    yield
-
-    # Shutdown cleanup.
-    logger.info("Shutting down Ragvia backend...")
-
-    # Close HTTP client pool.
-    await close_http_client_pool()
+            # Complete the process-local tokenizer before exposing readiness.
+            _warmup_retrieval_tokenizer()
+            _start_runtime_warmup()
+            _schedule_dify_external_knowledge_warmup()
+            yield
+        finally:
+            logger.info("Shutting down Ragvia backend...")
     logger.info("HTTP client pool closed")
-
-    # Stop task queue observability poller (optional).
-    await _stop_task_queue_observability_poller()
-
-    # Close task queue connection (optional).
-    await close_queue()
-
-    # Dispose DB engine pool (best-effort; avoids lingering connections in some runtimes).
-    _dispose_database_engine()
-
-    shutdown_otel()
 
 
 # Create FastAPI app
@@ -454,7 +411,7 @@ if is_production_env() and settings.TRUSTED_HOSTS_ENABLED:
 # Request body size limit (DoS guardrail).
 from app.api.middleware.body_size_limit import BodySizeLimitMiddleware
 
-app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=settings.REQUEST_MAX_BODY_BYTES or 0)
+app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=settings.REQUEST_MAX_BODY_BYTES)
 
 # Rate limiting middleware
 if settings.RATE_LIMIT_ENABLED:
@@ -466,7 +423,7 @@ if settings.RATE_LIMIT_ENABLED:
         burst_size=settings.RATE_LIMIT_BURST_SIZE,
         chat_requests_per_second=settings.RATE_LIMIT_CHAT_RPS,
         chat_burst_size=settings.RATE_LIMIT_CHAT_BURST,
-        chat_prefixes=["/api/v1/chat/stream"],
+        chat_route_prefixes=["/api/v1/chat/stream"],
     )
 
 # Response compression (safe for SSE; event-stream is excluded by Starlette).
@@ -495,17 +452,13 @@ if settings.PROMETHEUS_ENABLED:
     )
 
 # Process-time header (useful for debugging and quick perf checks).
-app.add_middleware(ProcessTimeMiddleware, server_timing_enabled=settings.SERVER_TIMING_ENABLED)
+app.add_middleware(RequestTimingMiddleware, server_timing_enabled=settings.SERVER_TIMING_ENABLED)
 
 # Security headers (lightweight hardening).
 if settings.SECURITY_HEADERS_ENABLED:
-    from app.api.middleware.security_headers import SecurityHeadersMiddleware
-
     hsts_value = ""
     if settings.SECURITY_HEADERS_HSTS_ENABLED:
-        max_age = settings.SECURITY_HEADERS_HSTS_MAX_AGE_SEC
-        max_age = max(0, max_age)
-        parts = [f"max-age={max_age}"]
+        parts = [f"max-age={settings.SECURITY_HEADERS_HSTS_MAX_AGE_SEC}"]
         if settings.SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS:
             parts.append("includeSubDomains")
         if settings.SECURITY_HEADERS_HSTS_PRELOAD:
@@ -513,10 +466,10 @@ if settings.SECURITY_HEADERS_ENABLED:
         hsts_value = "; ".join(parts)
 
     app.add_middleware(
-        SecurityHeadersMiddleware,
-        x_content_type_options=settings.SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS or "nosniff",
-        x_frame_options=settings.SECURITY_HEADERS_X_FRAME_OPTIONS or "DENY",
-        referrer_policy=settings.SECURITY_HEADERS_REFERRER_POLICY or "strict-origin-when-cross-origin",
+        ResponseSecurityHeadersMiddleware,
+        x_content_type_options=settings.SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS,
+        x_frame_options=settings.SECURITY_HEADERS_X_FRAME_OPTIONS,
+        referrer_policy=settings.SECURITY_HEADERS_REFERRER_POLICY,
         strict_transport_security=hsts_value,
         permissions_policy=settings.SECURITY_HEADERS_PERMISSIONS_POLICY,
         cross_origin_opener_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY,
@@ -524,12 +477,10 @@ if settings.SECURITY_HEADERS_ENABLED:
     )
 
 # Response header sanitization (reduce fingerprinting).
-from app.api.middleware.response_header_sanitizer import ResponseHeaderSanitizerMiddleware
-
-app.add_middleware(ResponseHeaderSanitizerMiddleware)
+app.add_middleware(ResponseFingerprintSanitizerMiddleware)
 
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
-app.add_middleware(RequestIDMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 # CORS must be the final middleware added so it wraps rate-limit and security
 # error responses instead of letting browsers surface them as opaque CORS failures.
@@ -547,7 +498,7 @@ app.add_middleware(
 )
 
 # Register routes
-app.include_router(api_v1_router, prefix="/api/v1", dependencies=[Depends(bind_route_context)])
+app.include_router(get_router(), prefix="/api/v1", dependencies=[Depends(bind_route_context)])
 
 # Register exception handlers
 register_exception_handlers(app)

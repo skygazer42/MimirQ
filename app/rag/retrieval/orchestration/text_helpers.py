@@ -8,8 +8,8 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
-from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.json_text import parse_json_from_text as parse_json_from_text
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.retrieval_modes import normalize_retrieval_mode as normalize_retrieval_mode
 
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
@@ -89,7 +89,11 @@ def _iter_citation_dicts(citations: list[dict[str, Any]] | None) -> Iterator[dic
 def _citation_followup_identity(citation: dict[str, Any]) -> tuple[Any, Any, str | None]:
     document_id = citation.get("document_id")
     name = citation.get("document_name") or citation.get("source")
-    key = _stringified_metadata_text(citation, "document_id") or _stringified_metadata_text(citation, "document_name") or _stringified_metadata_text(citation, "source")
+    key = (
+        _stringified_metadata_text(citation, "document_id")
+        or _stringified_metadata_text(citation, "document_name")
+        or _stringified_metadata_text(citation, "source")
+    )
     return document_id, name, key
 
 

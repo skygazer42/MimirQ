@@ -1,70 +1,72 @@
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
+from langgraph.types import StateSnapshot
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.chat import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import (
     CheckpointDetailResponse,
     CheckpointListResponse,
     ConversationSummaryResponse,
     ConversationSummaryUpdateResponse,
 )
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation
 from app.rag.trace_schema import RagTraceListResponse
-from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.conversation_summary_service import (
     clear_conversation_summary,
     get_conversation_summary,
     update_conversation_summary,
 )
+from app.services.dataset_service import ensure_member
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 from app.services.rag_trace_service import list_rag_traces
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 CONVERSATION_NOT_FOUND_DETAIL = "Conversation not found"
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-def _load_accessible_conversation(
+def _ensure_conversation_access(
     db: Session,
     *,
     tenant_id: UUID,
     account_id: str,
     conversation_id: UUID,
-) -> Conversation:
-    dataset_service.ensure_member(db, tenant_id, account_id)
+) -> None:
+    ensure_member(db, tenant_id, account_id)
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
-    if not conversation:
+    if conversation is None:
         raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
     ensure_conversation_access(db, tenant_id, account_id, conversation)
-    return conversation
 
 
-def _checkpoint_values_to_json(values: dict | None) -> dict:
-    data = dict(values or {})
-    data.pop("docs", None)
-    return jsonable_encoder(data)
+def _checkpoint_payload(snapshot: StateSnapshot, *, include_values: bool) -> dict[str, Any]:
+    config = snapshot.config["configurable"]
+    payload = {
+        "checkpoint_id": config["checkpoint_id"],
+        "checkpoint_ns": config["checkpoint_ns"],
+        "created_at": snapshot.created_at,
+        "next": snapshot.next,
+        "metadata": snapshot.metadata,
+    }
+    if include_values:
+        payload["values"] = {name: value for name, value in snapshot.values.items() if name != "docs"}
+    return jsonable_encoder(payload)
 
 
 @router.get(
     "/conversations/{conversation_id}/summary",
     response_model=ConversationSummaryResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_conversation_summary_endpoint(
     conversation_id: UUID,
@@ -73,7 +75,7 @@ def get_conversation_summary_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    _load_accessible_conversation(
+    _ensure_conversation_access(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -87,7 +89,7 @@ def get_conversation_summary_endpoint(
 @router.post(
     "/conversations/{conversation_id}/summary/update",
     response_model=ConversationSummaryUpdateResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 async def update_conversation_summary_endpoint(
     conversation_id: UUID,
@@ -96,14 +98,17 @@ async def update_conversation_summary_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED):
+    if not settings.PERSISTENT_SUMMARY_MEMORY_ENABLED:
         raise HTTPException(status_code=400, detail="Persistent summary memory is disabled")
 
-    _load_accessible_conversation(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        conversation_id=conversation_id,
+    await run_blocking_call_with_managed_session(
+        lambda worker_db: _ensure_conversation_access(
+            worker_db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation_id=conversation_id,
+        ),
+        request_db=db,
     )
 
     summary = await update_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
@@ -113,7 +118,7 @@ async def update_conversation_summary_endpoint(
 @router.delete(
     "/conversations/{conversation_id}/summary",
     status_code=204,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def delete_conversation_summary_endpoint(
     conversation_id: UUID,
@@ -122,7 +127,7 @@ def delete_conversation_summary_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    _load_accessible_conversation(
+    _ensure_conversation_access(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -130,13 +135,12 @@ def delete_conversation_summary_endpoint(
     )
 
     clear_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
-    return None
 
 
 @router.get(
     "/conversations/{conversation_id}/rag-traces",
     response_model=RagTraceListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_conversation_rag_traces(
     conversation_id: UUID,
@@ -152,7 +156,7 @@ def get_conversation_rag_traces(
     List recent RAG traces for a conversation (PII-safe) so the UI can visualize
     retrieve/rerank/citations steps.
     """
-    _load_accessible_conversation(
+    _ensure_conversation_access(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -171,7 +175,7 @@ def get_conversation_rag_traces(
 @router.get(
     "/conversations/{conversation_id}/checkpoints",
     response_model=CheckpointListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_conversation_checkpoints(
     conversation_id: UUID,
@@ -184,7 +188,7 @@ def list_conversation_checkpoints(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List LangGraph checkpoints for this conversation (time-travel/debug)."""
-    _load_accessible_conversation(
+    _ensure_conversation_access(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -201,27 +205,16 @@ def list_conversation_checkpoints(
     )
 
     snapshots = list(graph.get_state_history(base_config, before=before_config, limit=limit))
-    items = []
-    for snap in reversed(snapshots):
-        cfg = (snap.config or {}).get("configurable") or {}
-        item = {
-            "checkpoint_id": cfg.get("checkpoint_id"),
-            "checkpoint_ns": cfg.get("checkpoint_ns", ""),
-            "created_at": snap.created_at,
-            "next": snap.next,
-            "metadata": snap.metadata,
-        }
-        if include_values:
-            item["values"] = _checkpoint_values_to_json(snap.values)
-        items.append(jsonable_encoder(item))
-
-    return {"thread_id": thread_id, "items": items}
+    return {
+        "thread_id": thread_id,
+        "items": [_checkpoint_payload(snap, include_values=include_values) for snap in reversed(snapshots)],
+    }
 
 
 @router.get(
     "/conversations/{conversation_id}/checkpoints/{checkpoint_id}",
     response_model=CheckpointDetailResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_conversation_checkpoint(
     conversation_id: UUID,
@@ -233,7 +226,7 @@ def get_conversation_checkpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get a checkpoint snapshot (docs are excluded by default)."""
-    _load_accessible_conversation(
+    _ensure_conversation_access(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -246,27 +239,16 @@ def get_conversation_checkpoint(
     thread_id = str(conversation_id)
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": checkpoint_id}}
     snap = graph.get_state(config)
-    if not snap or snap.created_at is None:
+    if snap.created_at is None:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
-    cfg = (snap.config or {}).get("configurable") or {}
-    payload = {
-        "thread_id": thread_id,
-        "checkpoint_id": cfg.get("checkpoint_id"),
-        "checkpoint_ns": cfg.get("checkpoint_ns", ""),
-        "created_at": snap.created_at,
-        "next": snap.next,
-        "metadata": snap.metadata,
-    }
-    if include_values:
-        payload["values"] = _checkpoint_values_to_json(snap.values)
-    return jsonable_encoder(payload)
+    return {"thread_id": thread_id, **_checkpoint_payload(snap, include_values=include_values)}
 
 
 @router.delete(
     "/conversations/{conversation_id}/checkpoints",
     status_code=204,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def delete_conversation_checkpoints(
     conversation_id: UUID,
@@ -276,7 +258,7 @@ def delete_conversation_checkpoints(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Clear checkpoints for this conversation (does not delete messages or the conversation)."""
-    _load_accessible_conversation(
+    _ensure_conversation_access(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -287,4 +269,3 @@ def delete_conversation_checkpoints(
 
     saver = get_checkpointer()
     saver.delete_thread(str(conversation_id))
-    return None

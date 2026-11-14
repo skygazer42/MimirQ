@@ -25,10 +25,10 @@ def order_metadata_anchors(
             stats["applied"] = False
             stats["annotated"] = 0
         return results
-    before_top = result_key(annotated[0][0]) if annotated else ""
+    before_top = result_key(annotated[0][0])
     annotated.sort(key=_metadata_anchor_sort_key_factory(annotated, result_count=len(results)))
     ordered = [item for item, _pos in annotated]
-    after_top = result_key(ordered[0]) if ordered else ""
+    after_top = result_key(ordered[0])
     if stats is not None:
         stats["applied"] = True
         stats["annotated"] = annotated_count

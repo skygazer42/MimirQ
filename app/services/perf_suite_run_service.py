@@ -88,7 +88,7 @@ def _run_case(
         "name": case.name,
         "method": case.method,
         "path": case.path,
-        "iterations": int(iterations),
+        "iterations": iterations,
         "ok_count": ok_count,
         "ok_ratio": ok_count / float(iterations) if iterations > 0 else 0.0,
         "qps": qps,

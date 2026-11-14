@@ -60,21 +60,19 @@ class JSONChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            original_metadata = dict(doc.metadata or {})
+            original_metadata = dict(doc.metadata)
 
             if not text.strip():
                 continue
 
             try:
-                # Try to parse as JSON
                 data = json.loads(text)
-                chunks = self._split_json(data, original_metadata)
-                all_chunks.extend(chunks)
             except json.JSONDecodeError:
-                # Fall back to text-based splitting
                 logger.debug("Content is not valid JSON, using fallback splitter")
-                chunks = self._fallback_split(doc)
-                all_chunks.extend(chunks)
+                all_chunks.extend(self._fallback_split(doc))
+                continue
+
+            all_chunks.extend(self._split_json(data, original_metadata))
 
         # Re-index chunks
         for idx, chunk in enumerate(all_chunks):
@@ -96,11 +94,9 @@ class JSONChunker(BaseChunker):
 
         if isinstance(data, list):
             return self._split_array(data, base_metadata, path, depth)
-        elif isinstance(data, dict):
+        if isinstance(data, dict):
             return self._split_object(data, base_metadata, path, depth)
-        else:
-            # Primitive value
-            return [self._create_chunk(data, base_metadata, path)]
+        return [self._create_chunk(data, base_metadata, path)]
 
     def _split_array(
         self,
@@ -377,7 +373,7 @@ class CodeChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            original_metadata = dict(doc.metadata or {})
+            original_metadata = dict(doc.metadata)
 
             if not text.strip():
                 continue
@@ -402,10 +398,8 @@ class CodeChunker(BaseChunker):
 
                 start_idx = text.find(split_text, max(0, int(search_pos)))
                 if start_idx < 0:
-                    probe = (split_text).strip()
-                    if probe:
-                        probe = probe[: min(120, len(probe))]
-                        start_idx = text.find(probe, max(0, int(search_pos)))
+                    probe = split_text.strip()[:120]
+                    start_idx = text.find(probe, max(0, int(search_pos)))
                 if start_idx < 0:
                     start_idx = max(0, min(int(search_pos), len(text)))
                 end_idx = min(len(text), start_idx + len(split_text))
@@ -429,13 +423,13 @@ class CodeChunker(BaseChunker):
 
         return all_chunks
 
-    def _detect_language(self, doc: Document) -> str:
-        """Detect programming language from document."""
+    def _detect_language(self, doc: Document) -> Any:
+        """Use the configured language, raw metadata override, or content hints."""
         # Check explicit language
         if self.language:
             return self.language
 
-        metadata = doc.metadata or {}
+        metadata = doc.metadata
 
         # Check metadata
         if "language" in metadata:
@@ -467,15 +461,14 @@ class CodeChunker(BaseChunker):
             score = sum(1 for p in pats if re.search(p, text, re.IGNORECASE))
             scores[lang] = score
 
-        if scores:
-            best = max(scores, key=scores.get)
-            if scores[best] > 0:
-                return best
+        best = max(scores, key=scores.get)
+        if scores[best] > 0:
+            return best
 
         return "default"
 
-    def _extract_code_context(self, text: str, language: str) -> str | None:
-        """Extract context (function/class name) from code chunk."""
+    def _extract_code_context(self, text: str, language: Any) -> str | None:
+        """Extract a function/class name; unsupported languages have no context."""
         patterns = {
             "python": [
                 r"^\s*def\s+(\w+)\s*\(",
@@ -546,7 +539,7 @@ class SmartCodeChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            original_metadata = dict(doc.metadata or {})
+            original_metadata = dict(doc.metadata)
 
             if not text.strip():
                 continue
@@ -585,13 +578,9 @@ class SmartCodeChunker(BaseChunker):
                         [Document(page_content=unit_text, metadata=original_metadata)]
                     )
                     for sub in sub_chunks:
-                        meta = dict(sub.metadata or {})
-                        rel_start = meta.get("start_char")
-                        rel_end = meta.get("end_char")
-                        if isinstance(rel_start, int):
-                            meta["start_char"] = unit_start + rel_start
-                        if isinstance(rel_end, int):
-                            meta["end_char"] = unit_start + rel_end
+                        meta = dict(sub.metadata)
+                        meta["start_char"] = unit_start + meta["start_char"]
+                        meta["end_char"] = unit_start + meta["end_char"]
                         meta["chunk_strategy"] = "smart_code"
                         meta["language"] = "python"
                         meta["code_unit_type"] = unit_type

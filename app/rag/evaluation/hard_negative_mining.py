@@ -162,7 +162,7 @@ def _select_hard_candidates(
     dropped = 0
     for row in candidates:
         document_id = row["document_id"]
-        used = per_document_counts.get(document_id, 0) or 0
+        used = per_document_counts.get(document_id, 0)
         if max_negatives_per_document > 0 and document_id and used >= max_negatives_per_document:
             dropped += 1
             continue

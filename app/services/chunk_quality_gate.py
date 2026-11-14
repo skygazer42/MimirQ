@@ -17,7 +17,7 @@ def _as_int(v: Any, default: int = 0) -> int:
         if v is None or isinstance(v, bool):
             return default
         return int(v)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return default
 
 
@@ -26,7 +26,7 @@ def _as_float(v: Any, default: float = 0.0) -> float:
         if v is None or isinstance(v, bool):
             return default
         return float(v)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return default
 
 
@@ -49,7 +49,7 @@ class _ChunkQualityGateAccumulator:
                 "code": code[:80],
                 "severity": severity,
                 "message": message[:200],
-                "meta": dict(meta or {}),
+                "meta": {} if meta is None else dict(meta),
             }
         )
 

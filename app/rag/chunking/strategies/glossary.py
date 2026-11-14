@@ -29,10 +29,9 @@ _EN_TERM_ALLOWED_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQR
 
 
 def _is_all_cjk(s: str) -> bool:
-    t = s
-    if not t:
+    if not s:
         return False
-    for ch in t:
+    for ch in s:
         code = ord(ch)
         if not (0x4E00 <= code <= 0x9FFF):
             return False
@@ -121,7 +120,7 @@ def _iter_entries(text: str) -> list[_Entry]:
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         entries.append(_Entry(start=start, end=end, term=terms[idx]))
 
-    return entries if len(entries) >= 2 else []
+    return entries
 
 
 def looks_like_glossary(text: str) -> bool:
@@ -137,8 +136,8 @@ def _split_glossary_fallback_docs(
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     chunks: list[Document] = []
     for split_doc in split_docs:
-        split_meta = dict(split_doc.metadata or {})
-        abs_start = int(split_meta.pop("start_index", None) or 0)
+        split_meta = dict(split_doc.metadata)
+        abs_start = split_meta.pop("start_index")
         meta: dict[str, Any] = dict(base_meta)
         meta.update(split_meta)
         meta["chunk_strategy"] = "glossary"
@@ -157,7 +156,7 @@ def _glossary_window_end(entries: list[_Entry], start_idx: int, chunk_size: int)
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else start_idx + 1
+    return end_idx
 
 
 def _window_glossary_terms(entries: list[_Entry], start_idx: int, end_idx: int) -> list[str]:
@@ -197,7 +196,7 @@ def _next_glossary_start(entries: list[_Entry], start_idx: int, end_idx: int, ch
             continue
         break
     next_start = desired if desired > start_idx else (end_idx - 1)
-    return next_start if next_start > start_idx else end_idx
+    return next_start
 
 
 class GlossaryChunker(BaseChunker):
@@ -220,7 +219,7 @@ class GlossaryChunker(BaseChunker):
             out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 
@@ -231,7 +230,7 @@ class GlossaryChunker(BaseChunker):
         if not text.strip():
             return []
 
-        base_meta = dict(doc.metadata or {})
+        base_meta = dict(doc.metadata)
         entries = _iter_entries(text)
         if not entries:
             return _split_glossary_fallback_docs(self._fallback_splitter, text, base_meta)
@@ -241,5 +240,7 @@ class GlossaryChunker(BaseChunker):
         while start_idx < len(entries):
             end_idx = _glossary_window_end(entries, start_idx, self.chunk_size)
             chunks.append(_build_glossary_chunk(entries, start_idx, end_idx, base_meta, text))
+            if end_idx == len(entries):
+                break
             start_idx = _next_glossary_start(entries, start_idx, end_idx, self.chunk_overlap)
         return chunks

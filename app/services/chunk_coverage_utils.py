@@ -9,8 +9,6 @@ Used by:
 
 from collections.abc import Iterable
 
-from app.rag.core.logging import get_logger
-
 
 def _empty_chunk_coverage_metrics(*, largest_gap: int = 0) -> dict[str, float | int]:
     return {
@@ -28,24 +26,15 @@ def _clip_chunk_ranges(
     *,
     total: int,
 ) -> tuple[int, list[tuple[int, int]]]:
-    logger = get_logger(__name__)
     sum_chunk_chars = 0
     clipped: list[tuple[int, int]] = []
-    for s, e in list(ranges or []):
-        try:
-            s0 = int(s)
-            e0 = int(e)
-        except Exception:
-            logger.debug("Skipping item after non-critical exception", exc_info=True)
+    for start, end in ranges:
+        start = max(0, min(total, start))
+        end = max(0, min(total, end))
+        if end <= start:
             continue
-        if e0 <= s0:
-            continue
-        s2 = max(0, min(total, s0))
-        e2 = max(0, min(total, e0))
-        if e2 <= s2:
-            continue
-        clipped.append((s2, e2))
-        sum_chunk_chars += e2 - s2
+        clipped.append((start, end))
+        sum_chunk_chars += end - start
     return sum_chunk_chars, clipped
 
 

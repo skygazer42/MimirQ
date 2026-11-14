@@ -6,7 +6,6 @@ Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 import json
 import math
 import threading
-from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -105,39 +104,6 @@ class MilvusVectorStore(BaseVectorStore):
 
     def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return milvus_store.get_embedding_model()
-
-
-class StubVectorStore(BaseVectorStore):
-    """Placeholder implementation for future backends."""
-
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
-        raise RuntimeError("Vector backend not implemented")
-
-    def search(
-        self,
-        query: str,
-        top_k: int,
-        score_threshold: float,
-        document_ids: list[UUID] | None,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        return []
-
-    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        return
-
-    def delete_by_document_id_and_filter(
-        self,
-        *,
-        document_id: UUID,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any],
-    ) -> None:
-        raise NotImplementedError("Vector backend not implemented")
-
-    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
-        raise RuntimeError("Vector backend does not expose an embedding client")
 
 
 class MemoryVectorStore(BaseVectorStore):
@@ -274,21 +240,20 @@ def _normalize_region(region: str | None = None) -> str:
 
 
 def _load_vector_region_backends() -> dict[str, str]:
-    raw = settings.VECTOR_REGION_BACKENDS
-    if isinstance(raw, Mapping):
-        source = dict(raw)
-    else:
-        text = str(raw).strip()
-        if not text:
-            return {}
-        try:
-            parsed = json.loads(text)
-        except Exception:
-            return {}
-        source = dict(parsed) if isinstance(parsed, dict) else {}
+    raw = settings.VECTOR_REGION_BACKENDS.strip()
+    if not raw:
+        return {}
+    try:
+        source = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("VECTOR_REGION_BACKENDS must be a JSON object") from exc
+    if not isinstance(source, dict):
+        raise ValueError("VECTOR_REGION_BACKENDS must be a JSON object")
 
     out: dict[str, str] = {}
     for key, value in source.items():
+        if not isinstance(value, str):
+            raise ValueError("VECTOR_REGION_BACKENDS must map region names to backend strings")
         region = key.strip().lower()
         backend = value.strip().lower()
         if not region or not backend:
@@ -312,12 +277,12 @@ def _resolve_vector_backend(*, backend: str | None = None, region: str | None = 
 
 def _embedding_client_cache_token() -> str:
     provider = EmbeddingProviders.PROVIDER_MAP.get(
-        str(settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower(),
+        (settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower(),
         "openai_compatible",
     )
-    model = str(settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
-    api_base = str(settings.EMBEDDING_API_BASE or settings.LLM_API_BASE).strip()
-    api_key = str(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY).strip()
+    model = (settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
+    api_base = (settings.EMBEDDING_API_BASE or settings.LLM_API_BASE).strip()
+    api_key = (settings.EMBEDDING_API_KEY or settings.LLM_API_KEY).strip()
     api_key_hash = stable_hash(api_key, length=16) if api_key else ""
     return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}", length=24)
 
@@ -355,7 +320,7 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
         elif backend_name == "pgvector":
             store = PGVectorStore()
         else:
-            store = StubVectorStore()
+            raise ValueError(f"Unsupported vector backend: {backend_name}")
 
         _VECTOR_STORE_SINGLETONS[cache_key] = store
         return store

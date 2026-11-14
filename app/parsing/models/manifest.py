@@ -85,12 +85,12 @@ class SmallModelManifest:
         return spec
 
     def list_task_models(self, task: str) -> list[SmallModelSpec]:
-        return list((self.tasks.get(task.strip()) or {}).values())
+        return list(self.tasks.get(task.strip(), {}).values())
 
 
 def _coerce_bool(value: Any, *, default: bool = False) -> bool:
     if value is None:
-        return bool(default)
+        return default
     if isinstance(value, bool):
         return value
     raw = str(value).strip().lower()
@@ -98,7 +98,7 @@ def _coerce_bool(value: Any, *, default: bool = False) -> bool:
         return True
     if raw in {"0", "false", "no", "off"}:
         return False
-    return bool(default)
+    return default
 
 
 def _coerce_str_tuple(value: Any) -> tuple[str, ...]:

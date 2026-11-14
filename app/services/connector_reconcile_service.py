@@ -23,11 +23,10 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _normalize_refs(value: Any, *, max_items: int = 10_000) -> list[str]:
+def _normalize_refs(value: Any) -> list[str]:
     raw_items = value if isinstance(value, list) else []
     out: list[str] = []
     seen: set[str] = set()
-    limit = max(1, int(max_items or 0))
     for raw in raw_items:
         if raw is None:
             continue
@@ -36,8 +35,6 @@ def _normalize_refs(value: Any, *, max_items: int = 10_000) -> list[str]:
             continue
         seen.add(item)
         out.append(item)
-        if len(out) >= limit:
-            break
     out.sort()
     return out
 

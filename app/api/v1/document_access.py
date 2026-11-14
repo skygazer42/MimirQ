@@ -4,25 +4,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentAccessInfo, DocumentAccessUpdateRequest
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.documents import DocumentAccessInfo, DocumentAccessUpdateRequest
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.services import document_access_service
 
-DOC_NOT_FOUND_DETAIL = document_access_service.DOC_NOT_FOUND_DETAIL
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.get("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/{document_id}/access", response_model=DocumentAccessInfo)
 def get_document_access(
     document_id: UUID,
     *,
@@ -38,7 +29,7 @@ def get_document_access(
     )
 
 
-@router.put("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.put("/{document_id}/access", response_model=DocumentAccessInfo)
 def put_document_access(
     document_id: UUID,
     payload: DocumentAccessUpdateRequest,

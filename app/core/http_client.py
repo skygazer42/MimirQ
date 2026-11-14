@@ -39,10 +39,7 @@ class HTTPClientPool:
         - X-Request-ID: trace correlation
         - X-Tenant-ID (and optionally TENANT_HEADER) / X-User-ID: internal multi-tenant attribution
         """
-        try:
-            ctx = get_request_context()
-        except Exception:  # noqa: BLE001
-            return
+        ctx = get_request_context()
 
         rid = ctx["request_id"].strip()
         tenant_id = ctx["tenant_id"].strip()
@@ -66,10 +63,7 @@ class HTTPClientPool:
         - Do NOT propagate internal attribution headers like X-Tenant-ID / X-User-ID.
         - Only X-Request-ID is included (when available) for correlation.
         """
-        try:
-            ctx = get_request_context()
-        except Exception:  # noqa: BLE001
-            return
+        ctx = get_request_context()
 
         rid = ctx["request_id"].strip()
         if rid and "X-Request-ID" not in request.headers:
@@ -263,29 +257,28 @@ class HTTPClientPool:
             sync_client_external = self._sync_client_external
             self._sync_client_external = None
 
-        if sync_client is not None:
+        def close_sync_client(client: httpx.Client, name: str) -> None:
             try:
-                sync_client.close()
+                client.close()
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to close HTTP sync client pool: %s", str(exc)[:200])
+                logger.warning("Failed to close %s: %s", name, str(exc)[:200])
 
-        if async_client is not None:
+        async def close_async_client(client: httpx.AsyncClient, name: str) -> None:
             try:
-                await async_client.aclose()
+                await client.aclose()
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to close HTTP async client pool: %s", str(exc)[:200])
+                logger.warning("Failed to close %s: %s", name, str(exc)[:200])
 
-        if sync_client_external is not None:
-            try:
-                sync_client_external.close()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to close HTTP external sync client: %s", str(exc)[:200])
-
-        if async_client_external is not None:
-            try:
-                await async_client_external.aclose()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to close HTTP external async client: %s", str(exc)[:200])
+        # Exit callbacks run in reverse registration order, including after cancellation.
+        async with contextlib.AsyncExitStack() as stack:
+            if async_client_external is not None:
+                stack.push_async_callback(close_async_client, async_client_external, "HTTP external async client")
+            if sync_client_external is not None:
+                stack.callback(close_sync_client, sync_client_external, "HTTP external sync client")
+            if async_client is not None:
+                stack.push_async_callback(close_async_client, async_client, "HTTP async client pool")
+            if sync_client is not None:
+                stack.callback(close_sync_client, sync_client, "HTTP sync client pool")
 
         logger.info("HTTP client pool closed")
 

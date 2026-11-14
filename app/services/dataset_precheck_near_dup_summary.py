@@ -12,11 +12,11 @@ from typing import Any
 def _safe_int(v: Any) -> int:
     try:
         return int(v or 0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
-def summarize_near_dup_payload(payload: Any | None) -> dict[str, Any]:
+def summarize_near_dup_payload(payload: object) -> dict[str, Any]:
     """
     Build a compact summary from a near-duplicate artifact payload.
 
@@ -33,13 +33,14 @@ def summarize_near_dup_payload(payload: Any | None) -> dict[str, Any]:
     }
 
     if not isinstance(payload, dict) or not payload:
-        return dict(empty)
+        return empty
 
     clusters = payload.get("clusters") if isinstance(payload.get("clusters"), list) else []
     threshold = _safe_int(payload.get("threshold"))
     pairs = _safe_int(payload.get("pairs_returned"))
-    if pairs <= 0 and isinstance(payload.get("pairs"), list):
-        pairs = len(payload.get("pairs") or [])
+    raw_pairs = payload.get("pairs")
+    if pairs <= 0 and isinstance(raw_pairs, list):
+        pairs = len(raw_pairs)
 
     affected: set[str] = set()
     largest = 0
@@ -68,19 +69,15 @@ def summarize_near_dup_payload(payload: Any | None) -> dict[str, Any]:
     if cluster_count <= 0:
         cluster_count = len(clusters)
 
-    out = dict(empty)
-    out.update(
-        {
-            "enabled": True,
-            "threshold": threshold,
-            "pairs": int(pairs),
-            "clusters": int(cluster_count),
-            "affected_files": int(len(affected)),
-            "largest_cluster_size": int(largest),
-            "keep_candidates_sample": keep_candidates[:20],
-        }
-    )
-    return out
+    return {
+        "enabled": True,
+        "threshold": threshold,
+        "pairs": pairs,
+        "clusters": cluster_count,
+        "affected_files": len(affected),
+        "largest_cluster_size": largest,
+        "keep_candidates_sample": keep_candidates[:20],
+    }
 
 
 __all__ = ["summarize_near_dup_payload"]

@@ -7,7 +7,7 @@ from uuid import UUID
 import httpx
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document_ingestion import UrlUploadRequest
+from app.api.schemas.documents import UrlUploadRequest
 from app.core.database import SessionLocal
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
@@ -44,6 +44,9 @@ from app.services.connector_execution.shared.external import (
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
+    connector_run_cancelled as _github_repo_run_cancelled,
 )
 from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_github_repo_run,
@@ -111,7 +114,7 @@ def _build_github_repo_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
 async def _fetch_github_repo_listing_and_acl_keys(settings_map: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     team_principal_keys: list[str] = []
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-        resp = await client.get(settings_map['api_url'], headers=dict(settings_map.get("headers") or {}))
+        resp = await client.get(settings_map["api_url"], headers=dict(settings_map.get("headers") or {}))
         if resp.status_code >= 400:
             raise RuntimeError(f"github api failed (status={resp.status_code})")
         data = resp.json()
@@ -120,8 +123,8 @@ async def _fetch_github_repo_listing_and_acl_keys(settings_map: dict[str, Any]) 
             with contextlib.suppress(Exception):
                 team_principal_keys = await _github_fetch_repo_team_principal_keys(
                     client=client,
-                    owner=settings_map['owner'],
-                    repo=settings_map['repo_name'],
+                    owner=settings_map["owner"],
+                    repo=settings_map["repo_name"],
                     headers=dict(settings_map.get("headers") or {}),
                 )
 
@@ -187,7 +190,7 @@ def _build_github_repo_source_acl_context(
             details={
                 "dataset_id": str(run.dataset_id),
                 "connector_id": "github_repo",
-                "repo": settings_map['repo'],
+                "repo": settings_map["repo"],
                 "team_principal_count": int(len(team_principal_keys)),
                 "mapped_group_count": int(len(mapped_group_ids)),
                 "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
@@ -215,12 +218,6 @@ def _build_github_repo_source_acl_context(
         "mapped_group_ids": set(mapped_group_ids),
         "source_acl_provenance": source_acl_provenance,
     }
-
-
-def _github_repo_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
-    with contextlib.suppress(Exception):
-        db.refresh(run)
-    return run.status.lower() == "cancelled"
 
 
 def _github_repo_effective_access(
@@ -276,9 +273,9 @@ async def _ingest_github_repo_file(
     source_acl_context: dict[str, Any],
 ) -> dict[str, Any]:
     raw_url = _github_raw_url(
-        owner=settings_map['owner'],
-        repo=settings_map['repo_name'],
-        branch=settings_map['branch'],
+        owner=settings_map["owner"],
+        repo=settings_map["repo_name"],
+        branch=settings_map["branch"],
         path=path,
     )
     effective_access = _github_repo_effective_access(
@@ -369,14 +366,14 @@ def _persist_github_repo_progress(
     removed_documents_disabled: int,
     source_manifest_state: dict[str, str],
 ) -> None:
-    processed_visible = int(plan.get("skipped_unchanged") or 0) + processed
+    processed_visible = plan["skipped_unchanged"] + processed
     stats = dict(run.stats or {})
     stats.update(
         {
-            "mode": plan.get("mode"),
-            "total_files": int(len(plan.get("files") or [])),
-            "delta_files": int(len(plan.get("delta_files") or [])),
-            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "mode": plan["mode"],
+            "total_files": len(plan["files"]),
+            "delta_files": len(plan["delta_files"]),
+            "skipped_unchanged": plan["skipped_unchanged"],
             "processed_files": int(processed_visible),
             "cursor": int(processed),
             "created": int(created),
@@ -384,7 +381,7 @@ def _persist_github_repo_progress(
             "document_ids": [str(doc_id) for doc_id in created_doc_ids],
             "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
             "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
-            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths": len(plan["removed_paths"]),
             "removed_paths_reconciled": int(removed_paths_reconciled),
             "removed_documents_disabled": int(removed_documents_disabled),
             "source_manifest": dict(source_manifest_state),
@@ -392,39 +389,6 @@ def _persist_github_repo_progress(
     )
     run.stats = _finalize_connector_stats(stats)
     db.commit()
-
-
-def _github_repo_apply_processed_file_success(
-    *,
-    path: str,
-    blob_sha: str,
-    result: dict[str, Any],
-    created: int,
-    created_doc_ids: list[UUID],
-    delta_acl_docs_updated: int,
-    delta_acl_sources_updated: int,
-    source_manifest_state: dict[str, str],
-) -> dict[str, Any]:
-    created += 1
-    created_doc_ids = [*created_doc_ids, result["doc_id"]]
-
-    updated_existing = int(result.get("updated_existing") or 0)
-    delta_acl_docs_updated += updated_existing
-    if updated_existing:
-        delta_acl_sources_updated += 1
-    if path and blob_sha:
-        source_manifest_state = {
-            **source_manifest_state,
-            path: blob_sha,
-        }
-
-    return {
-        "created": created,
-        "created_doc_ids": created_doc_ids,
-        "delta_acl_docs_updated": delta_acl_docs_updated,
-        "delta_acl_sources_updated": delta_acl_sources_updated,
-        "source_manifest_state": source_manifest_state,
-    }
 
 
 async def _process_github_repo_files(
@@ -444,10 +408,10 @@ async def _process_github_repo_files(
     delta_acl_sources_updated = 0
     removed_paths_reconciled = 0
     removed_documents_disabled = 0
-    source_manifest_state = dict(plan.get("source_manifest_state") or {})
-    cursor_in = int(plan.get("cursor_in") or 0)
+    source_manifest_state = dict(plan["source_manifest_state"])
+    cursor_in = plan["cursor_in"]
 
-    for idx, item in enumerate(plan.get("files_to_process") or []):
+    for idx, item in enumerate(plan["files_to_process"]):
         path, blob_sha = item
         if _github_repo_run_cancelled(db, run=run):
             break
@@ -462,21 +426,15 @@ async def _process_github_repo_files(
                 settings_map=settings_map,
                 source_acl_context=source_acl_context,
             )
-            success_state = _github_repo_apply_processed_file_success(
-                path=path,
-                blob_sha=blob_sha,
-                result=result,
-                created=created,
-                created_doc_ids=created_doc_ids,
-                delta_acl_docs_updated=delta_acl_docs_updated,
-                delta_acl_sources_updated=delta_acl_sources_updated,
-                source_manifest_state=source_manifest_state,
-            )
-            created = int(success_state["created"])
-            created_doc_ids = list(success_state["created_doc_ids"])
-            delta_acl_docs_updated = int(success_state["delta_acl_docs_updated"])
-            delta_acl_sources_updated = int(success_state["delta_acl_sources_updated"])
-            source_manifest_state = dict(success_state["source_manifest_state"])
+            created += 1
+            created_doc_ids = [*created_doc_ids, result["doc_id"]]
+            updated_existing = int(result.get("updated_existing") or 0)
+            delta_acl_docs_updated += updated_existing
+            if updated_existing:
+                delta_acl_sources_updated += 1
+            source_manifest_state = dict(source_manifest_state)
+            if path and blob_sha:
+                source_manifest_state[path] = blob_sha
         except Exception as exc:  # noqa: BLE001
             failed += 1
             run.stats = _append_connector_error(dict(run.stats or {}), url=path, exc=exc)
@@ -521,9 +479,9 @@ def _reconcile_removed_github_repo_paths(
     connector_config_id = _connector_config_id_from_run(run)
     for path in removed_paths:
         raw_url = _github_raw_url(
-            owner=settings_map['owner'],
-            repo=settings_map['repo_name'],
-            branch=settings_map['branch'],
+            owner=settings_map["owner"],
+            repo=settings_map["repo_name"],
+            branch=settings_map["branch"],
             path=path,
         )
         try:
@@ -573,8 +531,8 @@ def _emit_github_repo_source_acl_delta_sync_audit(
             details={
                 "dataset_id": str(run.dataset_id),
                 "connector_id": "github_repo",
-                "repo": settings_map['repo'],
-                "branch": settings_map['branch'],
+                "repo": settings_map["repo"],
+                "branch": settings_map["branch"],
                 "updated_documents": int(delta_acl_docs_updated),
                 "updated_sources": int(delta_acl_sources_updated),
             },
@@ -596,13 +554,13 @@ def _finalize_github_repo_run_success(
     stats = dict(run.stats or {})
     stats.update(
         {
-            "mode": plan.get("mode"),
-            "delta_files": int(len(plan.get("delta_files") or [])),
-            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "mode": plan["mode"],
+            "delta_files": len(plan["delta_files"]),
+            "skipped_unchanged": plan["skipped_unchanged"],
             "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
             "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
             "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
-            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths": len(plan["removed_paths"]),
             "removed_paths_reconciled": int(progress.get("removed_paths_reconciled") or 0),
             "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
             "source_manifest": dict(progress.get("source_manifest_state") or {}),
@@ -686,8 +644,8 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
             _finalize_cancelled_github_repo_run(db, run=run)
             return
 
-        removed_paths = list(plan.get("removed_paths") or [])
-        if plan.get("mode") == "incremental" and removed_paths:
+        removed_paths = list(plan["removed_paths"])
+        if plan["mode"] == "incremental" and removed_paths:
             removed_paths_reconciled, removed_documents_disabled = _reconcile_removed_github_repo_paths(
                 db,
                 run=run,

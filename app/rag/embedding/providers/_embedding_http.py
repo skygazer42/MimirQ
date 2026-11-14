@@ -197,8 +197,6 @@ def post_with_retries_sync(
         finally:
             _close_response_sync(response)
 
-    if last_exc is None:
-        raise RuntimeError("Embedding request failed without an exception")
     raise last_exc
 
 
@@ -242,6 +240,4 @@ async def post_with_retries_async(
         finally:
             await _close_response_async(response)
 
-    if last_exc is None:
-        raise RuntimeError("Embedding request failed without an exception")
     raise last_exc

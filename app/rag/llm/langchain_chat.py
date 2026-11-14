@@ -94,7 +94,7 @@ class PromptCacheChatOpenAI(ChatOpenAI):
             return payload
 
         annotated, meta = annotate_openai_messages_for_prompt_cache(
-            messages=list(raw_messages),
+            messages=raw_messages,
             anthropic_compatible=self._anthropic_compatible,
         )
         payload["messages"] = annotated
@@ -133,7 +133,7 @@ class FallbackChatOpenAI(BaseChatModel):
         return dict(meta or {})
 
     def _models(self) -> list[BaseChatModel]:
-        return [self.primary, *list(self.fallbacks)]
+        return [self.primary, *self.fallbacks]
 
     def _attempt_entry(
         self,
@@ -177,17 +177,6 @@ class FallbackChatOpenAI(BaseChatModel):
             raise AllProvidersFailedError("all LLM providers failed") from last_exc
         raise AllProvidersFailedError("all LLM providers failed")
 
-    def _record_attempt(
-        self,
-        attempts: list[_ProviderAttempt],
-        *,
-        model: BaseChatModel,
-        success: bool,
-        error: Exception | None = None,
-        yielded_tokens: bool | None = None,
-    ) -> None:
-        attempts.append(self._attempt_entry(model=model, success=success, error=error, yielded_tokens=yielded_tokens))
-
     def _set_success_metadata(
         self,
         attempts: list[_ProviderAttempt],
@@ -197,7 +186,7 @@ class FallbackChatOpenAI(BaseChatModel):
     ) -> None:
         prompt_cache = _prompt_cache_meta(model)
         selected_model = _model_name_of(model)
-        self._record_attempt(attempts, model=model, success=True, yielded_tokens=yielded_tokens)
+        attempts.append(self._attempt_entry(model=model, success=True, error=None, yielded_tokens=yielded_tokens))
         meta = self._final_meta(
             attempts=attempts,
             selected_model=selected_model,
@@ -226,7 +215,7 @@ class FallbackChatOpenAI(BaseChatModel):
                 result = model._generate(messages, stop=stop, run_manager=run_manager, **kwargs)  # noqa: SLF001
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                self._record_attempt(attempts, model=model, success=False, error=exc)
+                attempts.append(self._attempt_entry(model=model, success=False, error=exc, yielded_tokens=None))
                 if not is_retryable_provider_error(exc):
                     self._set_failure_metadata(attempts)
                     raise
@@ -253,7 +242,7 @@ class FallbackChatOpenAI(BaseChatModel):
                 result = await model._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)  # noqa: SLF001
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                self._record_attempt(attempts, model=model, success=False, error=exc)
+                attempts.append(self._attempt_entry(model=model, success=False, error=exc, yielded_tokens=None))
                 if not is_retryable_provider_error(exc):
                     self._set_failure_metadata(attempts)
                     raise
@@ -283,7 +272,9 @@ class FallbackChatOpenAI(BaseChatModel):
                     yield chunk
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                self._record_attempt(attempts, model=model, success=False, error=exc, yielded_tokens=yielded_tokens)
+                attempts.append(
+                    self._attempt_entry(model=model, success=False, error=exc, yielded_tokens=yielded_tokens)
+                )
                 if yielded_tokens or not is_retryable_provider_error(exc):
                     self._set_failure_metadata(attempts)
                     raise
@@ -313,7 +304,9 @@ class FallbackChatOpenAI(BaseChatModel):
                     yield chunk
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                self._record_attempt(attempts, model=model, success=False, error=exc, yielded_tokens=yielded_tokens)
+                attempts.append(
+                    self._attempt_entry(model=model, success=False, error=exc, yielded_tokens=yielded_tokens)
+                )
                 if yielded_tokens or not is_retryable_provider_error(exc):
                     self._set_failure_metadata(attempts)
                     raise
@@ -363,8 +356,8 @@ def build_chat_model_from_config(
     fallbacks: list[BaseChatModel] = []
     seen_models = {model_name} if model_name else set()
     for spec in _resolve_fallback_specs(base_config=cfg):
-        fallback_model_name = spec["model"].strip()
-        if not fallback_model_name or fallback_model_name in seen_models:
+        fallback_model_name = spec["model"]
+        if fallback_model_name in seen_models:
             continue
         fallback_kwargs = dict(common_kwargs)
         fallback_kwargs["api_key"] = spec.get("api_key") or fallback_kwargs["api_key"]

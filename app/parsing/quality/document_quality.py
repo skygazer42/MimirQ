@@ -14,32 +14,17 @@ It combines existing signals that are already persisted in doc metadata:
 from collections.abc import Mapping
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_bool as _coerce_bool
+
 
 def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        if isinstance(value, bool):
-            return float(int(value))
-        f = float(value)
-        if f != f:  # NaN
-            return None
-        return f
-    except Exception:
-        return None
-
-
-def _coerce_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
     if value is None:
         return None
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "y", "on"}:
-        return True
-    if text in {"0", "false", "no", "n", "off"}:
-        return False
-    return None
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return None if number != number else number
 
 
 def score_document_parse_quality(
@@ -53,11 +38,13 @@ def score_document_parse_quality(
     - score: float 0..1
     - components: the signals used to compute the score
     """
-    pdf_score = _coerce_float((pdf_quality or {}).get("score"))
-    reading_order_score = _coerce_float((pdf_quality or {}).get("reading_order_score"))
-    density = _coerce_float((parsed_text_quality or {}).get("density"))
-    replacement_ratio = _coerce_float((parsed_text_quality or {}).get("replacement_ratio"))
-    specialty = specialty_signals or {}
+    pdf = {} if pdf_quality is None else pdf_quality
+    text = {} if parsed_text_quality is None else parsed_text_quality
+    specialty = {} if specialty_signals is None else specialty_signals
+    pdf_score = _coerce_float(pdf.get("score"))
+    reading_order_score = _coerce_float(pdf.get("reading_order_score"))
+    density = _coerce_float(text.get("density"))
+    replacement_ratio = _coerce_float(text.get("replacement_ratio"))
     seal_confidence = _coerce_float(specialty.get("seal_confidence"))
     seal_detected = _coerce_bool(specialty.get("seal_detected"))
     seal_expected = _coerce_bool(specialty.get("seal_expected"))
@@ -89,16 +76,16 @@ def score_document_parse_quality(
         base = 0.0
         source = "none"
 
-    pen = 0.0
+    penalty = 0.0
     if replacement_ratio is not None:
         # Replacement chars are a strong gibberish signal; cap penalty to keep score stable.
-        pen = min(0.5, max(0.0, replacement_ratio * 5.0))
+        penalty = min(0.5, max(0.0, replacement_ratio * 5.0))
     specialty_penalty = 0.0
     if seal_confidence is not None and (seal_expected is True or seal_detected is True):
         specialty_penalty = min(0.3, max(0.0, (0.6 - seal_confidence) * 0.6))
-        pen = min(0.75, pen + specialty_penalty)
+        penalty = min(0.75, penalty + specialty_penalty)
 
-    score = base * (1.0 - pen)
+    score = base * (1.0 - penalty)
     score = max(0.0, min(1.0, score))
 
     return {
@@ -114,7 +101,7 @@ def score_document_parse_quality(
             "seal_expected": seal_expected,
             "seal_candidate_count": (int(seal_candidate_count) if seal_candidate_count is not None else None),
             "specialty_penalty": round(specialty_penalty, 3),
-            "penalty": round(pen, 3),
+            "penalty": round(penalty, 3),
         },
     }
 

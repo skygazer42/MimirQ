@@ -16,7 +16,7 @@ from collections.abc import Iterable, Iterator
 from typing import Any, TypedDict
 
 from app.rag.core.claim_verifier import claim_token_set, is_uncertainty_claim
-from app.rag.core.text import is_claim_supported, split_into_claims
+from app.rag.core.text import _raw_index_from_casefold_index, is_claim_supported, split_into_claims
 
 _WS_RE = re.compile(r"\s+")
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
@@ -63,7 +63,11 @@ def _first_term_index(text: str, terms: list[str]) -> int | None:
             continue
         term_text = str(term)
         index = folded.find(term_text.casefold()) if term_text.isascii() else text.find(term_text)
-        if index >= 0 and (best_index is None or index < best_index):
+        if index < 0:
+            continue
+        if term_text.isascii() and len(folded) != len(text):
+            index = _raw_index_from_casefold_index(text, index)
+        if best_index is None or index < best_index:
             best_index = index
     return best_index
 

@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.dataset_precheck import (
+from app.api.schemas.datasets import (
     DatasetPrecheckFileOut,
     DatasetPrecheckFindingListResponse,
     DatasetPrecheckSummary,
@@ -210,7 +210,7 @@ def _list_finding_from_jsonl(
             continue
         _append_precheck_item(items, obj=obj, limit_n=limit_n)
 
-    return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+    return DatasetPrecheckFindingListResponse(total=total, items=items)
 
 
 def _bounded_skip_limit(*, skip: int, limit: int) -> tuple[int, int]:
@@ -228,7 +228,7 @@ def _exact_duplicate_shas(jsonl_path: Path) -> set[str]:
         if not sha:
             continue
         counts[sha] = counts.get(sha, 0) + 1
-    return {sha for sha, count in counts.items() if int(count) > 1}
+    return {sha for sha, count in counts.items() if count > 1}
 
 
 def _finding_matches_obj(
@@ -299,7 +299,7 @@ def _list_files_from_jsonl(
             continue
         _append_precheck_item(items, obj=obj, limit_n=limit_n)
 
-    return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+    return DatasetPrecheckFindingListResponse(total=total, items=items)
 
 
 def load_precheck_samples_from_row(
@@ -336,16 +336,7 @@ def load_precheck_samples_from_row(
                     logger.debug("Ignoring unreadable persisted precheck samples artifact: %s", exc)
 
     # Build on demand from JSONL.
-    jsonl_raw = artifacts.get("files_jsonl")
-    if jsonl_raw is not None:
-        jsonl_raw = jsonl_raw.strip()
-    if not jsonl_raw:
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
-    jsonl_path = Path(jsonl_raw)
-    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
-    if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
-
+    jsonl_path = _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
     return _build_samples_payload(jsonl_path=jsonl_path, target_size=size_n)
 
 
@@ -489,7 +480,7 @@ def list_near_dup_files_from_row(
             continue
         _append_precheck_item(items, obj=obj, limit_n=limit_n)
 
-    return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+    return DatasetPrecheckFindingListResponse(total=total, items=items)
 
 
 def _jsonl_path_from_row(

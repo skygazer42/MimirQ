@@ -145,8 +145,8 @@ def _unused_followup_result(
         "used": False,
         "reason_codes": [reason_code],
         "selected_terms": list((selected_terms if selected_terms is not None else [])),
-        "terms_considered": int(terms_considered),
-        "docs_considered": int(docs_considered),
+        "terms_considered": terms_considered,
+        "docs_considered": docs_considered,
     }
 
 
@@ -199,7 +199,7 @@ def _score_terms_from_docs(
                     if not sig or sig in query_terms:
                         continue
                     considered += 1
-                    score_by_sig[sig] = float(score_by_sig.get(sig, 0.0) or 0.0) + float(weight)
+                    score_by_sig[sig] = score_by_sig.get(sig, 0.0) + weight
                     term_by_sig.setdefault(sig, token)
         content = doc.page_content
         if not content:
@@ -209,7 +209,7 @@ def _score_terms_from_docs(
             if not sig or sig in query_terms:
                 continue
             considered += 1
-            score_by_sig[sig] = float(score_by_sig.get(sig, 0.0) or 0.0) + 1.0
+            score_by_sig[sig] = score_by_sig.get(sig, 0.0) + 1.0
             term_by_sig.setdefault(sig, token)
     return score_by_sig, term_by_sig, considered
 
@@ -219,8 +219,8 @@ def _rank_scored_terms(score_by_sig: dict[str, float], term_by_sig: dict[str, st
         (
             (
                 sig,
-                float(score_by_sig.get(sig, 0.0) or 0.0),
-                str(term_by_sig.get(sig) or sig),
+                score_by_sig[sig],
+                term_by_sig[sig],
             )
             for sig in score_by_sig
         ),
@@ -235,6 +235,8 @@ def _select_followup_terms(
     max_terms: int,
 ) -> list[str]:
     selected_terms = list(gap_terms)
+    if len(selected_terms) >= max_terms:
+        return selected_terms
     selected_sigs = {_sig(value) for value in selected_terms if _sig(value)}
     for _rank_sig, _rank_score, term in ranked_terms:
         sig = _sig(term)
@@ -324,7 +326,7 @@ def build_contextual_followup_query(
         "used": used,
         "reason_codes": reason_codes,
         "selected_terms": selected_terms[:max_terms_n],
-        "terms_considered": int(considered),
+        "terms_considered": considered,
         "docs_considered": min(len(docs_list), max_docs_n),
     }
 

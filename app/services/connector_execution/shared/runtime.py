@@ -46,6 +46,7 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
         run_status=status,
         recorded_at=run.finished_at or run.started_at or _now(),
     )
+    db.commit()
 
 
 def get_active_connector_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
@@ -60,6 +61,12 @@ def get_active_connector_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> C
     if run.status.lower() in {"cancelled", "completed", "failed"}:
         return None
     return run
+
+
+def connector_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
+    with contextlib.suppress(Exception):
+        db.refresh(run)
+    return run.status.lower() == "cancelled"
 
 
 def mark_connector_run_running(db: Session, *, run: ConnectorRun) -> None:
@@ -82,6 +89,7 @@ def finalize_cancelled_connector_run(db: Session, *, run: ConnectorRun) -> None:
 
 def mark_connector_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
+        db.rollback()
         run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"

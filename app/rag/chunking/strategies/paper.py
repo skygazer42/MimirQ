@@ -96,8 +96,7 @@ def _normalize_section(title: str) -> str | None:
         return None
     if raw in _CN_SECTIONS:
         return _CN_SECTIONS[raw]
-    lower = raw.lower().strip()
-    lower = " ".join(lower.split())
+    lower = " ".join(raw.lower().split())
     return _EN_SECTIONS.get(lower)
 
 
@@ -119,9 +118,6 @@ def _strip_leading_number_prefix(line: str) -> str:
     while i < len(s) and digits < 2 and s[i].isdigit():
         i += 1
         digits += 1
-    if digits == 0:
-        return s
-
     # Optional ".<digits>" groups (up to 3).
     groups = 0
     while groups < 3 and i < len(s) and s[i] == ".":
@@ -175,15 +171,7 @@ def _iter_headings(text: str) -> list[PaperHeading]:
             )
         )
 
-    # Best-effort de-dup.
-    deduped: list[PaperHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[PaperHeading]) -> list[_Section]:

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
 from app.rag.core.logging import get_logger
 from app.rag.retrieval.plugin_policy import record_retrieval_policy_bonus
@@ -56,6 +57,7 @@ from app.services.dify_integration.scoring import (
 )
 from app.services.dify_integration.scoring import _quoted_query_anchor_terms as _quoted_query_anchor_terms
 from app.services.dify_integration.scoring import _record_metadata_anchor_bonus as _record_metadata_anchor_bonus
+from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 logger = get_logger(__name__)
@@ -142,7 +144,7 @@ def _metadata_anchor_fallback_record_score(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    content = record['content'].strip()
+    content = record["content"].strip()
     if content and record_ranking._record_is_anchor_only_qa(
         record, content=content, policy_plugin_refs=policy_plugin_refs
     ):
@@ -343,6 +345,7 @@ class _MetadataAnchorDBFallbackPlan:
 class _MetadataAnchorDBFallbackContext:
     db: Session
     tenant_id: UUID
+    account_id: str
     scoped_dataset_ids: list[UUID]
     query: str
     top_k: int
@@ -481,6 +484,7 @@ def _metadata_anchor_query_matching_rows(
             Document.filename.label("filename"),
         )
         .join(Document, DocumentChunk.document_id == Document.id)
+        .join(Dataset, Document.dataset_id == Dataset.id)
         .filter(
             DocumentChunk.tenant_id == ctx.tenant_id,
             Document.tenant_id == ctx.tenant_id,
@@ -491,6 +495,9 @@ def _metadata_anchor_query_matching_rows(
             DocumentChunk.disabled_at.is_(None),
             Document.disabled_at.is_(None),
             condition,
+            Dataset.tenant_id == ctx.tenant_id,
+            build_dataset_read_filter(tenant_id=ctx.tenant_id, account_id=ctx.account_id),
+            build_document_read_filter(tenant_id=ctx.tenant_id, account_id=ctx.account_id, document_model=Document),
         )
         .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
         .limit(max(1, int(limit or 1)))
@@ -1045,6 +1052,7 @@ def _prepare_metadata_anchor_db_fallback(
     *,
     db: Session,
     tenant_id: UUID,
+    account_id: str,
     dataset_ids: list[UUID],
     query: str,
     top_k: int,
@@ -1081,6 +1089,7 @@ def _prepare_metadata_anchor_db_fallback(
     ctx = _MetadataAnchorDBFallbackContext(
         db=db,
         tenant_id=tenant_id,
+        account_id=account_id,
         scoped_dataset_ids=scoped_dataset_ids,
         query=query,
         top_k=top_k,
@@ -1173,6 +1182,7 @@ def find_anchor_records(
     *,
     db: Session,
     tenant_id: UUID,
+    account_id: str,
     dataset_ids: list[UUID],
     query: str,
     top_k: int,
@@ -1186,6 +1196,7 @@ def find_anchor_records(
     prepared = _prepare_metadata_anchor_db_fallback(
         db=db,
         tenant_id=tenant_id,
+        account_id=account_id,
         dataset_ids=dataset_ids,
         query=query,
         top_k=top_k,

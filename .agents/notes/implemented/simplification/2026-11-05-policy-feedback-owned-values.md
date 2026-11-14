@@ -12,7 +12,7 @@ Status: implemented
 
 结果分数继续转换：`min(1.0, sum(empty))` 的空匹配路径可能产生整数 0，dataclass 注解不保证运行时值已经是浮点数。只清理实际生产者已经归一化的内部值，不按注解删除原始数值解析。
 
-反馈 dispatcher 的直接行分支和 app.services.feedback_service.build_feedback_loop_candidates 的空行、非空行分支都调用同一候选字典构造器，因此返回时直接使用该字典。原始行反射、rating、JSON extra、引文、trace、miner 返回、lineage 和负例 payload 仍在原边界校验与复制。rating 的两次既有读取和 max_rating 解析顺序保持，JSONL 的 dry-run、append、目录创建、逐行写入和排序不变。[评估报告服务内部值](2026-11-05-service-evaluation-owned-values.md)只迁移无状态方法的归属并收窄已有实体字段，不替代本篇候选与原始输入决定。
+反馈 dispatcher 的直接行分支和 app.services.feedback_service.build_feedback_loop_candidates 的空行、非空行分支都调用同一候选字典构造器，因此返回时直接使用该字典。原始行反射、rating、JSON extra、引文、trace、lineage 和负例 payload 仍在原边界校验与复制；实际miner与规则生产者的完整字段直接消费。rating在原有转换边界只求一次，max_rating解析政策保持，JSONL的dry-run、append、目录创建、逐行写入和排序不变。[评估报告服务内部值](2026-11-05-service-evaluation-owned-values.md)持有无状态方法归属；[支持规则实际所有者](../architecture/2026-11-13-rag-support-rule-owners.md)更新无根脚手架、重复转发与内部投影现状，原始数据／资源原则继续成立。
 
 行业建议仅直接排序本地已经转换为整数、字符串的字段，Counter 和 `len` 直接提供计数。运行元数据直接使用本地归一化布尔值。原始 glossary、patterns、intents、名称、限额与错误仍按原规则处理。YAML 安全加载、路径约束、进程与文件锁、临时文件、权限、flush/fsync、原子替换和 canonical/generated 优先级保持。
 

@@ -66,8 +66,8 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | None:
-    rp = _safe_dict(rag_params)
+def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str:
+    rp = rag_params
     mode = str(rp.get("retrieval_mode") or "").strip().lower() or "hybrid"
 
     rewrite_enabled = bool(settings.ENABLE_QUERY_REWRITE)
@@ -154,7 +154,7 @@ def build_regression_run_leaderboard(
     limit = max(1, min(int(limit or 0), 500))
 
     items: list[dict[str, Any]] = []
-    for r in runs or []:
+    for r in runs:
         summary = _safe_dict(r.summary)
         params = _safe_dict(r.params)
         rag_params = _safe_dict(params.get("rag_params"))
@@ -175,7 +175,7 @@ def build_regression_run_leaderboard(
         )
 
     # Sort: higher is better; missing metrics go last.
-    items.sort(key=lambda x: (x.get("metric_value") is None, -(x.get("metric_value") or 0.0)))
+    items.sort(key=lambda item: (item["metric_value"] is None, -(item["metric_value"] or 0.0)))
     return items[:limit]
 
 

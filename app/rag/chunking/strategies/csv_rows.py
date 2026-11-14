@@ -36,10 +36,7 @@ def _iter_rows(text: str) -> list[_Row]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        try:
-            row_no = int(m.group("num") or "0")
-        except Exception:
-            row_no = 0
+        row_no = int(m.group("num"))
         rows.append(_Row(start=start, end=end, row_no=row_no))
     return rows
 
@@ -50,11 +47,10 @@ def _append_fallback_documents(
     base_meta: dict[str, Any],
 ) -> None:
     for split_doc in split_docs:
-        local_start = split_doc.metadata.pop("start_index", None) or 0
-        abs_start = int(local_start)
+        abs_start = split_doc.metadata.pop("start_index")
         abs_end = abs_start + len(split_doc.page_content)
         meta: dict[str, Any] = dict(base_meta)
-        meta.update(split_doc.metadata or {})
+        meta.update(split_doc.metadata)
         meta["chunk_strategy"] = "csv_rows"
         meta["start_char"] = abs_start
         meta["end_char"] = abs_end
@@ -71,7 +67,7 @@ def _find_chunk_end(rows: list[_Row], start_idx: int, chunk_size: int) -> int:
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else (start_idx + 1)
+    return end_idx
 
 
 def _next_row_start(rows: list[_Row], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -85,12 +81,12 @@ def _next_row_start(rows: list[_Row], start_idx: int, end_idx: int, chunk_overla
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 def _assign_chunk_indexes(chunks: list[Document]) -> None:
     for idx, chunk in enumerate(chunks):
-        meta = dict(chunk.metadata or {})
+        meta = dict(chunk.metadata)
         meta["chunk_index"] = idx
         chunk.metadata = meta
 
@@ -120,7 +116,7 @@ class CsvRowsChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -146,6 +142,8 @@ class CsvRowsChunker(BaseChunker):
                 meta["csv_row_end"] = rows[end_idx - 1].row_no
                 out.append(Document(page_content=content, metadata=meta))
 
+                if end_idx == len(rows):
+                    break
                 start_idx = _next_row_start(rows, start_idx, end_idx, self.chunk_overlap)
 
         _assign_chunk_indexes(out)

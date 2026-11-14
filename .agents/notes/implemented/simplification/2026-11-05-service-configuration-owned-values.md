@@ -12,6 +12,8 @@ Status: implemented
 
 七个配置服务直接读取实际治理 schema、入库规则嵌套模型、GovernanceProfile 与 RagConfigTemplate 行的声明字段。原始 JSON、UUID、规则参数、正则、反馈行和奖励 hook 的校验、转换与错误处理继续留在原边界；没有新的错误类型或 HTTP 转换层。
 
+GovernanceProfile.key 的 SQL 契约允许 None；UUID 读取时按 API 已有规则用 custom:<uuid> 表示未命名配置，真实字符串才去空白。继承合并直接消费 schema 提供的列表、字典与 RegexRuleModel，保留父子覆盖、规则顺序、循环／深度拒绝和脚本展示上限。内置声明的顺序、文本和每次调用的独立容器保持。
+
 检索预设的三个选择项共用本模块的大小写归一化规则；多查询试验的键和变体共用本模块的标签归一化规则，保留大小写。两个私有函数分别有三个和两个实际调用点，仍在原字典／构造参数位置执行；原数值、布尔转换、种子、预算、提供者校验和参数求值顺序保持。入库规则继续区分可强制为字符串的覆盖值与只接受 JSON 字符串的数据集缺省，治理引用的控制字符校验继续在归一化之后。
 
 语料 token 直接使用 core.pipeline_versions.get_active_pipeline_hash，退出重复私有实现；原始 ORM JSON 仍先检查是否为字典。三个 embedding_defaults 字段按原顺序使用同一循环归一化，保留键、大小写、空值和字段顺序。dataset_scoped 的真实生产者是 isinstance 与 any 的布尔表达式，直接使用该结果；排序 JSON、schema、哈希长度、失效事务和缺失记录处理保持。
@@ -23,7 +25,7 @@ Status: implemented
 
 流水线 metadata 的 int／float／bool 转换继续定义落盘格式；只删除 OCR 数量在本函数已被 `max(0, int(...))` 归一化后的两次最终 int。Settings 的两项掩码和 VECTOR_BACKEND 使用实际声明字段。版本裁剪读取本模块已统一为字典的 payload，仍按原时间字符串、键和上限顺序处理，canonical JSON 与哈希输入不变。
 
-四个相邻服务保持原样：部分 patch 校验器、模板应用、模板缺省选择和内置脚本注册表仍各自承担实际边界。脚本内容继续仅作展示与版本资料，不在入库链执行。
+部分 patch 校验器、模板应用、模板缺省选择和内置脚本注册表各自承担实际边界。数据集 RAG 默认值先排除显式请求字段，再解析／应用 strict 可见性规则；有效覆盖统一交给既有 apply_rag_config_patch 合并与重建 ChatRAGConfig。字段名来自无别名／serializer 的实际 DatasetRAGDefaults，dump 后没有 None；不借复用改变合法覆盖顺序、字段集、空覆盖返回原对象或默认优先级。脚本内容继续仅作展示与版本资料，不在入库链执行。
 
 ## Alternatives considered
 

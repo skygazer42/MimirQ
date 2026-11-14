@@ -1,6 +1,6 @@
 import re
-from collections.abc import Iterable
-from typing import Any, Callable, Mapping, MutableMapping, Protocol, TypeVar, cast
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
+from typing import Any, Protocol, TypeVar, cast
 
 from langchain_core.documents import Document
 
@@ -19,7 +19,7 @@ def _page_number(meta: dict[str, Any]) -> int:
 
 
 def _non_empty_lines(text: str) -> list[str]:
-    return [line.rstrip() for line in (text).splitlines() if line.strip()]
+    return [line.rstrip() for line in text.splitlines() if line.strip()]
 
 
 def _table_columns_from_markdown(text: str) -> list[str]:
@@ -94,8 +94,8 @@ def _has_leading_prose_before_table_rows(text: str) -> bool:
 
 
 def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bool:
-    prev_meta = dict(prev.metadata or {})
-    cur_meta = dict(cur.metadata or {})
+    prev_meta = prev.metadata
+    cur_meta = cur.metadata
     if not (_is_table_segment(prev_meta) and _is_table_segment(cur_meta)):
         return False
 
@@ -113,10 +113,10 @@ def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bo
     if prev_cols and cur_cols and prev_cols != cur_cols:
         return False
     if not prev_cols and not cur_cols:
-        prev_pipes = (
-            (prev.page_content).splitlines()[0].count("|") if (prev.page_content).splitlines() else 0
-        )
-        cur_pipes = (cur.page_content).splitlines()[0].count("|") if (cur.page_content).splitlines() else 0
+        prev_lines = prev.page_content.splitlines()
+        cur_lines = cur.page_content.splitlines()
+        prev_pipes = prev_lines[0].count("|") if prev_lines else 0
+        cur_pipes = cur_lines[0].count("|") if cur_lines else 0
         if prev_pipes > 0 and cur_pipes > 0 and prev_pipes != cur_pipes:
             return False
 
@@ -126,13 +126,12 @@ def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bo
     return prev_truncated or cur_header_missing or cur_continued
 
 
-def _parse_numbered_list_line(line: str) -> tuple[str, int] | None:
+def _parse_numbered_list_line(line: str) -> int | None:
     match = _NUMBERED_LIST_RE.match(line)
     if not match:
         return None
-    token = match.group(0)
     try:
-        return token, int(match.group(1))
+        return int(match.group(1))
     except Exception:
         return None
 
@@ -141,12 +140,12 @@ def _parse_bullet_list_line(line: str) -> str | None:
     match = _BULLET_LIST_RE.match(line)
     if not match:
         return None
-    return str(match.group(1))
+    return match.group(1)
 
 
 def _can_merge_lists(prev: Document, cur: Document, *, max_page_gap: int) -> bool:
-    prev_meta = dict(prev.metadata or {})
-    cur_meta = dict(cur.metadata or {})
+    prev_meta = prev.metadata
+    cur_meta = cur.metadata
     prev_page = _page_number(prev_meta)
     cur_page = _page_number(cur_meta)
     if prev_page <= 0 or cur_page <= 0:
@@ -164,8 +163,8 @@ def _can_merge_lists(prev: Document, cur: Document, *, max_page_gap: int) -> boo
 
     prev_num = _parse_numbered_list_line(prev_last)
     cur_num = _parse_numbered_list_line(cur_first)
-    if prev_num and cur_num:
-        return cur_num[1] == prev_num[1] + 1
+    if prev_num is not None and cur_num is not None:
+        return cur_num == prev_num + 1
 
     prev_bullet = _parse_bullet_list_line(prev_last)
     cur_bullet = _parse_bullet_list_line(cur_first)
@@ -202,8 +201,8 @@ def _merge_metadata(prev_meta: dict[str, Any], cur_meta: dict[str, Any], *, kind
 
 
 def _merge_pair(prev: Document, cur: Document, *, kind: str) -> Document:
-    prev_meta = dict(prev.metadata or {})
-    cur_meta = dict(cur.metadata or {})
+    prev_meta = prev.metadata
+    cur_meta = cur.metadata
 
     if kind == "table":
         cur_body = _strip_redundant_table_header(cur.page_content)
@@ -218,7 +217,7 @@ def _merge_pair(prev: Document, cur: Document, *, kind: str) -> Document:
     return Document(
         page_content=merged_content,
         metadata=_merge_metadata(prev_meta, cur_meta, kind=kind),
-        id=getattr(prev, "id", None),
+        id=prev.id,
     )
 
 
@@ -229,7 +228,7 @@ def merge_cross_page_documents(
     table_enabled: bool = True,
     list_enabled: bool = True,
 ) -> list[Document]:
-    items = list((documents if documents is not None else []))
+    items = list(documents if documents is not None else [])
     if len(items) < 2:
         return items
 
@@ -237,10 +236,10 @@ def merge_cross_page_documents(
     pending = items[0]
 
     for current in items[1:]:
-        if bool(table_enabled) and _can_merge_tables(pending, current, max_page_gap=max_page_gap):
+        if table_enabled and _can_merge_tables(pending, current, max_page_gap=max_page_gap):
             pending = _merge_pair(pending, current, kind="table")
             continue
-        if bool(list_enabled) and _can_merge_lists(pending, current, max_page_gap=max_page_gap):
+        if list_enabled and _can_merge_lists(pending, current, max_page_gap=max_page_gap):
             pending = _merge_pair(pending, current, kind="list")
             continue
         out.append(pending)
@@ -319,16 +318,6 @@ def _extract_leading_block(lines: list[str], pred: Callable[[str], bool]) -> tup
         start += 1
     if start >= len(lines):
         return None
-    if pred is _looks_like_table_row:
-        body_start = start
-        while body_start < len(lines) and _is_table_continuation_label(lines[body_start]):
-            body_start += 1
-        if body_start >= len(lines) or not pred(lines[body_start]):
-            return None
-        end = body_start + 1
-        while end < len(lines) and pred(lines[end]):
-            end += 1
-        return start, end
     if not pred(lines[start]):
         return None
     end = start + 1
@@ -400,9 +389,6 @@ def _merge_table_blocks(prev_block: list[str], next_block: list[str]) -> list[st
         else:
             # Next block looks like a standalone table with header; treat as not mergeable.
             return None
-    else:
-        # Next block has no separator row -> likely continuation (no header).
-        pass
 
     if not next_block:
         return prev_block
@@ -428,8 +414,7 @@ def _merge_ordered_list_blocks(prev_block: list[str], next_block: list[str]) -> 
 
 
 def _split_page_text(text: str) -> tuple[list[str], bool]:
-    raw = text
-    return raw.splitlines(), raw.endswith("\n")
+    return text.splitlines(), text.endswith("\n")
 
 
 def _join_page_text(lines: list[str], ends_with_newline: bool) -> str:
@@ -499,18 +484,18 @@ class _PageLike(Protocol):
     metadata: dict[str, Any]
 
 
-TPage = TypeVar("TPage")
+TPage = TypeVar("TPage", bound=_PageLike | MutableMapping[str, Any])
 
 
-def _get_text(item: object) -> str:
+def _get_text(item: _PageLike | Mapping[str, Any]) -> str:
     if isinstance(item, Mapping):
-        return cast(Mapping[str, Any], item)["page_content"]
+        return item["page_content"]
     return item.page_content
 
 
-def _set_text(item: object, value: str) -> None:
+def _set_text(item: _PageLike | MutableMapping[str, Any], value: str) -> None:
     if isinstance(item, MutableMapping):
-        cast(MutableMapping[str, Any], item)["page_content"] = value
+        item["page_content"] = value
         return
     item.page_content = value
 
@@ -523,11 +508,10 @@ def merge_cross_page_items(items: list[TPage]) -> tuple[list[TPage], dict[str, i
     - langchain_core.documents.Document (has .page_content)
     - dict objects with {"page_content": "...", "metadata": {...}}
     """
-    pages = [_get_text(it) for it in (items or [])]
+    pages = [_get_text(item) for item in items]
     merged, stats = merge_cross_page_markdown_pages(pages)
-    if len(merged) == len(items or []):
-        for it, text in zip(items, merged, strict=False):
-            _set_text(it, text)
+    for item, text in zip(items, merged, strict=True):
+        _set_text(item, text)
     return items, stats
 
 

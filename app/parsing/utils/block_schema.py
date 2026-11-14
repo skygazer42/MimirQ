@@ -1,7 +1,9 @@
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 from app.rag.core.logging import get_logger
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
@@ -25,7 +27,33 @@ _KIND_ALIASES = {
 }
 
 
-def clean_position_tags(text: Any) -> str:
+def block_bbox_value(element: Mapping[str, Any], key: str) -> float | None:
+    bbox = element.get("bbox")
+    if isinstance(bbox, Mapping):
+        return _coerce_float(bbox.get(key))
+    return None
+
+
+def block_page(element: Mapping[str, Any]) -> int | None:
+    page = _coerce_int(element.get("page"))
+    if page is not None and page > 0:
+        return page
+    pages = element.get("pages")
+    if isinstance(pages, list) and pages:
+        first = _coerce_int(pages[0])
+        if first is not None and first > 0:
+            return first
+    return None
+
+
+def block_text(element: Mapping[str, Any]) -> str:
+    value = element.get("text")
+    if value is None:
+        value = element.get("element_text")
+    return str(value).strip() if value is not None else ""
+
+
+def clean_position_tags(text: str) -> str:
     return POSITION_TAG_RE.sub("", text).strip()
 
 
@@ -34,7 +62,7 @@ def normalize_block_kind(kind: Any) -> str:
     return _KIND_ALIASES.get(key, "paragraph")
 
 
-def parse_position_tags(text: Any) -> list[dict[str, Any]]:
+def parse_position_tags(text: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for match in POSITION_TAG_RE.finditer(text):
         pages: list[int] = []
@@ -70,7 +98,7 @@ def parse_position_tags(text: Any) -> list[dict[str, Any]]:
 
 def build_block_element(
     *,
-    text: Any,
+    text: str,
     kind: Any,
     source_backend: str,
     source_element_id: str,
@@ -118,6 +146,9 @@ def build_block_element(
 
 __all__ = [
     "POSITION_TAG_RE",
+    "block_bbox_value",
+    "block_page",
+    "block_text",
     "build_block_element",
     "clean_position_tags",
     "normalize_block_kind",

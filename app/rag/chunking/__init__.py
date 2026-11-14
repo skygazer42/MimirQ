@@ -8,7 +8,7 @@ Standard Chunkers (pure splitting, no parsing):
 - strategies: LangChain-based and custom chunking algorithms
 
 Integrated pipeline (integrated parsing + chunking):
-- integrated: Full document processing pipeline (parse + chunk)
+- chunk_file: Raw-file processing under app.third_party.integrated_pipeline
 
 Utilities:
 - hierarchical_chunk_markdown: Two-level paragraph/sentence chunking
@@ -20,7 +20,7 @@ Usage:
     chunks = chunker.split_documents(documents)
 
     # Integrated pipeline (for raw files; parse + chunk in one pass)
-    from app.rag.chunking.integrated_pipeline import chunk_file
+    from app.third_party.integrated_pipeline.bridge import chunk_file
     chunks = chunk_file(path, strategy="integrated_naive")
 
     # Hierarchical markdown chunking
@@ -28,21 +28,10 @@ Usage:
     result = hierarchical_chunk_markdown(markdown_text)
 """
 
-from typing import Any
-
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
-
-
-def integrated_chunk_file(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-    """Backward compatible entrypoint for integrated parse+chunk (lazy import)."""
-    from app.rag.chunking.integrated_pipeline.bridge import chunk_file
-
-    return chunk_file(*args, **kwargs)
-
 
 __all__ = [
     "chunker_factory",
     "hierarchical_chunk_markdown",
-    "integrated_chunk_file",
 ]

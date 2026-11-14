@@ -20,7 +20,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas.dataset_profile import (
+from app.api.schemas.datasets import (
     DatasetProfileDocumentListResponse,
     DatasetProfileDocumentOut,
     DatasetProfileFindingListResponse,
@@ -264,7 +264,7 @@ def _extract_pii_hits(meta: dict) -> dict[str, int]:
             continue
         n = safe_int(v, default=0)
         if n > 0:
-            out[key] = int(n)
+            out[key] = n
     return out
 
 
@@ -279,7 +279,7 @@ def _extract_secrets_hits(meta: dict) -> dict[str, int]:
             continue
         n = safe_int(v, default=0)
         if n > 0:
-            out[key] = int(n)
+            out[key] = n
     return out
 
 
@@ -444,9 +444,9 @@ def _accumulate_basic_profile_metrics(
 
     chunk_count_val = safe_int(chunk_count, default=0)
     if chunk_count_val > 0:
-        state.chunk_counts.append(int(chunk_count_val))
+        state.chunk_counts.append(chunk_count_val)
         if length_val > 0:
-            avg_chunk_chars = int(max(1, length_val // max(1, int(chunk_count_val))))
+            avg_chunk_chars = max(1, length_val // chunk_count_val)
             state.avg_chunk_chars.append(avg_chunk_chars)
     return length_val
 
@@ -464,11 +464,11 @@ def _accumulate_parse_provenance(state: _ProfileAggregateState, *, meta_dict: di
 
     elapsed = safe_int(prov.get("elapsed_ms"), default=0)
     if elapsed > 0:
-        state.provenance_elapsed_ms.append(int(elapsed))
+        state.provenance_elapsed_ms.append(elapsed)
 
     attempts = prov.get("attempts")
     if isinstance(attempts, list) and len(attempts) >= 2:
-        first = attempts[0] if attempts else None
+        first = attempts[0]
         if isinstance(first, dict) and first.get("ok") is False:
             state.provenance_fallback_docs += 1
 
@@ -491,8 +491,8 @@ def _accumulate_chunk_length_histogram(state: _ProfileAggregateState, *, meta_di
             continue
         count = safe_int(bucket.get("count"), default=0)
         if count > 0:
-            state.chunk_length_bins[idx] += int(count)
-            state.chunk_length_total += int(count)
+            state.chunk_length_bins[idx] += count
+            state.chunk_length_total += count
 
 
 def _accumulate_chunk_token_histogram(state: _ProfileAggregateState, *, meta_dict: dict[str, Any]) -> None:
@@ -515,8 +515,8 @@ def _accumulate_chunk_token_histogram(state: _ProfileAggregateState, *, meta_dic
             continue
         count = safe_int(bucket.get("count"), default=0)
         if count > 0:
-            state.chunk_token_bins[idx] += int(count)
-            state.chunk_token_total += int(count)
+            state.chunk_token_bins[idx] += count
+            state.chunk_token_total += count
 
 
 def _append_avg_chunk_token(
@@ -530,9 +530,9 @@ def _append_avg_chunk_token(
             total = safe_int(chunking_stats_tokens.get("total"), default=0)
             count = safe_int(chunking_stats_tokens.get("count"), default=0)
             if total > 0 and count > 0:
-                avg_tok = int(max(1, total // max(1, count)))
+                avg_tok = max(1, total // count)
         if avg_tok > 0:
-            state.avg_chunk_tokens.append(int(avg_tok))
+            state.avg_chunk_tokens.append(avg_tok)
     except Exception as exc:
         logger.debug("Ignoring malformed chunking token stats: %s", exc)
 
@@ -543,7 +543,7 @@ def _accumulate_chunk_coverage(state: _ProfileAggregateState, *, meta_dict: dict
         return
     ratio = safe_float(cov.get("coverage_ratio"), default=-1.0)
     if ratio >= 0.0:
-        clamped = min(1.0, max(0.0, float(ratio)))
+        clamped = min(1.0, max(0.0, ratio))
         pct = int(round(clamped * 100.0))
         state.coverage_pcts.append(pct)
         if clamped < 0.98:
@@ -551,7 +551,7 @@ def _accumulate_chunk_coverage(state: _ProfileAggregateState, *, meta_dict: dict
 
     waste = safe_float(cov.get("overlap_waste_ratio"), default=-1.0)
     if waste >= 0.0:
-        clamped = min(1.0, max(0.0, float(waste)))
+        clamped = min(1.0, max(0.0, waste))
         pct = int(round(clamped * 100.0))
         state.overlap_waste_pcts.append(pct)
 
@@ -585,7 +585,7 @@ def _accumulate_page_count(state: _ProfileAggregateState, *, meta_dict: dict[str
         if isinstance(pdf_quality, dict):
             page_count = safe_int(pdf_quality.get("page_count"), default=0)
     if page_count > 0:
-        state.page_counts.append(int(page_count))
+        state.page_counts.append(page_count)
 
 
 def _accumulate_pdf_scan_findings(
@@ -653,13 +653,13 @@ def _accumulate_security_and_dedup(state: _ProfileAggregateState, *, meta_dict: 
     if pii:
         state.finding_counts["pii"] += 1
         for key, value in pii.items():
-            state.pii_totals[key] += int(value)
+            state.pii_totals[key] += value
 
     secrets = _extract_secrets_hits(meta_dict)
     if secrets:
         state.finding_counts["secrets"] += 1
         for key, value in secrets.items():
-            state.secrets_totals[key] += int(value)
+            state.secrets_totals[key] += value
 
     if _has_near_dedup(meta_dict):
         state.finding_counts["near_dedup"] += 1
@@ -718,9 +718,9 @@ def _finalize_exact_dup_count(state: _ProfileAggregateState) -> None:
         return
     dup_total = 0
     for count in state.sha_counts.values():
-        if int(count) > 1:
-            dup_total += int(count)
-    state.finding_counts["exact_dup"] = int(dup_total)
+        if count > 1:
+            dup_total += count
+    state.finding_counts["exact_dup"] = dup_total
 
 
 def _build_percentiles(values: list[int]) -> DatasetProfilePercentiles:
@@ -773,17 +773,12 @@ def _build_parse_quality_histogram(parse_quality_bins: list[int]) -> list[dict[s
     for idx, count in enumerate(parse_quality_bins):
         lower = idx / 10.0
         upper = (idx + 1) / 10.0
-        out.append({"label": f"{lower:.1f}-{upper:.1f}", "count": int(count)})
+        out.append({"label": f"{lower:.1f}-{upper:.1f}", "count": count})
     return out
 
 
 def _build_language_mix(language_counts: Counter[str]) -> dict[str, int]:
-    return {
-        "zh": int(language_counts.get("zh", 0) or 0),
-        "en": int(language_counts.get("en", 0) or 0),
-        "mixed": int(language_counts.get("mixed", 0) or 0),
-        "unknown": int(language_counts.get("unknown", 0) or 0),
-    }
+    return {language: language_counts[language] for language in ("zh", "en", "mixed", "unknown")}
 
 
 def _build_findings_out(finding_counts: dict[str, int]) -> list[DatasetProfileFindingSummary]:
@@ -792,9 +787,9 @@ def _build_findings_out(finding_counts: dict[str, int]) -> list[DatasetProfileFi
         out.append(
             DatasetProfileFindingSummary(
                 key=key,
-                label=str(info.get("label") or key),
-                severity=str(info.get("severity") or "info"),
-                count=int(finding_counts.get(key, 0) or 0),
+                label=info["label"],
+                severity=info["severity"],
+                count=finding_counts[key],
                 description=info.get("description"),
             )
         )
@@ -1491,9 +1486,7 @@ def apply_finding_filter(
     key = finding_key.strip().lower()
     if key not in FINDING_KEY_REASONS:
         raise ValueError("Unknown finding_key")
-    builder = _FINDING_FILTER_BUILDERS.get(key)
-    if builder is None:
-        return query
+    builder = _FINDING_FILTER_BUILDERS[key]
     return builder(
         query,
         density_threshold=float(density_threshold),

@@ -12,7 +12,7 @@ preflight、提取错误与线索计数用原模块内 TypedDict 描述，运行
 
 确定性 hardcase 直接使用既有 kg_hardcase_generator 的 _collapse_ws。两份完整函数和 regex 字面量相同，原模块已经依赖生成模块；不增加模块或 wrapper。诊断自己的同名函数保留 None 专用分支，不能把它与 falsey 值归空的 hardcase 规则合并。LLM 生成入口的 Any 仍表达真实结构兼容协议，保留 prompt、schema、预算、失败返回和 sanitize 规则，全文原文 conforms。
 
-现有请求 Session、独立提取 Session、preflight semaphore／gather／rollback、LLM 工厂时点、调用内数据类与可注入搜索 callable 保持。所有查询、tenant／ACL、case／hardcase 顺序、上限、归因优先序与四位／六位舍入保持。指标仍按原事件位置累计，重复 chunk 也沿用原 DCG／AP 公式；该公式事实不在等价整理中改写。
+现有请求 Session、独立提取 Session、preflight semaphore／gather／rollback、LLM 工厂时点、调用内数据类与可注入搜索 callable 保持。所有查询、tenant／ACL、case／hardcase 顺序、上限、归因优先序与四位／六位舍入保持。本篇等价整理不改变指标公式；重复 chunk 的额外 DCG／AP 收益由后续[独立修复](../bug-fix/2026-11-14-kg-diagnostic-duplicate-gain.md)持有，原事件位置、检索范围与其余契约继续成立。
 
 ## Alternatives considered
 

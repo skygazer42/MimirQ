@@ -97,7 +97,7 @@ class RepairReport:
         return {
             "suite_id": str(suite_id),
             "dataset_id": str(suite_dataset_id),
-            "applied": bool(applied),
+            "applied": applied,
             "scanned_items": scanned_items,
             "scanned_references": self.scanned_refs,
             "drifted_references": self.drifted_refs,

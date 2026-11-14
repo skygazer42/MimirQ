@@ -26,16 +26,14 @@ def _non_negative_count(value: Any) -> int:
         return 0
 
 
-def _normalized_model_id(*, provider: Any, model: Any) -> str:
-    provider_text = _clean(provider)
-    model_text = _clean(model)
-    if not model_text:
+def _normalized_model_id(*, provider: str, model: str) -> str:
+    if not model:
         return ""
-    if "/" in model_text:
-        return model_text.casefold()
-    if provider_text:
-        return f"{provider_text}/{model_text}".casefold()
-    return model_text.casefold()
+    if "/" in model:
+        return model.casefold()
+    if provider:
+        return f"{provider}/{model}".casefold()
+    return model.casefold()
 
 
 def _configured_language_models() -> dict[str, str]:

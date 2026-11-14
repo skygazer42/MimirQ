@@ -8,7 +8,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.chunking.factory import chunker_factory
-from app.rag.chunking.integrated_pipeline.bridge import chunk_file as integrated_chunk_file
+from app.third_party.integrated_pipeline.bridge import chunk_file as integrated_chunk_file
 
 
 @dataclass(frozen=True)
@@ -969,7 +969,7 @@ def run_chunk_strategy_matrix(
                         callback=lambda *_a, **_k: None,
                     )
                     chunk_count = len(chunks or [])
-                    first_meta = dict((chunks or [{}])[0]) if chunk_count > 0 and isinstance(chunks[0], dict) else {}
+                    first_meta = dict(chunks[0]) if chunk_count > 0 and isinstance(chunks[0], dict) else {}
             else:
                 restore_llama_flag = None
                 if strategy in {"llama_index", "llama_index_hierarchical"} and not settings.LLAMA_INDEX_ENABLED:
@@ -984,7 +984,7 @@ def run_chunk_strategy_matrix(
                         settings.LLAMA_INDEX_ENABLED = restore_llama_flag
                 chunk_count = len(chunks or [])
                 if chunk_count > 0 and isinstance(chunks[0], Document):
-                    first_meta = dict(chunks[0].metadata or {})
+                    first_meta = dict(chunks[0].metadata)
                 else:
                     first_meta = {}
             elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)

@@ -8,7 +8,7 @@ from the currently configured dataset policy.
 import json
 from typing import Any
 
-from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
+from app.api.schemas.sources import IngestionPolicy, IngestionRule
 
 
 def _canonical_rule(rule: IngestionRule) -> str:

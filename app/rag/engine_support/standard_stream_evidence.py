@@ -6,6 +6,20 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string, truncate
+from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.confidence import compute_confidence_score
+from app.rag.core.context_cliff import compute_context_cliff_metrics
+from app.rag.core.faithfulness import compute_faithfulness_score
+from app.rag.core.logging import get_logger
+from app.rag.core.temporal import apply_recency_boost, detect_temporal_intent, fetch_document_updated_ts
+from app.rag.core.text import (
+    build_abstain_answer_message,
+    build_abstain_followup,
+    derive_followup_questions,
+    extract_evidence_text,
+)
+from app.rag.engine_support.common import _RAG_ENGINE_FALLBACK_LOG_MESSAGE
 from app.rag.engine_support.standard_stream_corrective import (
     stream_corrective_retrieval,
 )
@@ -13,6 +27,16 @@ from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.kg.pipeline import kg_search
+from app.rag.llm.structured_output import build_structured_abstain_payload
+from app.rag.policy.out_of_scope_live_gate import (
+    maybe_apply_out_of_scope_live_guard,
+    run_default_out_of_scope_live_guard,
+)
+from app.rag.reranker.capabilities import describe_reranker_provider
+from app.services.metrics_logger import log_metrics
+
+logger = get_logger("rag.engine")
 
 
 async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
@@ -22,7 +46,7 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
     # recently updated documents when the query indicates freshness intent ("latest", "as of", "最新"...).
     if runtime.data.temporal_intent_enabled and runtime.data.docs:
         try:
-            runtime.data.temporal_intent_meta = runtime.module.detect_temporal_intent(runtime.data.query_for_retrieval)
+            runtime.data.temporal_intent_meta = detect_temporal_intent(runtime.data.query_for_retrieval)
             runtime.data.temporal_boost_enabled = bool(settings.RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED)
             if (
                 bool(runtime.data.temporal_intent_meta.get("detected"))
@@ -47,13 +71,13 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
                     if runtime.data.max_docs and len(runtime.data.doc_ids) >= runtime.data.max_docs:
                         break
 
-                runtime.data.updated_ts = runtime.module.fetch_document_updated_ts(
+                runtime.data.updated_ts = fetch_document_updated_ts(
                     runtime.data.doc_ids,
                     tenant_id=runtime.data.tenant_id,
                     dataset_id=runtime.data.dataset_id,
                     max_docs=runtime.data.max_docs,
                 )
-                runtime.data.docs, runtime.data.temporal_recency_meta = runtime.module.apply_recency_boost(
+                runtime.data.docs, runtime.data.temporal_recency_meta = apply_recency_boost(
                     runtime.data.docs,
                     updated_ts_by_document_id=runtime.data.updated_ts,
                     boost_max=float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX),
@@ -90,7 +114,7 @@ async def apply_rail_and_build_citations(runtime: StandardStreamState) -> AsyncG
                 "masked_docs": int(runtime.data.meta.get("masked_docs") or 0),
             }
         except Exception as exc:  # noqa: BLE001
-            runtime.module.logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
+            logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
             runtime.data.retrieval_rail_meta = {
                 "enabled": True,
                 "used": False,
@@ -109,7 +133,7 @@ async def apply_rail_and_build_citations(runtime: StandardStreamState) -> AsyncG
     }
 
     # Build citation info.
-    runtime.data.citations: list[dict[str, Any]] = runtime.module.build_citations_from_docs(
+    runtime.data.citations: list[dict[str, Any]] = build_citations_from_docs(
         runtime.data.docs,
         retrieval_elapsed_sec=runtime.data.retrieval_elapsed,
         retrieval_mode=runtime.data.mode_used,
@@ -192,7 +216,7 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
     tenant_id = str(runtime.data.tenant_id or "").strip()
     dataset_id = str(runtime.data.dataset_id or "").strip()
     ruleset_name = settings.RAG_OUT_OF_SCOPE_RULESET.strip()
-    runtime.data.out_of_scope_guard = runtime.module.maybe_apply_out_of_scope_live_guard(
+    runtime.data.out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
         query=runtime.data.query_for_retrieval,
         enabled=bool(settings.RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED),
         candidate=bool(runtime.data.abstain_triggered or not runtime.data.citations),
@@ -200,7 +224,7 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
         current_reason=runtime.data.abstain_reason,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        verifier=lambda: runtime.module.run_default_out_of_scope_live_guard(
+        verifier=lambda: run_default_out_of_scope_live_guard(
             query=runtime.data.query_for_retrieval,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -239,7 +263,7 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
 async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
 
     if runtime.data.abstain_triggered:
-        runtime.data.abstain_message = runtime.module.build_abstain_answer_message(runtime.data.abstain_reason)
+        runtime.data.abstain_message = build_abstain_answer_message(runtime.data.abstain_reason)
 
         runtime.data.structured_data = None
         runtime.data.structured_parse_meta = {"ok": False, "method": None, "error": None}
@@ -258,7 +282,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                         "relevance_score": runtime.data.c.get("relevance_score"),
                     }
                 )
-            runtime.data.payload = runtime.module.build_structured_abstain_payload(
+            runtime.data.payload = build_structured_abstain_payload(
                 preset=runtime.data.structured_preset,
                 answer=runtime.data.abstain_message,
                 citations=runtime.data.structured_citations,
@@ -272,7 +296,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
 
         runtime.data.t_total = time.time() - runtime.data.t_all_start
         runtime.data.answer_chars = len(runtime.data.full_response)
-        runtime.data.answer_tokens = runtime.module.num_tokens_from_string(runtime.data.full_response)
+        runtime.data.answer_tokens = num_tokens_from_string(runtime.data.full_response)
         runtime.data.faithfulness_meta: dict[str, Any] = {
             "score": None,
             "supported_claims": 0,
@@ -282,16 +306,12 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
         }
         if bool(settings.FAITHFULNESS_SCORE_ENABLED):
             runtime.data.evidence_text = "\n".join(
-                [
-                    d.page_content
-                    for d in (runtime.data.docs or [])
-                    if d.page_content.strip()
-                ]
+                [d.page_content for d in (runtime.data.docs or []) if d.page_content.strip()]
             )
             runtime.data.max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS))
             if runtime.data.max_evidence_chars and len(runtime.data.evidence_text) > runtime.data.max_evidence_chars:
                 runtime.data.evidence_text = runtime.data.evidence_text[: runtime.data.max_evidence_chars]
-            runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
+            runtime.data.faithfulness_meta = compute_faithfulness_score(
                 answer=runtime.data.full_response,
                 evidence_text=runtime.data.evidence_text,
                 max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
@@ -302,16 +322,16 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                 nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
                 nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC),
             )
-        runtime.data.confidence_meta = runtime.module.compute_confidence_score(
+        runtime.data.confidence_meta = compute_confidence_score(
             faithfulness_score=runtime.data.faithfulness_meta.get("score"),
             claim_total=runtime.data.faithfulness_meta.get("total_claims"),
             claim_supported=runtime.data.faithfulness_meta.get("supported_claims"),
             evidence_gap=None,
         )
-        runtime.data.abstain_followup = runtime.module.build_abstain_followup(
+        runtime.data.abstain_followup = build_abstain_followup(
             reason=runtime.data.abstain_reason, citations=runtime.data.citations
         )
-        runtime.data.followup_questions = runtime.module.derive_followup_questions(runtime.data.abstain_followup)
+        runtime.data.followup_questions = derive_followup_questions(runtime.data.abstain_followup)
         runtime.data.done_payload = {
             "type": "done",
             "data": {
@@ -466,7 +486,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
         }
         yield runtime.data.done_payload
 
-        runtime.module.log_metrics(
+        log_metrics(
             {
                 "event": "rag_done",
                 "conversation_id": str(runtime.data.conversation_id) if runtime.data.conversation_id else None,
@@ -493,7 +513,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                 citations_count=len(runtime.data.citations or []),
             )
         except Exception as exc:
-            runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
+            logger.debug(_RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
         runtime.finished = True
         return
 
@@ -519,7 +539,7 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
             elif runtime.data.kg_result_cached is not None:
                 runtime.data.kg_result = runtime.data.kg_result_cached
             else:
-                runtime.data.kg_result = await runtime.module.kg_search(
+                runtime.data.kg_result = await kg_search(
                     query=runtime.data.question,
                     tenant_id=runtime.data.tenant_id,
                     document_ids=runtime.data.document_ids,
@@ -538,7 +558,7 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
                 runtime.data.kg_context = "\n\n".join(runtime.data.parts)
                 runtime.data.max_kg_tokens = max(0, int(settings.RAG_CONTEXT_MAX_KG_TOKENS))
                 if runtime.data.max_kg_tokens:
-                    runtime.data.kg_context = runtime.module.truncate(
+                    runtime.data.kg_context = truncate(
                         runtime.data.kg_context,
                         runtime.data.max_kg_tokens,
                     )
@@ -577,7 +597,7 @@ def _context_content(runtime: StandardStreamState, raw_content: str) -> str:
     evidence_on = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
     if evidence_on:
         try:
-            content = runtime.module.extract_evidence_text(
+            content = extract_evidence_text(
                 raw_content,
                 runtime.data.query_for_retrieval,
                 max_chars=(runtime.data.max_per_chunk_chars if not runtime.data.max_per_chunk_tokens else 0),
@@ -587,8 +607,8 @@ def _context_content(runtime: StandardStreamState, raw_content: str) -> str:
         except Exception:
             content = raw_content
             evidence_on = False
-    if not evidence_on and runtime.data.max_per_chunk_tokens:
-        return runtime.module.truncate(content, runtime.data.max_per_chunk_tokens)
+    if runtime.data.max_per_chunk_tokens:
+        return truncate(content, runtime.data.max_per_chunk_tokens)
     if not evidence_on and runtime.data.max_per_chunk_chars and len(content) > runtime.data.max_per_chunk_chars:
         return content[: runtime.data.max_per_chunk_chars] + "..."
     return content
@@ -610,7 +630,7 @@ def _context_info_parts(metadata: dict[str, Any]) -> list[str]:
 
 def _append_context_part(runtime: StandardStreamState, part: str) -> bool:
     if runtime.data.max_total_tokens:
-        part_tokens = runtime.module.num_tokens_from_string(part)
+        part_tokens = num_tokens_from_string(part)
         if runtime.data.context_parts and runtime.data.total_tokens + part_tokens > runtime.data.max_total_tokens:
             return True
         runtime.data.context_parts.append(part)
@@ -732,7 +752,7 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
             "mmr_lambda": float(runtime.data.mmr_lambda_val or 0.0),
             "enable_reranker": bool(runtime.data.rerank_on),
             "reranker_provider": runtime.data.rerank_provider,
-            "reranker_tier": runtime.module.describe_reranker_provider(
+            "reranker_tier": describe_reranker_provider(
                 runtime.data.rerank_provider,
                 provider_name=str(settings.COLBERT_RERANK_PROVIDER),
             ).get("tier"),
@@ -805,11 +825,11 @@ async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
         "question": runtime.data.question,
         "query_for_retrieval": runtime.data.query_for_retrieval,
         "history_chars": len(runtime.data.history_text),
-        "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text),
+        "history_tokens": num_tokens_from_string(runtime.data.history_text),
         "context_chars": len(runtime.data.context),
-        "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context),
-        **runtime.module.compute_context_cliff_metrics(
-            context_tokens=runtime.module.num_tokens_from_string(runtime.data.context),
+        "context_tokens": num_tokens_from_string(runtime.data.context),
+        **compute_context_cliff_metrics(
+            context_tokens=num_tokens_from_string(runtime.data.context),
             threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS),
         ),
         "citations_count": len(runtime.data.citations),

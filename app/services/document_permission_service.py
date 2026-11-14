@@ -18,14 +18,14 @@ from app.models.tenant_group import TenantGroup
 
 def get_document_partial_member_list(db: Session, tenant_id: UUID, document_id: UUID) -> list[str]:
     rows = (
-        db.query(DocumentPermission)
+        db.query(DocumentPermission.account_id)
         .filter(
             DocumentPermission.tenant_id == tenant_id,
             DocumentPermission.document_id == document_id,
         )
         .all()
     )
-    return [row.account_id for row in rows]
+    return [account_id for (account_id,) in rows]
 
 
 def clear_partial_member_list(db: Session, tenant_id: UUID, document_id: UUID) -> None:

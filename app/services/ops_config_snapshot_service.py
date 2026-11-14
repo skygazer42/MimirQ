@@ -23,7 +23,7 @@ from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fin
 def _mask_secret(value: str) -> str:
     if not value:
         return ""
-    if len(value) < 8:
+    if len(value) <= 8:
         return "***"
     return value[:4] + "***" + value[-4:]
 

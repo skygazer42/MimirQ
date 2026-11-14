@@ -140,8 +140,8 @@ def _extract_position_blocks(raw: str) -> list[_Block]:
 
 def _collect_tags(blocks: Iterable[_Block]) -> list[PositionTag]:
     out: list[PositionTag] = []
-    for b in blocks:
-        out.extend(list(b.tags or []))
+    for block in blocks:
+        out.extend(block.tags)
     return out
 
 
@@ -149,9 +149,7 @@ def _group_boxes_by_page(tags: list[PositionTag]) -> dict[int, list[tuple[float,
     by_page: dict[int, list[tuple[float, float, float, float]]] = {}
     for tag in tags:
         for page in tag.pages:
-            by_page.setdefault(int(page), []).append(
-                (float(tag.left), float(tag.right), float(tag.top), float(tag.bottom))
-            )
+            by_page.setdefault(page, []).append((tag.left, tag.right, tag.top, tag.bottom))
     return by_page
 
 
@@ -230,13 +228,13 @@ def _layout_meta_from_tags(tags: list[PositionTag]) -> dict[str, Any] | None:
         return None
 
     by_page = _group_boxes_by_page(tags)
-    pages = sorted(by_page.keys())
+    pages = sorted(by_page)
     if not pages:
         return None
 
     page_layout: list[dict[str, Any]] = []
     for page in pages:
-        entry = _build_page_layout_entry(page, by_page.get(page) or [])
+        entry = _build_page_layout_entry(page, by_page[page])
         if entry is not None:
             page_layout.append(entry)
 
@@ -279,7 +277,7 @@ def _find_window_end(cleaned_lens: list[int], start_i: int, chunk_size: int) -> 
     end_i = start_i - 1
 
     while i < len(cleaned_lens):
-        blen = cleaned_lens[i] or 0
+        blen = cleaned_lens[i]
         if blen <= 0:
             i += 1
             continue
@@ -311,7 +309,7 @@ def _next_window_start(
     overlap = 0
     j = end_i
     while j >= start_i and overlap < chunk_overlap:
-        overlap += cleaned_lens[j] or 0
+        overlap += cleaned_lens[j]
         j -= 1
     next_i = max(start_i + 1, j + 1)
     return next_i if next_i < current_i else current_i

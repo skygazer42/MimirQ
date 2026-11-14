@@ -21,10 +21,6 @@ from app.services.metrics_logger import log_metrics
 logger = get_logger("rag.middleware.agent_logging")
 
 
-def _now_ts() -> float:
-    return time.time()
-
-
 def _safe_str(value: Any, max_chars: int) -> str:
     text = str(value) if value is not None else ""
     if max_chars > 0 and len(text) > max_chars:
@@ -42,7 +38,7 @@ class AgentExecutionLoggingMiddleware:
         if not self.enabled:
             return state
         agent = dict(state.get("_agent") or {})
-        agent["start_ts"] = _now_ts()
+        agent["start_ts"] = time.time()
         state["_agent"] = agent
         return state
 
@@ -52,7 +48,7 @@ class AgentExecutionLoggingMiddleware:
 
         agent = dict(state.get("_agent") or {})
         start_ts = agent.get("start_ts")
-        end_ts = _now_ts()
+        end_ts = time.time()
         elapsed_ms: float | None = None
         if isinstance(start_ts, (int, float)):
             elapsed_ms = round((end_ts - float(start_ts)) * 1000, 2)

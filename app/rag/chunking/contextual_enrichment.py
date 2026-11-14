@@ -70,11 +70,8 @@ def _is_mostly_cjk(text: str) -> bool:
     raw = text
     if not raw:
         return False
-    try:
-        cjk = len(_CJK_RE.findall(raw))
-    except Exception:
-        return False
-    return (cjk / max(1, len(raw))) >= 0.12
+    cjk = len(_CJK_RE.findall(raw))
+    return (cjk / len(raw)) >= 0.12
 
 
 def _extract_section(meta: dict[str, Any]) -> str | None:
@@ -190,8 +187,6 @@ def build_context_prefix(
     ]
 
     prefix = " ".join([p for p in parts if p]).strip()
-    if not prefix:
-        return None
     return _cap_prefix(prefix, max_prefix_chars=max_prefix_chars, mostly_cjk=mostly_cjk)
 
 

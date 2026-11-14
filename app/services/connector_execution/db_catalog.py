@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi.encoders import jsonable_encoder
-
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -24,8 +23,8 @@ from app.services.connector_execution.shared.runtime import (
 )
 
 if TYPE_CHECKING:
-    from app.connectors.db.catalog_runner import CatalogStore
-    from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
+    from app.connectors.catalog import CatalogStore
+    from app.connectors.store import SQLAlchemyCatalogStore
 
 
 def _mark_db_catalog_run_running(db: Session, *, run: ConnectorRun) -> None:
@@ -49,15 +48,15 @@ def _db_catalog_connector_config_id(stats: dict[str, Any]) -> UUID | None:
 
 def _build_db_catalog_run_context(
     db: Session, *, run: ConnectorRun
-) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, SqlAlchemyCatalogStore]:
-    from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
+) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, SQLAlchemyCatalogStore]:
+    from app.connectors.store import SQLAlchemyCatalogStore
     from app.core.secrets import decrypt_connector_config_secrets
 
     connector_id = run.connector_id.strip()
     cfg = decrypt_connector_config_secrets(dict(run.config or {}))
     stats = dict(run.stats or {})
     connector_config_id = _db_catalog_connector_config_id(stats)
-    store = SqlAlchemyCatalogStore(db=db)
+    store = SQLAlchemyCatalogStore(db=db)
     return connector_id, cfg, stats, connector_config_id, store
 
 
@@ -72,7 +71,7 @@ def _run_db_catalog_sync(
 ) -> tuple[dict[str, Any], float]:
     import time
 
-    from app.connectors.db.catalog_runner import run_catalog_sync
+    from app.connectors.catalog import run_catalog_sync
 
     t0_sync = time.time()
     result = run_catalog_sync(
@@ -195,7 +194,7 @@ def _attach_db_catalog_row_sync(
     cfg: dict[str, Any],
     stats: dict[str, Any],
 ) -> None:
-    from app.connectors.db.catalog_runner import extract_row_snapshots
+    from app.connectors.catalog import extract_row_snapshots
 
     enabled, max_tables, max_rows, max_cols = _db_catalog_row_sync_settings(cfg)
     stats["row_sync_enabled"] = bool(enabled)
@@ -204,8 +203,6 @@ def _attach_db_catalog_row_sync(
 
     try:
         snapshots = extract_row_snapshots(
-            tenant_id=tenant_id,
-            dataset_id=run.dataset_id,
             connector_id=connector_id,
             config=dict(cfg or {}),
             max_tables=max_tables,
@@ -356,7 +353,7 @@ def _emit_db_catalog_failure_audit(
 
 
 def _mark_db_catalog_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-
+    """Persist failure after the execution owner restores the Session."""
     with contextlib.suppress(Exception):
         run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
@@ -366,7 +363,6 @@ def _mark_db_catalog_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, e
             db.commit()
             with contextlib.suppress(Exception):
                 _sync_connector_config_from_run(db, run=run)
-        db.rollback()
 
 
 def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
@@ -435,6 +431,7 @@ def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str)
         )
         _finalize_db_catalog_run_success(db, run=run, stats=stats)
     except Exception as exc:  # noqa: BLE001
+        db.rollback()
         _emit_db_catalog_sync_failed(tenant_id=tenant_id, run_id=run_id, run=run, exc=exc)
         _emit_db_catalog_failure_audit(
             db,

@@ -206,15 +206,7 @@ def _iter_headings(text: str) -> list[BookHeading]:
             )
         )
 
-    # Best-effort de-dup.
-    deduped: list[BookHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+    return headings
 
 
 def _build_sections(text: str, headings: list[BookHeading]) -> list[_Section]:

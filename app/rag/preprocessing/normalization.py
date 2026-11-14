@@ -57,8 +57,7 @@ def normalize_text(
 
     # Normalize common PDF ligatures (ﬁ/ﬂ/ﬃ/ﬄ/…); improves tokenization/search.
     for src, dst in PDF_LIGATURES.items():
-        if src in out:
-            out = out.replace(src, dst)
+        out = out.replace(src, dst)
 
     if remove_control_chars:
         out = CONTROL_CHARS_RE.sub("", out)
@@ -69,4 +68,4 @@ def normalize_text(
 def normalize_query(text: str) -> str:
     """Normalize query text for retrieval (strip + collapse whitespace)."""
     norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
-    return " ".join(norm.strip().split())
+    return " ".join(norm.split())

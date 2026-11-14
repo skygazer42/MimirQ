@@ -15,13 +15,13 @@ import asyncio
 import concurrent.futures
 import json
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from uuid import UUID
 
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.rag.core.metadata import _stringified_metadata_text
 from app.core.utils import parse_csv
 from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
@@ -31,6 +31,7 @@ from app.rag.core.evidence_expectations import (
 )
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.temporal import (
     apply_recency_boost,
     fetch_document_updated_ts,
@@ -51,10 +52,6 @@ from app.rag.policy.must_recall import (
     build_must_recall_fail_reasons,
     evaluate_required_source_keys,
 )
-from app.rag.policy.must_recall_auto import (
-    infer_expected_source_keys,
-    infer_required_anchor_fields,
-)
 from app.rag.policy.recall_obligation import build_must_recall_proof
 from app.rag.policy.router_layers import build_router_layers as build_router_layers
 from app.rag.rerank_result_cache import (
@@ -64,9 +61,8 @@ from app.rag.rerank_result_cache import (
     get_evidence_post_rerank_cache_backend,
     set_cached_evidence_post_rerank_result,
 )
-from app.rag.reranker.types import RerankCandidate
+from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
-from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retrieval.evidence_gap import detect_evidence_gap
 from app.rag.retrieval.orchestration.anchors import (
     _apply_metadata_exact_anchor_doc_ordering as _apply_metadata_exact_anchor_doc_ordering,
@@ -352,9 +348,6 @@ from app.rag.retrieval.orchestration.kg_merge_boost import (
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _resolve_kg_scope as _resolve_kg_scope,
 )
-from app.rag.retrieval.orchestration.model_query_expansion import (
-    decompose_query,
-)
 from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
     maybe_apply_out_of_scope_live_guard as maybe_apply_out_of_scope_live_guard,
 )
@@ -371,13 +364,12 @@ from app.rag.retrieval.orchestration.query_contracts import (
 )
 from app.rag.retrieval.orchestration.query_invocation import (
     QueryInvocationRecordInput,
+    QueryInvocationRecordOutput,
     build_query_invocation_record,
 )
 from app.rag.retrieval.orchestration.query_options import (
     QUERY_PLANNING_OPTION_KEYS,
-    parse_model_query_overrides,
     parse_query_expansion_budget,
-    resolve_model_query_settings,
     resolve_query_preparation_request,
 )
 from app.rag.retrieval.orchestration.query_planning import prepare_query_plan
@@ -402,26 +394,14 @@ from app.rag.retrieval.orchestration.text_helpers import (
 from app.rag.retrieval.orchestration.text_helpers import (
     should_rewrite_query as should_rewrite_query,
 )
-from app.rag.retrieval.orchestrator_support_contracts import (
-    apply_routing_phase as _apply_routing_phase_impl,
-)
-from app.rag.retrieval.orchestrator_support_contracts import (
-    resolve_contract_phase as _resolve_contract_phase_impl,
+from app.rag.retrieval.orchestrator_support_hierarchy import (
+    build_desired_pipeline_by_doc as _build_desired_pipeline_by_doc,
 )
 from app.rag.retrieval.orchestrator_support_hierarchy import (
-    build_desired_pipeline_by_doc as _build_desired_pipeline_by_doc_impl,
+    fetch_hierarchy_expansion_docs as _fetch_hierarchy_expansion_docs,
 )
 from app.rag.retrieval.orchestrator_support_hierarchy import (
-    chunk_document_from_row as _chunk_document_from_row_impl,
-)
-from app.rag.retrieval.orchestrator_support_hierarchy import (
-    fetch_hierarchy_expansion_docs as _fetch_hierarchy_expansion_docs_impl,
-)
-from app.rag.retrieval.orchestrator_support_hierarchy import (
-    hierarchy_fetch_pairs_by_doc as _hierarchy_fetch_pairs_by_doc_impl,
-)
-from app.rag.retrieval.orchestrator_support_hierarchy import (
-    safe_kg_path_provenance as _safe_kg_path_provenance_impl,
+    safe_kg_path_provenance as _safe_kg_path_provenance,
 )
 from app.rag.retrieval.orchestrator_support_post_rerank import (
     build_reranked_prefix as _build_reranked_prefix_impl,
@@ -514,21 +494,6 @@ async def kg_search(  # noqa: ANN201
 def _build_history_text(history: list[dict[str, str]] | None) -> str:
     """Compress history to readable text, keep only within window."""
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
-
-
-def _decompose_query(
-    query_for_retrieval: str,
-    engine: Any | None,
-    *,
-    enabled: bool | None = None,
-) -> tuple[list[str], float, str | None, dict[str, Any]]:
-    model_settings = resolve_model_query_settings(parse_model_query_overrides({"enable_query_decomposition": enabled}))
-    outcome = decompose_query(
-        query_for_retrieval,
-        settings=model_settings.decomposition,
-        models=EngineQueryModels(lambda: engine if engine is not None else get_rag_engine()),
-    )
-    return list(outcome.queries), outcome.elapsed_sec, outcome.model_used, outcome.parse_metadata
 
 
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
@@ -683,13 +648,10 @@ def _calibrated_post_rerank_rows(
     ranked_rows = [row for row in rows if row["rerank_score"] is not None]
     retrieval_norm = _post_rerank_minmax([row["retrieval_score"] or 0.0 for row in rows])
     rerank_norm_values = _post_rerank_minmax([row["rerank_score"] or 0.0 for row in ranked_rows])
-    rerank_norm_by_id = {
-        ranked_rows[index]["rid"]: rerank_norm_values[index]
-        for index in range(min(len(ranked_rows), len(rerank_norm_values)))
-    }
+    rerank_norm_by_id = {row["rid"]: rerank_norm_values[index] for index, row in enumerate(ranked_rows)}
 
     for index, row in enumerate(rows):
-        base_norm = retrieval_norm[index] if index < len(retrieval_norm) else 0.0
+        base_norm = retrieval_norm[index]
         rerank_norm = rerank_norm_by_id.get(row["rid"])
         calibrated = base_norm
         if rerank_norm is not None:
@@ -731,23 +693,22 @@ def _calibrate_post_rerank_prefix(
 
     rows_sorted = _calibrated_post_rerank_rows(rows, alpha=alpha)
     moved = sum(1 for index, row in enumerate(rows_sorted) if row["idx"] != index)
-    top_changed = bool(rows_sorted) and rows_sorted[0]["idx"] != 0
+    top_changed = rows_sorted[0]["idx"] != 0
 
     out_docs: list[Document] = []
     for row in rows_sorted:
-        meta = dict(row["meta"] or {})
+        meta = dict(row["meta"])
         calibrated = row["calibrated_score"] or 0.0
         meta["rerank_score_calibrated"] = round(calibrated, 6)
         meta["score"] = calibrated
         doc = row["doc"]
-        if isinstance(doc, Document):
-            out_docs.append(
-                Document(
-                    page_content=doc.page_content,
-                    metadata=meta,
-                    id=doc.id or meta.get("chunk_id"),
-                )
+        out_docs.append(
+            Document(
+                page_content=doc.page_content,
+                metadata=meta,
+                id=doc.id or meta.get("chunk_id"),
             )
+        )
 
     stats.update(
         {
@@ -804,7 +765,7 @@ def _get_cached_post_rerank_result(
     candidates: list[RerankCandidate],
     cache_enabled: bool,
     corpus_cache_token: str | None,
-) -> tuple[Any, str | None, bool, int, int]:
+) -> tuple[RerankResult | None, str | None, bool, int, int]:
     if not cache_enabled:
         return None, None, False, 0, 0
     try:
@@ -836,8 +797,8 @@ def _execute_post_rerank(
     candidates: list[RerankCandidate],
     cache_enabled: bool,
     cache_key: str | None,
-    cached_result: Any,
-) -> tuple[Any, float]:
+    cached_result: RerankResult | None,
+) -> tuple[RerankResult, float]:
     if cached_result is not None:
         return cached_result, 0.0
     reranker = get_reranker(provider)
@@ -861,7 +822,7 @@ def _build_reranked_prefix(
     *,
     docs_prefix: list[Document],
     id_to_doc: dict[str, Document],
-    rerank_result: Any,
+    rerank_result: RerankResult,
     provider: str,
     elapsed_sec: float,
     model_used: str | None,
@@ -971,37 +932,6 @@ def _run_post_rerank_stage(
         pipeline_mode_fn=_run_post_rerank_pipeline_mode,
         single_mode_fn=_run_post_rerank_single_mode,
         fallback_logger_fn=_log_orchestrator_fallback,
-    )
-
-
-def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
-    return _safe_kg_path_provenance_impl(raw)
-
-
-def _build_desired_pipeline_by_doc(docs: list[Document]) -> dict[str, str]:
-    return _build_desired_pipeline_by_doc_impl(docs)
-
-
-def _hierarchy_fetch_pairs_by_doc(
-    pairs: set[tuple[str, str]],
-) -> dict[str, set[str]]:
-    return _hierarchy_fetch_pairs_by_doc_impl(pairs)
-
-
-def _chunk_document_from_row(ck: "DocumentChunk") -> Document | None:
-    return _chunk_document_from_row_impl(ck)
-
-
-def _fetch_hierarchy_expansion_docs(
-    pairs: set[tuple[str, str]],
-    *,
-    tenant_uuid: UUID | None,
-    desired_pipeline_by_doc: dict[str, str],
-) -> dict[tuple[str, str], Document]:
-    return _fetch_hierarchy_expansion_docs_impl(
-        pairs,
-        tenant_uuid=tenant_uuid,
-        desired_pipeline_by_doc=desired_pipeline_by_doc,
     )
 
 
@@ -1127,56 +1057,6 @@ def _build_retrieval_request(state: dict[str, Any], *, question: str, history_te
     )
     options = {key: state[key] for key in QUERY_PLANNING_OPTION_KEYS if key in state}
     return RetrievalRequest(preparation, options, parse_query_expansion_budget(options))
-
-
-def _resolve_contract_phase(
-    state: dict[str, Any],
-    *,
-    query_for_retrieval: str,
-) -> dict[str, Any]:
-    return _resolve_contract_phase_impl(
-        state,
-        query_for_retrieval=query_for_retrieval,
-        resolve_retrieval_contract_policy_fn=resolve_retrieval_contract_policy,
-        infer_expected_source_keys_fn=infer_expected_source_keys,
-        infer_required_anchor_fields_fn=infer_required_anchor_fields,
-    )
-
-
-def _apply_routing_phase(
-    state: dict[str, Any],
-    *,
-    query_for_retrieval: str,
-    requested_retrieval_mode: Any,
-    requested_retrieval_profile: Any,
-    sparse_enabled: bool,
-    sparse_provider: str,
-    hierarchy_recall_enabled: bool,
-    hierarchy_family_collapse: bool,
-    hierarchy_family_aggregation: str,
-    hierarchy_tree_dedup: bool,
-    hierarchy_parent_depth: int,
-    hierarchy_sibling_window: int,
-    hierarchy_overfetch_factor: int,
-) -> dict[str, Any]:
-    return _apply_routing_phase_impl(
-        state,
-        query_for_retrieval=query_for_retrieval,
-        requested_retrieval_mode=requested_retrieval_mode,
-        requested_retrieval_profile=requested_retrieval_profile,
-        sparse_enabled=sparse_enabled,
-        sparse_provider=sparse_provider,
-        hierarchy_recall_enabled=hierarchy_recall_enabled,
-        hierarchy_family_collapse=hierarchy_family_collapse,
-        hierarchy_family_aggregation=hierarchy_family_aggregation,
-        hierarchy_tree_dedup=hierarchy_tree_dedup,
-        hierarchy_parent_depth=hierarchy_parent_depth,
-        hierarchy_sibling_window=hierarchy_sibling_window,
-        hierarchy_overfetch_factor=hierarchy_overfetch_factor,
-        hybrid_retriever_obj=hybrid_retriever,
-        route_retrieval_preset_fn=route_retrieval_preset,
-        route_adaptive_retrieval_overrides_fn=route_adaptive_retrieval_overrides,
-    )
 
 
 def _run_retrieval_bootstrap_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
@@ -1406,7 +1286,7 @@ def _record_retrieval_query(
     *,
     query: str,
     invocation: tuple[str, list[Document], str | None, float, dict[str, Any] | None],
-) -> Any:
+) -> QueryInvocationRecordOutput:
     kind, docs, error, elapsed, debug = invocation
     record = build_query_invocation_record(
         QueryInvocationRecordInput(
@@ -1432,7 +1312,7 @@ def _summarize_decomposition_step(
     elapsed_sec: float,
     retrieval_mode: str,
     query: str,
-    summarize: Any,
+    summarize: Callable[[list[dict[str, Any]]], str],
 ) -> str:
     try:
         citations = build_citations_from_docs(
@@ -1630,14 +1510,14 @@ def _diversify_multi_query_docs(
     )
     selected: list[Document] = []
     selected_keys: set[str] = set()
-    non_mq_limit = max(1, int(ctx.top_k) - int(ctx.mq_diversify_budget))
+    non_mq_limit = max(1, ctx.top_k - ctx.mq_diversify_budget)
     ctx.mq_diversify_selected_non_mq = _append_unique_docs(
         selected,
         selected_keys,
         docs_non_mq,
         limit=non_mq_limit,
     )
-    mq_limit = len(selected) + int(ctx.mq_diversify_budget)
+    mq_limit = len(selected) + ctx.mq_diversify_budget
     ctx.mq_diversify_selected_mq = _append_unique_docs(
         selected,
         selected_keys,
@@ -1648,7 +1528,7 @@ def _diversify_multi_query_docs(
         selected,
         selected_keys,
         fused_docs,
-        limit=int(ctx.top_k),
+        limit=ctx.top_k,
     )
     return selected
 
@@ -1728,8 +1608,8 @@ def _apply_hierarchy_tree_dedup_phase(ctx: RetrievalRuntimeState, refill_pool: l
         ctx.docs, ctx.tree_dedup_meta = _apply_hierarchy_tree_dedup(
             ctx.docs,
             refill=refill_pool,
-            top_k=int(ctx.top_k),
-            overfetch_factor=int(ctx.hierarchy_overfetch_factor),
+            top_k=ctx.top_k,
+            overfetch_factor=ctx.hierarchy_overfetch_factor,
         )
     except Exception as exc:
         _log_orchestrator_fallback("run_retrieval", exc)
@@ -1745,7 +1625,7 @@ def _run_retrieval_fusion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | 
         mq_budget_raw = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET)
     except (TypeError, ValueError, AttributeError):
         mq_budget_raw = 0
-    ctx.mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(ctx.top_k or 0)))
+    ctx.mq_diversify_budget = max(0, min(mq_budget_raw, ctx.top_k))
     ctx.mq_diversify_used = False
     ctx.mq_diversify_selected_mq = 0
     ctx.mq_diversify_selected_non_mq = 0
@@ -1848,7 +1728,7 @@ def _fetch_kg_injection_rows(
     dataset_ids: Any,
     document_ids: Any,
     chunk_ids: list[UUID],
-) -> list[Any]:
+) -> list["DocumentChunk"]:
     db = ctx.state.get("db")
     owns_db = False
     if db is None:
@@ -1880,13 +1760,13 @@ def _fetch_kg_injection_rows(
                 logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
 
-def _kg_chunk_row_map(rows: list[Any]) -> dict[UUID, Any]:
+def _kg_chunk_row_map(rows: list["DocumentChunk"]) -> dict[UUID, "DocumentChunk"]:
     return {chunk.id: chunk for chunk in rows}
 
 
 def _kg_document_from_chunk(
     chunk_id: UUID,
-    chunk: Any,
+    chunk: "DocumentChunk",
     *,
     scores: dict[str, float],
     features: dict[str, dict[str, Any]],
@@ -1922,7 +1802,7 @@ def _kg_document_from_chunk(
 
 def _build_kg_injection_docs(
     chunk_ids: list[UUID],
-    rows: list[Any],
+    rows: list["DocumentChunk"],
     *,
     scores: dict[str, float],
     features: dict[str, dict[str, Any]],
@@ -2114,9 +1994,9 @@ def _run_retrieval_tag_kg_boost_phase(ctx: RetrievalRuntimeState) -> dict[str, A
     )
     ctx.docs, ctx.kg_chunk_boost_meta = _apply_kg_chunk_boost(
         [d for d in (ctx.docs or []) if isinstance(d, Document)],
-        enabled=bool(kg_chunk_boost_enabled),
-        weight=float(kg_chunk_boost_weight),
-        max_promoted=int(kg_chunk_boost_max_promoted),
+        enabled=kg_chunk_boost_enabled,
+        weight=kg_chunk_boost_weight,
+        max_promoted=kg_chunk_boost_max_promoted,
     )
     return None
 
@@ -2502,7 +2382,7 @@ def _run_hard_fallback(ctx: RetrievalRuntimeState) -> None:
         citations_after,
         enabled=bool(ctx.evidence_span_strict_enabled),
     )
-    ctx.evidence_span_missing_citations += int(missing_count)
+    ctx.evidence_span_missing_citations += missing_count
     ctx.hard_fallback_added_citations = max(0, len(citations_after) - len(ctx.citations))
     ctx.citations = citations_after
     ctx.hard_fallback_used = bool(ctx.hard_fallback_added_docs > 0 and ctx.citations)
@@ -2527,7 +2407,7 @@ def _run_retrieval_citations_hard_fallback_phase(ctx: RetrievalRuntimeState) -> 
         ctx.citations,
         enabled=bool(ctx.evidence_span_strict_enabled),
     )
-    ctx.evidence_span_missing_citations += int(missing_count)
+    ctx.evidence_span_missing_citations += missing_count
     ctx.retrieval_fallback_reason: str | None = None
     if ctx.evidence_span_strict_enabled and not ctx.citations and ctx.evidence_span_missing_citations > 0:
         ctx.retrieval_fallback_reason = "strict_span_empty"
@@ -2634,7 +2514,7 @@ def _run_must_recall_second_pass(
         citations_after,
         enabled=bool(ctx.evidence_span_strict_enabled),
     )
-    ctx.evidence_span_missing_citations += int(missing_count)
+    ctx.evidence_span_missing_citations += missing_count
     ctx.must_recall_second_pass_added_citations = max(0, len(ctx.citations) - len(citations_before))
     after_source_eval, after_anchor_eval = _must_recall_evaluations(ctx)
     after_missing_sources = list(after_source_eval.get("missing_source_keys") or [])
@@ -2735,13 +2615,13 @@ def _run_retrieval_parse_quality_phase(ctx: RetrievalRuntimeState) -> dict[str, 
         ctx.parse_quality_low_threshold = float(settings.RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD)
     except (TypeError, ValueError, AttributeError):
         ctx.parse_quality_low_threshold = 0.35
-    ctx.parse_quality_low_threshold = min(1.0, max(0.0, float(ctx.parse_quality_low_threshold)))
+    ctx.parse_quality_low_threshold = min(1.0, max(0.0, ctx.parse_quality_low_threshold))
 
     try:
         ctx.parse_quality_alert_ratio = float(settings.RETRIEVAL_PARSE_QUALITY_ALERT_RATIO)
     except (TypeError, ValueError, AttributeError):
         ctx.parse_quality_alert_ratio = 0.5
-    ctx.parse_quality_alert_ratio = min(1.0, max(0.0, float(ctx.parse_quality_alert_ratio)))
+    ctx.parse_quality_alert_ratio = min(1.0, max(0.0, ctx.parse_quality_alert_ratio))
 
     ctx.parse_quality_summary = _summarize_parse_quality_risk(
         ctx.docs,
@@ -2760,13 +2640,13 @@ def _run_retrieval_parse_quality_phase(ctx: RetrievalRuntimeState) -> dict[str, 
         parse_risk_hardcase_min_low_ratio = float(settings.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO)
     except (TypeError, ValueError, AttributeError):
         parse_risk_hardcase_min_low_ratio = 0.5
-    parse_risk_hardcase_min_low_ratio = min(1.0, max(0.0, float(parse_risk_hardcase_min_low_ratio)))
+    parse_risk_hardcase_min_low_ratio = min(1.0, max(0.0, parse_risk_hardcase_min_low_ratio))
 
     try:
         parse_risk_hardcase_min_considered = int(settings.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED)
     except (TypeError, ValueError, AttributeError):
         parse_risk_hardcase_min_considered = 3
-    parse_risk_hardcase_min_considered = max(1, int(parse_risk_hardcase_min_considered))
+    parse_risk_hardcase_min_considered = max(1, parse_risk_hardcase_min_considered)
 
     ctx.parse_risk = _classify_parse_risk(
         summary=ctx.parse_quality_summary,
@@ -2938,8 +2818,7 @@ def _retrieval_channel_health_item(item: Any) -> tuple[dict[str, Any] | None, li
     if isinstance(native_hybrid, dict):
         health_item["milvus_native_hybrid"] = dict(native_hybrid)
     reason_codes = [
-        f"{health_item['kind']}:{reason['channel'].strip() or 'unknown'}:"
-        f"{reason['error_type'].strip() or 'unknown'}"
+        f"{health_item['kind']}:{reason['channel'].strip() or 'unknown'}:{reason['error_type'].strip() or 'unknown'}"
         for reason in degraded_reasons
         if isinstance(reason, dict)
     ]

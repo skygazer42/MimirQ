@@ -51,10 +51,7 @@ class LangChainTokenChunker(BaseChunker):
             return []
 
         # Heuristic: approximate chars/token from the whole text, then split by char window.
-        est = estimate_tokens(raw)
-        chars_per_token = 4
-        if isinstance(est, int) and est > 0:
-            chars_per_token = max(1, len(raw) // est)
+        chars_per_token = max(1, len(raw) // estimate_tokens(raw))
 
         chunk_chars = max(1, self.chunk_size_tokens * chars_per_token)
         overlap_chars = max(0, self.chunk_overlap_tokens * chars_per_token)
@@ -88,7 +85,7 @@ class LangChainTokenChunker(BaseChunker):
                 if start_idx == -1:
                     start_idx = current_pos
                 end_idx = start_idx + len(split_text)
-                metadata = dict(doc.metadata or {})
+                metadata = dict(doc.metadata)
                 metadata["start_char"] = start_idx
                 metadata["end_char"] = end_idx
                 metadata["chunk_strategy"] = "langchain_token"

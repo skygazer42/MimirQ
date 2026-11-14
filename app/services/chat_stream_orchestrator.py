@@ -6,10 +6,11 @@ from uuid import UUID, uuid4
 from fastapi import Request
 from sqlalchemy.orm import Session
 
-from app.api.schemas.chat import ChatRAGConfig, ChatRequest
+from app.api.schemas.conversations import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.env import is_production_env
 from app.rag.core.logging import get_logger
+from app.services.chat_bootstrap_runtime import prepare_stream_chat_runtime
 from app.services.chat_execution_runtime import (
     ChatExecutionContext,
     execute_extractive_fallback_once,
@@ -18,15 +19,11 @@ from app.services.chat_execution_runtime import (
     mark_model_provider_unavailable,
     preflight_model_provider_fast,
 )
-from app.services.chat_runtime import (
-    format_stream_error_message,
-    prepare_stream_chat_runtime,
-)
+from app.services.chat_runtime import format_stream_error_message
 from app.services.chat_stream_common import (
     ChatStreamPersistenceContext,
     ChatStreamRuntimeContext,
     MaterializedChatStreamInput,
-    stream_cached_chat_events,
     stream_materialized_chat_events,
 )
 from app.services.chat_stream_graph import GraphChatStreamSessionInput, stream_graph_chat_session_events
@@ -106,7 +103,6 @@ def _build_materialized_runtime(
     *,
     request_id: str,
     http_request: Request,
-    effective_rag_config: ChatRAGConfig,
     dataset_id_used: UUID | None,
     dataset_rag_defaults_applied_fields: list[str] | None,
     dataset_rag_config_template_defaults_applied_fields: list[str] | None,
@@ -129,48 +125,9 @@ def _build_materialized_runtime(
         dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
         tenant_qps_meta=tenant_qps_meta,
         quota_meta=quota_meta,
-        retrieval_mode_default=effective_rag_config.retrieval_mode,
-        vector_backend_default=settings.VECTOR_BACKEND,
         request_structured_output=request.structured_output,
         structured_data=structured_data,
         structured_preset=request.structured_preset,
-    )
-
-
-def _build_execution_context(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: ChatRequest,
-    conversation_id: UUID | None,
-    request_id: str,
-    doc_ids_to_use: list[UUID],
-    history_for_llm: list[dict[str, Any]],
-    scope_dataset_id: UUID | None,
-    dataset_id_used: UUID | None,
-    effective_rag_config: ChatRAGConfig,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
-) -> ChatExecutionContext:
-    return ChatExecutionContext(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        request=request,
-        conversation_id=conversation_id,
-        request_id=request_id,
-        doc_ids_to_use=doc_ids_to_use,
-        history_for_llm=history_for_llm,
-        scope_dataset_id=scope_dataset_id,
-        dataset_id_used=dataset_id_used,
-        effective_rag_config=effective_rag_config,
-        effective_prompt_template_id=effective_prompt_template_id,
-        effective_prompt_template_key=effective_prompt_template_key,
-        effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-        rag_config_template_meta=rag_config_template_meta,
     )
 
 
@@ -185,7 +142,7 @@ async def _stream_cached_sse_events(
     citations_data: list[dict[str, Any]] | list,
     metrics_data: dict[str, Any],
 ) -> AsyncIterator[str]:
-    async for cached_event in stream_cached_chat_events(
+    async for cached_event in stream_materialized_chat_events(
         stream_input=MaterializedChatStreamInput(
             start_message="缓存命中，直接返回…",
             content=full_response,
@@ -209,7 +166,6 @@ async def _stream_extractive_fallback_sse_events(
     tenant_id: UUID,
     account_id: str,
     request: ChatRequest,
-    conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
     doc_ids_to_use: list[UUID],
     history_for_llm: list[dict[str, Any]],
@@ -596,7 +552,6 @@ async def stream_chat_sse_events(
     materialized_runtime = _build_materialized_runtime(
         request_id=request_id,
         http_request=http_request,
-        effective_rag_config=effective_rag_config,
         dataset_id_used=dataset_id_used,
         dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
         dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
@@ -607,7 +562,7 @@ async def stream_chat_sse_events(
         structured_data=structured_data,
         request=request,
     )
-    execution_context = _build_execution_context(
+    execution_context = ChatExecutionContext(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -674,7 +629,6 @@ async def stream_chat_sse_events(
             tenant_id=tenant_id,
             account_id=account_id,
             request=request,
-            conversation_id=conversation_id,
             scope_dataset_id=scope_dataset_id,
             doc_ids_to_use=doc_ids_to_use,
             history_for_llm=history_for_llm,

@@ -100,24 +100,24 @@ def _append_partition_text(
     text: str,
     label_l: str,
     last_label: str,
-    is_first: bool,
 ) -> None:
-    if is_first:
+    if not parts:
         parts.append(text + "\n" if label_l == "title" else text)
         return
-    if last_label.lower() == "title" and label_l == "title":
+    if last_label == "title" and label_l == "title":
         parts.append("\n" + text)
         return
     if label_l in {"title", "table"}:
         parts.append("\n\n" + text)
         return
-    separator = "\n\n" if last_label.lower() == "table" else "\n"
+    separator = "\n\n" if last_label == "table" else "\n"
     parts.append(separator + text)
 
 
 def _partition_extra(part: dict[str, Any]) -> dict[str, Any]:
-    if isinstance(part.get("metadata"), dict):
-        return (part.get("metadata") or {}).get("extra_data") or {}
+    metadata = part.get("metadata")
+    if isinstance(metadata, dict):
+        return metadata.get("extra_data") or {}
     return {}
 
 
@@ -199,7 +199,7 @@ class Etl4LlmParser:
         file_bytes = file_path.read_bytes()
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
-        mode = self._mode or "partition"
+        mode = self._mode
         if mode not in {"partition", "text"}:
             mode = "partition"
 
@@ -268,9 +268,8 @@ class Etl4LlmParser:
         *,
         file_path: Path,
         force_ocr: bool,
-        artifact_root: Path,
         images_dir: Path,
-    ) -> tuple[str, dict[str, Any], int]:
+    ) -> tuple[str, dict[str, Any]]:
         data = self._call_api(file_path=file_path, force_ocr=force_ocr)
         partitions = data.get("partitions") or []
         text = str(data.get("text") or "")
@@ -292,19 +291,16 @@ class Etl4LlmParser:
         elif text.strip():
             merged_text = text.strip()
 
-        self._maybe_add_page_image_fallback(
+        merged_text = self._maybe_add_page_image_fallback(
             file_path=file_path,
             merged_text=merged_text,
             extracted_images=extracted_images,
             images_dir=images_dir,
             metadata=merged_meta,
         )
-        merged_text = merged_meta.pop("_merged_text", merged_text)
-        merged_meta["asset_base_dir"] = str(artifact_root)
-        merged_meta["artifact_dir"] = str(artifact_root)
         merged_meta["etl4llm_partitions"] = len(partitions) if isinstance(partitions, list) else 0
         merged_meta["etl4llm_extracted_images"] = extracted_images
-        return merged_text, merged_meta, extracted_images
+        return merged_text, merged_meta
 
     def _maybe_add_page_image_fallback(
         self,
@@ -314,7 +310,7 @@ class Etl4LlmParser:
         extracted_images: int,
         images_dir: Path,
         metadata: dict[str, Any],
-    ) -> None:
+    ) -> str:
         try:
             fallback_enabled = settings.ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY
             has_any_images = extracted_images > 0
@@ -327,7 +323,7 @@ class Etl4LlmParser:
                 and (not has_any_images)
                 and (not has_refs)
             ):
-                return
+                return merged_text
 
             dpi = int(settings.ETL4LLM_PAGE_IMAGE_DPI or 150)
             max_pages = max(0, int(settings.ETL4LLM_PAGE_IMAGE_MAX_PAGES))
@@ -335,13 +331,14 @@ class Etl4LlmParser:
                 file_path=file_path, images_dir=images_dir, dpi=dpi, max_pages=max_pages
             )
             if not page_refs:
-                return
+                return merged_text
 
             gallery = "\n\n".join(page_refs).strip()
-            metadata["_merged_text"] = f"{gallery}\n\n{merged_text}".strip() if merged_text.strip() else gallery
             metadata["etl4llm_page_images"] = len(page_refs)
+            return f"{gallery}\n\n{merged_text}".strip() if merged_text.strip() else gallery
         except Exception as exc:  # noqa: BLE001
             logger.warning("[etl4llm] page image fallback failed: %s", str(exc)[:200])
+            return merged_text
 
     def _render_page_image_refs(
         self,
@@ -451,7 +448,6 @@ class Etl4LlmParser:
         Merge partitions into a single markdown-ish string, preserving extra_data indices.
         """
         parts: list[str] = []
-        is_first = True
         last_label = ""
         prev_length = 0
         meta = _base_merged_meta()
@@ -473,7 +469,6 @@ class Etl4LlmParser:
                 text=text,
                 label_l=label_l,
                 last_label=last_label,
-                is_first=is_first,
             )
             _extend_merged_meta(
                 meta=meta,
@@ -482,8 +477,7 @@ class Etl4LlmParser:
             )
 
             prev_length += len(parts[-1])
-            last_label = label
-            is_first = False
+            last_label = label_l
 
         return "".join(parts), meta
 
@@ -511,10 +505,9 @@ class Etl4LlmParser:
         images_dir = artifact_root / "images"
         artifact_root.mkdir(parents=True, exist_ok=True)
 
-        merged_text, merged_meta, _ = self._parse_service_payload(
+        merged_text, merged_meta = self._parse_service_payload(
             file_path=file_path,
             force_ocr=force_ocr,
-            artifact_root=artifact_root,
             images_dir=images_dir,
         )
         metadata = self._build_document_metadata(

@@ -85,28 +85,26 @@ def build_recall_obligation_ledger(
 
     source_obligations = _build_source_key_obligations(
         required_source_keys=source_keys,
-        source_eval=(source_eval if isinstance(source_eval, dict) else None),
+        source_eval=source_eval,
     )
     anchor_obligations = _build_anchor_obligations(
         required_anchor_fields=anchor_fields,
-        anchor_eval=(anchor_eval if isinstance(anchor_eval, dict) else None),
+        anchor_eval=anchor_eval,
     )
 
     source_missing = sum(obligation["status"] == "missing" for obligation in source_obligations)
     anchor_missing_fields = sum(obligation["status"] == "missing" for obligation in anchor_obligations)
     anchor_missing_any = max(
         0,
-        _to_int((anchor_eval or {}).get("missing_any"), default=0) if isinstance(anchor_eval, dict) else 0,
+        _to_int(anchor_eval.get("missing_any"), default=0) if isinstance(anchor_eval, dict) else 0,
     )
     anchor_considered = (
-        _to_int((anchor_eval or {}).get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+        _to_int(anchor_eval.get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
     )
-    anchor_skipped = (
-        _to_int((anchor_eval or {}).get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
-    )
+    anchor_skipped = _to_int(anchor_eval.get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
     anchor_skipped_by_role = (
-        dict((anchor_eval or {}).get("skipped_by_role") or {})
-        if isinstance(anchor_eval, dict) and isinstance((anchor_eval or {}).get("skipped_by_role"), dict)
+        dict(anchor_eval["skipped_by_role"])
+        if isinstance(anchor_eval, dict) and isinstance(anchor_eval.get("skipped_by_role"), dict)
         else {}
     )
     required_total = len(source_obligations) + len(anchor_obligations)
@@ -131,7 +129,7 @@ def build_recall_obligation_ledger(
             "missing_any": anchor_missing_any,
             "considered_citations": max(0, anchor_considered),
             "skipped_citations": max(0, anchor_skipped),
-            "skipped_by_role": dict(anchor_skipped_by_role),
+            "skipped_by_role": anchor_skipped_by_role,
             "obligations": anchor_obligations,
         },
     }
@@ -187,7 +185,7 @@ def build_must_recall_proof(
             if len(matched_source_keys) >= 200:
                 break
     reasons = [str(v) for v in (fail_reasons or []) if str(v).strip()][:16]
-    proof = {
+    return {
         "schema": MUST_RECALL_PROOF_SCHEMA_V1,
         "enabled": bool(enabled),
         "status": status,
@@ -215,9 +213,8 @@ def build_must_recall_proof(
         ),
         "fail_reasons": reasons,
         "obligation_ledger": ledger,
-        "second_pass": (dict(second_pass or {}) if isinstance(second_pass, dict) else {}),
+        "second_pass": (dict(second_pass) if isinstance(second_pass, dict) else {}),
     }
-    return proof
 
 
 __all__ = [

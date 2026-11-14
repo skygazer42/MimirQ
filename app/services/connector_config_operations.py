@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.connector import (
+from app.api.schemas.sources import (
     ConnectorConfigCreateRequest,
     ConnectorConfigOut,
     ConnectorConfigUpdateRequest,
@@ -25,10 +25,14 @@ from app.services.connector_run_operations import (
     _URL_INGEST_CONNECTOR_IDS,
     CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR,
     _create_pending_connector_run,
+    _persist_run_failure,
+    _run_out,
     _writable_dataset_ids_subquery,
     enqueue_or_schedule_run,
 )
 from app.services.dataset_service import EDIT_ROLES
+from app.services.managed_handoff import prepare_managed_handoff
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.security_redaction import redact_connection_info
 
@@ -217,51 +221,51 @@ async def run_saved_config(
     db: Session,
 ) -> ConnectorRunOut:
     """Create a connector run from a saved connector configuration."""
-    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    cfg = (
-        db.query(ConnectorConfig)
-        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
-        .first()
-    )
-    if not cfg:
-        raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
-
-    connector_id = cfg.connector_id.strip()
-    if connector_id in _DB_CONNECTOR_IDS:
-        ensure_tenant_permission(
-            db,
-            tenant_id,
-            account_id,
-            TenantPermissions.SETTINGS_WRITE,
-            detail=_DB_CONNECTOR_PERMISSION_DETAIL,
+    def prepare_run(db: Session):
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        cfg = (
+            db.query(ConnectorConfig)
+            .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+            .first()
         )
+        if not cfg:
+            raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
+        connector_id = cfg.connector_id.strip()
+        if connector_id in _DB_CONNECTOR_IDS:
+            ensure_tenant_permission(
+                db, tenant_id, account_id, TenantPermissions.SETTINGS_WRITE, detail=_DB_CONNECTOR_PERMISSION_DETAIL
+            )
+        dataset = dataset_service.get_dataset(db, tenant_id, cfg.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
+        if connector_id in _URL_INGEST_CONNECTOR_IDS and (not settings.URL_INGEST_ENABLED):
+            raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+        if connector_id in _DB_CONNECTOR_IDS and (not settings.DB_CATALOG_ENABLED):
+            raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
+        if connector_id in _DB_CONNECTOR_IDS:
+            try:
+                validate_db_connector_config(dict(cfg.config or {}))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        run_cfg = build_saved_connector_run_config(cfg)
+        run = _create_pending_connector_run(
+            db,
+            values={
+                "tenant_id": tenant_id,
+                "dataset_id": cfg.dataset_id,
+                "connector_id": connector_id,
+                "requested_by": account_id,
+                "config": run_cfg,
+                "stats": {"config_id": str(cfg.id)},
+            },
+        )
+        return _run_out(run)
 
-    dataset = dataset_service.get_dataset(db, tenant_id, cfg.dataset_id)
-    dataset_service.assert_dataset_writable(db, dataset, account_id)
-
-    if connector_id in _URL_INGEST_CONNECTOR_IDS and not settings.URL_INGEST_ENABLED:
-        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
-    if connector_id in _DB_CONNECTOR_IDS and not settings.DB_CATALOG_ENABLED:
-        raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
-    if connector_id in _DB_CONNECTOR_IDS:
-        try:
-            validate_db_connector_config(dict(cfg.config or {}))
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    run_cfg = build_saved_connector_run_config(cfg)
-
-    run = _create_pending_connector_run(
-        db,
-        values={
-            "tenant_id": tenant_id,
-            "dataset_id": cfg.dataset_id,
-            "connector_id": connector_id,
-            "requested_by": account_id,
-            "config": run_cfg,
-            "stats": {"config_id": str(cfg.id)},
-        },
+    run = await prepare_managed_handoff(
+        prepare_run,
+        recover_cancelled=lambda worker_db, result: _persist_run_failure(
+            worker_db, tenant_id=tenant_id, run_id=result.id, error="connector_request_cancelled_before_handoff"
+        ),
     )
     try:
         result = await enqueue_or_schedule_run(
@@ -273,13 +277,20 @@ async def run_saved_config(
         )
     except HTTPException as exc:
         if exc.status_code == 503:
-            cfg.last_error = CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR  # type: ignore[assignment]
-            db.commit()
+            await run_blocking_call_with_managed_session(
+                lambda worker_db: _record_saved_config_handoff(
+                    worker_db, config_id=config_id, tenant_id=tenant_id, failed=True
+                ),
+                request_db=None,
+            )
         raise
 
-    cfg.last_run_at = _now()
-    cfg.last_error = None  # type: ignore[assignment]
-    db.commit()
+    await run_blocking_call_with_managed_session(
+        lambda worker_db: _record_saved_config_handoff(
+            worker_db, config_id=config_id, tenant_id=tenant_id, failed=False
+        ),
+        request_db=None,
+    )
     return result
 
 
@@ -360,3 +371,17 @@ def reconcile_config(
     )
     db.commit()
     return report
+
+
+def _record_saved_config_handoff(db: Session, *, config_id: UUID, tenant_id: UUID, failed: bool) -> None:
+    cfg = (
+        db.query(ConnectorConfig)
+        .filter(ConnectorConfig.id == config_id, ConnectorConfig.tenant_id == tenant_id)
+        .first()
+    )
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
+    cfg.last_error = CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR if failed else None
+    if not failed:
+        cfg.last_run_at = _now()
+    db.commit()

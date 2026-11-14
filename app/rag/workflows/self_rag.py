@@ -55,8 +55,8 @@ def run_self_rag_reflection(
         answer=raw_answer,
         evidence_text=evidence_raw,
     )
-    score = faithfulness.get("score")
-    unsupported = list(faithfulness.get("unsupported_claims") or [])
+    score = faithfulness["score"]
+    unsupported = list(faithfulness["unsupported_claims"])
     citation_count = len(citations or [])
 
     answer_cf = raw_answer.casefold()
@@ -92,8 +92,8 @@ def run_self_rag_reflection(
         "is_useful": is_useful,
         "verdict": verdict,
         "faithfulness_score": score,
-        "supported_claims": int(faithfulness.get("supported_claims") or 0),
-        "total_claims": int(faithfulness.get("total_claims") or 0),
+        "supported_claims": faithfulness["supported_claims"],
+        "total_claims": faithfulness["total_claims"],
         "unsupported_claims": unsupported,
         "citation_count": citation_count,
         "reason_codes": reason_codes,

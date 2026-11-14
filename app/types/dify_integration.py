@@ -3,12 +3,12 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.api.schemas.dify import DifyConversationTurnRequest as DifyConversationTurnRequest
-from app.api.schemas.dify import DifyConversationTurnResponse as DifyConversationTurnResponse
-from app.api.schemas.dify import DifyExternalKnowledgeRecord as DifyExternalKnowledgeRecord
-from app.api.schemas.dify import DifyExternalKnowledgeRequest as DifyExternalKnowledgeRequest
-from app.api.schemas.dify import DifyExternalKnowledgeResponse as DifyExternalKnowledgeResponse
-from app.api.schemas.dify import DifyRetrievalSetting as DifyRetrievalSetting
+from app.api.schemas.integrations import DifyConversationTurnRequest as DifyConversationTurnRequest
+from app.api.schemas.integrations import DifyConversationTurnResponse as DifyConversationTurnResponse
+from app.api.schemas.integrations import DifyExternalKnowledgeRecord as DifyExternalKnowledgeRecord
+from app.api.schemas.integrations import DifyExternalKnowledgeRequest as DifyExternalKnowledgeRequest
+from app.api.schemas.integrations import DifyExternalKnowledgeResponse as DifyExternalKnowledgeResponse
+from app.api.schemas.integrations import DifyRetrievalSetting as DifyRetrievalSetting
 
 
 @dataclass(frozen=True)

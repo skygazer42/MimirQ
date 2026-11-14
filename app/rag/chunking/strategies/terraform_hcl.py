@@ -36,7 +36,7 @@ class _Section:
 
 
 _BLOCK_START_RE = re.compile(
-    r"(?m)^\s*(?P<kind>resource|data|module|variable|output|provider|locals|terraform)\b(?P<rest>[^\\n{]*)\{"
+    r"(?m)^\s*(?P<kind>resource|data|module|variable|output|provider|locals|terraform)\b(?P<rest>[^\n{]*)\{"
 )
 _QUOTED_RE = re.compile(r"\"([^\"]{1,120})\"")
 
@@ -60,14 +60,10 @@ def _find_matching_brace(text: str, start: int) -> int | None:
     return None
 
 
-def _parse_labels(kind: str, rest: str) -> list[str]:
-    kind = (kind).strip().lower()
-    rest = rest
+def _parse_labels(rest: str) -> list[str]:
     quoted = [m.group(1) for m in _QUOTED_RE.finditer(rest)]
-    if quoted:
-        return quoted[:3]
     # For locals/terraform blocks without labels.
-    return []
+    return quoted[:3]
 
 
 def _iter_blocks(text: str) -> list[_Block]:
@@ -78,7 +74,7 @@ def _iter_blocks(text: str) -> list[_Block]:
             continue
         kind = (m.group("kind")).strip().lower()
         rest = (m.group("rest")).strip()
-        labels = _parse_labels(kind, rest)
+        labels = _parse_labels(rest)
         blocks.append(_Block(start=m.start(), end=end, kind=kind, labels=labels, index=len(blocks)))
     return blocks
 
@@ -154,7 +150,7 @@ class TerraformHCLChunker(BaseChunker):
 
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 

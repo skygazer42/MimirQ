@@ -201,12 +201,12 @@ def aggregate_feedback_rewards(
 
     variants: dict[str, dict[str, Any]] = {}
     for key, stats in bucket.items():
-        count = max(1.0, stats["count"] or 1.0)
-        rating_count = stats["rating_count"] or 0.0
-        avg_rating = (stats["rating_sum"] or 0.0) / rating_count if rating_count > 0 else None
+        count = stats["count"]
+        rating_count = stats["rating_count"]
+        avg_rating = stats["rating_sum"] / rating_count if rating_count > 0 else None
         variants[key] = {
             "count": int(count),
-            "avg_reward": round((stats["reward_sum"] or 0.0) / count, 4),
+            "avg_reward": round(stats["reward_sum"] / count, 4),
             "avg_rating": (round(avg_rating, 4) if avg_rating is not None else None),
         }
 
@@ -259,12 +259,8 @@ def _pick_highest_reward_variant(
     reward_snapshot: dict[str, Any],
     seed: str,
 ) -> RagConfigTemplate:
-    reward_map = reward_snapshot.get("variants") if isinstance(reward_snapshot.get("variants"), dict) else {}
-    scored: list[tuple[RagConfigTemplate, float]] = []
-    for variant in variants:
-        info = reward_map.get(_variant_key(variant))
-        score = _as_float((info or {}).get("avg_reward")) if isinstance(info, dict) else None
-        scored.append((variant, score or 0.0))
+    reward_map = reward_snapshot["variants"]
+    scored = [(variant, reward_map[_variant_key(variant)]["avg_reward"]) for variant in variants]
 
     max_reward = max(score for _variant, score in scored)
     candidates = [variant for variant, score in scored if abs(score - max_reward) <= 1e-12]

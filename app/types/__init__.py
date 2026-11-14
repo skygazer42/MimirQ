@@ -1,8 +1,8 @@
 """
-Internal type definitions (not API Schema)
+Internal records shared by services, indexing, and document analytics.
 
-- Lightweight types like dataclasses and Enums used by service/orchestration layers
-- Kept separate from app/api/schemas to avoid coupling where importing API schema triggers ORM/Settings initialization
+Import concrete types from their owning modules. API request and response models
+are published by their domain schema packages.
 """
 
 __all__ = []

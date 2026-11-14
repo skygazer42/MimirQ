@@ -25,26 +25,18 @@ class ParagraphDedupResult:
     changed: bool
 
 
-def _normalize_paragraph_signature(text: str) -> str:
-    norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
-    norm = re.sub(r"\s+", " ", norm.strip())
-    return norm.casefold()
-
-
 def _eligible_paragraph_signature(
     paragraph: str,
     *,
     min_chars: int,
     max_chars: int,
 ) -> str | None:
-    raw_paragraph = paragraph
-    if not raw_paragraph.strip():
+    if not paragraph.strip():
         return None
-    if _CODE_FENCE_RE.search(raw_paragraph) or _HEADING_RE.search(raw_paragraph) or _TABLE_ROW_RE.search(raw_paragraph):
+    if _CODE_FENCE_RE.search(paragraph) or _HEADING_RE.search(paragraph) or _TABLE_ROW_RE.search(paragraph):
         return None
-    sig = _normalize_paragraph_signature(raw_paragraph)
-    if not sig:
-        return None
+    # The whole document is normalized before it is split into paragraphs.
+    sig = re.sub(r"\s+", " ", paragraph.strip()).casefold()
     if len(sig) < min_chars:
         return None
     if max_chars and len(sig) > max_chars:
@@ -96,7 +88,7 @@ def drop_duplicate_paragraphs(
     dropped = 0
     kept: list[str] = []
     for p, sig in zip(paragraphs, signatures, strict=False):
-        if sig is not None and counts.get(sig, 0) >= min_occ:
+        if sig is not None and counts[sig] >= min_occ:
             dropped += 1
             continue
         kept.append(p)

@@ -1,15 +1,7 @@
 from typing import Any, Callable, Mapping, Sequence
 
 from app.rag.core.logging import get_logger
-
-
-def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text[: max(1, int(max_len or 1))]
+from app.rag.evaluation.poc_runner.telemetry import _safe_str
 
 
 def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:

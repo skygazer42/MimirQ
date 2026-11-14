@@ -82,7 +82,7 @@ class RetrievalTraceStageInput:
     rewrite_temperature: float | None
     rewrite_max_chars: int | None
     rewrite_elapsed: float
-    rewrite_model_used: Any
+    rewrite_model_used: str | None
     query_expansion_budget_meta: dict[str, Any]
     alias_enabled: bool
     alias_used: bool
@@ -104,37 +104,37 @@ class RetrievalTraceStageInput:
     mq_enabled: bool
     multi_query_used: bool
     multi_query_elapsed: float
-    multi_query_model_used: Any
+    multi_query_model_used: str | None
     multi_query_parse_meta: dict[str, Any]
     multi_query_ab_test_key: str | None
     multi_query_ab_variant: str | None
-    multi_query_ab_seed: int | None
+    multi_query_ab_seed: int | str | None
     multi_query_ab_forced: bool
     step_back_enabled: bool
     step_back_used: bool
     step_back_elapsed: float
-    step_back_model_used: Any
+    step_back_model_used: str | None
     step_back_parse_meta: dict[str, Any]
     hyde_enabled: bool
     hyde_used: bool
     hyde_elapsed: float
-    hyde_model_used: Any
+    hyde_model_used: str | None
     decompose_used: bool
     sub_questions: list[str]
     decompose_elapsed: float
-    decompose_model_used: Any
+    decompose_model_used: str | None
     decompose_parse_meta: dict[str, Any]
     top_k: int
     retriever_update: dict[str, Any]
     retrieval_parallelism: int
-    retrieval_plan: list[tuple[Any, Any, Any]]
+    retrieval_plan: list[tuple[str, str, Any]]
     retrieval_per_query: list[dict[str, Any]]
     retrieval_errors: list[dict[str, Any]]
     retrieval_elapsed: float
     retrieval_degraded: bool
     retrieval_degraded_reason_codes: list[str]
     retrieval_channel_health: dict[str, Any]
-    docs_by_query: Any
+    docs_by_query: list[list[Document]]
     mq_diversify_enabled: bool
     mq_diversify_budget: int
     mq_diversify_used: bool
@@ -208,7 +208,7 @@ class RetrievalTraceStageOutput:
     retrieval_trace: dict[str, Any]
 
 
-def _retrieval_variant_counts(retrieval_plan: list[tuple[Any, Any, Any]]) -> dict[str, int]:
+def _retrieval_variant_counts(retrieval_plan: list[tuple[str, str, Any]]) -> dict[str, int]:
     variants: dict[str, int] = {}
     for kind, _q, _r in retrieval_plan:
         key = kind.strip()
@@ -387,13 +387,13 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             "alias": {
                 "enabled": bool(payload.alias_enabled),
                 "used": bool(payload.alias_used),
-                "count": int(len(payload.alias_queries)),
+                "count": len(payload.alias_queries),
                 "elapsed_sec": round(float(payload.alias_elapsed or 0.0), 3),
             },
             "dict": {
                 "enabled": bool(payload.dict_meta.get("enabled")),
                 "used": bool(payload.dict_used),
-                "count": int(len(payload.dict_expansions)),
+                "count": len(payload.dict_expansions),
                 "elapsed_sec": round(float(payload.dict_elapsed or 0.0), 3),
             },
             "kg_query": {
@@ -401,23 +401,23 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
                 "used": bool(payload.kg_query_expansion_used),
                 "entities_total": int(payload.kg_query_expansion_entities_total),
                 "entities_selected": int(payload.kg_query_expansion_entities_selected),
-                "query_count": int(len(payload.kg_query_expansion_queries)),
+                "query_count": len(payload.kg_query_expansion_queries),
                 "elapsed_sec": round(float(payload.kg_query_expansion_elapsed or 0.0), 3),
                 "error": payload.kg_query_expansion_error,
             },
             "clause_fastlane": {
                 "used": bool(payload.clause_fastlane_queries),
-                "count": int(len(payload.clause_fastlane_queries)),
+                "count": len(payload.clause_fastlane_queries),
             },
             "lightweight_subquery": {
                 "enabled": bool(settings.RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED),
                 "used": bool(payload.lightweight_subqueries),
-                "count": int(len(payload.lightweight_subqueries)),
+                "count": len(payload.lightweight_subqueries),
             },
             "multi_query": {
                 "enabled": bool(payload.mq_enabled),
                 "used": bool(payload.multi_query_used),
-                "count": int(len(payload.multi_queries)),
+                "count": len(payload.multi_queries),
                 "elapsed_sec": round(float(payload.multi_query_elapsed or 0.0), 3),
                 "model_used": payload.multi_query_model_used,
                 "parse_ok": bool(payload.multi_query_parse_meta.get("ok")),
@@ -446,7 +446,7 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             "decompose": {
                 "enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
                 "used": bool(payload.decompose_used),
-                "count": int(len(payload.sub_questions)),
+                "count": len(payload.sub_questions),
                 "elapsed_sec": round(float(payload.decompose_elapsed or 0.0), 3),
                 "model_used": payload.decompose_model_used,
                 "parse_ok": bool(payload.decompose_parse_meta.get("ok")),
@@ -474,7 +474,7 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             ),
             "rrf_k": int(settings.RETRIEVAL_RRF_K),
             "query_parallelism": int(payload.retrieval_parallelism),
-            "query_count": int(len(payload.retrieval_plan)),
+            "query_count": len(payload.retrieval_plan),
             "query_variants": variants,
             "per_query": per_query_trace[:8],
             "errors": payload.retrieval_errors[:5],
@@ -545,7 +545,7 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
         },
         "fallback_reason": payload.retrieval_fallback_reason,
         "citations": {
-            "count": int(len(payload.citations)),
+            "count": len(payload.citations),
             "by_role": citations_by_role,
             "chunk_quality": chunk_quality_summary,
         },

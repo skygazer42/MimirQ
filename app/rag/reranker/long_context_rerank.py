@@ -37,11 +37,11 @@ def rerank_long_context_candidates(
 def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dict[str, float]:
     query_tokens = [str(tok).strip() for tok in tokenize_lexical_text(query) if str(tok).strip()]
     if not query_tokens:
-        return {str(doc.id): 0.0 for doc in (docs or [])}
+        return {str(doc.id): 0.0 for doc in docs}
 
     doc_tokens: dict[str, set[str]] = {}
     df: dict[str, int] = dict.fromkeys(query_tokens, 0)
-    for doc in docs or []:
+    for doc in docs:
         tokens = set(tokenize_lexical_text(doc.text))
         doc_tokens[str(doc.id)] = tokens
         for token in query_tokens:
@@ -49,9 +49,9 @@ def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dic
                 df[token] += 1
 
     out: dict[str, float] = {}
-    for idx, doc in enumerate(docs or []):
+    for idx, doc in enumerate(docs):
         doc_id = str(doc.id)
-        overlap = set(query_tokens) & doc_tokens.get(doc_id, set())
+        overlap = set(query_tokens) & doc_tokens[doc_id]
         if not overlap:
             out[doc_id] = 0.0
             continue

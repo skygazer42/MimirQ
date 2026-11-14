@@ -201,10 +201,12 @@ def verify_evidence_capsule_signature(
     sec = str(secret or "").strip() or _signing_secret_from_settings()
     if not sec:
         return False, "signature_secret_missing"
+    if len(value) != 48:
+        return False, "signature_mismatch"
 
     payload = dict(capsule or {})
     payload.pop("signature", None)
-    expected = stable_json_hmac(payload, secret=sec, length=len(value))
+    expected = stable_json_hmac(payload, secret=sec, length=48)
     if expected != value:
         return False, "signature_mismatch"
     return True, "ok"

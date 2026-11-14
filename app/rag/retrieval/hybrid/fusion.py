@@ -473,7 +473,7 @@ class FusionMixin:
         index = 0
         while remaining > 0 and active_channels:
             channel = active_channels[index % len(active_channels)]
-            budgets[channel] = int(budgets.get(channel, 0) or 0) + 1
+            budgets[channel] += 1
             remaining -= 1
             index += 1
         return budgets
@@ -547,10 +547,7 @@ class FusionMixin:
             used.add(key)
             selected_keys.append(key)
             picked += 1
-            try:
-                picked_by_channel[channel] = int(picked_by_channel.get(channel, 0) or 0) + 1
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            picked_by_channel[channel] += 1
 
     def _fill_budgeted_prefix(
         self,
@@ -573,10 +570,7 @@ class FusionMixin:
                 continue
             used.add(key)
             selected_keys.append(key)
-            try:
-                picked_by_channel["fill"] = int(picked_by_channel.get("fill", 0) or 0) + 1
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            picked_by_channel["fill"] += 1
 
     def _record_budgeted_rrf_metrics(
         self,
@@ -964,7 +958,7 @@ class FusionMixin:
         if not selected:
             return 0.0
         similarities = [self._mmr_doc_similarity(tokens_map, doc, selected_doc) for selected_doc in selected]
-        return max(similarities) if similarities else 0.0
+        return max(similarities)
 
     def _best_mmr_candidate(
         self,

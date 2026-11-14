@@ -67,7 +67,7 @@ def _percentile(values: Sequence[float], pct: float) -> float | None:
     if not vals:
         return None
     # Nearest-rank percentile (1-indexed).
-    k = int(math.ceil((pct / 100.0) * len(vals))) - 1
+    k = math.ceil((pct / 100.0) * len(vals)) - 1
     k = max(0, min(k, len(vals) - 1))
     return vals[k]
 
@@ -162,14 +162,6 @@ class CoverageBucket:
     references: int
 
 
-@dataclass(frozen=True, slots=True)
-class CoverageHeatmap:
-    x: list[str]
-    y: list[str]
-    z: list[list[int]]
-    metric: str
-
-
 def _top_n_buckets(
     buckets: dict[str, tuple[set[str], int]],
     *,
@@ -212,7 +204,7 @@ def _coverage_dimensions(
     *,
     documents: dict[UUID, dict[str, Any]],
     document_id: UUID,
-    chunk_id: str,
+    chunk_id: str | None,
     hit_by_chunk: dict[str, str],
 ) -> tuple[str, str, str, str]:
     document = documents.get(document_id) or {}
@@ -358,8 +350,8 @@ def compute_suite_coverage(
     h_n = max(2, min(20, int(heatmap_top_n or 0))) if heatmap_top_n else 8
     langs = sorted(lang_refs.items(), key=lambda x: (-x[1], str(x[0])))[:h_n]
     fts = sorted(ft_refs.items(), key=lambda x: (-x[1], str(x[0])))[:h_n]
-    y = [k for k, _v in langs] or []
-    x = [k for k, _v in fts] or []
+    y = [k for k, _v in langs]
+    x = [k for k, _v in fts]
     z: list[list[int]] = []
     for ly in y:
         row: list[int] = []

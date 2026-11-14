@@ -18,11 +18,11 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.settings import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.system import (
     SYSTEM_DIFY_ACCOUNT_ID,
     CacheConfig,
     ChatConfig,
@@ -45,36 +45,35 @@ from app.api.schemas.settings import (
     PaddleVLConfig,
     RAGConfig,
     SafetyConfig,
+    SettingsConnectionStatus,
+    SettingsModelStatus,
+    SettingsParserStatus,
     SystemSettings,
+    SystemStatusResponse,
     TestLLMRequest,
+    TestLLMResponse,
     TextInConfig,
     UpdateSettingsRequest,
+    UpdateSettingsResponse,
     UrlIngestStatus,
     normalize_mineru_backend,
 )
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.api.utils.url_ingest import (
-    _URL_HOST_RESOLUTION_FAILED_DETAIL,
-    _build_pinned_http_clients,
-    _validated_fetch_target,
-    _ValidatedFetchTarget,
+    ValidatedFetchTarget,
+    build_pinned_http_clients,
+    validate_fetch_target,
 )
-from app.core.config import (
+from app.core.config import settings
+from app.core.config_validation import (
     normalize_object_storage_provider_name,
     parse_object_storage_region_profiles,
-    settings,
 )
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.services.navigation_visibility import normalize_navigation_modules
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
@@ -132,35 +131,32 @@ def _env_file_lock() -> Iterator[None]:
     - POSIX: additionally uses `fcntl.flock` on a sibling lockfile.
     """
     with _ENV_UPDATE_LOCK:
-        fcntl = None
-        if os.name == "posix":
-            with contextlib.suppress(Exception):
-                import fcntl as _fcntl  # noqa: WPS433
-
-                fcntl = _fcntl
-
-        if fcntl is None:
+        if os.name != "posix":
+            yield
+            return
+        try:
+            import fcntl
+        except Exception:  # The cross-process lock remains best-effort.
             yield
             return
 
         lock_path = ENV_FILE.with_name(f"{ENV_FILE.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(lock_path, "a", encoding="utf-8") as lockf:
-            fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+        with lock_path.open("a", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
                 yield
             finally:
                 with contextlib.suppress(Exception):
-                    fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _sanitize_env_value(key: str, value: str) -> str:
-    text = value
-    if "\x00" in text or "\n" in text or "\r" in text:
+    if "\x00" in value or "\n" in value or "\r" in value:
         raise HTTPException(status_code=400, detail=f"Invalid value for {key}")
-    if len(text) > 10_000:
+    if len(value) > 10_000:
         raise HTTPException(status_code=400, detail=f"Value too long for {key}")
-    return text.strip()
+    return value.strip()
 
 
 def _convert_service_url_to_health_url(api_url: str) -> str:
@@ -175,10 +171,10 @@ def _convert_service_url_to_health_url(api_url: str) -> str:
 
     try:
         parsed = urlparse(raw)
-    except Exception:
+    except ValueError:
         return ""
 
-    path = (parsed.path).strip()
+    path = parsed.path.strip()
     if path.endswith("/v1/convert/file"):
         path = path[: -len("/v1/convert/file")] + "/health"
     elif path.endswith("/v1/convert/source"):
@@ -209,7 +205,7 @@ async def _probe_http_json(
         return None, "empty url"
 
     try:
-        async with httpx.AsyncClient(timeout=timeout_sec or 0.6, trust_env=trust_env) as client:
+        async with httpx.AsyncClient(timeout=timeout_sec, trust_env=trust_env) as client:
             resp = await client.get(url, headers=headers)
     except Exception as exc:  # noqa: BLE001
         return None, f"request_failed: {str(exc)[:160]}"
@@ -219,7 +215,7 @@ async def _probe_http_json(
 
     try:
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, RecursionError) as exc:
         return None, f"invalid_json: {str(exc)[:120]}"
 
     if not isinstance(data, dict):
@@ -251,25 +247,19 @@ def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> 
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage system settings",
     )
-    if (member.role).strip().lower() != "owner":
+    if member.role.strip().lower() != "owner":
         raise HTTPException(status_code=403, detail="No permission to manage system settings")
 
 
-async def _validate_public_base_url(base_url: str) -> _ValidatedFetchTarget:
+async def _validate_public_base_url(base_url: str) -> ValidatedFetchTarget:
     try:
-        return await _validated_fetch_target(base_url, enforce_allowlists=False)
+        return await validate_fetch_target(base_url, enforce_allowlists=False)
     except HTTPException as exc:
         detail = exc.detail
-        if detail in {"url is required", "url hostname is required"}:
-            detail = "api_base must include host"
-        elif detail == "url scheme must be http or https":
-            detail = "api_base must be http(s) URL"
+        if detail == "Invalid URL":
+            detail = "api_base must be a valid HTTP(S) URL"
         elif detail == "url credentials are not allowed":
             detail = "api_base must not include userinfo"
-        elif detail == "url port is not allowed":
-            detail = "api_base port is not allowed"
-        elif detail == _URL_HOST_RESOLUTION_FAILED_DETAIL:
-            detail = "failed to resolve api_base host"
         else:
             detail = "api_base host not allowed"
         raise HTTPException(status_code=400, detail=detail) from exc
@@ -426,7 +416,7 @@ def _apply_storage_runtime_settings(env_vars: dict[str, str], updated_keys: set[
             from app.storage.object.minio import minio_service
 
             minio_service.reset_runtime_state()
-        from app.api.v1.health import invalidate_ready_cache
+        from app.services.health_readiness import invalidate_ready_cache
 
         invalidate_ready_cache()
 
@@ -649,14 +639,6 @@ def _apply_chat_runtime_settings(env_vars: dict[str, str], updated_keys: set[str
     )
 
 
-def _apply_langgraph_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
-    _apply_runtime_specs(env_vars, updated_keys, (("LANGGRAPH_USE_SUBGRAPHS", _parse_bool),))
-
-
-def _apply_navigation_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
-    _apply_runtime_specs(env_vars, updated_keys, (("NAVIGATION_USER_VISIBLE_MODULES", str),))
-
-
 def _apply_dify_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
     _apply_runtime_specs(
         env_vars,
@@ -699,8 +681,11 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
     _apply_observability_runtime_settings(env_vars, updated_key_set)
     _apply_safety_runtime_settings(env_vars, updated_key_set)
     _apply_chat_runtime_settings(env_vars, updated_key_set)
-    _apply_langgraph_runtime_settings(env_vars, updated_key_set)
-    _apply_navigation_runtime_settings(env_vars, updated_key_set)
+    _apply_runtime_specs(
+        env_vars,
+        updated_key_set,
+        (("LANGGRAPH_USE_SUBGRAPHS", _parse_bool), ("NAVIGATION_USER_VISIBLE_MODULES", str)),
+    )
     _apply_dify_runtime_settings(env_vars, updated_key_set)
 
 
@@ -708,8 +693,8 @@ def read_env_file() -> dict[str, str]:
     """Read .env file."""
     env_vars = {}
     if ENV_FILE.exists():
-        with open(ENV_FILE, "r", encoding="utf-8") as f:
-            for line in f:
+        with ENV_FILE.open(encoding="utf-8") as stream:
+            for line in stream:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, _, value = line.partition("=")
@@ -724,13 +709,13 @@ def write_env_file(env_vars: dict[str, str]) -> None:
 
     # Read existing file and preserve comments.
     if ENV_FILE.exists():
-        with open(ENV_FILE, "r", encoding="utf-8") as f:
-            for line in f:
+        with ENV_FILE.open(encoding="utf-8") as stream:
+            for line in stream:
                 stripped = line.strip()
                 if stripped.startswith("#") or not stripped:
                     lines.append(line.rstrip("\n"))
                 elif "=" in stripped:
-                    key = stripped.split("=")[0].strip()
+                    key = stripped.partition("=")[0].strip()
                     existing_keys.add(key)
                     if key in env_vars:
                         lines.append(f"{key}={env_vars[key]}")
@@ -756,11 +741,11 @@ def write_env_file(env_vars: dict[str, str]) -> None:
             prefix=f"{ENV_FILE.name}.",
             suffix=".tmp",
             delete=False,
-        ) as tf:
-            tmp_path = Path(tf.name)
-            tf.write(content)
-            tf.flush()
-            os.fsync(tf.fileno())
+        ) as temp_file:
+            tmp_path = Path(temp_file.name)
+            temp_file.write(content)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
 
         if ENV_FILE.exists():
             with contextlib.suppress(Exception):
@@ -780,7 +765,7 @@ def mask_secret(value: str) -> str:
     return value[:4] + "***" + value[-4:]
 
 
-@router.get("", response_model=SystemSettings, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("", response_model=SystemSettings)
 def get_settings(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -877,7 +862,7 @@ def get_settings(
             api_token=mask_secret(settings.MINERU_API_TOKEN),
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
-            backend=normalize_mineru_backend(settings.MINERU_BACKEND),
+            backend=settings.MINERU_BACKEND,
             local_server_url=settings.MINERU_LOCAL_SERVER_URL,
             vl_server=settings.MINERU_VL_SERVER,
         ),
@@ -963,12 +948,18 @@ def get_settings(
             enabled=settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED,
             api_keys=mask_secret(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS),
             tenant_id=settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID,
-            account_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or SYSTEM_DIFY_ACCOUNT_ID),
+            account_id=settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or SYSTEM_DIFY_ACCOUNT_ID,
             knowledge_map_json=settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON,
             top_k_max=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX,
             endpoint_path="/api/v1/integrations/dify/retrieval",
         ),
     )
+
+
+def _record_env_updates(env_vars: dict[str, str], updated_keys: list[str], values: dict[str, str]) -> None:
+    """Keep each persisted value and its reported key in the same mapping."""
+    env_vars.update(values)
+    updated_keys.extend(values)
 
 
 def _set_bool_env(env_vars: dict[str, str], key: str, value: bool) -> None:
@@ -990,7 +981,7 @@ def _set_maskable_secret_env(env_vars: dict[str, str], updated_keys: list[str], 
 
 
 def _normalize_choice(value: str, *, default: str, allowed: set[str]) -> str:
-    normalized = (value or default).strip().lower() or default
+    normalized = value.strip().lower()
     if normalized not in allowed:
         return default
     return normalized
@@ -1045,25 +1036,25 @@ def _update_feature_flag_env(env_vars: dict[str, str], updated_keys: list[str], 
 
 
 def _update_kg_env(env_vars: dict[str, str], updated_keys: list[str], kg: KGConfig) -> None:
-    _set_bool_env(env_vars, "KG_CHAT_ENABLED", kg.chat_enabled)
-    env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"] = _validate_optional_uuid_setting(
-        "KG_EXTRACT_PROMPT_TEMPLATE_ID",
-        kg.extract_prompt_template_id,
-        detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID",
-    )
-    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key)
-    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key)
-    _set_bool_env(env_vars, "KG_EXTRACT_REPLACE_EXISTING", kg.extract_replace_existing)
-    _set_bool_env(env_vars, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", kg.extract_prune_orphan_entities)
-    updated_keys.extend(
-        [
-            "KG_CHAT_ENABLED",
-            "KG_EXTRACT_PROMPT_TEMPLATE_ID",
-            "KG_EXTRACT_PROMPT_TEMPLATE_KEY",
-            "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY",
-            "KG_EXTRACT_REPLACE_EXISTING",
-            "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES",
-        ]
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "KG_CHAT_ENABLED": str(kg.chat_enabled).lower(),
+            "KG_EXTRACT_PROMPT_TEMPLATE_ID": _validate_optional_uuid_setting(
+                "KG_EXTRACT_PROMPT_TEMPLATE_ID",
+                kg.extract_prompt_template_id,
+                detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID",
+            ),
+            "KG_EXTRACT_PROMPT_TEMPLATE_KEY": _sanitize_env_value(
+                "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key
+            ),
+            "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY": _sanitize_env_value(
+                "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key
+            ),
+            "KG_EXTRACT_REPLACE_EXISTING": str(kg.extract_replace_existing).lower(),
+            "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES": str(kg.extract_prune_orphan_entities).lower(),
+        },
     )
 
 
@@ -1116,71 +1107,51 @@ def _update_minio_env(env_vars: dict[str, str], updated_keys: list[str], minio: 
 
 
 def _update_rag_env(env_vars: dict[str, str], updated_keys: list[str], rag: RAGConfig) -> None:
-    env_vars["CHUNK_SIZE"] = str(rag.chunk_size)
-    env_vars["CHUNK_OVERLAP"] = str(rag.chunk_overlap)
-    _set_non_negative_int_env(env_vars, "CHUNK_MIN_CHARS", rag.chunk_min_chars)
-    env_vars["RETRIEVAL_TOP_K"] = str(rag.retrieval_top_k)
-    env_vars["SIMILARITY_THRESHOLD"] = str(rag.similarity_threshold)
-    _set_sanitized_env(env_vars, "DEFAULT_PARSER_BACKEND", rag.default_parser_backend)
-    _set_sanitized_env(env_vars, "DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
-    _set_bool_env(env_vars, "BM25_INDEX_ENABLED", rag.bm25_index_enabled)
-    _set_bool_env(env_vars, "ENABLE_RERANKER", rag.enable_reranker)
-    _set_sanitized_env(env_vars, "RERANKER_PROVIDER", rag.reranker_provider)
-    env_vars["RERANKER_TOP_N"] = str(rag.reranker_top_n)
-    _set_bool_env(env_vars, "SHOW_IMAGE_IN_ANSWER", rag.show_image_in_answer)
-    env_vars["IMAGE_APPEND_MAX"] = str(rag.image_append_max)
-    updated_keys.extend(
-        [
-            "CHUNK_SIZE",
-            "CHUNK_OVERLAP",
-            "CHUNK_MIN_CHARS",
-            "RETRIEVAL_TOP_K",
-            "SIMILARITY_THRESHOLD",
-            "DEFAULT_PARSER_BACKEND",
-            "DEFAULT_CHUNK_STRATEGY",
-            "BM25_INDEX_ENABLED",
-            "ENABLE_RERANKER",
-            "RERANKER_PROVIDER",
-            "RERANKER_TOP_N",
-            "SHOW_IMAGE_IN_ANSWER",
-            "IMAGE_APPEND_MAX",
-        ]
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "CHUNK_SIZE": str(rag.chunk_size),
+            "CHUNK_OVERLAP": str(rag.chunk_overlap),
+            "CHUNK_MIN_CHARS": str(max(0, rag.chunk_min_chars)),
+            "RETRIEVAL_TOP_K": str(rag.retrieval_top_k),
+            "SIMILARITY_THRESHOLD": str(rag.similarity_threshold),
+            "DEFAULT_PARSER_BACKEND": _sanitize_env_value("DEFAULT_PARSER_BACKEND", rag.default_parser_backend),
+            "DEFAULT_CHUNK_STRATEGY": _sanitize_env_value("DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy),
+            "BM25_INDEX_ENABLED": str(rag.bm25_index_enabled).lower(),
+            "ENABLE_RERANKER": str(rag.enable_reranker).lower(),
+            "RERANKER_PROVIDER": _sanitize_env_value("RERANKER_PROVIDER", rag.reranker_provider),
+            "RERANKER_TOP_N": str(rag.reranker_top_n),
+            "SHOW_IMAGE_IN_ANSWER": str(rag.show_image_in_answer).lower(),
+            "IMAGE_APPEND_MAX": str(rag.image_append_max),
+        },
     )
 
 
 def _update_cache_env(env_vars: dict[str, str], updated_keys: list[str], cache: CacheConfig) -> None:
-    _set_bool_env(env_vars, "UPLOAD_DEDUP_ENABLED", cache.upload_dedup_enabled)
-    _set_bool_env(env_vars, "CHAT_RESPONSE_CACHE_ENABLED", cache.chat_response_cache_enabled)
-    env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"] = str(cache.chat_response_cache_ttl_sec)
-    env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"] = str(cache.chat_response_cache_max_value_bytes)
-    _set_bool_env(
+    _record_env_updates(
         env_vars,
-        "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
-        cache.chat_response_cache_require_empty_history,
-    )
-    updated_keys.extend(
-        [
-            "UPLOAD_DEDUP_ENABLED",
-            "CHAT_RESPONSE_CACHE_ENABLED",
-            "CHAT_RESPONSE_CACHE_TTL_SEC",
-            "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
-            "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
-        ]
+        updated_keys,
+        {
+            "UPLOAD_DEDUP_ENABLED": str(cache.upload_dedup_enabled).lower(),
+            "CHAT_RESPONSE_CACHE_ENABLED": str(cache.chat_response_cache_enabled).lower(),
+            "CHAT_RESPONSE_CACHE_TTL_SEC": str(cache.chat_response_cache_ttl_sec),
+            "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES": str(cache.chat_response_cache_max_value_bytes),
+            "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY": str(cache.chat_response_cache_require_empty_history).lower(),
+        },
     )
 
 
 def _update_governance_env(env_vars: dict[str, str], updated_keys: list[str], governance: GovernanceConfig) -> None:
-    _set_bool_env(env_vars, "GOVERNANCE_ENABLED", governance.enabled)
-    _set_bool_env(env_vars, "GOVERNANCE_PII_ANONYMIZE", governance.pii_anonymize)
-    _set_bool_env(env_vars, "GOVERNANCE_SECRETS_REDACT", governance.secrets_redact)
-    _set_bool_env(env_vars, "GOVERNANCE_QUARANTINE_ON_DROP", governance.quarantine_on_drop)
-    updated_keys.extend(
-        [
-            "GOVERNANCE_ENABLED",
-            "GOVERNANCE_PII_ANONYMIZE",
-            "GOVERNANCE_SECRETS_REDACT",
-            "GOVERNANCE_QUARANTINE_ON_DROP",
-        ]
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "GOVERNANCE_ENABLED": str(governance.enabled).lower(),
+            "GOVERNANCE_PII_ANONYMIZE": str(governance.pii_anonymize).lower(),
+            "GOVERNANCE_SECRETS_REDACT": str(governance.secrets_redact).lower(),
+            "GOVERNANCE_QUARANTINE_ON_DROP": str(governance.quarantine_on_drop).lower(),
+        },
     )
 
 
@@ -1203,33 +1174,33 @@ def _update_mineru_env(env_vars: dict[str, str], updated_keys: list[str], mineru
 
 
 def _update_etl4llm_env(env_vars: dict[str, str], updated_keys: list[str], etl4llm: Etl4LlmConfig) -> None:
-    _set_sanitized_env(env_vars, "ETL4LLM_API_URL", etl4llm.api_url)
-    env_vars["ETL4LLM_TIMEOUT_SEC"] = str(etl4llm.timeout_sec)
-    env_vars["ETL4LLM_MODE"] = _sanitize_env_value(
-        "ETL4LLM_MODE",
-        _normalize_choice(etl4llm.mode or "partition", default="partition", allowed={"partition", "text"}),
-    )
-    _set_bool_env(env_vars, "ETL4LLM_FORCE_OCR", etl4llm.force_ocr)
-    _set_bool_env(env_vars, "ETL4LLM_ENABLE_FORMULA", etl4llm.enable_formula)
-    _set_bool_env(env_vars, "ETL4LLM_EXTRACT_IMAGES", etl4llm.extract_images)
-    _set_bool_env(env_vars, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", etl4llm.filter_page_header_footer)
-    updated_keys.extend(
-        [
-            "ETL4LLM_API_URL",
-            "ETL4LLM_TIMEOUT_SEC",
-            "ETL4LLM_MODE",
-            "ETL4LLM_FORCE_OCR",
-            "ETL4LLM_ENABLE_FORMULA",
-            "ETL4LLM_EXTRACT_IMAGES",
-            "ETL4LLM_FILTER_PAGE_HEADER_FOOTER",
-        ]
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "ETL4LLM_API_URL": _sanitize_env_value("ETL4LLM_API_URL", etl4llm.api_url),
+            "ETL4LLM_TIMEOUT_SEC": str(etl4llm.timeout_sec),
+            "ETL4LLM_MODE": _sanitize_env_value(
+                "ETL4LLM_MODE",
+                _normalize_choice(etl4llm.mode, default="partition", allowed={"partition", "text"}),
+            ),
+            "ETL4LLM_FORCE_OCR": str(etl4llm.force_ocr).lower(),
+            "ETL4LLM_ENABLE_FORMULA": str(etl4llm.enable_formula).lower(),
+            "ETL4LLM_EXTRACT_IMAGES": str(etl4llm.extract_images).lower(),
+            "ETL4LLM_FILTER_PAGE_HEADER_FOOTER": str(etl4llm.filter_page_header_footer).lower(),
+        },
     )
 
 
 def _update_marker_env(env_vars: dict[str, str], updated_keys: list[str], marker: MarkerConfig) -> None:
-    _set_sanitized_env(env_vars, "MARKER_API_URL", marker.api_url)
-    env_vars["MARKER_TIMEOUT_SEC"] = str(marker.timeout_sec)
-    updated_keys.extend(["MARKER_API_URL", "MARKER_TIMEOUT_SEC"])
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "MARKER_API_URL": _sanitize_env_value("MARKER_API_URL", marker.api_url),
+            "MARKER_TIMEOUT_SEC": str(marker.timeout_sec),
+        },
+    )
 
 
 def _update_docling_env(env_vars: dict[str, str], updated_keys: list[str], docling: DoclingConfig) -> None:
@@ -1253,11 +1224,11 @@ def _update_docling_env(env_vars: dict[str, str], updated_keys: list[str], docli
 def _update_paddle_vl_env(env_vars: dict[str, str], updated_keys: list[str], paddle_vl: PaddleVLConfig) -> None:
     _set_sanitized_env(env_vars, "PADDLE_VL_API_URL", paddle_vl.api_url)
     env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(paddle_vl.timeout_sec)
-    pipeline_version = (paddle_vl.pipeline_version or "v1.5").strip() or "v1.5"
+    pipeline_version = paddle_vl.pipeline_version.strip() or "v1.5"
     env_vars["PADDLE_VL_PIPELINE_VERSION"] = _sanitize_env_value("PADDLE_VL_PIPELINE_VERSION", pipeline_version)
     env_vars["PADDLE_VL_MODE"] = _sanitize_env_value(
         "PADDLE_VL_MODE",
-        _normalize_choice(paddle_vl.mode or "doc_parser", default="doc_parser", allowed={"doc_parser"}),
+        _normalize_choice(paddle_vl.mode, default="doc_parser", allowed={"doc_parser"}),
     )
     updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC", "PADDLE_VL_PIPELINE_VERSION", "PADDLE_VL_MODE"])
 
@@ -1269,17 +1240,15 @@ def _update_textin_env(env_vars: dict[str, str], updated_keys: list[str], textin
     env_vars["TEXTIN_TIMEOUT_SEC"] = str(textin.timeout_sec)
     env_vars["TEXTIN_PARSE_MODE"] = _sanitize_env_value(
         "TEXTIN_PARSE_MODE",
-        _normalize_choice(
-            textin.parse_mode or "auto", default="auto", allowed={"auto", "scan", "parse", "lite", "vlm"}
-        ),
+        _normalize_choice(textin.parse_mode, default="auto", allowed={"auto", "scan", "parse", "lite", "vlm"}),
     )
     env_vars["TEXTIN_TABLE_FLAVOR"] = _sanitize_env_value(
         "TEXTIN_TABLE_FLAVOR",
-        _normalize_choice(textin.table_flavor or "html", default="html", allowed={"html", "markdown"}),
+        _normalize_choice(textin.table_flavor, default="html", allowed={"html", "markdown"}),
     )
     env_vars["TEXTIN_GET_IMAGE"] = _sanitize_env_value(
         "TEXTIN_GET_IMAGE",
-        _normalize_choice(textin.get_image or "none", default="none", allowed={"none", "objects", "pages", "both"}),
+        _normalize_choice(textin.get_image, default="none", allowed={"none", "objects", "pages", "both"}),
     )
     _set_bool_env(env_vars, "TEXTIN_APPLY_DOCUMENT_TREE", textin.apply_document_tree)
     _set_bool_env(env_vars, "TEXTIN_MARKDOWN_DETAILS", textin.markdown_details)
@@ -1302,31 +1271,22 @@ def _update_textin_env(env_vars: dict[str, str], updated_keys: list[str], textin
 
 
 def _update_magicpdf_env(env_vars: dict[str, str], updated_keys: list[str], magicpdf: MagicPDFConfig) -> None:
-    _set_sanitized_env(env_vars, "MAGIC_PDF_API_URL", magicpdf.api_url)
-    env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"] = str(max(1, magicpdf.request_timeout_sec))
-    env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"] = str(max(1, magicpdf.max_concurrent_jobs or 1))
-    _set_sanitized_env(env_vars, "MAGIC_PDF_CLI", magicpdf.cli)
-    _set_sanitized_env(env_vars, "MAGIC_PDF_METHOD", magicpdf.method)
-    _set_sanitized_env(env_vars, "MAGIC_PDF_LANG", magicpdf.lang)
-    _set_bool_env(env_vars, "MAGIC_PDF_DEBUG", magicpdf.debug)
-    env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(magicpdf.timeout_sec)
-    _set_sanitized_env(env_vars, "MAGIC_PDF_MODELS_DIR", magicpdf.models_dir)
-    _set_sanitized_env(env_vars, "MAGIC_PDF_DEVICE_MODE", magicpdf.device_mode)
-    _set_bool_env(env_vars, "MAGIC_PDF_KEEP_ARTIFACTS", magicpdf.keep_artifacts)
-    updated_keys.extend(
-        [
-            "MAGIC_PDF_API_URL",
-            "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
-            "MAGIC_PDF_MAX_CONCURRENT_JOBS",
-            "MAGIC_PDF_CLI",
-            "MAGIC_PDF_METHOD",
-            "MAGIC_PDF_LANG",
-            "MAGIC_PDF_DEBUG",
-            "MAGIC_PDF_TIMEOUT_SEC",
-            "MAGIC_PDF_MODELS_DIR",
-            "MAGIC_PDF_DEVICE_MODE",
-            "MAGIC_PDF_KEEP_ARTIFACTS",
-        ]
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "MAGIC_PDF_API_URL": _sanitize_env_value("MAGIC_PDF_API_URL", magicpdf.api_url),
+            "MAGIC_PDF_REQUEST_TIMEOUT_SEC": str(max(1, magicpdf.request_timeout_sec)),
+            "MAGIC_PDF_MAX_CONCURRENT_JOBS": str(max(1, magicpdf.max_concurrent_jobs)),
+            "MAGIC_PDF_CLI": _sanitize_env_value("MAGIC_PDF_CLI", magicpdf.cli),
+            "MAGIC_PDF_METHOD": _sanitize_env_value("MAGIC_PDF_METHOD", magicpdf.method),
+            "MAGIC_PDF_LANG": _sanitize_env_value("MAGIC_PDF_LANG", magicpdf.lang),
+            "MAGIC_PDF_DEBUG": str(magicpdf.debug).lower(),
+            "MAGIC_PDF_TIMEOUT_SEC": str(magicpdf.timeout_sec),
+            "MAGIC_PDF_MODELS_DIR": _sanitize_env_value("MAGIC_PDF_MODELS_DIR", magicpdf.models_dir),
+            "MAGIC_PDF_DEVICE_MODE": _sanitize_env_value("MAGIC_PDF_DEVICE_MODE", magicpdf.device_mode),
+            "MAGIC_PDF_KEEP_ARTIFACTS": str(magicpdf.keep_artifacts).lower(),
+        },
     )
 
 
@@ -1335,21 +1295,17 @@ def _update_observability_env(
     updated_keys: list[str],
     observability: ObservabilityConfig,
 ) -> None:
-    _set_bool_env(env_vars, "TOOL_CALL_LOG_ENABLED", observability.tool_call_log_enabled)
-    _set_bool_env(env_vars, "TOOL_CALL_LOG_INCLUDE_PREVIEW", observability.tool_call_log_include_preview)
-    env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"] = str(observability.tool_call_log_max_preview_chars)
-    _set_bool_env(env_vars, "AGENT_LOG_ENABLED", observability.agent_log_enabled)
-    _set_bool_env(env_vars, "AGENT_LOG_INCLUDE_EXECUTION_PATH", observability.agent_log_include_execution_path)
-    env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"] = str(observability.agent_log_max_preview_chars)
-    updated_keys.extend(
-        [
-            "TOOL_CALL_LOG_ENABLED",
-            "TOOL_CALL_LOG_INCLUDE_PREVIEW",
-            "TOOL_CALL_LOG_MAX_PREVIEW_CHARS",
-            "AGENT_LOG_ENABLED",
-            "AGENT_LOG_INCLUDE_EXECUTION_PATH",
-            "AGENT_LOG_MAX_PREVIEW_CHARS",
-        ]
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "TOOL_CALL_LOG_ENABLED": str(observability.tool_call_log_enabled).lower(),
+            "TOOL_CALL_LOG_INCLUDE_PREVIEW": str(observability.tool_call_log_include_preview).lower(),
+            "TOOL_CALL_LOG_MAX_PREVIEW_CHARS": str(observability.tool_call_log_max_preview_chars),
+            "AGENT_LOG_ENABLED": str(observability.agent_log_enabled).lower(),
+            "AGENT_LOG_INCLUDE_EXECUTION_PATH": str(observability.agent_log_include_execution_path).lower(),
+            "AGENT_LOG_MAX_PREVIEW_CHARS": str(observability.agent_log_max_preview_chars),
+        },
     )
     model_fields_set = observability.model_fields_set
     if "metrics_log_enabled" in model_fields_set:
@@ -1361,15 +1317,21 @@ def _update_observability_env(
 
 
 def _update_safety_env(env_vars: dict[str, str], updated_keys: list[str], safety: SafetyConfig) -> None:
-    _set_bool_env(env_vars, "PII_REDACTION_ENABLED", safety.pii_redaction_enabled)
-    _set_sanitized_env(env_vars, "PII_REDACTION_MASK", safety.pii_redaction_mask)
-    env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(safety.pii_stream_holdback_chars)
-    updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
+    _record_env_updates(
+        env_vars,
+        updated_keys,
+        {
+            "PII_REDACTION_ENABLED": str(safety.pii_redaction_enabled).lower(),
+            "PII_REDACTION_MASK": _sanitize_env_value("PII_REDACTION_MASK", safety.pii_redaction_mask),
+            "PII_STREAM_HOLDBACK_CHARS": str(safety.pii_stream_holdback_chars),
+        },
+    )
 
 
 def _update_chat_env(env_vars: dict[str, str], updated_keys: list[str], chat: ChatConfig) -> None:
     model_fields_set = chat.model_fields_set
     if "stream_heartbeat_sec" in model_fields_set:
+        # Both signed zeros have historically been persisted as "0.0".
         env_vars["CHAT_STREAM_HEARTBEAT_SEC"] = str(chat.stream_heartbeat_sec or 0.0)
         updated_keys.append("CHAT_STREAM_HEARTBEAT_SEC")
     if "stream_cancel_on_disconnect" in model_fields_set:
@@ -1433,37 +1395,53 @@ def _apply_request_settings_updates(
     env_vars: dict[str, str],
     updated_keys: list[str],
 ) -> None:
-    updaters = (
-        ("feature_flags", _update_feature_flag_env),
-        ("kg", _update_kg_env),
-        ("llm", _update_llm_env),
-        ("embedding", _update_embedding_env),
-        ("milvus", _update_milvus_env),
-        ("minio", _update_minio_env),
-        ("rag", _update_rag_env),
-        ("cache", _update_cache_env),
-        ("governance", _update_governance_env),
-        ("mineru", _update_mineru_env),
-        ("etl4llm", _update_etl4llm_env),
-        ("marker", _update_marker_env),
-        ("docling", _update_docling_env),
-        ("paddle_vl", _update_paddle_vl_env),
-        ("textin", _update_textin_env),
-        ("magicpdf", _update_magicpdf_env),
-        ("observability", _update_observability_env),
-        ("safety", _update_safety_env),
-        ("chat", _update_chat_env),
-        ("langgraph", _update_langgraph_env),
-        ("navigation", _update_navigation_env),
-        ("dify_external_knowledge", _update_dify_external_knowledge_env),
-    )
-    for field_name, updater in updaters:
-        section = getattr(request, field_name)
-        if section is not None:
-            updater(env_vars, updated_keys, section)
+    if request.feature_flags is not None:
+        _update_feature_flag_env(env_vars, updated_keys, request.feature_flags)
+    if request.kg is not None:
+        _update_kg_env(env_vars, updated_keys, request.kg)
+    if request.llm is not None:
+        _update_llm_env(env_vars, updated_keys, request.llm)
+    if request.embedding is not None:
+        _update_embedding_env(env_vars, updated_keys, request.embedding)
+    if request.milvus is not None:
+        _update_milvus_env(env_vars, updated_keys, request.milvus)
+    if request.minio is not None:
+        _update_minio_env(env_vars, updated_keys, request.minio)
+    if request.rag is not None:
+        _update_rag_env(env_vars, updated_keys, request.rag)
+    if request.cache is not None:
+        _update_cache_env(env_vars, updated_keys, request.cache)
+    if request.governance is not None:
+        _update_governance_env(env_vars, updated_keys, request.governance)
+    if request.mineru is not None:
+        _update_mineru_env(env_vars, updated_keys, request.mineru)
+    if request.etl4llm is not None:
+        _update_etl4llm_env(env_vars, updated_keys, request.etl4llm)
+    if request.marker is not None:
+        _update_marker_env(env_vars, updated_keys, request.marker)
+    if request.docling is not None:
+        _update_docling_env(env_vars, updated_keys, request.docling)
+    if request.paddle_vl is not None:
+        _update_paddle_vl_env(env_vars, updated_keys, request.paddle_vl)
+    if request.textin is not None:
+        _update_textin_env(env_vars, updated_keys, request.textin)
+    if request.magicpdf is not None:
+        _update_magicpdf_env(env_vars, updated_keys, request.magicpdf)
+    if request.observability is not None:
+        _update_observability_env(env_vars, updated_keys, request.observability)
+    if request.safety is not None:
+        _update_safety_env(env_vars, updated_keys, request.safety)
+    if request.chat is not None:
+        _update_chat_env(env_vars, updated_keys, request.chat)
+    if request.langgraph is not None:
+        _update_langgraph_env(env_vars, updated_keys, request.langgraph)
+    if request.navigation is not None:
+        _update_navigation_env(env_vars, updated_keys, request.navigation)
+    if request.dify_external_knowledge is not None:
+        _update_dify_external_knowledge_env(env_vars, updated_keys, request.dify_external_knowledge)
 
 
-@router.put("", response_model=None, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.put("", response_model=UpdateSettingsResponse)
 def update_settings(
     request: UpdateSettingsRequest,
     http_request: Request,
@@ -1471,7 +1449,7 @@ def update_settings(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, object]:
+) -> UpdateSettingsResponse:
     """Update system config (write .env file)."""
     if not settings.SETTINGS_ENV_WRITE_ENABLED:
         raise HTTPException(
@@ -1483,7 +1461,7 @@ def update_settings(
     lock_ctx.__enter__()
     try:
         env_vars = read_env_file()
-        updated_keys = []
+        updated_keys: list[str] = []
         _apply_request_settings_updates(request, env_vars, updated_keys)
 
         write_env_file(env_vars)
@@ -1492,7 +1470,6 @@ def update_settings(
             from app.services.audit_log_service import audit_log_event
 
             request_id = getattr(http_request.state, "request_id", None)
-
             ip = None
             with contextlib.suppress(Exception):
                 client = http_request.client
@@ -1500,8 +1477,6 @@ def update_settings(
                     ip = client.host.strip()
                     if not ip:
                         ip = None
-
-            user_agent = http_request.headers.get("User-Agent")
 
             audit_log_event(
                 db,
@@ -1512,13 +1487,12 @@ def update_settings(
                 resource_id="env",
                 request_id=request_id,
                 ip=ip,
-                user_agent=user_agent,
+                user_agent=http_request.headers.get("User-Agent"),
                 details={"updated_keys": list(dict.fromkeys(updated_keys))},
             )
             with contextlib.suppress(Exception):
                 db.commit()
         with contextlib.suppress(Exception):
-            # Best-effort only.
             _apply_runtime_settings(env_vars, updated_keys)
         if request.llm is not None:
             # RAG engine caches LLM clients; reset so new settings take effect.
@@ -1527,15 +1501,15 @@ def update_settings(
 
                 reset_rag_engine()
 
-        return {
-            "success": True,
-            "message": "配置已保存，大多数修改会影响后续请求；外部解析器仍需对应服务已启动。",
-            "updated_keys": updated_keys,
-        }
+        return UpdateSettingsResponse(
+            success=True,
+            message="配置已保存，大多数修改会影响后续请求；外部解析器仍需对应服务已启动。",
+            updated_keys=updated_keys,
+        )
     except HTTPException:
         raise
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to save configuration: {str(e)}") from e
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to save configuration: {exc}") from exc
     finally:
         with contextlib.suppress(Exception):
             lock_ctx.__exit__(None, None, None)
@@ -1571,30 +1545,25 @@ def _configured_parts_message(*parts: object) -> str | None:
     return f"configured ({', '.join(text_parts[:2])})"
 
 
-def _build_import_parser_status(module: str, *, enabled: bool, available_message: str) -> dict[str, object]:
+def _build_import_parser_status(module: str, *, enabled: bool, available_message: str) -> SettingsParserStatus:
     available, message = _check_status_import(module)
-    return {
-        "enabled": enabled,
-        "available": available,
-        "message": available_message if available else message,
-    }
+    return SettingsParserStatus(
+        enabled=enabled,
+        available=available,
+        message=available_message if available else message,
+    )
 
 
-def _build_cli_parser_status(enabled: bool, cli: str | None) -> dict[str, object]:
-    cli_ok = bool(cli)
-    return {
-        "enabled": enabled,
-        "available": bool(enabled and cli_ok),
-        "message": _configured_status_message(enabled, cli_ok, "missing cli" if cli is None else f"missing cli: {cli}"),
-    }
+def _build_cli_parser_status(enabled: bool, cli: str | None) -> SettingsParserStatus:
+    return _build_configured_parser_status(enabled, bool(cli), "missing cli" if cli is None else f"missing cli: {cli}")
 
 
-def _build_configured_parser_status(enabled: bool, configured: bool, missing_message: str) -> dict[str, object]:
-    return {
-        "enabled": enabled,
-        "available": enabled and configured,
-        "message": _configured_status_message(enabled, configured, missing_message),
-    }
+def _build_configured_parser_status(enabled: bool, configured: bool, missing_message: str) -> SettingsParserStatus:
+    return SettingsParserStatus(
+        enabled=enabled,
+        available=enabled and configured,
+        message=_configured_status_message(enabled, configured, missing_message),
+    )
 
 
 async def _build_probed_parser_status(
@@ -1604,42 +1573,34 @@ async def _build_probed_parser_status(
     success_message_builder: Callable[[dict[str, Any]], str | None] | None = None,
     headers: dict[str, str] | None = None,
     trust_env: bool = True,
-) -> dict[str, object]:
+) -> SettingsParserStatus:
     url_ok = bool(api_url)
-    entry: dict[str, object] = _build_configured_parser_status(enabled, url_ok, _MISSING_API_URL_MESSAGE)
+    entry = _build_configured_parser_status(enabled, url_ok, _MISSING_API_URL_MESSAGE)
     if not (enabled and url_ok):
         return entry
 
     health_url = _convert_service_url_to_health_url(api_url)
-    if headers is None and trust_env:
-        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
-    else:
-        data, err = await _probe_http_json(
-            health_url,
-            timeout_sec=0.6,
-            headers=headers,
-            trust_env=trust_env,
-        )
+    data, error = await _probe_http_json(health_url, timeout_sec=0.6, headers=headers, trust_env=trust_env)
     if data is None:
-        entry["health"] = {"ok": False, "error": err}
-        entry["available"] = False
-        entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
+        entry.health = {"ok": False, "error": error}
+        entry.available = False
+        entry.message = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
         return entry
 
-    entry["health"] = data
+    entry.health = data
     if data.get("ok") is False:
-        entry["available"] = False
-        entry["message"] = _health_not_ok_status_message(data)
+        entry.available = False
+        entry.message = _health_not_ok_status_message(data)
         return entry
 
     if success_message_builder is not None:
         message = success_message_builder(data)
         if message:
-            entry["message"] = message
+            entry.message = message
     return entry
 
 
-def _build_textin_parser_status() -> dict[str, object]:
+def _build_textin_parser_status() -> SettingsParserStatus:
     textin_enabled = settings.TEXTIN_ENABLED
     textin_api_url = bool(settings.TEXTIN_API_URL.strip())
     textin_app_id = bool(settings.TEXTIN_APP_ID.strip())
@@ -1654,19 +1615,19 @@ def _build_textin_parser_status() -> dict[str, object]:
         message = "missing secret_code"
     else:
         message = "configured"
-    return {
-        "enabled": textin_enabled,
-        "available": bool(textin_enabled and textin_api_url and textin_app_id and textin_secret),
-        "message": message,
-    }
+    return SettingsParserStatus(
+        enabled=textin_enabled,
+        available=textin_enabled and textin_api_url and textin_app_id and textin_secret,
+        message=message,
+    )
 
 
-def _build_mineru_parser_status() -> dict[str, object]:
+def _build_mineru_parser_status() -> SettingsParserStatus:
     mineru_enabled = settings.MINERU_ENABLED
     mineru_local = bool(settings.MINERU_LOCAL_SERVER_URL.strip())
     mineru_token = settings.MINERU_API_TOKEN.strip()
     mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
-    mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
+    mineru_token_expired = mineru_exp is not None and mineru_exp <= int(time.time())
     if not mineru_enabled:
         message = "disabled"
     elif mineru_local:
@@ -1674,21 +1635,21 @@ def _build_mineru_parser_status() -> dict[str, object]:
     elif not mineru_token:
         message = "missing api_token or local_server_url"
     elif mineru_token_expired and mineru_exp is not None:
-        message = f"api_token expired at {format_unix_ts_utc(int(mineru_exp))}"
+        message = f"api_token expired at {format_unix_ts_utc(mineru_exp)}"
     else:
         message = "configured"
-    return {
-        "enabled": mineru_enabled,
-        "available": bool(mineru_enabled and (mineru_local or (mineru_token and not mineru_token_expired))),
-        "message": message,
-    }
+    return SettingsParserStatus(
+        enabled=mineru_enabled,
+        available=mineru_enabled and (mineru_local or bool(mineru_token) and not mineru_token_expired),
+        message=message,
+    )
 
 
 def _build_magicpdf_parser_status(
     *,
     resolve_cli_command: Callable[[str], str | None],
-    resolve_magicpdf_models_dir: Callable[[str], str | None],
-) -> dict[str, object]:
+    resolve_magicpdf_models_dir: Callable[[str], Path | None],
+) -> SettingsParserStatus:
     enabled = settings.MAGIC_PDF_ENABLED
     api_url = settings.MAGIC_PDF_API_URL.strip()
     cli = settings.MAGIC_PDF_CLI.strip() or "magic-pdf"
@@ -1709,22 +1670,18 @@ def _build_magicpdf_parser_status(
     else:
         message = f"configured (models: {models_dir})"
         available = True
-    return {
-        "enabled": enabled,
-        "available": available,
-        "message": message,
-    }
+    return SettingsParserStatus(enabled=enabled, available=available, message=message)
 
 
 async def _build_parser_statuses(
     *,
     resolve_cli_command: Callable[[str], str | None],
-    resolve_magicpdf_models_dir: Callable[[str], str | None],
-) -> dict[str, dict[str, object]]:
+    resolve_magicpdf_models_dir: Callable[[str], Path | None],
+) -> dict[str, SettingsParserStatus]:
     pandoc_cli = settings.PANDOC_CLI.strip() or "pandoc"
     libreoffice_cli = settings.LIBREOFFICE_CLI.strip() or "soffice"
-    parsers: dict[str, dict[str, object]] = {
-        "basic": {"enabled": True, "available": True, "message": "built-in"},
+    parsers = {
+        "basic": SettingsParserStatus(enabled=True, available=True, message="built-in"),
         "markitdown": _build_import_parser_status(
             "markitdown",
             enabled=settings.MARKITDOWN_ENABLED,
@@ -1791,25 +1748,20 @@ async def _build_parser_statuses(
     return parsers
 
 
-def _get_database_status(session_local_factory: Callable[[], Any], text: Callable[[str], Any]) -> dict[str, object]:
-    status = {"connected": False, "message": ""}
+def _get_database_status(worker_db: Session) -> SettingsConnectionStatus:
+    """Probe the session whose lifetime is owned by the status worker."""
     try:
-        db_session = session_local_factory()
-        db_session.execute(text("SELECT 1"))
-        db_session.close()
-        status["connected"] = True
-        status["message"] = "connected"
+        worker_db.execute(text("SELECT 1"))
     except Exception as exc:  # noqa: BLE001
-        status["message"] = str(exc)[:100]
-    return status
+        return SettingsConnectionStatus(connected=False, message=str(exc)[:100])
+    return SettingsConnectionStatus(connected=True, message="connected")
 
 
-def _get_milvus_status() -> dict[str, object]:
-    status = {"connected": False, "message": ""}
+def _get_milvus_status() -> SettingsConnectionStatus:
     try:
         from pymilvus import connections
     except ImportError:
-        return {"connected": False, "message": "Milvus 客户端未安装"}
+        return SettingsConnectionStatus(connected=False, message="Milvus 客户端未安装")
 
     try:
         connections.connect(
@@ -1821,14 +1773,12 @@ def _get_milvus_status() -> dict[str, object]:
             timeout=1.0,
         )
         connections.disconnect("status_check")
-        status["connected"] = True
-        status["message"] = "connected"
     except Exception as exc:  # noqa: BLE001
-        status["message"] = str(exc)[:100]
-    return status
+        return SettingsConnectionStatus(connected=False, message=str(exc)[:100])
+    return SettingsConnectionStatus(connected=True, message="connected")
 
 
-def _get_vector_status() -> dict[str, object]:
+def _get_vector_status() -> SettingsConnectionStatus:
     backend = settings.VECTOR_BACKEND.strip().lower()
     if backend == "milvus":
         return _get_milvus_status()
@@ -1840,50 +1790,68 @@ def _get_vector_status() -> dict[str, object]:
     if backend == "memory":
         message = "内存索引（开发模式）"
     else:
-        state = "就绪" if ready else "索引不存在" if vector_status["status"] == "missing" else "连接未检测"
+        if ready:
+            state = "就绪"
+        elif vector_status["status"] == "missing":
+            state = "索引不存在"
+        else:
+            state = "连接未检测"
         message = f"{backend} · {state}"
-    return {"connected": ready, "message": message}
+    return SettingsConnectionStatus(connected=ready, message=message)
 
 
-@router.get("/status", response_model=None, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/status", response_model=SystemStatusResponse, response_model_exclude_unset=True)
 async def get_system_status(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, object]:
-    """Get system status."""
-    _ensure_settings_readable(db, tenant_id, account_id)
-    from sqlalchemy import text
-
-    from app.core.database import SessionLocal
+) -> SystemStatusResponse:
+    """Get system status without blocking the request event loop."""
     from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
 
-    return {
-        "database": _get_database_status(SessionLocal, text),
-        "milvus": _get_vector_status(),
-        "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
-        "embedding": {
-            "configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY),
-            "model": settings.EMBEDDING_MODEL,
-        },
-        "parsers": await _build_parser_statuses(
-            resolve_cli_command=resolve_cli_command, resolve_magicpdf_models_dir=resolve_magicpdf_models_dir
+    def collect_runtime_status(
+        worker_db: Session,
+    ) -> tuple[SettingsConnectionStatus, SettingsConnectionStatus, SettingsModelStatus, SettingsModelStatus]:
+        _ensure_settings_readable(worker_db, tenant_id, account_id)
+        return (
+            _get_database_status(worker_db),
+            _get_vector_status(),
+            SettingsModelStatus(configured=bool(settings.LLM_API_KEY), model=settings.LLM_MODEL),
+            SettingsModelStatus(
+                configured=bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY),
+                model=settings.EMBEDDING_MODEL,
+            ),
+        )
+
+    database, vector, llm, embedding = await run_blocking_call_with_managed_session(
+        collect_runtime_status, request_db=None
+    )
+    return SystemStatusResponse(
+        database=database,
+        milvus=vector,
+        llm=llm,
+        embedding=embedding,
+        parsers=await _build_parser_statuses(
+            resolve_cli_command=resolve_cli_command,
+            resolve_magicpdf_models_dir=resolve_magicpdf_models_dir,
         ),
-    }
+    )
 
 
-@router.post("/llm/test", response_model=None, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/llm/test", response_model=TestLLMResponse)
 async def test_llm_connection(
     request: TestLLMRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, object]:
+) -> TestLLMResponse:
     """Test LLM connection (no config write)."""
-    _ensure_settings_writable(db, tenant_id, account_id)
+    await run_blocking_call_with_managed_session(
+        lambda worker_db: _ensure_settings_writable(worker_db, tenant_id, account_id), request_db=None
+    )
     from langchain_core.messages import HumanMessage
     from langchain_openai import ChatOpenAI
 
@@ -1901,10 +1869,10 @@ async def test_llm_connection(
     normalized_base_url = normalize_openai_compatible_base_url(request.api_base)
     validated_target = await _validate_public_base_url(normalized_base_url)
     trust_env = httpx_trust_env(logger=logger)
-    timeout = float(request.timeout) if request.timeout else 20.0
+    timeout = request.timeout
 
     try:
-        http_client, http_async_client = _build_pinned_http_clients(
+        http_client, http_async_client = build_pinned_http_clients(
             validated_target, trust_env=trust_env, timeout=timeout
         )
         with http_client:
@@ -1913,19 +1881,19 @@ async def test_llm_connection(
                     model=request.model,
                     api_key=request.api_key,
                     base_url=validated_target.connect_url,
-                    temperature=request.temperature or 0.0,
+                    temperature=request.temperature,
                     streaming=False,
                     timeout=timeout,
-                    max_retries=request.max_retries or 1,
+                    max_retries=request.max_retries,
                     http_client=http_client,
                     http_async_client=http_async_client,
                 )
                 resp = await llm.ainvoke([HumanMessage(content="Say 1")])
                 content = resp.text.strip()
                 if not content:
-                    return {"success": False, "message": "Empty response"}
-                return {"success": True, "message": content[:200]}
+                    return TestLLMResponse(success=False, message="Empty response")
+                return TestLLMResponse(success=True, message=content[:200])
     except Exception as exc:
         msg = str(exc)
-        logger.warning("LLM test failed: %s", msg[:200])
-        return {"success": False, "message": msg[:400]}
+        logger.warning("LLM test failed: %s", msg[:200], exc_info=True)
+        return TestLLMResponse(success=False, message=msg[:400])

@@ -12,6 +12,10 @@ Status: implemented
 
 各 enrichment stage 继续拥有自己的 Markdown/reference 图片规则、候选判断、外部 HTTP 调用、图片生命周期、审计结果和输出顺序。`safe_read` 包装没有合并，因为 chart、formula、image-code 与 VLM 对 stat/read 失败和返回类型的政策并不完全相同。
 
+VLM 与普通图片标题的同义引用扫描、已有标题判断和表格行判断直接复用 image_caption 中的实现。两者对非正 max_caption_chars 的清理政策不同，清理函数继续分别保留；不创建通用处理器。VLM 有界文件读取的重复叶子退出，safe 包装消费 image_references 的 bytes／reason 结果，仍按自己的合同只返回 bytes 或 None。image_ocr 真正使用的四项 image_code 绑定继续保留，单次拼接包装在实际调用处展开。
+
+VLM 的通用 alt 正则使用实际单词边界及空白／数字规则，修复双反斜线使 image、chart、page N image 一直被误判为具体描述的问题。通用占位说明进入既有有界 caption 路径，具体 alt 仍直接使用；功能开关、图片／字节／字符预算、超时与 filename 降级保持。该修复改变错误的候选选择，不作为纯等价整理宣传。
+
 ## Alternatives considered
 
 - 把整条图片 enrichment 统一成一个通用处理器可以删除更多代码，但会混合公式、二维码、OCR、图表和 VLM 的候选规则、错误原因与后端调用，不符合现有领域边界。

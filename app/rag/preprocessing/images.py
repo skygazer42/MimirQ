@@ -86,25 +86,11 @@ def _replace_html_image(match: re.Match[str], *, mode: ImageRemoveMode, removed:
         return ""
 
     tag = match.group(0)
-    attrs = {
-        (m.group("key")).strip().lower(): (m.group("val")).strip() for m in _HTML_ATTR_RE.finditer(tag)
-    }
+    attrs = {(m.group("key")).strip().lower(): (m.group("val")).strip() for m in _HTML_ATTR_RE.finditer(tag)}
     if _is_decorative_image(alt=attrs.get("alt", ""), url=attrs.get("src", "")):
         removed[0] += 1
         return ""
     return tag
-
-
-def _strip_image_line(line: str, *, mode: ImageRemoveMode, removed: list[int]) -> str:
-    current = _HTML_IMG_RE.sub(lambda match: _replace_html_image(match, mode=mode, removed=removed), line)
-    current = _MD_IMAGE_INLINE_RE.sub(
-        lambda match: _replace_markdown_image(match, mode=mode, url_group="url", removed=removed),
-        current,
-    )
-    return _MD_IMAGE_REF_RE.sub(
-        lambda match: _replace_markdown_image(match, mode=mode, url_group="ref", removed=removed),
-        current,
-    )
 
 
 def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
@@ -125,7 +111,17 @@ def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
             out_lines.append(line)
             continue
 
-        out_lines.append(_strip_image_line(line, mode=mode, removed=removed))
+        current = _HTML_IMG_RE.sub(lambda match: _replace_html_image(match, mode=mode, removed=removed), line)
+        current = _MD_IMAGE_INLINE_RE.sub(
+            lambda match: _replace_markdown_image(match, mode=mode, url_group="url", removed=removed),
+            current,
+        )
+        out_lines.append(
+            _MD_IMAGE_REF_RE.sub(
+                lambda match: _replace_markdown_image(match, mode=mode, url_group="ref", removed=removed),
+                current,
+            )
+        )
 
     cleaned = "\n".join(out_lines)
     return ImageStripResult(text=cleaned, removed=removed[0], changed=(cleaned != original))

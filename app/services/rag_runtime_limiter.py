@@ -94,7 +94,7 @@ def _distributed_backend_admission_prefix() -> str:
 
 
 def _distributed_admission_ttl_sec(timeout_sec: float) -> int:
-    return max(60, min(300, max(int(math.ceil(timeout_sec or 0.0)) + 30, 60)))
+    return min(300, max(int(math.ceil(timeout_sec or 0.0)) + 30, 60))
 
 
 def _current_distributed_admission_depth() -> int:
@@ -617,11 +617,7 @@ def run_with_retrieval_backend_budget_sync(
         with _backend_budget_scope():
             return func(*args, **kwargs)
 
-    wait_timeout_sec = (
-        _configured_admission_timeout_sec()
-        if timeout_sec is None
-        else max(0.0, float((timeout_sec if timeout_sec is not None else 0.0)))
-    )
+    wait_timeout_sec = _configured_admission_timeout_sec() if timeout_sec is None else max(0.0, float(timeout_sec))
     deadline = _admission_deadline(wait_timeout_sec)
     distributed_ttl_sec = _distributed_admission_ttl_sec(wait_timeout_sec)
     gate_acquired = False

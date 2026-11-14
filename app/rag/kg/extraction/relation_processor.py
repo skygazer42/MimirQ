@@ -86,7 +86,7 @@ def normalize_predicate(value: str) -> str:
     """
     key = _normalize_predicate_key(value)
     mapped = _PREDICATE_SYNONYMS.get(key)
-    return mapped or key or "unknown"
+    return mapped or key
 
 
 @dataclass(frozen=True)

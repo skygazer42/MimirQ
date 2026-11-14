@@ -54,24 +54,21 @@ class LocalParseCacheStore:
         now_epoch: float | None = None,
     ) -> tuple[ParseCacheEntry | None, int | None]:
         path = self._path_for(key)
-        if not path.exists() or not path.is_file():
-            return None, None
-
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             entry = ParseCacheEntry(**payload)
-        except Exception:
+            if not isinstance(entry.resolved_chunk_strategy, str) or not entry.resolved_chunk_strategy.strip():
+                return None, None
+            now = time.time() if now_epoch is None else now_epoch
+            age_sec = max(0.0, now - float(entry.created_at_epoch))
+        except (OSError, TypeError, ValueError) as exc:
+            logger.debug("Ignoring invalid parse cache entry: %s", type(exc).__name__)
             return None, None
-        if not isinstance(entry.resolved_chunk_strategy, str) or not entry.resolved_chunk_strategy.strip():
-            return None, None
-
-        now = float(time.time() if now_epoch is None else now_epoch)
-        age_sec = max(0.0, now - float(entry.created_at_epoch or 0.0))
-        if int(ttl_sec or 0) > 0 and age_sec > int(ttl_sec):
+        if ttl_sec > 0 and age_sec > ttl_sec:
             try:
                 path.unlink(missing_ok=True)
-            except Exception as exc:
-                logger.debug("Ignoring stale parse cache unlink failure: %s", exc)
+            except OSError as exc:
+                logger.debug("Ignoring stale parse cache unlink failure: %s", type(exc).__name__)
             return None, None
 
         return entry, int(age_sec * 1000.0)

@@ -70,9 +70,9 @@ def evaluate_ingest_pre_poc_quality_gate(
     secrets_hits: dict[str, int] = {}
     if sample:
         pii = anonymize_pii(sample, enabled=True, mode="mask")
-        pii_hits = {kind: count for kind, count in pii.hits.items() if count > 0}
+        pii_hits = dict(pii.hits)
         sec = redact_secrets(sample, enabled=True, mode="mask")
-        secrets_hits = {kind: count for kind, count in sec.hits.items() if count > 0}
+        secrets_hits = dict(sec.hits)
         pii_total = sum(pii_hits.values())
         secret_total = sum(secrets_hits.values())
         if pii_threshold >= 0 and pii_total > pii_threshold:
@@ -80,9 +80,7 @@ def evaluate_ingest_pre_poc_quality_gate(
         if secret_threshold >= 0 and secret_total > secret_threshold:
             findings.append({"key": "secrets_threshold_exceeded", "severity": "blocker", "count": secret_total})
 
-    blocked = mode_norm == "strict" and any(
-        item.get("key") in {"pii_threshold_exceeded", "secrets_threshold_exceeded"} for item in findings
-    )
+    blocked = mode_norm == "strict" and bool(findings)
     out.update(
         {
             "status": "fail" if blocked else ("warn" if findings else "pass"),

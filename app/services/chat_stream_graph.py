@@ -5,12 +5,12 @@ from dataclasses import dataclass, field, replace
 from typing import Any, AsyncIterator, Callable, cast
 
 from app.core.config import settings
-from app.services.chat_execution_runtime import ChatExecutionContext
-from app.services.chat_runtime import (
+from app.services.chat_cache_runtime import (
     annotate_chat_cache_metrics,
-    apply_chat_runtime_metrics_context,
     store_chat_response_cache_if_needed,
 )
+from app.services.chat_execution_runtime import ChatExecutionContext
+from app.services.chat_runtime import apply_chat_runtime_metrics_context
 from app.services.chat_stream_common import (
     build_chat_stream_done_event,
     log_chat_stream_completion_metrics,
@@ -264,20 +264,16 @@ def _maybe_attach_tag_context(
     question: str,
     effective_rag_config: Any,
 ) -> str | None:
-    import inspect
-
     from app.services.chat_tag_service import build_chat_tag_context_docs
 
-    tag_kwargs: dict[str, Any] = {
-        "tenant_id": tenant_id,
-        "document_ids": doc_ids_to_use,
-        "question": question,
-    }
-    if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
-        tag_kwargs["must_recall_expected_source_keys"] = effective_rag_config.must_recall_expected_source_keys
-
     try:
-        tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
+        tag_docs, tag_meta = build_chat_tag_context_docs(
+            db,
+            tenant_id=tenant_id,
+            document_ids=doc_ids_to_use,
+            question=question,
+            must_recall_expected_source_keys=effective_rag_config.must_recall_expected_source_keys,
+        )
         state["tag_docs"] = tag_docs
         state["tag_meta"] = tag_meta
         if bool(tag_meta.get("enabled")):
@@ -467,7 +463,6 @@ async def stream_graph_chat_session_events(
     conversation_id = context.conversation_id
     request_id = context.request_id
     dataset_id_used = context.dataset_id_used
-    effective_rag_config = context.effective_rag_config
     rag_config_template_meta = context.rag_config_template_meta
 
     graph_stream_state: dict[str, Any] = {}
@@ -507,8 +502,6 @@ async def stream_graph_chat_session_events(
         content=full_response,
         citations=citations_data,
         metrics=metrics_data,
-        retrieval_mode_default=effective_rag_config.retrieval_mode,
-        vector_backend_default=settings.VECTOR_BACKEND,
         structured=bool(metrics_data.get("structured_parse_ok")) and structured_data is not None,
         structured_data=structured_data,
     )
@@ -528,8 +521,6 @@ async def stream_graph_chat_session_events(
         conversation_id=conversation_id,
         tenant_id=tenant_id,
         metrics=metrics_data,
-        retrieval_mode_default=effective_rag_config.retrieval_mode,
-        vector_backend_default=settings.VECTOR_BACKEND,
     )
 
     dispatch_chat_stream_persistence(

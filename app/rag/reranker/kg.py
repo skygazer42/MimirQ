@@ -64,7 +64,7 @@ class KGReranker(BaseReranker):
             )
             provider = "rrf"
 
-        items = list(result.get("events", []))
+        items = list(result["events"])
         score_map = {
             str(item.get("id")): float(item.get("score", 0.0) or 0.0) for item in items if item.get("id") is not None
         }
@@ -74,8 +74,8 @@ class KGReranker(BaseReranker):
             ordered_ids=ordered_ids,
             score_map=score_map,
             items=items,
-            clues=list(result.get("clues", []) or []),
-            stats=dict(result.get("stats", {}) or {}),
+            clues=list(result["clues"]),
+            stats=dict(result["stats"]),
             provider=provider,
         )
 

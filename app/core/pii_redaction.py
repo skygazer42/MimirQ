@@ -35,8 +35,7 @@ def pii_redaction_enabled() -> bool:
 
 
 def _current_mask() -> str:
-    mask = (settings.PII_REDACTION_MASK or DEFAULT_MASK).strip()
-    return mask or DEFAULT_MASK
+    return settings.PII_REDACTION_MASK.strip() or DEFAULT_MASK
 
 
 def _luhn_ok(digits: str) -> bool:
@@ -60,7 +59,6 @@ class PIIRedactor:
     mask: str = DEFAULT_MASK
 
     def redact_text(self, text: str) -> tuple[str, dict[str, Any]]:
-        raw = text
         meta: dict[str, Any] = {"redacted": False, "hits": {}}
 
         def _mark(kind: str, n: int = 1) -> None:
@@ -68,7 +66,7 @@ class PIIRedactor:
             hits = meta["hits"]
             hits[kind] = hits.get(kind, 0) + n
 
-        out = raw
+        out = text
 
         # Key/value style secrets: keep the key name but mask the value.
         def _kv_repl(match: re.Match[str]) -> str:
@@ -84,7 +82,7 @@ class PIIRedactor:
             ("cn_mobile", _CN_MOBILE_RE),
             ("cn_id", _CN_ID_RE),
         ):
-            out, n = pattern.subn(self.mask, out)
+            out, n = pattern.subn(lambda _match: self.mask, out)
             if n:
                 _mark(kind, n)
 
@@ -101,8 +99,6 @@ class PIIRedactor:
         return out, meta
 
     def redact_obj(self, obj: Any) -> Any:
-        if obj is None:
-            return obj
         if isinstance(obj, str):
             return self.redact_text(obj)[0]
         if isinstance(obj, dict):
@@ -116,6 +112,18 @@ class PIIRedactor:
 @lru_cache(maxsize=8)
 def _get_redactor(mask: str) -> PIIRedactor:
     return PIIRedactor(mask=mask)
+
+
+def _mask_strings(obj: Any, mask: str) -> Any:
+    if isinstance(obj, str):
+        return mask
+    if isinstance(obj, dict):
+        return {key: _mask_strings(value, mask) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_mask_strings(value, mask) for value in obj]
+    if isinstance(obj, tuple):
+        return tuple(_mask_strings(value, mask) for value in obj)
+    return obj
 
 
 def redact_text(text: str) -> str:
@@ -132,7 +140,7 @@ def redact_text(text: str) -> str:
             "exception",
             str(exc)[:200],
         )
-        return _current_mask() if (text) else text
+        return _current_mask() if text else text
 
 
 def redact_obj(obj: Any) -> Any:
@@ -147,15 +155,9 @@ def redact_obj(obj: Any) -> Any:
             "exception",
             str(exc)[:200],
         )
-        # Best-effort fail-closed: preserve containers, mask strings.
-        if isinstance(obj, str):
-            return _current_mask()
-        if isinstance(obj, dict):
-            return {k: _current_mask() if isinstance(v, str) else v for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [_current_mask() if isinstance(v, str) else v for v in obj]
-        if isinstance(obj, tuple):
-            return tuple(_current_mask() if isinstance(v, str) else v for v in obj)
+        # Fail-closed: nested containers must not retain unredacted strings.
+        if isinstance(obj, (dict, list, tuple)):
+            return _mask_strings(obj, _current_mask())
         return _current_mask()
 
 

@@ -480,7 +480,6 @@ def replay_index_drift_items(
         limit=limit,
     )
 
-    queued_task_id: str | None = None
     attempted_ids: list[str] = []
     resolved_ids: list[str] = []
     replay_results: list[dict[str, Any]] = []
@@ -525,7 +524,7 @@ def replay_index_drift_items(
         "attempted_ids": attempted_ids,
         "resolved_ids": resolved_ids,
         "results": replay_results,
-        "queued_task_id": str(queued_task_id) if queued_task_id else None,
+        "queued_task_id": None,
     }
 
 
@@ -568,9 +567,9 @@ def compute_index_audit_summary(
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
         "vector_backend": settings.VECTOR_BACKEND,
-        "active_documents": int(active_documents),
-        "active_chunks": int(active_chunks),
-        "vector_id_missing": int(vector_id_missing),
+        "active_documents": active_documents,
+        "active_chunks": active_chunks,
+        "vector_id_missing": vector_id_missing,
         "vector_ids_checked": len(checked),
         "vector_ids_missing_in_backend": len(missing_in_vector_sorted),
         "vector_ids_missing_in_backend_sample": _sample(missing_in_vector_sorted),
@@ -845,7 +844,7 @@ def _classify_index_audit_reconcile_status(
     pending_channels = current_index_readiness["pending_channels"]
     error_channels = current_index_readiness["error_channels"]
     ready = current_index_readiness["ready"]
-    rows_present = max(0, int(channel_rows_present or 0))
+    rows_present = max(0, channel_rows_present)
 
     if rows_present <= 0:
         status = "legacy_unknown"
@@ -1039,9 +1038,8 @@ def run_dataset_index_audit(
     """
     Dataset-scoped index audit (admin-only entry point).
 
-    This is best-effort by design:
-    - It should never hard-fail the request due to vector backend errors.
-    - It is bounded (max_check_ids / milvus_list_limit) to avoid massive scans.
+    Vector existence-query failures propagate; optional ID sampling is best-effort.
+    Scans are bounded by max_check_ids / milvus_list_limit to avoid massive scans.
     """
     # Ensure the caller is at least a tenant member; the API layer enforces admin role separately.
     dataset_service.ensure_member(db, tenant_id, account_id)

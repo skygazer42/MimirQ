@@ -148,7 +148,7 @@ def _fmt_scalar(value: Any) -> str:
         return ""
     if isinstance(value, bool):
         return "1" if value else "0"
-    if isinstance(value, int) and not isinstance(value, bool):
+    if isinstance(value, int):
         return _fmt_int(value)
     if isinstance(value, float):
         return f"{value:.4f}"
@@ -190,8 +190,8 @@ def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
                 "status": gate.get("status", "unavailable").strip(),
                 "metrics": safe_metrics,
                 "failed_conditions": _safe_text_list(gate.get("failed_conditions")),
-                "generated_at": _optional_text(gate.get('generated_at')),
-                "source": _optional_text(gate.get('source')),
+                "generated_at": _optional_text(gate.get("generated_at")),
+                "source": _optional_text(gate.get("source")),
             }
         )
     failure_categories = raw.get("failure_categories") if isinstance(raw.get("failure_categories"), dict) else {}
@@ -200,10 +200,12 @@ def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
         "plugin_refs": _safe_text_list(raw.get("plugin_refs")),
         "plugin_package_hashes": _safe_text_list(raw.get("plugin_package_hashes")),
         "failure_categories": {
-            str(key): int(value or 0) for key, value in failure_categories.items() if key is not None and str(key).strip()
+            str(key): int(value or 0)
+            for key, value in failure_categories.items()
+            if key is not None and str(key).strip()
         },
-        "kg_recommendation": _optional_text(raw.get('kg_recommendation')),
-        "recommended_next_action": _optional_text(raw.get('recommended_next_action')),
+        "kg_recommendation": _optional_text(raw.get("kg_recommendation")),
+        "recommended_next_action": _optional_text(raw.get("recommended_next_action")),
         "gates": gates,
     }
 
@@ -223,12 +225,12 @@ def _render_retrieval_audit_section(report: Any) -> str:
     if not audit:
         return ""
 
-    status = _format_text(audit.get('status')) or "unavailable"
+    status = _format_text(audit.get("status")) or "unavailable"
     plugin_refs = _safe_text_list(audit.get("plugin_refs"), max_items=5)
     hashes = [value[:8] for value in _safe_text_list(audit.get("plugin_package_hashes"), max_items=5) if value]
     failure_categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
-    kg_recommendation = _format_text(audit.get('kg_recommendation'))
-    next_action = _format_text(audit.get('recommended_next_action'))
+    kg_recommendation = _format_text(audit.get("kg_recommendation"))
+    next_action = _format_text(audit.get("recommended_next_action"))
 
     meta_rows = [
         ("status", status),
@@ -369,7 +371,7 @@ def _collect_labeled_counts(items: Any, *, skip_nonpositive: bool = False) -> li
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
             continue
-        key = _optional_text(item.get('label'), item.get('key')) or "unknown"
+        key = _optional_text(item.get("label"), item.get("key")) or "unknown"
         try:
             count = int(item.get("count") or 0)
         except Exception:
@@ -661,9 +663,9 @@ def _render_chunk_targets_table(chunk_targets: Any) -> str:
         suggestions = "; ".join(str(s).strip() for s in _as_list(item.get("suggestions")) if str(s).strip())[:500]
         rows.append(
             "<tr>"
-            f'<td class="k">{escape(_format_text(item.get('label'), item.get('key')) or "unknown")}</td>'
-            f'<td class="v">{escape(_format_text(item.get('status')) or "unknown")}</td>'
-            f'<td class="v">{escape(_format_text(item.get('message')))}</td>'
+            f'<td class="k">{escape(_format_text(item.get("label"), item.get("key")) or "unknown")}</td>'
+            f'<td class="v">{escape(_format_text(item.get("status")) or "unknown")}</td>'
+            f'<td class="v">{escape(_format_text(item.get("message")))}</td>'
             f'<td class="v">{escape(suggestions)}</td>'
             "</tr>"
         )
@@ -683,14 +685,15 @@ def _render_recall_risk_table(recall_risk_hints: Any) -> str:
             continue
         observed = _as_dict(item.get("observed"))
         observed_str = ", ".join(
-            f"{str(key)}={str(value)}" for key, value in sorted(observed.items(), key=lambda kv: (kv[0] is not None, str(kv[0])))[:6]
+            f"{str(key)}={str(value)}"
+            for key, value in sorted(observed.items(), key=lambda kv: (kv[0] is not None, str(kv[0])))[:6]
         )[:220]
         rows.append(
             "<tr>"
-            f'<td class="k">{escape(_format_text(item.get('label'), item.get('key')) or "unknown")}</td>'
-            f'<td class="v">{escape(_format_text(item.get('severity')) or "warning")}</td>'
+            f'<td class="k">{escape(_format_text(item.get("label"), item.get("key")) or "unknown")}</td>'
+            f'<td class="v">{escape(_format_text(item.get("severity")) or "warning")}</td>'
             f'<td class="v">{escape(observed_str)}</td>'
-            f'<td class="v">{escape(_format_text(item.get('message')))}</td>'
+            f'<td class="v">{escape(_format_text(item.get("message")))}</td>'
             "</tr>"
         )
     return _render_table_or_empty(
@@ -710,7 +713,7 @@ def _collect_version_items(versions: Any) -> list[tuple[str, int]]:
         count = _int_from(item, "documents")
         if count <= 0:
             continue
-        items.append((_optional_text(item.get('pipeline_hash')) or "unknown", count))
+        items.append((_optional_text(item.get("pipeline_hash")) or "unknown", count))
     return items
 
 
@@ -738,7 +741,7 @@ def _collect_kg_type_items(raw_types: Any) -> list[tuple[str, int]]:
         count = _int_from(item, "count")
         if count <= 0:
             continue
-        items.append((_optional_text(item.get('type')) or "unknown", count))
+        items.append((_optional_text(item.get("type")) or "unknown", count))
     return items
 
 
@@ -749,10 +752,10 @@ def _render_kg_top_docs_table(kgd: dict[str, Any], *, redact: bool, include_fail
     for item in _as_list(kgd.get("top_documents"))[:10]:
         if not isinstance(item, dict):
             continue
-        did = _format_text(item.get('document_id'))
+        did = _format_text(item.get("document_id"))
         if not did:
             continue
-        source = _format_text(item.get('source'))
+        source = _format_text(item.get("source"))
         if include_failures:
             rows.append(
                 "<tr>"
@@ -779,7 +782,9 @@ def _render_kg_top_docs_table(kgd: dict[str, Any], *, redact: bool, include_fail
 
 
 def _render_regression_meta_table(rrd: dict[str, Any], *, include_extended_fields: bool) -> str:
-    metrics = ", ".join(str(item) for item in _as_list(rrd.get("metrics")) if item is not None and str(item).strip())[:200]
+    metrics = ", ".join(str(item) for item in _as_list(rrd.get("metrics")) if item is not None and str(item).strip())[
+        :200
+    ]
     rows = [("status", _text_from(rrd, "status")), ("created_at", _text_from(rrd, "created_at"))]
     if include_extended_fields:
         rows.extend(
@@ -804,7 +809,8 @@ def _render_regression_summary_table(rr_summary: Any) -> str:
     rows = [
         f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
         for key, value in sorted(_as_dict(rr_summary).items(), key=lambda kv: (kv[0] is not None, str(kv[0])))
-        if key is not None and str(key).strip()
+        if key is not None
+        and str(key).strip()
         and (isinstance(value, bool) or (isinstance(value, (int, float)) and not isinstance(value, bool)))
     ]
     return _render_table_or_empty(BARS_METRIC_TABLE_HEADER, rows)
@@ -818,7 +824,7 @@ def _render_rr_slice_table(rr_slices: Any, dim: str, *, redact: bool) -> str:
     for bucket in buckets[:10]:
         if not isinstance(bucket, dict):
             continue
-        key = _format_text(bucket.get('key'))
+        key = _format_text(bucket.get("key"))
         if not key:
             continue
         rows.append(
@@ -953,7 +959,9 @@ def _render_precheck_samples_section(samples: Any) -> str:
 
     needs_rows = [
         f'<tr><td class="k">{escape(str(key))}</td><td class="v">{_fmt_int(len(value))}</td></tr>'
-        for key, value in sorted(_as_dict(samples_dict.get("needs_review")).items(), key=lambda kv: (kv[0] is not None, str(kv[0])))
+        for key, value in sorted(
+            _as_dict(samples_dict.get("needs_review")).items(), key=lambda kv: (kv[0] is not None, str(kv[0]))
+        )
         if isinstance(value, list) and value
     ]
     needs_table = _render_table_or_empty(
@@ -982,9 +990,9 @@ def _render_precheck_tips_html(
 ) -> str:
     findings = _as_list(summary.get("findings"))
     finding_counts = {
-        _format_text(item.get('key')).lower(): _int_from(item, "count")
+        _format_text(item.get("key")).lower(): _int_from(item, "count")
         for item in findings
-        if isinstance(item, dict) and _format_text(item.get('key'))
+        if isinstance(item, dict) and _format_text(item.get("key"))
     }
     tips: list[str] = []
     if pdf_scanned > 0:
@@ -1050,9 +1058,7 @@ def _render_precheck_section(precheck_summary: Any, *, redact: bool) -> str:
             ),
         ]
     )
-    pre_finding_rows = [
-        row for row in _collect_labeled_counts(pre.get("findings"), skip_nonpositive=True) if row[1] > 0
-    ]
+    pre_finding_rows = _collect_labeled_counts(pre.get("findings"), skip_nonpositive=True)
     format_table = _render_bar_table(_as_items(pre.get("by_file_type"), top=12), total=max(1, pre_total_files))
     file_size_histogram = _render_histogram(pre.get("file_size_histogram"))
     token_histogram = _render_histogram(pre.get("token_histogram"))

@@ -21,10 +21,10 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
+from app.api.schemas.documents import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.core.config import settings
-from app.core.pipeline_versions import get_active_pipeline_hash
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.rag.core.logging import get_logger
@@ -269,12 +269,8 @@ Return JSON:
     return pairs
 
 
-def _active_pipeline_hash(doc_meta: dict[str, Any]) -> str | None:
-    return get_active_pipeline_hash(doc_meta)
-
-
 def _active_doc_pipeline_key(document_id: UUID, doc_meta: dict[str, Any]) -> str:
-    h = _active_pipeline_hash(doc_meta)
+    h = get_active_pipeline_hash(doc_meta)
     return f"{document_id}:{h}" if h else str(document_id)
 
 
@@ -339,7 +335,7 @@ def generate_and_index_document_qa(
     """
     document_id = UUID(str(document.id))
     doc_meta = dict(document.doc_metadata or {})
-    active_hash = _active_pipeline_hash(doc_meta)
+    active_hash = get_active_pipeline_hash(doc_meta)
     active_key = _active_doc_pipeline_key(document_id, doc_meta)
 
     deleted = 0
@@ -621,7 +617,7 @@ def _next_active_chunk_index(
     if active_key:
         query = query.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
     max_idx = query.scalar()
-    return int(max_idx or -1) + 1
+    return (int(max_idx) if max_idx is not None else -1) + 1
 
 
 def _build_qa_chunk_payloads(

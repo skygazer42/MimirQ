@@ -40,7 +40,7 @@ def generate_stage2_synthetic_dataset(
         }
 
     target = max(0, int(target_count or 0))
-    attempts_limit = max(target * 3, target) if max_attempts is None else max_attempts
+    attempts_limit = target * 3 if max_attempts is None else max_attempts
     attempted = 0
     rejection_reasons: Counter[str] = Counter()
 

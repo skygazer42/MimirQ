@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.schemas.dataset_category import DatasetCategoryNode
+from app.api.schemas.datasets import DatasetCategoryNode, DatasetCategoryTreeResponse
 from app.core.constants import UserRoles
 from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.services import dataset_service
@@ -144,7 +144,7 @@ def get_category(db: Session, *, tenant_id: UUID, category_id: UUID) -> DatasetC
     return row
 
 
-def list_tree(db: Session, *, tenant_id: UUID, account_id: str) -> list[DatasetCategoryNode]:
+def list_tree(db: Session, *, tenant_id: UUID, account_id: str) -> DatasetCategoryTreeResponse:
     dataset_service.ensure_member(db, tenant_id, account_id)
     rows = (
         db.query(DatasetCategory)
@@ -152,7 +152,7 @@ def list_tree(db: Session, *, tenant_id: UUID, account_id: str) -> list[DatasetC
         .order_by(DatasetCategory.sort_order.asc(), DatasetCategory.name.asc())
         .all()
     )
-    return build_category_tree_nodes(rows)
+    return DatasetCategoryTreeResponse(total=len(rows), items=build_category_tree_nodes(rows))
 
 
 def create_category(

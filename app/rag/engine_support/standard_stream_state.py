@@ -3,23 +3,24 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.rag.engine import RAGEngine
 
 
 class StandardStreamState:
     """Request-local mutable state shared across semantic stream phases."""
 
-    __slots__ = ("data", "engine", "finished", "module")
+    __slots__ = ("data", "engine", "finished")
 
     def __init__(
         self,
         *,
-        engine: Any,
-        module: Any,
+        engine: "RAGEngine",
         payload: dict[str, Any],
     ) -> None:
         self.engine = engine
-        self.module = module
         self.data = SimpleNamespace(**payload)
         self.finished = False
 

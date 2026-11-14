@@ -12,8 +12,6 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.core.logging import get_logger
-
 _POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 _SECTION_KINDS = {"text", "equation", "table", "image"}
 
@@ -38,7 +36,7 @@ class BaseAdvancedParser(ABC):
     # Subclasses can override; None means no extension check.
     SUPPORTED_EXTENSIONS: set[str] | None = None
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._parser = None
         self._logger = logging.getLogger(f"parsing.{self._get_parser_name()}_parser")
 
@@ -142,7 +140,7 @@ class BaseAdvancedParser(ABC):
         if not match:
             return []
 
-        page_tokens = [p for p in match.group(1).split("-") if p.strip()]
+        page_tokens = [token for token in match.group(1).split("-") if token]
         left = float(match.group(2))
         right = float(match.group(3))
         top = float(match.group(4))
@@ -151,8 +149,8 @@ class BaseAdvancedParser(ABC):
         for token in page_tokens:
             try:
                 positions.append((max(0, int(token) - 1), left, right, top, bottom))
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            except ValueError:
+                self._logger.debug("Skipping invalid page token from parser position tag", exc_info=True)
         return positions
 
     def _normalize_section(self, section: Any) -> tuple[str, str | None, str | None]:
@@ -356,36 +354,22 @@ class BaseAdvancedParser(ABC):
                 return table_data
         return str(table)
 
-    def parse(self, file_path: Path, **kwargs) -> list[Document]:
-        """
-        Parse document.
-
-        Args:
-            file_path: Document file path.
-            **kwargs: Extra args.
-
-        Returns:
-            List of LangChain Documents.
-        """
+    def _prepare_parser(self, file_path: Path) -> tuple[Path, Any]:
         file_path = Path(file_path)
         self._validate_file(file_path)
-
         parser = self._get_parser()
-
-        # Check installation.
         ok, reason = self._check_parser_installation(parser)
         if not ok:
             raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
+        return file_path, parser
 
-        # Call underlying parser.
+    def _parse_with_parser(self, parser: Any, file_path: Path, parse_kwargs: dict[str, Any]) -> list[Document]:
         callback = self._create_callback()
         sections, tables = self._call_parse_method(
-            parser=parser, file_path=file_path, binary=None, callback=callback, **kwargs
+            parser=parser, file_path=file_path, binary=None, callback=callback, **parse_kwargs
         )
-
-        # Convert to LangChain Document format.
         base_metadata = {
-            "source": str(file_path.name),
+            "source": file_path.name,
             "filename": file_path.name,
             "file_type": file_path.suffix.lstrip(".").lower(),
             "parser": self._get_parser_name(),
@@ -394,7 +378,12 @@ class BaseAdvancedParser(ABC):
         documents = []
         documents.extend(self._convert_sections_to_documents(sections, base_metadata))
         documents.extend(self._convert_tables_to_documents(tables, base_metadata))
+        return documents
 
+    def parse(self, file_path: Path, **kwargs) -> list[Document]:
+        """Validate, parse and convert a document in the calling thread."""
+        file_path, parser = self._prepare_parser(file_path)
+        documents = self._parse_with_parser(parser, file_path, kwargs)
         self._logger.info(f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents")
         return documents
 
@@ -413,38 +402,7 @@ class BaseAdvancedParser(ABC):
         Returns:
             List of LangChain Documents.
         """
-        file_path = Path(file_path)
-        self._validate_file(file_path)
-
-        parser = self._get_parser()
-
-        # Check installation.
-        ok, reason = self._check_parser_installation(parser)
-        if not ok:
-            raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
-
-        # Call underlying parser in a thread pool (parser may be sync).
-        def _parse_in_thread():
-            callback = self._create_callback()
-            sections, tables = self._call_parse_method(
-                parser=parser, file_path=file_path, binary=None, callback=callback, **kwargs
-            )
-
-            # Convert to LangChain Document format.
-            base_metadata = {
-                "source": str(file_path.name),
-                "filename": file_path.name,
-                "file_type": file_path.suffix.lstrip(".").lower(),
-                "parser": self._get_parser_name(),
-            }
-
-            documents = []
-            documents.extend(self._convert_sections_to_documents(sections, base_metadata))
-            documents.extend(self._convert_tables_to_documents(tables, base_metadata))
-
-            return documents
-
-        documents = await asyncio.to_thread(_parse_in_thread)
-
+        file_path, parser = self._prepare_parser(file_path)
+        documents = await asyncio.to_thread(self._parse_with_parser, parser, file_path, kwargs)
         self._logger.info(f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents")
         return documents

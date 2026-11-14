@@ -1,3 +1,6 @@
+from app.rag.chunking.capabilities import EXPERIMENTAL_STRATEGIES as _CAPABILITY_EXPERIMENTAL_STRATEGIES
+from app.rag.chunking.capabilities import OPTIONAL_DEPENDENCY_STRATEGIES as _CAPABILITY_OPTIONAL_DEPENDENCY_STRATEGIES
+
 MAINSTREAM_RAG_STRATEGIES: set[str] = {
     "auto",
     "langchain_recursive",
@@ -22,18 +25,8 @@ MAINSTREAM_RAG_STRATEGIES: set[str] = {
     "paper",
 }
 
-EXPERIMENTAL_RAG_STRATEGIES: set[str] = {
-    "agentic_chunker",
-    "late_chunking",
-    "late_chunking_jina",
-    "proposition",
-    "raptor",
-}
-
-OPTIONAL_DEPENDENCY_STRATEGIES: set[str] = {
-    "llama_index",
-    "llama_index_hierarchical",
-}
+EXPERIMENTAL_RAG_STRATEGIES: set[str] = set(_CAPABILITY_EXPERIMENTAL_STRATEGIES)
+OPTIONAL_DEPENDENCY_STRATEGIES: set[str] = set(_CAPABILITY_OPTIONAL_DEPENDENCY_STRATEGIES)
 
 
 def decorate_chunk_strategy_note(name: str, notes: str | None) -> str | None:

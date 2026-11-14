@@ -400,9 +400,7 @@ def _resolve_generation_judge_prompt(
     ab_user_key: str | None,
 ) -> tuple[str | None, list[str] | None, int | None, dict[str, Any]]:
     selection_requested = bool(
-        db is not None
-        and tenant_id is not None
-        and (template_id or template_key or ab_experiment_key)
+        db is not None and tenant_id is not None and (template_id or template_key or ab_experiment_key)
     )
     if not selection_requested:
         return None, None, None, {}
@@ -537,7 +535,7 @@ def attach_llm_judge_to_eval_items(
     *,
     eval_items: list[dict[str, Any]],
     llm: Any,
-    db: Any | None = None,
+    db: "Session | None" = None,
     tenant_id: UUID | None = None,
     judge_prompt_template_id: UUID | None = None,
     judge_prompt_template_key: str | None = None,

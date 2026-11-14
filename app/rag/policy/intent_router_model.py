@@ -83,14 +83,14 @@ def _normalize_rule_tokens(tokens_raw: Any) -> list[str]:
     for token in tokens_raw:
         if token is None:
             continue
-        tok = str(token).strip()
+        tok = str(token).strip()[:64]
         if not tok:
             continue
         key = tok.casefold() if tok.isascii() else tok
         if key in seen:
             continue
         seen.add(key)
-        tokens.append(tok[:64])
+        tokens.append(tok)
         if len(tokens) >= 24:
             break
     return tokens

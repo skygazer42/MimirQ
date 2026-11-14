@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.api.schemas.dataset import DatasetRetentionPolicy
+from app.api.schemas.datasets import DatasetRetentionPolicy
 from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument

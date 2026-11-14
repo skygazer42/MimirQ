@@ -9,7 +9,7 @@ from app.parsing.utils.scalars import coerce_int as _coerce_int
 
 
 def _is_table_doc(doc: Document) -> bool:
-    meta = dict(doc.metadata or {})
+    meta = doc.metadata
     hint = meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd")
     return isinstance(hint, str) and hint.lower() == "table"
 
@@ -34,12 +34,10 @@ def _columns(meta: Mapping[str, Any]) -> list[str]:
 
 def _rows(meta: Mapping[str, Any]) -> list[list[str]]:
     extraction = meta.get("table_extraction")
-    if isinstance(extraction, Mapping) and isinstance(extraction.get("rows"), list):
-        rows = []
-        for raw in extraction.get("rows") or []:
-            if isinstance(raw, list):
-                rows.append([cell.strip() for cell in raw])
-        return rows
+    if isinstance(extraction, Mapping):
+        rows = extraction.get("rows")
+        if isinstance(rows, list):
+            return [[cell.strip() for cell in row] for row in rows if isinstance(row, list)]
     return []
 
 
@@ -56,15 +54,16 @@ def _near_page_top(meta: Mapping[str, Any]) -> bool:
 
 
 def _should_merge(left: Document, right: Document) -> bool:
-    left_meta = dict(left.metadata or {})
-    right_meta = dict(right.metadata or {})
+    left_meta = left.metadata
+    right_meta = right.metadata
     left_page = _page(left_meta)
     right_page = _page(right_meta)
     if left_page is None or right_page is None or right_page != left_page + 1:
         return False
-    if _columns(left_meta) != _columns(right_meta) or not _columns(left_meta):
+    left_columns = _columns(left_meta)
+    if not left_columns or left_columns != _columns(right_meta):
         return False
-    right_text = str(right.page_content)
+    right_text = right.page_content
     has_continuation_hint = any(token in right_text for token in ("续表", "continued", "Continuation"))
     return (_near_page_bottom(left_meta) and _near_page_top(right_meta)) or has_continuation_hint
 
@@ -73,14 +72,12 @@ def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExt
     source_id = meta.get("source_element_id")
     if source_id is None:
         source_id = meta.get("element_id")
-    columns = [
-        item.strip()
-        for item in (meta.get("table_columns") if isinstance(meta.get("table_columns"), list) else [])
-    ]
+    raw_columns = meta.get("table_columns")
+    columns = [item.strip() for item in raw_columns] if isinstance(raw_columns, list) else []
     if not columns:
         extraction = meta.get("table_extraction")
         if isinstance(extraction, Mapping) and isinstance(extraction.get("columns"), list):
-            columns = [item.strip() for item in extraction.get("columns") or []]
+            columns = [item.strip() for item in extraction["columns"]]
     cells = [TableCell(row_index=0, col_index=i, text=col, is_header=True) for i, col in enumerate(columns)]
     for row_index, row in enumerate(rows, start=1):
         for col_index, text in enumerate(row[: len(columns)]):
@@ -99,12 +96,12 @@ def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExt
 
 def _merge_group(group: list[Document]) -> Document:
     first = group[0]
-    meta = dict(first.metadata or {})
+    meta = dict(first.metadata)
     all_rows: list[list[str]] = []
     pages: list[int] = []
     source_ids: list[str] = []
     for doc in group:
-        doc_meta = dict(doc.metadata or {})
+        doc_meta = doc.metadata
         page = _page(doc_meta)
         if page is not None and page not in pages:
             pages.append(page)

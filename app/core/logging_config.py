@@ -38,13 +38,10 @@ def _get_otel_trace_context() -> tuple[str, str]:
         return "", ""
 
     try:
-        span = trace.get_current_span()
-        if span is None:
+        span_context = trace.get_current_span().get_span_context()
+        if not span_context.is_valid:
             return "", ""
-        ctx = span.get_span_context()
-        if not getattr(ctx, "is_valid", False):
-            return "", ""
-        return format(int(ctx.trace_id), "032x"), format(int(ctx.span_id), "016x")
+        return format(span_context.trace_id, "032x"), format(span_context.span_id, "016x")
     except Exception:  # noqa: BLE001
         return "", ""
 
@@ -52,12 +49,12 @@ def _get_otel_trace_context() -> tuple[str, str]:
 def bind_request_context(
     *, request_id: str, tenant_id: str = "", user_id: str = "", route: str = ""
 ) -> dict[str, Token[str]]:
-    tokens: dict[str, Token[str]] = {}
-    tokens["request_id"] = _request_id.set((request_id).strip())
-    tokens["tenant_id"] = _tenant_id.set((tenant_id).strip())
-    tokens["user_id"] = _user_id.set((user_id).strip())
-    tokens["route"] = _route.set((route).strip())
-    return tokens
+    return {
+        "request_id": _request_id.set(request_id.strip()),
+        "tenant_id": _tenant_id.set(tenant_id.strip()),
+        "user_id": _user_id.set(user_id.strip()),
+        "route": _route.set(route.strip()),
+    }
 
 
 def set_request_user_id(user_id: str) -> None:
@@ -66,7 +63,7 @@ def set_request_user_id(user_id: str) -> None:
 
     Useful when auth is resolved after middleware binds initial context.
     """
-    _user_id.set((user_id).strip())
+    _user_id.set(user_id.strip())
 
 
 def set_request_tenant_id(tenant_id: str) -> None:
@@ -76,7 +73,7 @@ def set_request_tenant_id(tenant_id: str) -> None:
     Useful when tenant identity is derived from a verified source (e.g. JWT claim)
     rather than an untrusted header.
     """
-    _tenant_id.set((tenant_id).strip())
+    _tenant_id.set(tenant_id.strip())
 
 
 def set_request_route(route: str) -> None:
@@ -86,7 +83,7 @@ def set_request_route(route: str) -> None:
     Prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to keep
     cardinality low in log search tools.
     """
-    _route.set((route).strip())
+    _route.set(route.strip())
 
 
 def reset_request_context(tokens: dict[str, Token[str]]) -> None:
@@ -189,7 +186,7 @@ def configure_logging(
 
     _install_record_factory()
 
-    level = logging._nameToLevel.get(log_level.upper(), logging.INFO)
+    level = logging.getLevelNamesMapping().get(log_level.upper(), logging.INFO)
 
     if log_format.lower() != "json":
         # Best-effort: ensure the process respects LOG_LEVEL even when we keep plain logging.

@@ -14,6 +14,7 @@ import threading
 import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlparse
@@ -291,27 +292,19 @@ class MinIOService:
                     )
                     return {"success": True, "img_id": img_id, "chunk_key": img_info["chunk_key"]}
                 except Exception as e:
-                    logger.exception(f"Batch upload failed for chunk_key {img_info.get('chunk_key')}: {str(e)}")
+                    logger.exception("Batch upload failed for chunk_key %s: %s", img_info.get("chunk_key"), e)
                     return {"success": False, "error": str(e), "chunk_key": img_info.get("chunk_key")}
 
-        tasks = [upload_single(img) for img in images]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Process exceptions.
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                processed_results.append(
-                    {"success": False, "error": str(result), "chunk_key": images[i].get("chunk_key")}
-                )
-            else:
-                processed_results.append(result)
+        results = await asyncio.gather(*(upload_single(image) for image in images), return_exceptions=True)
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
 
         elapsed = time.perf_counter() - t0
-        success_count = sum(1 for r in processed_results if r.get("success"))
-        logger.info(f"Batch upload completed: {success_count}/{len(images)} successful, elapsed: {elapsed:.2f}s")
+        success_count = sum(1 for result in results if result["success"])
+        logger.info("Batch upload completed: %s/%s successful, elapsed: %.2fs", success_count, len(images), elapsed)
 
-        return processed_results
+        return results
 
     def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
         """
@@ -333,7 +326,7 @@ class MinIOService:
             url = client.presigned_get_object(
                 bucket_name=self._bucket_name,
                 object_name=object_name,
-                expires=7 * 24 * 3600,  # 7-day expiry
+                expires=timedelta(days=7),
             )
             self._log_metric("presign", True, time.perf_counter() - t0, object_name)
             return url
@@ -545,16 +538,14 @@ class MinIOService:
             if size > max_bytes_i:
                 raise ValueError("object_too_large")
 
-        resp = None
+        resp = self.open_object(object_name=obj)
         try:
-            resp = self.open_object(object_name=obj)
             return resp.read()  # type: ignore[no-any-return]
         finally:
-            if resp is not None:
-                with contextlib.suppress(Exception):
-                    resp.close()
-                with contextlib.suppress(Exception):
-                    resp.release_conn()
+            with contextlib.suppress(Exception):
+                resp.close()
+            with contextlib.suppress(Exception):
+                resp.release_conn()
 
     def download_object_to_path(self, *, object_name: str, destination: Path, max_bytes: int = 0) -> Path:
         """
@@ -606,20 +597,18 @@ class MinIOService:
         """
         Stream object bytes in a generator suitable for Starlette's StreamingResponse.
         """
-        response = None
+        response = self.open_object(object_name=object_name, offset=offset, length=length)
         try:
-            response = self.open_object(object_name=object_name, offset=offset, length=length)
             while True:
                 chunk = response.read(int(chunk_size))
                 if not chunk:
                     break
                 yield chunk
         finally:
-            if response is not None:
-                with contextlib.suppress(Exception):
-                    response.close()
-                with contextlib.suppress(Exception):
-                    response.release_conn()
+            with contextlib.suppress(Exception):
+                response.close()
+            with contextlib.suppress(Exception):
+                response.release_conn()
 
     def delete_dataset_images(self, tenant_id: str, dataset_id: str) -> None:
         """
@@ -630,9 +619,9 @@ class MinIOService:
             dataset_id: dataset ID
         """
         t0 = time.perf_counter()
+        prefix = f"images/{tenant_id}/{dataset_id}/"
         try:
             client = self._get_client()
-            prefix = f"images/{tenant_id}/{dataset_id}/"
 
             objects = client.list_objects(
                 bucket_name=self._bucket_name,
@@ -653,7 +642,9 @@ class MinIOService:
             logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
-    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str | None, error: str | None = None) -> None:
+    def _log_metric(
+        self, op: str, success: bool, elapsed: float, object_name: str | None, error: str | None = None
+    ) -> None:
         """Simple JSONL metrics log for external collection/monitoring."""
         try:
             self._metrics_path.parent.mkdir(parents=True, exist_ok=True)

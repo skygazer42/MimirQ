@@ -160,7 +160,7 @@ def _upsert_db_row_sidecar_document(
             if legacy_doc is not None
             else {}
         )
-        if _optional_source_text(legacy_connector_meta.get('config_id')) == str(connector_config_id):
+        if _optional_source_text(legacy_connector_meta.get("config_id")) == str(connector_config_id):
             doc = legacy_doc
     if doc is None:
         doc = DBDocument(

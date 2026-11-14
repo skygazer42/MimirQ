@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
+from app.api.schemas.identity import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 
@@ -65,7 +65,7 @@ def saml_bridge_session_to_exchange(session: SamlBridgeSession) -> SamlExchangeR
 
 def _ttl_sec_for(session: SamlBridgeSession) -> int:
     expires_in = max(1, session.expires_in)
-    return max(1, min(_BRIDGE_TTL_SEC, expires_in))
+    return min(_BRIDGE_TTL_SEC, expires_in)
 
 
 def _bridge_key(code: str) -> str:

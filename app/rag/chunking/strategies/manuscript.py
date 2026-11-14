@@ -64,9 +64,6 @@ where the best chunking method depends on the content shape:
 - Otherwise -> semantic_sentence or langchain_recursive
 """
 
-import json
-import re
-
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
@@ -131,33 +128,7 @@ from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, looks_lik
 from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
 from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
 from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
-
-_MD_HINT_RES = (
-    re.compile(r"(?m)^\s*#{1,6}\s+"),
-    re.compile(r"\[[^\]]+\]\([^)]+\)"),
-    re.compile(r"(?m)^\s*```"),
-    re.compile(r"(?m)^\s*[-*+]\s+"),
-)
-
-
-def _looks_like_markdown(text: str) -> bool:
-    if not text or len(text) < 20:
-        return False
-    return any(p.search(text) for p in _MD_HINT_RES)
-
-
-def _looks_like_json(text: str) -> bool:
-    stripped = (text).strip()
-    if not stripped:
-        return False
-    if stripped[0] not in "{[":
-        return False
-    try:
-        json.loads(stripped)
-        return True
-    except Exception:
-        return False
-
+from app.rag.chunking.utils import looks_like_json, looks_like_markdown
 
 Selection = tuple[BaseChunker, str]
 
@@ -413,7 +384,7 @@ class ManuscriptChunker(BaseChunker):
         )
 
     def _select_structured_payloads(self, *, file_type: str, text: str) -> Selection | None:
-        if file_type in {"json"} or _looks_like_json(text):
+        if file_type in {"json"} or looks_like_json(text):
             return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0), "json"
 
         if file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text):
@@ -624,7 +595,7 @@ class ManuscriptChunker(BaseChunker):
         if file_type in {"md", "markdown"} and looks_like_markdown_frontmatter(text):
             return self._markdown_frontmatter, "markdown_frontmatter"
 
-        if file_type in {"md", "markdown"} or _looks_like_markdown(text):
+        if file_type in {"md", "markdown"} or looks_like_markdown(text):
             return self._markdown, "markdown_aware"
 
         if len(text) >= max(self.chunk_size * 2, 1200):
@@ -633,7 +604,7 @@ class ManuscriptChunker(BaseChunker):
         return self._fallback_recursive, "langchain_recursive"
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
-        meta = doc.metadata or {}
+        meta = doc.metadata
         file_type = str(meta.get("file_type") or "").strip().lower()
         text = doc.page_content
 
@@ -660,7 +631,7 @@ class ManuscriptChunker(BaseChunker):
             chunker, selected = self._select(doc)
             produced = chunker.split_documents([doc])
             for item in produced:
-                meta = dict(item.metadata or {})
+                meta = dict(item.metadata)
                 meta["chunk_strategy_preset"] = "manuscript"
                 meta.setdefault("chunk_strategy_selected", selected)
                 item.metadata = meta

@@ -70,7 +70,7 @@ class SeparatorChunker(BaseChunker):
                     chunks.extend(self._split_large_chunk(part, raw_start, doc.metadata))
                     continue
 
-                metadata = dict(doc.metadata or {})
+                metadata = dict(doc.metadata)
                 content = part
                 start_idx = raw_start
                 end_idx = raw_end
@@ -119,7 +119,7 @@ class SeparatorChunker(BaseChunker):
         self,
         text: str,
         base_pos: int,
-        base_metadata: dict[str, Any] | None,
+        base_metadata: dict[str, Any],
     ) -> list[Document]:
         """
         Split oversized chunks at sentence boundaries (best-effort).
@@ -154,7 +154,7 @@ class SeparatorChunker(BaseChunker):
                 end_char = base_pos + end - rstrip_len
 
             if chunk_text:
-                metadata = dict(base_metadata or {})
+                metadata = dict(base_metadata)
                 metadata["start_char"] = start_char
                 metadata["end_char"] = end_char
                 metadata["chunk_strategy"] = "separator"

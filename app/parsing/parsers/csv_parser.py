@@ -23,8 +23,6 @@ def _safe_cell(value: str, *, max_chars: int = 2000) -> str:
 
 
 def _sniff_csv_format(sample: str) -> tuple[csv.Dialect, str, bool]:
-    delimiter = ","
-    dialect: csv.Dialect = csv.excel
     try:
         sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
         dialect = sniffed
@@ -60,8 +58,6 @@ def _read_csv_rows(
         rows.append(first)
 
     for row in reader:
-        if row is None:
-            continue
         rows.append(row)
         if max_rows is not None and len(rows) >= max_rows:
             break

@@ -92,7 +92,7 @@ class QdrantVectorStore:
                     "vector_score": score,
                 }
             )
-        out.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
+        out.sort(key=lambda row: row["score"], reverse=True)
         return out[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
@@ -101,10 +101,7 @@ class QdrantVectorStore:
         self.storage = [
             (vec, meta)
             for vec, meta in self.storage
-            if not (
-                meta["document_id"] == doc_id
-                and (tenant is None or meta["tenant_id"] == tenant)
-            )
+            if not (meta["document_id"] == doc_id and (tenant is None or meta["tenant_id"] == tenant))
         ]
 
     def delete_by_document_id_and_filter(

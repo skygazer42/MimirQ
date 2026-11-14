@@ -299,9 +299,9 @@ def _rerank_stats(
     stats.setdefault(
         "slo",
         {
-            "latency_slo_ms": int(latency_slo_ms),
-            "elapsed_ms": round(float(total_elapsed_ms_for_slo), 1),
-            "exceeded": bool(latency_slo_ms > 0 and total_elapsed_ms_for_slo > float(latency_slo_ms)),
+            "latency_slo_ms": latency_slo_ms,
+            "elapsed_ms": round(total_elapsed_ms_for_slo, 1),
+            "exceeded": bool(latency_slo_ms > 0 and total_elapsed_ms_for_slo > latency_slo_ms),
         },
     )
     return stats
@@ -631,7 +631,7 @@ async def _search_impl(config: SearchConfig) -> dict[str, Any]:
                 "strategy": str(rerank_strategy),
                 "returned": len(rerank_result.items or []),
                 "elapsed_sec": round(float(total_elapsed), 3),
-                "latency_slo_ms": int(latency_slo_ms),
+                "latency_slo_ms": latency_slo_ms,
                 "slo_exceeded": bool(latency_slo_ms > 0 and (total_elapsed * 1000.0) > float(latency_slo_ms)),
                 "expand_budget_exhausted": bool(budget_meta.get("expand_budget_exhausted")),
             }

@@ -19,11 +19,11 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any, Protocol
 
 from app.core.model_execution import reject_retired_provider
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 
 logger = get_logger(__name__)
 
@@ -34,14 +34,6 @@ _SPARSE_PROVIDER_ALIASES = {
     "det": "deterministic",
     "deterministic": "deterministic",
 }
-_SPARSE_STATUS_VALUES = frozenset({"ready", "disabled", "fallback"})
-_SPARSE_REASON_VALUES = frozenset(
-    {
-        "none",
-        "sparse_disabled",
-        "provider_invalid",
-    }
-)
 
 
 def normalize_sparse_provider_name(provider: str | None) -> str:
@@ -92,8 +84,8 @@ def resolve_sparse_provider_capability(
         "provider_supported": provider_supported,
         "model_required": False,
         "model_configured": False,
-        "status": status if status in _SPARSE_STATUS_VALUES else "fallback",
-        "reason": reason if reason in _SPARSE_REASON_VALUES else "provider_invalid",
+        "status": status,
+        "reason": reason,
     }
 
 

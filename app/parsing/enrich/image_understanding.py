@@ -300,7 +300,7 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
         return ""
 
     left_digits, parity = _decode_left_ean13_digits(bit_string)
-    if left_digits is None or parity is None:
+    if left_digits is None:
         return ""
     right_digits = _decode_right_ean13_digits(bit_string)
     if right_digits is None:
@@ -311,7 +311,7 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
         return ""
 
     value = prefix + left_digits + right_digits
-    if len(value) != 13 or _ean13_check_digit(value[:12]) != value[-1]:
+    if _ean13_check_digit(value[:12]) != value[-1]:
         return ""
     return value
 

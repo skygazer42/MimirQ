@@ -301,7 +301,7 @@ def _strip_mixed_intent_subject_instruction_tail(value: str) -> str:
 
 
 def _record_policy_slot_coverage_text(record: dict[str, Any]) -> str:
-    parts: list[str] = [record['title'], record['content']]
+    parts: list[str] = [record["title"], record["content"]]
     for metadata in _iter_record_metadata_layers(record):
         for value in metadata.values():
             parts.extend(term for term in _metadata_terms(value))
@@ -637,13 +637,13 @@ def _record_needs_final_rerank(record: dict[str, Any]) -> bool:
     return not bool(record.get("reranker_provider") or metadata.get("reranker_provider"))
 
 
-def _record_final_rerank_candidate_id(record: dict[str, Any], *, index: int, used: set[str]) -> str:
+def _record_final_rerank_candidate_id(record: dict[str, Any], *, used: set[str]) -> str:
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
     candidates = [
         _record_source_identity_key(record),
         _first_nonempty_str(metadata.get("chunk_id")),
         _first_nonempty_str(metadata.get("document_id")),
-        record['title'].strip(),
+        record["title"].strip(),
     ]
     base = next((item for item in candidates if item), "")
     if not base:
@@ -655,7 +655,7 @@ def _record_final_rerank_candidate_id(record: dict[str, Any], *, index: int, use
         suffix += 1
         candidate_id = f"{base}#{suffix}"
     used.add(candidate_id)
-    return candidate_id or f"idx:{index}"
+    return candidate_id
 
 
 def _record_exact_primary_alias_bonus(record: dict[str, Any], *, query: str) -> float:

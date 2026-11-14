@@ -40,7 +40,7 @@ def _build_request_blocks(text: str) -> list[_RequestBlock]:
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         method = (m.group("method")).upper()
-        path = (m.group("path")).strip()
+        path = m.group("path")
         blocks.append(_RequestBlock(start=start, end=end, index=idx, method=method, path=path))
     return blocks
 
@@ -49,10 +49,7 @@ def _extract_status(block_text: str) -> int | None:
     m = _RESP_RE.search((block_text)[:20000])
     if not m:
         return None
-    try:
-        return int(m.group("status"))
-    except Exception:
-        return None
+    return int(m.group("status"))
 
 
 def looks_like_http_trace(text: str) -> bool:

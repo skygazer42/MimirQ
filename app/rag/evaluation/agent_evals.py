@@ -407,7 +407,7 @@ class ContextPrecisionEvaluator(BaseEvaluator):
             if _is_relevant(question, ctx):
                 relevant_count += 1
 
-        precision = relevant_count / len(contexts) if contexts else 0
+        precision = relevant_count / len(contexts)
 
         return EvaluationScore(
             metric=self.metric,

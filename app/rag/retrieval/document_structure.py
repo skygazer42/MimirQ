@@ -1,9 +1,8 @@
 from typing import Any
-
-from app.rag.core.metadata import _stringified_metadata_text
 from uuid import UUID
 
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 
 logger = get_logger(__name__)
 
@@ -93,8 +92,8 @@ def _update_page_range(node: dict[str, Any], page: Any) -> None:
         return
     cur_start = node.get("page_start")
     cur_end = node.get("page_end")
-    node["page_start"] = page_int if cur_start is None else min(int(cur_start), page_int)
-    node["page_end"] = page_int if cur_end is None else max(int(cur_end), page_int)
+    node["page_start"] = page_int if cur_start is None else min(cur_start, page_int)
+    node["page_end"] = page_int if cur_end is None else max(cur_end, page_int)
 
 
 def _append_unique(values: list[Any], value: Any) -> None:
@@ -197,9 +196,9 @@ def build_document_structure_from_chunks(
             "description": doc_meta.get("doc_description") or doc_meta.get("description"),
         },
         "nodes": root_nodes,
-        "node_count": int(len(by_path)),
-        "source_chunk_count": int(len(chunks or [])),
-        "truncated": bool(truncated),
+        "node_count": len(by_path),
+        "source_chunk_count": len(chunks or []),
+        "truncated": truncated,
     }
 
 

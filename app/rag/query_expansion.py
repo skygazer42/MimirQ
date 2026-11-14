@@ -8,33 +8,7 @@ in a controlled, auditable way (no surprise Cartesian products).
 import re
 from typing import Any
 
-
-def _alias_values(raw: Any) -> list[Any] | None:
-    if isinstance(raw, str):
-        return [raw]
-    if isinstance(raw, list):
-        return raw
-    return None
-
-
-def _unique_alias_values(key: str, raw: Any) -> list[str]:
-    values = _alias_values(raw)
-    if values is None:
-        return []
-    seen: set[str] = set()
-    unique: list[str] = []
-    for item in values:
-        if item is None:
-            continue
-        alias = str(item).strip()
-        if not alias or alias == key:
-            continue
-        signature = alias.casefold() if alias.isascii() else alias
-        if signature in seen:
-            continue
-        seen.add(signature)
-        unique.append(alias)
-    return unique
+from app.query.expand import _unique_rule_values
 
 
 def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
@@ -55,7 +29,7 @@ def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
         key = k.strip()
         if not key:
             continue
-        unique = _unique_alias_values(key, v)
+        unique = _unique_rule_values(key, v)
         if unique:
             out[key] = unique
     return out

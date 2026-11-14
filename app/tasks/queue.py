@@ -47,11 +47,19 @@ def _redis_settings() -> RedisSettings:
     return RedisSettings.from_dsn(settings.REDIS_URL)
 
 
-class WorkerHealthSettings:
-    """Lightweight settings for ``arq --check`` without importing worker jobs."""
+def __getattr__(name: str) -> type:
+    if name != "WorkerHealthSettings":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-    redis_settings = _redis_settings()
-    queue_name = settings.TASK_QUEUE_NAME
+    # The CLI needs arq; importing API queue helpers must keep it optional.
+    class WorkerHealthSettings:
+        """Lightweight settings for ``arq --check`` without importing worker jobs."""
+
+        redis_settings = _redis_settings()
+        queue_name = settings.TASK_QUEUE_NAME
+
+    globals()[name] = WorkerHealthSettings
+    return WorkerHealthSettings
 
 
 async def init_queue() -> None:
@@ -73,14 +81,15 @@ async def init_queue() -> None:
 async def close_queue() -> None:
     """Close queue connection on shutdown."""
     global _queue
-    if _queue is None:
-        return
-    try:
-        await _queue.close()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to close task queue: %s", str(exc)[:200])
-    finally:
+    async with _queue_lock:
+        queue = _queue
         _queue = None
+        if queue is None:
+            return
+        try:
+            await queue.close()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to close task queue: %s", str(exc)[:200])
 
 
 async def get_queue() -> ArqRedis | None:
@@ -106,7 +115,7 @@ async def get_task_job_status(job_id: str) -> str | None:
 
 async def _resolve_scan_job_handoff(job: Job | None, *, job_id: str | None) -> str | None:
     if job is not None:
-        return job.job_id or job_id
+        return job.job_id
     if not job_id:
         raise TaskEnqueueRejectedError("scan job was not accepted by arq")
     status = await get_task_job_status(job_id)
@@ -207,7 +216,7 @@ async def enqueue_document_processing(
         _job_id=job_id,
         _job_try=1,
     )
-    return (job.job_id or job_id) if job is not None else job_id
+    return job.job_id if job is not None else job_id
 
 
 async def enqueue_kg_extraction(
@@ -373,7 +382,7 @@ async def enqueue_connector_run(
         _job_id=job_id,
         _job_try=1,
     )
-    return (job.job_id or job_id) if job is not None else job_id
+    return job.job_id if job is not None else job_id
 
 
 async def enqueue_evidence_reference_sources_repair(
@@ -415,4 +424,4 @@ async def enqueue_evidence_reference_sources_repair(
         _job_id=job_id,
         _job_try=1,
     )
-    return (job.job_id or job_id) if job is not None else job_id
+    return job.job_id if job is not None else job_id

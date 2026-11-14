@@ -12,17 +12,12 @@ from pathlib import Path
 from typing import Any
 
 
-def _rule_values(raw: Any) -> list[Any] | None:
-    if isinstance(raw, str):
-        return [raw]
-    if isinstance(raw, list):
-        return raw
-    return None
-
-
 def _unique_rule_values(key: str, raw: Any) -> list[str]:
-    values = _rule_values(raw)
-    if values is None:
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, list):
+        values = raw
+    else:
         return []
     seen: set[str] = set()
     unique: list[str] = []
@@ -75,16 +70,12 @@ def _term_pattern(term: str) -> re.Pattern[str]:
 
 
 def _contains(query: str, term: str) -> bool:
-    if not query or not term:
-        return False
     if term.isascii():
         return _term_pattern(term).search(query) is not None
     return term in query
 
 
 def _replace(query: str, term: str, replacement: str) -> str:
-    if not query or not term:
-        return query
     if term.isascii():
         return _term_pattern(term).sub(replacement, query)
     return query.replace(term, replacement)
@@ -118,8 +109,6 @@ def _append_rule_expansions(
     for target in targets:
         if len(expansions) >= max_expansions_total or per_rule >= max_expansions_per_rule:
             break
-        if not target:
-            continue
         expanded = _bounded_expansion_text(
             base,
             source,

@@ -4,44 +4,21 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.connector import ConnectorRunCreateRequest, ConnectorRunListResponse, ConnectorRunOut
-from app.api.v1.connectors_common import _DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.sources import (
+    ConnectorRunCreateRequest,
+    ConnectorRunListQuery,
+    ConnectorRunListResponse,
+    ConnectorRunOut,
+)
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.services import connector_run_operations
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-
-CONNECTOR_RUN_NOT_FOUND_DETAIL = connector_run_operations.CONNECTOR_RUN_NOT_FOUND_DETAIL
-CONNECTOR_QUEUE_UNAVAILABLE_DETAIL = connector_run_operations.CONNECTOR_QUEUE_UNAVAILABLE_DETAIL
-CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR = connector_run_operations.CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR
-
-_enqueue_or_schedule_connector_run = connector_run_operations.enqueue_or_schedule_run
-_build_retry_failed_run_config = connector_run_operations._build_retry_failed_run_config
-_connector_run_has_abortable_task = connector_run_operations._connector_run_has_abortable_task
-_get_queue_or_none = connector_run_operations._get_queue_or_none
-_load_arq_job_class = connector_run_operations._load_arq_job_class
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-class ConnectorRunListParams:
-    def __init__(
-        self,
-        skip: Annotated[int, Query(ge=0)] = 0,
-        limit: Annotated[int, Query(ge=1, le=200)] = 20,
-        dataset_id: UUID | None = None,
-    ) -> None:
-        self.skip = skip
-        self.limit = limit
-        self.dataset_id = dataset_id
-
-
-@router.post(
-    "/runs",
-    response_model=ConnectorRunOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/runs", response_model=ConnectorRunOut, status_code=201)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
     background_tasks: BackgroundTasks,
@@ -59,13 +36,9 @@ async def create_connector_run(
     )
 
 
-@router.get(
-    "/runs",
-    response_model=ConnectorRunListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/runs", response_model=ConnectorRunListResponse)
 def list_connector_runs(
-    params: Annotated[ConnectorRunListParams, Depends()],
+    params: Annotated[ConnectorRunListQuery, Query()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -81,11 +54,7 @@ def list_connector_runs(
     )
 
 
-@router.get(
-    "/runs/{run_id}",
-    response_model=ConnectorRunOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/runs/{run_id}", response_model=ConnectorRunOut)
 def get_connector_run(
     run_id: UUID,
     *,
@@ -101,12 +70,7 @@ def get_connector_run(
     )
 
 
-@router.post(
-    "/runs/{run_id}/retry-failed",
-    response_model=ConnectorRunOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/runs/{run_id}/retry-failed", response_model=ConnectorRunOut, status_code=201)
 async def retry_failed_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
@@ -124,12 +88,7 @@ async def retry_failed_connector_run(
     )
 
 
-@router.post(
-    "/runs/{run_id}/resume",
-    response_model=ConnectorRunOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/runs/{run_id}/resume", response_model=ConnectorRunOut, status_code=201)
 async def resume_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
@@ -147,11 +106,7 @@ async def resume_connector_run(
     )
 
 
-@router.post(
-    "/runs/{run_id}/cancel",
-    response_model=ConnectorRunOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut)
 async def cancel_connector_run(
     run_id: UUID,
     *,

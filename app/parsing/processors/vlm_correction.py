@@ -1,4 +1,3 @@
-import asyncio
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +19,7 @@ def should_apply_vlm_correction(
     pdf_quality: dict[str, Any] | None,
     min_table_score: float,
 ) -> bool:
-    if not bool(enabled):
+    if not enabled:
         return False
     raw = (pdf_quality if pdf_quality is not None else {}).get("table_quality_score")
     try:
@@ -41,7 +40,7 @@ def _render_pdf_page_png(file_path: Path, page_number: int) -> bytes:
 
 
 def _build_correction_prompt(markdown: str) -> str:
-    body = (markdown).strip()
+    body = markdown.strip()
     return (
         "You are correcting OCR/parsing markdown for a document page.\n"
         "Use the page image as the source of truth.\n"
@@ -65,10 +64,6 @@ async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: byt
         ).strip()
 
 
-def _correct_markdown_with_vision(*, markdown: str, image_bytes: bytes) -> str:
-    return asyncio.run(_correct_markdown_with_vision_async(markdown=markdown, image_bytes=image_bytes))
-
-
 async def apply_vlm_correction_async(
     *,
     documents: list[Document] | None,
@@ -80,7 +75,7 @@ async def apply_vlm_correction_async(
     remaining = max(0, int(max_pages or 0))
 
     for doc in documents if documents is not None else []:
-        meta = dict(doc.metadata or {})
+        meta = dict(doc.metadata)
         page_raw = meta.get("page")
         if page_raw is None:
             page_raw = meta.get("page_number")
@@ -90,7 +85,7 @@ async def apply_vlm_correction_async(
             page = 0
 
         next_doc = doc
-        if remaining > 0 and page > 0 and (doc.page_content).strip():
+        if remaining > 0 and page > 0 and doc.page_content.strip():
             try:
                 image_bytes = _render_pdf_page_png(file_path, page)
                 corrected = await _correct_markdown_with_vision_async(
@@ -100,49 +95,7 @@ async def apply_vlm_correction_async(
                 if corrected:
                     next_meta = dict(meta)
                     next_meta["vlm_correction_applied"] = True
-                    next_doc = Document(page_content=corrected, metadata=next_meta, id=getattr(doc, "id", None))
-                    applied_pages.append(page)
-                    remaining -= 1
-            except Exception:
-                next_doc = doc
-
-        out.append(next_doc)
-
-    return out, {"applied_pages": applied_pages, "applied": bool(applied_pages)}
-
-
-def apply_vlm_correction(
-    *,
-    documents: list[Document] | None,
-    file_path: Path,
-    max_pages: int = 2,
-) -> tuple[list[Document], dict[str, Any]]:
-    out: list[Document] = []
-    applied_pages: list[int] = []
-    remaining = max(0, int(max_pages or 0))
-
-    for doc in documents if documents is not None else []:
-        meta = dict(doc.metadata or {})
-        page_raw = meta.get("page")
-        if page_raw is None:
-            page_raw = meta.get("page_number")
-        try:
-            page = int(page_raw or 0)
-        except Exception:
-            page = 0
-
-        next_doc = doc
-        if remaining > 0 and page > 0 and (doc.page_content).strip():
-            try:
-                image_bytes = _render_pdf_page_png(file_path, page)
-                corrected = _correct_markdown_with_vision(
-                    markdown=doc.page_content,
-                    image_bytes=image_bytes,
-                ).strip()
-                if corrected:
-                    next_meta = dict(meta)
-                    next_meta["vlm_correction_applied"] = True
-                    next_doc = Document(page_content=corrected, metadata=next_meta, id=getattr(doc, "id", None))
+                    next_doc = Document(page_content=corrected, metadata=next_meta, id=doc.id)
                     applied_pages.append(page)
                     remaining -= 1
             except Exception:
@@ -167,12 +120,12 @@ class VLMCorrAudit:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "applied": bool(self.applied),
-            "changed": bool(self.changed),
-            "pages_attempted": int(self.pages_attempted),
-            "pages_changed": int(self.pages_changed),
-            "elapsed_ms": int(self.elapsed_ms),
-            "error": (str(self.error)[:200] if self.error else None),
+            "applied": self.applied,
+            "changed": self.changed,
+            "pages_attempted": self.pages_attempted,
+            "pages_changed": self.pages_changed,
+            "elapsed_ms": self.elapsed_ms,
+            "error": (self.error[:200] if self.error else None),
         }
 
 
@@ -212,17 +165,16 @@ async def _call_vlm_backend_async(
       - raw text body (treated as markdown)
     """
     payload = {"markdown": markdown, "meta": dict((meta if meta is not None else {}))}
-    timeout = float(timeout_sec)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout_sec) as client:
         try:
             resp = await client.post(
-                str(api_url).strip(),
+                api_url,
                 json=payload,
             )
         except Exception as exc:  # noqa: BLE001
             return markdown, False, f"http_failed:{exc.__class__.__name__}"
 
-        if int(resp.status_code) >= 400:
+        if resp.status_code >= 400:
             return markdown, False, f"http_{resp.status_code}"
 
         content_type = str(resp.headers.get("content-type") or "").lower()
@@ -230,10 +182,10 @@ async def _call_vlm_backend_async(
             if "application/json" in content_type:
                 data = resp.json()
                 if isinstance(data, dict) and isinstance(data.get("markdown"), str):
-                    out = str(data.get("markdown") or "")
+                    out = data["markdown"]
                     return out, bool(out.strip() and out.strip() != markdown.strip()), "ok_json"
             # Fallback: treat response body as markdown text.
-            out = resp.text if isinstance(resp.text, str) else str(resp.content or b"", "utf-8", errors="ignore")
+            out = resp.text
             return out, bool(out.strip() and out.strip() != markdown.strip()), "ok_text"
         except Exception as exc:  # noqa: BLE001
             return markdown, False, f"parse_failed:{exc.__class__.__name__}"
@@ -274,8 +226,9 @@ def maybe_correct_markdown_pages(
     Returns:
       (updated_pages, audit)
     """
+    out = list(pages or [])
     if not enabled:
-        return list(pages or []), VLMCorrAudit(
+        return out, VLMCorrAudit(
             applied=False,
             changed=False,
             pages_attempted=0,
@@ -286,7 +239,7 @@ def maybe_correct_markdown_pages(
 
     url = api_url.strip()
     if not url:
-        return list(pages or []), VLMCorrAudit(
+        return out, VLMCorrAudit(
             applied=False,
             changed=False,
             pages_attempted=0,
@@ -296,7 +249,7 @@ def maybe_correct_markdown_pages(
         )
 
     if not _should_correct_pdf(pdf_quality=pdf_quality, min_table_quality=float(min_table_quality)):
-        return list(pages or []), VLMCorrAudit(
+        return out, VLMCorrAudit(
             applied=False,
             changed=False,
             pages_attempted=0,
@@ -309,15 +262,13 @@ def maybe_correct_markdown_pages(
     max_chars_i = max(0, int(max_chars or 0))
     timeout_f = float(timeout_sec or 60.0)
 
-    out = list(pages or [])
     attempted = 0
     changed = 0
     t0 = time.perf_counter()
 
-    for i, text in enumerate(out):
+    for i, raw in enumerate(out):
         if max_pages_i and attempted >= max_pages_i:
             break
-        raw = text
         if not raw.strip():
             continue
         if max_chars_i and len(raw) > max_chars_i:
@@ -327,9 +278,7 @@ def maybe_correct_markdown_pages(
         corrected, is_changed, _note = _call_vlm_backend(
             api_url=url,
             markdown=raw,
-            meta={**(meta if meta is not None else {}), "page_index": int(i + 1)}
-            if meta is not None
-            else {"page_index": int(i + 1)},
+            meta={**(meta if meta is not None else {}), "page_index": i + 1},
             timeout_sec=timeout_f,
         )
         if is_changed:
@@ -358,7 +307,6 @@ def maybe_correct_markdown_pages(
 
 
 __all__ = [
-    "apply_vlm_correction",
     "apply_vlm_correction_async",
     "maybe_correct_markdown_pages",
     "should_apply_vlm_correction",

@@ -7,8 +7,8 @@ Split out of ``app.rag.retrieval.orchestrator`` (see
 import json
 from typing import Any
 
-from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.hashing import stable_hash
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.orchestration.common import _safe_int
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
@@ -48,13 +48,13 @@ def _safe_post_rerank_pipeline_item(item: Any) -> dict[str, Any] | None:
     if not isinstance(item, dict):
         return None
     provider = _stringified_metadata_text(item, "provider")
-    if not provider or provider in {"none", "off", "false", "0"}:
+    if not provider:
         return None
     provider = provider.lower()
     if provider in {"none", "off", "false", "0"}:
         return None
     top_n = _safe_int(item.get("top_n"), minimum=0)
-    return {"provider": provider, "top_n": (top_n)}
+    return {"provider": provider, "top_n": top_n}
 
 
 def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
@@ -70,7 +70,7 @@ def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
             iv = int(v) if v is not None else 0
         except (TypeError, ValueError, AttributeError):
             continue
-        out[key] = max(0, int(iv))
+        out[key] = max(0, iv)
     return out
 
 
@@ -87,7 +87,7 @@ def _coerce_channel_min_scores(raw: Any) -> dict[str, float]:
             fv = float(v) if v is not None else 0.0
         except (TypeError, ValueError, AttributeError):
             continue
-        out[key] = max(0.0, min(1.0, float(fv)))
+        out[key] = max(0.0, min(1.0, fv))
     return out
 
 
@@ -97,7 +97,7 @@ def resolve_channel_budget_policy_overrides(
     retrieval_mode: str,
     retrieval_profile: str | None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    meta: dict[str, Any] = {"enabled": bool(isinstance(policy, dict)), "used": False}
+    meta: dict[str, Any] = {"enabled": isinstance(policy, dict), "used": False}
     if not isinstance(policy, dict):
         meta["reason"] = "policy_missing"
         return {}, meta
@@ -118,7 +118,7 @@ def resolve_channel_budget_policy_overrides(
         meta.update(disabled_meta)
         return {}, meta
 
-    budgets = _coerce_channel_budgets((selected or {}).get("fusion_budgets"))
+    budgets = _coerce_channel_budgets(selected.get("fusion_budgets"))
     if not budgets:
         meta["reason"] = "budgets_missing"
         meta["selected_profile"] = selected_key
@@ -174,7 +174,7 @@ def _channel_budget_policy_selected(
                 "retrieval_profile": profile_norm,
             },
         )
-    selected = profiles.get(selected_key) if isinstance(profiles.get(selected_key), dict) else {}
+    selected = profiles[selected_key]
     return selected_key, selected, None
 
 
@@ -185,14 +185,14 @@ def _channel_budget_policy_overrides(
     budgets: dict[str, int],
 ) -> dict[str, Any]:
     fusion_strategy = (
-        str((selected or {}).get("fusion_strategy") or policy.get("fusion_strategy") or "budgeted_rrf").strip().lower()
+        str(selected.get("fusion_strategy") or policy.get("fusion_strategy") or "budgeted_rrf").strip().lower()
         or "budgeted_rrf"
     )
     overrides: dict[str, Any] = {
         "fusion_strategy": fusion_strategy,
         "fusion_budgets": budgets,
     }
-    min_scores = _coerce_channel_min_scores((selected or {}).get("fusion_min_scores"))
+    min_scores = _coerce_channel_min_scores(selected.get("fusion_min_scores"))
     if min_scores:
         overrides["fusion_min_scores"] = min_scores
     return overrides

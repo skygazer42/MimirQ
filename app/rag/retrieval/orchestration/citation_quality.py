@@ -22,7 +22,9 @@ def _citation_coverage_lists(citations: list[Any]) -> tuple[int, list[str], list
             continue
         total += 1
         document_id = _stringified_metadata_text(citation, "document_id")
-        pipeline_key = _stringified_metadata_text(citation, "doc_pipeline_key") or _stringified_metadata_text(citation, "pipeline_hash")
+        pipeline_key = _stringified_metadata_text(citation, "doc_pipeline_key") or _stringified_metadata_text(
+            citation, "pipeline_hash"
+        )
         role = _stringified_metadata_text(citation, "retrieval_role")
         if document_id:
             doc_ids.append(document_id)
@@ -39,8 +41,6 @@ def _top_doc_share(doc_ids: list[str]) -> float | None:
     from collections import Counter  # local import: keep module import-light
 
     counts = Counter(doc_ids)
-    if not counts:
-        return None
     return round(float(max(counts.values())) / float(len(doc_ids)), 3)
 
 
@@ -103,8 +103,8 @@ def _empty_retrieval_reason_counts(enrich: dict[str, Any]) -> tuple[dict[str, in
     ):
         count = _safe_int(enrich.get(key))
         if count > 0:
-            signals[key] = int(count)
-            reason_counts.append((reason, int(count)))
+            signals[key] = count
+            reason_counts.append((reason, count))
     reason_counts.sort(key=lambda item: (-item[1], item[0]))
     return signals, reason_counts
 
@@ -167,7 +167,7 @@ def _extract_parse_quality_score(meta: Any) -> float | None:
                 score = 0.0
             if score > 1.0:
                 score = 1.0
-            return float(score)
+            return score
         except (OverflowError, TypeError, ValueError):
             continue
     return None
@@ -188,10 +188,10 @@ def _parse_quality_recommendation(*, low_ratio: float, considered: int) -> str |
 def _parse_quality_low_sample(doc: Document, *, rank: int, score: float) -> dict[str, Any]:
     meta = doc.metadata or {}
     return {
-        "rank": int(rank),
+        "rank": rank,
         "chunk_id": doc.id if doc.id is not None else _stringified_metadata_text(meta, "chunk_id"),
         "document_id": _stringified_metadata_text(meta, "document_id"),
-        "score": round(float(score), 3),
+        "score": round(score, 3),
     }
 
 
@@ -210,8 +210,8 @@ def _parse_quality_risk_counters(
         if score is None:
             continue
         considered += 1
-        scores.append(float(score))
-        if float(score) < float(low_threshold):
+        scores.append(score)
+        if score < float(low_threshold):
             low_count += 1
             if len(low_samples) < 5:
                 low_samples.append(_parse_quality_low_sample(doc, rank=index + 1, score=score))
@@ -226,19 +226,19 @@ def _summarize_parse_quality_risk(
 ) -> dict[str, Any]:
     considered, low_count, scores, low_samples = _parse_quality_risk_counters(docs, low_threshold=low_threshold)
     low_ratio = (float(low_count) / float(considered)) if considered > 0 else 0.0
-    avg_score = float(sum(scores) / float(len(scores))) if scores else None
-    alert = bool(considered > 0 and low_ratio >= float(alert_ratio))
-    recommendation = _parse_quality_recommendation(low_ratio=float(low_ratio), considered=int(considered))
+    avg_score = sum(scores) / float(len(scores)) if scores else None
+    alert = considered > 0 and low_ratio >= float(alert_ratio)
+    recommendation = _parse_quality_recommendation(low_ratio=low_ratio, considered=considered)
 
     return {
         "enabled": True,
         "low_threshold": round(float(low_threshold), 3),
         "alert_ratio": round(float(alert_ratio), 3),
-        "considered": int(considered),
-        "low_count": int(low_count),
-        "low_ratio": round(float(low_ratio), 3),
-        "avg_score": (round(float(avg_score), 3) if avg_score is not None else None),
-        "alert": bool(alert),
+        "considered": considered,
+        "low_count": low_count,
+        "low_ratio": round(low_ratio, 3),
+        "avg_score": (round(avg_score, 3) if avg_score is not None else None),
+        "alert": alert,
         "recommendation": recommendation,
         "low_samples": low_samples,
     }
@@ -258,10 +258,10 @@ def _classify_parse_risk(
     level = _parse_risk_level(considered=considered, low_ratio=low_ratio, recommendation=recommendation)
     return {
         "level": level,
-        "score": round(float(low_ratio), 3),
+        "score": round(low_ratio, 3),
         "reason": recommendation or ("no_parse_quality_metadata" if considered <= 0 else "parse_quality_healthy"),
-        "considered": int(considered),
-        "low_ratio": round(float(low_ratio), 3),
+        "considered": considered,
+        "low_ratio": round(low_ratio, 3),
         "hardcase_eligible": _parse_risk_hardcase_eligible(
             level=level,
             considered=considered,
@@ -320,9 +320,9 @@ def _count_parse_repair_actions(actions: list[Any]) -> tuple[dict[str, int], dic
         action = str(item.get("action") or "reparse_document").strip().lower() or "reparse_document"
         status = str(item.get("status") or "scheduled").strip().lower() or "scheduled"
         priority = str(item.get("priority") or "medium").strip().lower() or "medium"
-        action_counts[action] = int(action_counts.get(action, 0) + 1)
-        status_counts[status] = int(status_counts.get(status, 0) + 1)
-        priority_counts[priority] = int(priority_counts.get(priority, 0) + 1)
+        action_counts[action] = action_counts.get(action, 0) + 1
+        status_counts[status] = status_counts.get(status, 0) + 1
+        priority_counts[priority] = priority_counts.get(priority, 0) + 1
         doc_id = _stringified_metadata_text(item, "document_id")
         if doc_id:
             docs_seen.add(doc_id)
@@ -330,7 +330,11 @@ def _count_parse_repair_actions(actions: list[Any]) -> tuple[dict[str, int], dic
 
 
 def _parse_repair_run_id(payload: dict[str, Any]) -> str | None:
-    return _stringified_metadata_text(payload, "scheduler_run_id") or _stringified_metadata_text(payload, "schedule_run_id") or _stringified_metadata_text(payload, "run_id")
+    return (
+        _stringified_metadata_text(payload, "scheduler_run_id")
+        or _stringified_metadata_text(payload, "schedule_run_id")
+        or _stringified_metadata_text(payload, "run_id")
+    )
 
 
 def _parse_repair_gate_passed(payload: dict[str, Any]) -> Any:
@@ -348,12 +352,12 @@ def _build_parse_repair_actions_summary(
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "enabled": True,
-        "actions_total": int(sum(action_counts.values())),
-        "unique_documents": int(len(docs_seen)),
+        "actions_total": sum(action_counts.values()),
+        "unique_documents": len(docs_seen),
         "action_counts": dict(sorted(action_counts.items(), key=lambda item: item[0])),
         "status_counts": dict(sorted(status_counts.items(), key=lambda item: item[0])),
         "priority_counts": dict(sorted(priority_counts.items(), key=lambda item: item[0])),
-        "high_priority_count": int(priority_counts.get("high", 0)),
+        "high_priority_count": priority_counts.get("high", 0),
     }
     run_id = _parse_repair_run_id(payload)
     source = _stringified_metadata_text(payload, "source") or _stringified_metadata_text(payload, "schema")

@@ -4,16 +4,15 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.connector import (
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.sources import (
     ConnectorConfigCreateRequest,
     ConnectorConfigListResponse,
     ConnectorConfigOut,
     ConnectorConfigUpdateRequest,
     ConnectorRunOut,
 )
-from app.api.v1.connectors_common import _DEFAULT_HTTP_EXCEPTION_RESPONSES
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.database import get_db
 from app.services.connector_config_operations import (
     create_config,
@@ -24,14 +23,10 @@ from app.services.connector_config_operations import (
     update_config,
 )
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.get(
-    "/configs",
-    response_model=ConnectorConfigListResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/configs", response_model=ConnectorConfigListResponse)
 def list_connector_configs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
@@ -55,12 +50,7 @@ def list_connector_configs(
     )
 
 
-@router.post(
-    "/configs",
-    response_model=ConnectorConfigOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/configs", response_model=ConnectorConfigOut, status_code=201)
 def create_connector_config(
     payload: ConnectorConfigCreateRequest,
     *,
@@ -71,11 +61,7 @@ def create_connector_config(
     return create_config(payload, tenant_id=tenant_id, account_id=account_id, db=db)
 
 
-@router.put(
-    "/configs/{config_id}",
-    response_model=ConnectorConfigOut,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.put("/configs/{config_id}", response_model=ConnectorConfigOut)
 def update_connector_config(
     config_id: UUID,
     payload: ConnectorConfigUpdateRequest,
@@ -87,7 +73,7 @@ def update_connector_config(
     return update_config(config_id, payload, tenant_id=tenant_id, account_id=account_id, db=db)
 
 
-@router.delete("/configs/{config_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete("/configs/{config_id}", status_code=204)
 def delete_connector_config(
     config_id: UUID,
     *,
@@ -99,12 +85,7 @@ def delete_connector_config(
     return Response(status_code=204)
 
 
-@router.post(
-    "/configs/{config_id}/run",
-    response_model=ConnectorRunOut,
-    status_code=201,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/configs/{config_id}/run", response_model=ConnectorRunOut, status_code=201)
 async def run_connector_config(
     config_id: UUID,
     background_tasks: BackgroundTasks,
@@ -122,7 +103,7 @@ async def run_connector_config(
     )
 
 
-@router.post("/configs/{config_id}/reconcile", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/configs/{config_id}/reconcile")
 def reconcile_connector_config(
     config_id: UUID,
     apply: Annotated[bool, Query(description="Apply the reconcile plan; default is dry-run")] = False,

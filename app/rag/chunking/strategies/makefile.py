@@ -121,13 +121,14 @@ class MakefileChunker(BaseChunker):
             meta["end_char"] = abs_end
             meta.setdefault("doc_type_kwd", "makefile")
             meta["make_fallback"] = True
+            meta["chunk_index"] = len(out)
             out.append(Document(page_content=sd.page_content, metadata=meta))
 
     @staticmethod
     def _target_names(targets: list[_Target], *, start_idx: int, end_idx: int) -> list[str]:
         uniq: list[str] = []
         for target in targets[start_idx:end_idx]:
-            if target.name and target.name not in uniq:
+            if target.name not in uniq:
                 uniq.append(target.name)
         return uniq[:25]
 
@@ -153,6 +154,7 @@ class MakefileChunker(BaseChunker):
         if uniq:
             meta["make_targets"] = uniq
             meta["make_target"] = uniq[0]
+        meta["chunk_index"] = len(out)
         out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
 
     def _next_target_start(self, *, targets: list[_Target], start_idx: int, end_idx: int) -> int:
@@ -166,15 +168,7 @@ class MakefileChunker(BaseChunker):
                 continue
             break
         next_start = desired if desired > start_idx else (end_idx - 1)
-        return next_start if next_start > start_idx else end_idx
-
-    @staticmethod
-    def _finalize_chunk_indexes(out: list[Document]) -> list[Document]:
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
-        return out
+        return next_start
 
     def _append_target_chunks(
         self,
@@ -195,9 +189,6 @@ class MakefileChunker(BaseChunker):
                     end_idx += 1
                     continue
                 break
-            if end_idx == start_idx:
-                end_idx = start_idx + 1
-
             self._append_target_chunk(
                 out=out,
                 text=text,
@@ -212,7 +203,7 @@ class MakefileChunker(BaseChunker):
         out: list[Document] = []
         for doc in documents:
             text = doc.page_content
-            base_meta = dict(doc.metadata or {})
+            base_meta = dict(doc.metadata)
             if not text.strip():
                 continue
 
@@ -223,4 +214,4 @@ class MakefileChunker(BaseChunker):
 
             self._append_target_chunks(out=out, text=text, base_meta=base_meta, targets=targets)
 
-        return self._finalize_chunk_indexes(out)
+        return out

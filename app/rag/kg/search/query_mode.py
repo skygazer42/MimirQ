@@ -34,9 +34,8 @@ def normalize_kg_query_mode(mode: Any, *, default: str = "auto") -> str:
     raw = str(mode or "").strip().lower()
     if raw in _ALLOWED_MODES:
         return raw
-    return (
-        str(default or "auto").strip().lower() if str(default or "auto").strip().lower() in _ALLOWED_MODES else "auto"
-    )
+    default_norm = str(default or "auto").strip().lower()
+    return default_norm if default_norm in _ALLOWED_MODES else "auto"
 
 
 class _QueryModeResult(TypedDict):
@@ -182,7 +181,7 @@ def classify_kg_query_mode(
         if not has_local:
             return _query_mode_result("global", "medium", reasons)
 
-    doc_count = len(list(document_ids or []))
+    doc_count = len(document_ids or [])
     if _single_doc_row_focus(q_fold, q, doc_count=doc_count):
         return _query_mode_with_reason("local", "high", reasons, "single_doc_row_focus")
 

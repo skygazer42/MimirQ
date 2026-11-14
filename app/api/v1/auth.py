@@ -1,6 +1,4 @@
-"""
-Auth endpoints: register, login, me.
-"""
+"""Local account, authentication policy and SAML endpoints."""
 
 import hashlib
 import hmac
@@ -9,8 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.schemas.auth import (
+from app.api.dependencies import get_current_account_id
+from app.api.schemas.identity import (
     AuthPolicy,
     AuthResponse,
     LoginRequest,
@@ -22,6 +20,7 @@ from app.api.schemas.auth import (
     TokenResponse,
     UserPublic,
 )
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
@@ -44,14 +43,6 @@ from app.services.user_service import (
     mark_login,
 )
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
-
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _BOOTSTRAP_TOKEN_HEADER = "X-Bootstrap-Token"
 
@@ -62,11 +53,8 @@ def _bootstrap_token_matches(provided_token: str, expected_token: str) -> bool:
     if not expected or not provided:
         return False
     if expected.lower().startswith("sha256:"):
-        digest = expected.split(":", 1)[1].strip().lower()
-        if not digest:
-            return False
-        provided_digest = hashlib.sha256(provided.encode("utf-8", "ignore")).hexdigest()
-        return hmac.compare_digest(provided_digest, digest)
+        expected = expected.split(":", 1)[1].strip().lower()
+        provided = hashlib.sha256(provided.encode("utf-8", "ignore")).hexdigest()
     return hmac.compare_digest(provided, expected)
 
 
@@ -78,6 +66,19 @@ def _require_initial_registration_token(*, db: Session, bootstrap_token: str | N
     if bootstrap_token is not None and _bootstrap_token_matches(bootstrap_token, settings.INITIAL_REGISTRATION_TOKEN):
         return
     raise HTTPException(status_code=403, detail="Initial registration bootstrap token required")
+
+
+def _build_auth_response(db: Session, user: User) -> AuthResponse:
+    user_id = str(user.id)
+    tenant_id = None
+    if settings.JWT_TENANT_CLAIM.strip():
+        current_tenant = get_current_tenant_id(db, user_id=user_id)
+        tenant_id = str(current_tenant) if current_tenant is not None else None
+    token, expires_in = create_access_token(user_id, tenant_id=tenant_id)
+    return AuthResponse(
+        user=user,
+        token=TokenResponse(access_token=token, expires_in=expires_in),
+    )
 
 
 @router.get("/policy", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -117,18 +118,6 @@ def signup_user(payload: SignupRequest, db: Annotated[Session, Depends(get_db)])
     return _build_auth_response(db, user)
 
 
-def _build_auth_response(db: Session, user: User) -> AuthResponse:
-    tenant_id = None
-    if settings.JWT_TENANT_CLAIM.strip():
-        current_tenant = get_current_tenant_id(db, user_id=str(user.id))
-        tenant_id = str(current_tenant) if current_tenant else None
-    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
-    return AuthResponse(
-        user=user,
-        token=TokenResponse(access_token=token, expires_in=expires_in),
-    )
-
-
 @router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def register_user(
     payload: RegisterRequest,
@@ -165,7 +154,7 @@ def get_me(
 ) -> UserPublic:
     """Return the authenticated user's public profile."""
     user = get_user_by_id(db, account_id)
-    if not user:
+    if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
@@ -178,7 +167,6 @@ def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(g
         provider_id=payload.provider_id,
         saml_response=payload.saml_response,
         relay_state=payload.relay_state,
-        acs_url=payload.acs_url,
     )
     if not payload.bridge_mode:
         return session
@@ -196,8 +184,8 @@ def saml_bridge_consume(payload: SamlBridgeConsumeRequest) -> SamlExchangeRespon
 @router.get("/saml/metadata", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_metadata(provider_id: str | None = None) -> Response:
     """Return SAML service-provider metadata XML."""
-    xml = build_saml_sp_metadata_xml(provider_id=provider_id)
-    resp = Response(content=xml, media_type="application/samlmetadata+xml; charset=utf-8")
-    resp.headers["Cache-Control"] = "no-store"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    return Response(
+        content=build_saml_sp_metadata_xml(provider_id=provider_id),
+        media_type="application/samlmetadata+xml; charset=utf-8",
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )

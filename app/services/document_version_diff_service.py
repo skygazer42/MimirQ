@@ -14,13 +14,9 @@ class ContentHashMultisetDiff:
     removed_hashes: tuple[str, ...] = ()
 
 
-def _normalize_hashes(items: Iterable[str] | None) -> list[str]:
+def _normalize_hashes(items: Iterable[str]) -> list[str]:
     out: list[str] = []
-    if not items:
-        return out
     for raw in items:
-        if not isinstance(raw, str):
-            continue
         val = raw.strip()
         if not val:
             continue
@@ -30,8 +26,8 @@ def _normalize_hashes(items: Iterable[str] | None) -> list[str]:
 
 def content_hash_multiset_diff(
     *,
-    from_hashes: Iterable[str] | None,
-    to_hashes: Iterable[str] | None,
+    from_hashes: Iterable[str],
+    to_hashes: Iterable[str],
     sample_limit: int = 50,
 ) -> ContentHashMultisetDiff:
     """
@@ -41,28 +37,28 @@ def content_hash_multiset_diff(
     - Uses multiset counts (duplicates matter).
     - Returns counts + best-effort sample hash lists for UI/debug.
     """
-    a = Counter(_normalize_hashes(from_hashes))
-    b = Counter(_normalize_hashes(to_hashes))
+    before_counts = Counter(_normalize_hashes(from_hashes))
+    after_counts = Counter(_normalize_hashes(to_hashes))
 
-    from_total = sum(a.values())
-    to_total = sum(b.values())
+    from_total = sum(before_counts.values())
+    to_total = sum(after_counts.values())
 
     unchanged = 0
-    for key in a.keys() & b.keys():
-        unchanged += min(a[key], b[key])
+    for key in before_counts.keys() & after_counts.keys():
+        unchanged += min(before_counts[key], after_counts[key])
 
-    added = max(0, to_total - unchanged)
-    removed = max(0, from_total - unchanged)
+    added = to_total - unchanged
+    removed = from_total - unchanged
 
     added_hashes: list[tuple[int, str]] = []
     removed_hashes: list[tuple[int, str]] = []
-    for key in a.keys() | b.keys():
-        da = a[key]
-        db = b[key]
-        if db > da:
-            added_hashes.append((db - da, key))
-        elif da > db:
-            removed_hashes.append((da - db, key))
+    for key in before_counts.keys() | after_counts.keys():
+        before_count = before_counts[key]
+        after_count = after_counts[key]
+        if after_count > before_count:
+            added_hashes.append((after_count - before_count, key))
+        elif before_count > after_count:
+            removed_hashes.append((before_count - after_count, key))
 
     added_hashes.sort(key=lambda item: (-item[0], item[1]))
     removed_hashes.sort(key=lambda item: (-item[0], item[1]))

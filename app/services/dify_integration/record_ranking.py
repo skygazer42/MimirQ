@@ -102,7 +102,7 @@ def _record_matches_quoted_query_anchor_for_policy(
     anchors = _quoted_query_anchor_terms(query)
     if not anchors:
         return True
-    values: list[str] = [record['content'], record['title']]
+    values: list[str] = [record["content"], record["title"]]
     anchor_fields = query_policy._exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
     for metadata in _iter_record_metadata_layers(record):
         for field in anchor_fields:
@@ -451,14 +451,14 @@ def _final_rerank_candidates(
     used_ids: set[str] = set()
     id_to_record: dict[str, dict[str, Any]] = {}
     candidates: list[RerankCandidate] = []
-    for index, record in enumerate(records[:candidate_count]):
+    for record in records[:candidate_count]:
         text = _record_final_rerank_text(record, policy_plugin_refs=policy_plugin_refs)
         if not text:
             continue
-        candidate_id = _record_final_rerank_candidate_id(record, index=index, used=used_ids)
+        candidate_id = _record_final_rerank_candidate_id(record, used=used_ids)
         metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
         metadata["score"] = float(record.get("score") or 0.0)
-        metadata["title"] = record['title']
+        metadata["title"] = record["title"]
         candidates.append(RerankCandidate(id=candidate_id, text=text, metadata=metadata))
         id_to_record[candidate_id] = record
     return candidates, id_to_record, candidate_count
@@ -552,7 +552,7 @@ def _record_content_is_answerful(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    content = record['content'].strip()
+    content = record["content"].strip()
     return bool(content) and _record_has_answer_evidence(
         record,
         content=content,
@@ -563,7 +563,7 @@ def _record_content_is_answerful(
 def _record_answerfulness_score(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> float:
     answerful_record_bonus = _ANSWERFUL_RECORD_BONUS
     anchor_only_qa_record_penalty = _ANCHOR_ONLY_QA_RECORD_PENALTY
-    content = record['content'].strip()
+    content = record["content"].strip()
     if not content:
         return 0.0
     if _record_has_answer_evidence(record, content=content, policy_plugin_refs=policy_plugin_refs):
@@ -750,7 +750,7 @@ def _composite_exact_anchor_slot_content(records: list[dict[str, Any]]) -> str:
         part
         for part in (
             _composite_stitched_section_text(records),
-            "\n\n".join(record['content'].strip() for record in records if record.get("content")),
+            "\n\n".join(record["content"].strip() for record in records if record.get("content")),
         )
         if part
     ]
@@ -777,8 +777,6 @@ def _record_has_answer_evidence(
     ):
         return True
 
-    raw_metadata = record.get("metadata")
-    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     if answer_hints._metadata_answer_highlights(metadata, response_hints=response_hints):
         return True
     return False
@@ -1032,12 +1030,7 @@ def _records_can_skip_kg_on_demand(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-    if query_policy._query_prefers_question_anchor(
-        query, policy_plugin_refs=policy_plugin_refs
-    ) and not query_policy._query_prefers_service_anchor(
-        query,
-        policy_plugin_refs=policy_plugin_refs,
-    ):
+    if query_policy._query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs):
         return _records_have_strong_question_anchor(
             records,
             query=query,

@@ -78,7 +78,7 @@ class BaseWorkflow(ABC):
         name: Workflow name for logging/tracing
         mode: WorkflowMode enumeration value
         max_iterations: Maximum iterations for iterative workflows
-        timeout_sec: Execution timeout in seconds
+        timeout_sec: Stored timeout setting; run implementations do not enforce a deadline
     """
 
     def __init__(
@@ -94,7 +94,7 @@ class BaseWorkflow(ABC):
         Args:
             name: Optional workflow name
             max_iterations: Maximum iterations
-            timeout_sec: Execution timeout
+            timeout_sec: Stored timeout setting without automatic deadline enforcement
             **kwargs: Additional configuration
         """
         self.name = name or self.__class__.__name__

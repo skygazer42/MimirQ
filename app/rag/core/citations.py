@@ -259,6 +259,10 @@ def _find_first_match(text: str, terms: list[str]) -> tuple[int, str] | None:
         idx = folded.find(t.casefold()) if str(t).isascii() else text.find(str(t))
         if idx < 0:
             continue
+        if str(t).isascii() and len(folded) != len(text):
+            from app.rag.core.text import _raw_index_from_casefold_index
+
+            idx = _raw_index_from_casefold_index(text, idx)
         if best is None or idx < best[0]:
             best = (idx, str(t))
     return best

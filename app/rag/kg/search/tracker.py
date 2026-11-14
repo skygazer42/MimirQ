@@ -53,9 +53,7 @@ def build_event_node(event: Any, stage: str | None = None, hop: int | None = Non
         or (event.get("content") if isinstance(event, dict) else "")
     )
     node_id = (
-        f"{stage}_{ev_id}"
-        if stage and ev_id
-        else ev_id or _uuid_from_text("event", "" if title is None else title)
+        f"{stage}_{ev_id}" if stage and ev_id else ev_id or _uuid_from_text("event", "" if title is None else title)
     )
     return {
         "id": node_id,

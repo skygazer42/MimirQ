@@ -21,7 +21,7 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*|[\u4e00-\u9fff]{1,4}")
 
 
 def _token_set(text: str) -> set[str]:
-    return {tok.strip().casefold() for tok in _TOKEN_RE.findall(text) if tok.strip()}
+    return {token.casefold() for token in _TOKEN_RE.findall(text)}
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -123,19 +123,18 @@ class RaptorChunker(BaseChunker):
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-        for doc in documents or []:
+        for doc in documents:
             leafs = self._leaf_chunker.split_documents([doc])
             if not leafs:
                 continue
 
             family_key = stable_hash(
-                f"raptor:{stable_hash(doc.page_content, length=None)}:"
-                f"{stable_hash(str(doc.metadata or {}), length=None)}",
+                f"raptor:{stable_hash(doc.page_content, length=None)}:{stable_hash(str(doc.metadata), length=None)}",
                 length=24,
             )
             normalized_leafs: list[Document] = []
             for idx, leaf in enumerate(leafs):
-                meta = dict(leaf.metadata or {})
+                meta = dict(leaf.metadata)
                 leaf_id = stable_hash(
                     f"{family_key}:leaf:{idx}:{meta.get('start_char')}:{meta.get('end_char')}:"
                     f"{stable_hash(leaf.page_content, length=None)}",
@@ -166,19 +165,17 @@ class RaptorChunker(BaseChunker):
             for start, cluster in enumerate(clustered_leafs):
                 if not cluster:
                     continue
-                cluster_node_keys = ",".join(
-                    item.metadata["hierarchy_node_key"] for item in cluster
-                )
+                cluster_node_keys = ",".join(item.metadata["hierarchy_node_key"] for item in cluster)
                 summary_id = stable_hash(f"{family_key}:summary:{start}:{cluster_node_keys}", length=24)
                 for leaf in cluster:
-                    leaf_meta = dict(leaf.metadata or {})
+                    leaf_meta = dict(leaf.metadata)
                     leaf_meta["raptor_parent_id"] = summary_id
                     leaf.metadata.clear()
                     leaf.metadata.update(leaf_meta)
 
-                first_meta = dict(cluster[0].metadata or {})
-                last_meta = dict(cluster[-1].metadata or {})
-                summary_meta = dict(doc.metadata or {})
+                first_meta = dict(cluster[0].metadata)
+                last_meta = dict(cluster[-1].metadata)
+                summary_meta = dict(doc.metadata)
                 summary_meta.update(
                     {
                         "chunk_strategy": "raptor",
@@ -190,9 +187,7 @@ class RaptorChunker(BaseChunker):
                         "raptor_layer": 1,
                         "raptor_tree_mode": "collapsed",
                         "raptor_cluster_strategy": self.cluster_strategy,
-                        "raptor_child_ids": [
-                            item.metadata["hierarchy_node_key"] for item in cluster
-                        ],
+                        "raptor_child_ids": [item.metadata["hierarchy_node_key"] for item in cluster],
                         "start_char": first_meta.get("start_char"),
                         "end_char": last_meta.get("end_char"),
                     }

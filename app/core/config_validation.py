@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from app.core.config import Settings
 
 _DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
-_COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
+_COMMA_OR_WHITESPACE_RE = r"[,\s]+"
 _LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
 _LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
 _ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
@@ -1238,16 +1238,13 @@ def validate_evidence_governance_and_quotas(settings: Settings) -> None:
         signing_secret = settings.EVIDENCE_CAPSULE_SIGNING_SECRET.strip()
         _require_nonempty(signing_secret, "EVIDENCE_CAPSULE_SIGNING_SECRET must be non-empty when signing is enabled")
 
-    index_strictness = _normalize_choice_setting(
+    _normalize_choice_setting(
         settings,
         "INDEX_CONSISTENCY_STRICTNESS",
         "off",
         {"off", "warn", "strict"},
         "INDEX_CONSISTENCY_STRICTNESS must be one of: off, strict, warn",
     )
-    if index_strictness == "warn":
-        _set_if_changed(settings, "INDEX_CONSISTENCY_STRICTNESS", index_strictness)
-
     _require_int_min(settings.CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT, 0, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT must be >= 0")
     _require_int_min(
         settings.CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS, 1, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS must be > 0"
@@ -1470,13 +1467,10 @@ def validate_parse_quality(settings: Settings) -> None:
         1,
         "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED must be >= 1",
     )
-    parse_risk_auto_enqueue_levels = [
-        p.strip()
-        for p in str(
-            settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS or DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS
-        ).split(",")
-    ]
-    allowed_levels = {str(x).strip().lower() for x in parse_risk_auto_enqueue_levels if str(x).strip()}
+    parse_risk_auto_enqueue_levels = str(
+        settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS or DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS
+    ).split(",")
+    allowed_levels = {level.strip().lower() for level in parse_risk_auto_enqueue_levels if level.strip()}
     if not allowed_levels:
         allowed_levels = {"high", "medium"}
     _raise_if(

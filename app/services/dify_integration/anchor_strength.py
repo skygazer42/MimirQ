@@ -96,7 +96,7 @@ def _composite_stitched_section_text(records: list[dict[str, Any]]) -> str:
 
 
 def _composite_section_text(record: dict[str, Any]) -> str:
-    content = record['content'].strip()
+    content = record["content"].strip()
     if not content:
         return ""
     source_text = content.split("原始证据：", 1)[-1].strip() if "原始证据：" in content else content
@@ -204,7 +204,7 @@ def _dify_kg_int(name: str, default: int, *, minimum: int = 0, maximum: int = 50
         value = int(getattr(settings, name, default) or 0)
     except (TypeError, ValueError):
         value = int(default)
-    return max(int(minimum), min(int(maximum), int(value)))
+    return max(int(minimum), min(int(maximum), value))
 
 
 def _dify_kg_float(name: str, default: float, *, minimum: float = 0.0, maximum: float = 1.0) -> float:
@@ -212,4 +212,4 @@ def _dify_kg_float(name: str, default: float, *, minimum: float = 0.0, maximum: 
         value = float(getattr(settings, name, default) or 0.0)
     except (TypeError, ValueError):
         value = float(default)
-    return max(float(minimum), min(float(maximum), float(value)))
+    return max(float(minimum), min(float(maximum), value))

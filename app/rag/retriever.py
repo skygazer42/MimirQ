@@ -9,7 +9,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
 
 from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
@@ -18,13 +18,12 @@ from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field, PrivateAttr
 from sqlalchemy.orm import Session
 
-from app.config.rerank_profile import normalize_rerank_profile, resolve_rerank_search_k
 from app.core.config import settings
-from app.rag.core.metadata import _stringified_metadata_text
 from app.core.database import SessionLocal
 from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.retrieval.corpus_index import get_corpus_index, is_milvus_bm25_enabled
 from app.rag.retrieval.hybrid import candidate_ranking, candidate_retrieval, channel_collection, corpus_channels
@@ -44,19 +43,14 @@ from app.rag.retrieval.hybrid.lexical import LexicalDBMixin
 from app.rag.retrieval.hybrid.post_process import PostProcessMixin
 from app.rag.retrieval.hybrid.runtime_scope import ResolvedRetrievalScope, RetrievalScope, resolve_runtime_scope
 from app.rag.retrieval.hybrid.sparse_index import SparseIndexMixin
-from app.rag.retrieval.hybrid.text_preparation import (
-    augment_retrieval_corpus_text,
-    normalize_document_questions,
-    prepare_retrieval_document,
-    question_channel_overlap_score,
-    rerank_text_from_result,
-)
 from app.rag.retrieval.retriever_options import (
     HybridSearchOptions,
     _build_retrieval_cache_behavior_hash,
     _dataset_scoped_runtime_lookup_error,
     _metadata_filter_has_dataset_scope,
     _resolve_hybrid_search_options,
+    normalize_rerank_profile,
+    resolve_rerank_search_k,
 )
 from app.rag.retrieval.retriever_policy import RetrievalPolicyMixin
 from app.rag.retrieval.sparse import SparseVector
@@ -507,37 +501,11 @@ class HybridRetriever(
 
     @staticmethod
     def _result_content_from_doc(doc: Document) -> str:
-        meta = doc.metadata or {}
+        meta = doc.metadata
         preserved = meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY)
         if isinstance(preserved, str) and preserved:
             return preserved
         return doc.page_content
-
-    @staticmethod
-    def _normalize_document_questions(value: Any, *, max_items: int = 5) -> list[str]:
-        return normalize_document_questions(value, max_items=max_items)
-
-    @staticmethod
-    def _rerank_text_from_result(result: dict[str, Any]) -> str:
-        return rerank_text_from_result(result)
-
-    def _augment_retrieval_corpus_text(self, *, content: str, metadata: dict[str, Any]) -> tuple[str, bool]:
-        return augment_retrieval_corpus_text(content=content, metadata=metadata)
-
-    def _prepare_retrieval_document(self, doc: Document) -> Document:
-        return prepare_retrieval_document(doc, log_fallback=_log_retriever_fallback)
-
-    def _question_channel_overlap_score(
-        self,
-        *,
-        query_tokens: list[str],
-        metadata: dict[str, Any],
-    ) -> float:
-        return question_channel_overlap_score(
-            query_tokens=query_tokens,
-            metadata=metadata,
-            tokenize=self._tokenize_lexical_text,
-        )
 
     def _resolve_embedding_runtime(self, *, tenant_id: UUID | None) -> DatasetEmbeddingRuntimeConfig:
         dataset_ids = self._explicit_dataset_scope_ids()
@@ -551,10 +519,7 @@ class HybridRetriever(
     @staticmethod
     def _default_embedding_runtime() -> DatasetEmbeddingRuntimeConfig:
         runtime = resolve_dataset_embedding_runtime(None)
-        return cast(
-            DatasetEmbeddingRuntimeConfig,
-            replace(runtime, embedding_space_hash=current_embedding_space_hash()),
-        )
+        return replace(runtime, embedding_space_hash=current_embedding_space_hash())
 
     def _runtime_from_dataset_shards(
         self,
@@ -615,7 +580,7 @@ class HybridRetriever(
                 dataset_ids=(dataset_id,),
                 reason="unavailable",
             )
-        meta = row[0] if row else None
+        meta = row[0]
         if meta is not None and not isinstance(meta, dict):
             raise _dataset_scoped_runtime_lookup_error(
                 tenant_id=tenant_id,
@@ -703,12 +668,9 @@ class HybridRetriever(
         current_space = current_embedding_space_hash()
         grouped: "OrderedDict[DatasetEmbeddingRuntimeConfig, list[UUID]]" = OrderedDict()
         for dataset_id in scope_dataset_ids:
-            runtime = resolve_dataset_embedding_runtime(metadata_by_id.get(str(dataset_id)))
+            runtime = resolve_dataset_embedding_runtime(metadata_by_id[str(dataset_id)])
             if not runtime.dataset_scoped:
-                runtime = cast(
-                    DatasetEmbeddingRuntimeConfig,
-                    replace(runtime, embedding_space_hash=current_space),
-                )
+                runtime = replace(runtime, embedding_space_hash=current_space)
             grouped.setdefault(runtime, []).append(dataset_id)
         return [(runtime, tuple(group_ids)) for runtime, group_ids in grouped.items()]
 
@@ -1479,19 +1441,13 @@ class HybridRetriever(
         embedding_runtime: DatasetEmbeddingRuntimeConfig,
     ) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
         enrich_stats: dict[str, Any] = {}
-        try:
-            results = self._enrich_results_with_db_metadata(
-                results,
-                stats=enrich_stats,
-                metadata_filter_override=effective_metadata_filter,
-                embedding_runtime=embedding_runtime,
-            )
-        except TypeError as exc:
-            message = str(exc)
-            if "metadata_filter_override" not in message and "embedding_runtime" not in message:
-                raise
-            results = self._enrich_results_with_db_metadata(results, stats=enrich_stats)
-        return results, enrich_stats, len(results or [])
+        results = self._enrich_results_with_db_metadata(
+            results,
+            stats=enrich_stats,
+            metadata_filter_override=effective_metadata_filter,
+            embedding_runtime=embedding_runtime,
+        )
+        return results, enrich_stats, len(results)
 
     def _record_late_filter_collapse(
         self,
@@ -1756,7 +1712,9 @@ class HybridRetriever(
             "authority_level": max(0, min(100, authority)),
             "updated_ts": updated_ts,
             "publication_status": publication_status,
-            "supersedes_document_id": _stringified_metadata_text(meta, "_governance_supersedes_document_id") if "_governance_supersedes_document_id" in meta else _stringified_metadata_text(meta, "supersedes_document_id"),
+            "supersedes_document_id": _stringified_metadata_text(meta, "_governance_supersedes_document_id")
+            if "_governance_supersedes_document_id" in meta
+            else _stringified_metadata_text(meta, "supersedes_document_id"),
         }
 
     def _filter_governance_results(
@@ -1865,20 +1823,11 @@ class HybridRetriever(
 
     @staticmethod
     def _average_boost(boosts: list[float]) -> float:
-        if not boosts:
-            return 0.0
-        try:
-            return float(sum(boosts)) / float(len(boosts))
-        except Exception as exc:
-            _log_retriever_fallback("_apply_governance_policy", exc)
-            return 0.0
+        return sum(boosts) / len(boosts) if boosts else 0.0
 
     @staticmethod
     def _max_boost(boosts: list[float]) -> float:
-        try:
-            return float(max(boosts)) if boosts else 0.0
-        except (TypeError, ValueError, AttributeError):
-            return 0.0
+        return max(boosts, default=0.0)
 
     async def _aget_relevant_documents(
         self,

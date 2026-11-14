@@ -15,7 +15,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.api.schemas.evidence_audit import EvidenceReferenceDriftAuditOut
+from app.api.schemas.evaluation import EvidenceReferenceDriftAuditOut
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.evidence import EvidenceItem

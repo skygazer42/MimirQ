@@ -68,8 +68,8 @@ def prepare_hybrid_channel_results(
                         channel_promoted += 1
             if channel_annotated:
                 metadata_exact_pre_fusion_stats[channel_name] = {
-                    "annotated": int(channel_annotated),
-                    "promoted": int(channel_promoted),
+                    "annotated": channel_annotated,
+                    "promoted": channel_promoted,
                 }
                 metadata_exact_pre_fusion_stats["annotated"] += channel_annotated
                 metadata_exact_pre_fusion_stats["promoted"] += channel_promoted

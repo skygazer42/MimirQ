@@ -92,7 +92,7 @@ class QianfanOCRParser:
 
         logger.info("[qianfan_ocr] parsing %s", file_path.name)
         resp = self._post_multipart(file_path=file_path)
-        if int(getattr(resp, "status_code", 0) or 0) != 200:
+        if resp.status_code != 200:
             raise RuntimeError(f"Qianfan-OCR API error {resp.status_code}: {(resp.text)[:500]}")
 
         markdown_text = ""

@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-固定纯函数由已有的 `parsing-page-utils` 持有，使用方直接导入。页面和 hook 的 options、解构、依赖数组移除对应转发。编辑器私有的 Markdown 更新函数也直接使用同一个标题统计实现。库恢复和视图同步复用该文件内的两段既有边界处理；字符串必须非空且去掉首尾空格，元素仍只筛掉空值和非对象，不扩大校验规则。
+固定纯函数由已有的 `parsing-page-utils` 持有，使用方直接导入。页面和 hook 的 options、解构、依赖数组移除对应转发。编辑器私有的 Markdown 更新函数也直接使用同一个标题统计实现。元素的当前校验与共享位置由[解析元素与时长恢复合同](../bug-fix/2026-11-13-parsing-metadata-contract.md)接管，替代原先只筛空值和非对象的接受策略；其余固定函数直接依赖的决定保持。
 
 `ParseCompareRun` 与 `ParsingLibrarySourceStatus` 归入已有的 `parsing-types`；弹窗与 hook 只消费类型，不保留旧位置的转发门面。三个重复的可写 ref 形状使用项目 React 19 的 `RefObject<T>`，其 `current` 保持可写。组件 props 使用具名类型；React 合成键盘和指针事件使用显式别名，原生 DOM 事件类型仍绑定原生全局声明。
 
@@ -20,7 +20,7 @@ Status: implemented
 
 33 个原始 owner 全文复核，实际生产者与调用方另按局部范围记录。一次性的 TypeScript 运行时 AST、JSX、类型形状和静态数组比较使用固定 Git 源码，显式描述固定参数转直接导入、相同实现共享、类型擦除及配置提升；原文件全文不会误入 AST 指纹。
 
-`parsing-hooks.behavior.test.tsx` 运行真实 React 状态、页面及四个 hook 和 QueryClient，只控制 API、缓存与 store 端口。相同用例在冻结原始 hook 与修改后重放，核对解析选项、进度上限、统计、质量、历史、资源清理、编辑保存、知识库内容恢复及数据集同步。它保留原始调用方传入的固定函数用于基线重放，不把任意策略注入视作生产契约。
+`parsing-hooks.behavior.test.tsx` 运行真实 React 状态、页面及四个 hook 和 QueryClient，只控制 API、缓存与 store 端口。初次切片曾在冻结原始 hook 与修改后重放相同用例，核对解析选项、进度上限、统计、质量、历史、资源清理、编辑保存、知识库内容恢复及数据集同步。当前测试直接消费正式函数，已经退出仅供原始基线重放的固定函数载荷和旧 barrel mock，不把任意策略注入视作生产契约；后续元素与时长红绿证据见上述记录。
 
 可选偏好存储、手动上传与抽取请求所有权、拖动监听清理、目录上传失败后的数据集归属缺失分别有真实 DOM 红绿证据和独立提交；这些行为修复不作为精简等价结论。目录分支只补齐与普通文件和 ZIP 分支相同的队列归属字段。未启动服务器或浏览器，也未执行 Python、后端、模型、SDK 或数据库。
 

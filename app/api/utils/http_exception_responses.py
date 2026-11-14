@@ -7,5 +7,3 @@ DEFAULT_HTTP_EXCEPTION_RESPONSES: dict[int, dict[str, str]] = {
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
 }
-
-__all__ = ["DEFAULT_HTTP_EXCEPTION_RESPONSES"]

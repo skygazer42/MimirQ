@@ -14,6 +14,8 @@ LangChain adapter 与 DashScope provider 各自持有相同的 NumPy 向量归�
 
 provider 构造选项、batch progress、连接状态以及 BGE-M3／Matryoshka 结果使用类型声明表达既有字典形状。模型、LangChain adapter、CLIP 缓存和 HTTP 并发控制继续由有状态类持有；外部 JSON、可选依赖、缓存与 CLIP 的既定异常策略保留。
 
+[缓存主结果与任务所有权](../bug-fix/2026-11-13-embedding-cache-and-batch-ownership.md)部分替代原缓存失败顺序和batch收尾行为：计算成功的向量先交付、owned协程先结束再清状态，shadow两实际caller明确传已有空间指纹。本篇指纹算法与归一化规则不变，不因该修复重建provider或修改模板。
+
 ## Alternatives considered
 
 - 在 adapter 和 DashScope 中各自保留算法，能减少跨模块调用，但继续留下两份完全相同的规则，因此采用现有 embedding utils 作为共同所有者。

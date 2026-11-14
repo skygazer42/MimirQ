@@ -70,25 +70,21 @@ def infer_primary_tag(*, file_type: str, findings: Iterable[str] | None) -> str:
         return "Image_Heavy"
     if ft in _TEXTLIKE_TYPES:
         return "Clean_Markdown"
-    return "Parse_Failed" if "parse_failed" in fset else "Clean_Markdown"
+    return "Clean_Markdown"
 
 
 def infer_processing_paths(*, primary_tag: str, findings: Iterable[str] | None) -> list[str]:
     fset = _normalized_findings(findings)
     out: list[str] = []
 
-    if primary_tag == "Scan_PDF":
+    if primary_tag in {"Scan_PDF", "Image_Heavy"}:
         out.append("ocr_or_vlm_path")
     elif primary_tag == "Table_Heavy":
         out.append("structured_table_path")
     elif primary_tag == "Parse_Failed":
         out.append("fallback_parser_path")
-    elif primary_tag == "Image_Heavy":
-        out.append("ocr_or_vlm_path")
-
     if {"pii", "secrets", "near_dup", "exact_dup", "parse_failed"} & fset:
-        if "manual_review" not in out:
-            out.append("manual_review")
+        out.append("manual_review")
 
     return out
 

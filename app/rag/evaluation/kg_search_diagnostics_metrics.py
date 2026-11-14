@@ -52,7 +52,7 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
         cid = str(raw_id).strip()
         if not cid:
             continue
-        if cid not in ev_set:
+        if cid not in ev_set or cid in matched:
             continue
 
         matched.add(cid)

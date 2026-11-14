@@ -5,21 +5,30 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import UUID
 
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
 from app.core.config import settings
+from app.rag.core.conversation import format_history_text
+from app.rag.engine_support.common import _release_request_session
 from app.rag.engine_support.query_model_calls import EngineQueryModels
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
-from app.rag.retrieval.orchestration.query_contracts import QueryPreparationOverrides, SparseQuerySettings
+from app.rag.llm.structured_output import build_structured_output_instructions
+from app.rag.retrieval.orchestration.query_contracts import QueryPreparationOverrides
 from app.rag.retrieval.orchestration.query_options import QUERY_PLANNING_OPTION_KEYS, resolve_query_preparation_request
-from app.rag.retrieval.orchestration.query_planning import prepare_query_async, resolve_sparse_selection
+from app.rag.retrieval.orchestration.query_planning import prepare_query_async
 from app.rag.retrieval.orchestration.query_routing import resolve_stream_query_routing
+from app.services.prompt_resolver import resolve_prompt_template
 
 
 async def agentic_phase(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
     if bool(settings.RAG_AGENTIC_MODE_ENABLED) and runtime.data.complexity_score >= runtime.data.agentic_threshold:
-        runtime.data.runner = runtime.module.get_agentic_runner(engine=runtime.engine)
+        from app.rag.agents.rag_agent import get_agentic_runner
+
+        runtime.data.runner = get_agentic_runner(engine=runtime.engine)
         async for runtime.data.event in runtime.data.runner.stream(
             question=runtime.data.question,
             history=runtime.data.history,
@@ -119,7 +128,7 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
             runtime.data.prompt_template_id or runtime.data.prompt_template_key or runtime.data.prompt_ab_experiment_key
         )
     ):
-        runtime.data.chosen = runtime.module.resolve_prompt_template(
+        runtime.data.chosen = resolve_prompt_template(
             db=runtime.data.db,
             tenant_id=runtime.data.tenant_id,
             prompt_template_id=runtime.data.prompt_template_id,
@@ -128,9 +137,7 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
             ab_user_key=runtime.data.ab_user_key,
         )
         if runtime.data.chosen:
-            runtime.data.current_prompt_template = runtime.module.ChatPromptTemplate.from_template(
-                runtime.data.chosen.content
-            )
+            runtime.data.current_prompt_template = ChatPromptTemplate.from_template(runtime.data.chosen.content)
             runtime.data.chosen.usage_count += 1
             runtime.data.db.commit()
             runtime.data.selected_prompt_template_id = runtime.data.chosen.id
@@ -138,13 +145,11 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
             runtime.data.selected_prompt_ab_experiment_key = getattr(runtime.data.chosen, "ab_experiment_key", None)
             runtime.data.selected_prompt_ab_variant = getattr(runtime.data.chosen, "ab_variant", None)
 
-    runtime.data.chain = runtime.data.current_prompt_template | runtime.data.llm | runtime.module.StrOutputParser()
+    runtime.data.chain = runtime.data.current_prompt_template | runtime.data.llm | StrOutputParser()
 
     runtime.data.format_instructions = ""
     if runtime.data.structured_output:
-        runtime.data.format_instructions = runtime.module.build_structured_output_instructions(
-            runtime.data.structured_preset
-        )
+        runtime.data.format_instructions = build_structured_output_instructions(runtime.data.structured_preset)
 
     yield {
         "type": "route",
@@ -166,7 +171,7 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
     }
 
     # Chat history (for prompt + optional query rewrite).
-    runtime.data.history_text = runtime.module.format_history_text(
+    runtime.data.history_text = format_history_text(
         runtime.data.history,
         window=settings.CHAT_HISTORY_WINDOW,
     )
@@ -178,7 +183,7 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
         metadata_filter=runtime.data.metadata_filter,
     )
 
-    runtime.module._release_request_session(runtime.data.db)
+    _release_request_session(runtime.data.db)
 
     runtime.data.t_all_start = time.time()
     runtime.data.temporal_intent_enabled = bool(settings.RAG_TEMPORAL_INTENT_ENABLED)
@@ -267,20 +272,7 @@ async def classify_modality_and_contract(runtime: StandardStreamState) -> None:
 
 
 async def route_query(runtime: StandardStreamState) -> None:
-    prepared = getattr(runtime.data, "prepared_query_outcome", None)
-    if prepared is not None:
-        sparse = prepared.sparse
-    else:
-        sparse = resolve_sparse_selection(
-            SparseQuerySettings(
-                bool(
-                    settings.SPARSE_RETRIEVAL_ENABLED
-                    if runtime.data.sparse_retrieval_enabled is None
-                    else runtime.data.sparse_retrieval_enabled
-                ),
-                str(runtime.data.sparse_retrieval_provider or settings.SPARSE_RETRIEVAL_PROVIDER),
-            )
-        )
+    sparse = runtime.data.prepared_query_outcome.sparse
 
     options = {key: getattr(runtime.data, key) for key in QUERY_PLANNING_OPTION_KEYS if hasattr(runtime.data, key)}
     complexity_overrides = runtime.engine._route_retrieval_params(runtime.data.complexity_score)

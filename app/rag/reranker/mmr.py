@@ -15,8 +15,6 @@ def _jaccard(a: set[str], b: set[str]) -> float:
         return 0.0
     inter = len(a & b)
     union = len(a | b)
-    if union <= 0:
-        return 0.0
     return float(inter) / float(union)
 
 

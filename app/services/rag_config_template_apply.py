@@ -11,7 +11,7 @@ This keeps debug/probe callers in control while enabling safe rollout for defaul
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from app.api.schemas.chat import ChatRAGConfig
+from app.api.schemas.conversations import ChatRAGConfig
 from app.core.model_execution import validate_rag_execution_selection
 
 

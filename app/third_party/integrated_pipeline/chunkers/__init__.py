@@ -8,7 +8,6 @@ imports (e.g. book -> chunkers -> book). This module exposes a stable API withou
 importing all chunkers eagerly.
 """
 
-
 from collections.abc import Callable
 from importlib import import_module
 from typing import Any
@@ -16,10 +15,7 @@ from typing import Any
 
 def _load_chunker(name: str) -> Callable[..., Any]:
     mod = import_module(f"app.third_party.integrated_pipeline.chunkers.{name}")
-    fn = getattr(mod, "chunk", None)
-    if fn is None:
-        raise ImportError(f"integrated chunker '{name}' does not export chunk()")
-    return fn
+    return mod.chunk
 
 
 def naive_chunk(*args: Any, **kwargs: Any):  # noqa: ANN201
@@ -51,16 +47,9 @@ def get_chunker(strategy: str) -> Callable[..., Any]:
         ValueError: If strategy not supported
     """
     strat = str(strategy or "").strip().lower()
-    if strat == "naive":
-        return _load_chunker("naive")
-    if strat == "book":
-        return _load_chunker("book")
-    if strat == "laws":
-        return _load_chunker("laws")
-    if strat == "email":
-        return _load_chunker("email")
-
-    raise ValueError(f"Unknown chunker strategy: {strategy}")
+    if strat not in {"naive", "book", "laws", "email"}:
+        raise ValueError(f"Unknown chunker strategy: {strategy}")
+    return _load_chunker(strat)
 
 
 __all__ = [
@@ -70,4 +59,3 @@ __all__ = [
     "email_chunk",
     "get_chunker",
 ]
-

@@ -1,4 +1,3 @@
-from app.services.connector_execution.shared.common import _optional_source_text
 import contextlib
 import hashlib
 import re
@@ -10,6 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models.tenant_group import TenantGroup
+from app.services.connector_execution.shared.common import _optional_source_text
 
 _DRIVE_FILE_ID_FROM_PATH_RE = re.compile(r"/file/d/([^/]+)")
 
@@ -147,8 +147,8 @@ async def _drive_fetch_file_sync_token(
         return fallback
 
     data = payload if isinstance(payload, dict) else {}
-    version = _optional_source_text(data.get('version'))
-    modified_time = _optional_source_text(data.get('modifiedTime'))
+    version = _optional_source_text(data.get("version"))
+    modified_time = _optional_source_text(data.get("modifiedTime"))
     resolved_file_id = str(data.get("id") or fid).strip() or fid
     if not version and not modified_time:
         return fallback
@@ -182,14 +182,14 @@ def _drive_permission_external_ids_and_anyone(
         if bool(permission.get("deleted", False)):
             continue
 
-        permission_type = _optional_source_text(permission.get('type'), lower=True)
+        permission_type = _optional_source_text(permission.get("type"), lower=True)
         if permission_type == "anyone":
             has_anyone = True
             continue
         if permission_type != "group":
             continue
 
-        email_address = _optional_source_text(permission.get('emailAddress'))
+        email_address = _optional_source_text(permission.get("emailAddress"))
         if email_address is None:
             continue
         key = _drive_group_principal_key(email_address)
@@ -283,14 +283,14 @@ def _github_team_principal_key_from_repo_team_item(
     if not isinstance(item, dict):
         return ""
 
-    slug = _optional_source_text(item.get('slug'))
+    slug = _optional_source_text(item.get("slug"))
     if not slug:
         return ""
 
     org_login = ""
     org_obj = item.get("organization")
     if isinstance(org_obj, dict):
-        org_login = _optional_source_text(org_obj.get('login'))
+        org_login = _optional_source_text(org_obj.get("login"))
     if not org_login:
         org_login = owner.strip()
 

@@ -93,11 +93,13 @@ def _write_missing_document_vectors(
     computed: list[list[float]],
     out: list[list[float] | None],
 ) -> None:
+    for (idx, _text), vec in zip(missing, computed, strict=False):
+        out[idx] = vec
+
     ttl = settings.EMBEDDING_CACHE_TTL_SEC
     try:
         pipe = client.pipeline(transaction=False)
         for (idx, _text), vec in zip(missing, computed, strict=False):
-            out[idx] = vec
             try:
                 payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
                 if ttl > 0:
@@ -227,10 +229,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
         Returns:
             Embedding vector
         """
-        if settings.EMBEDDING_CACHE_ENABLED:
-            client = _get_redis_client()
-        else:
-            client = None
+        client = _document_cache_client()
 
         cache_hits = 0
         cache_misses = 0

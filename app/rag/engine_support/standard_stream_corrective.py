@@ -8,7 +8,15 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
+from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.logging import get_logger
+from app.rag.core.retrieval_profiles import is_recall_first_profile
+from app.rag.engine_support.doc_utils import fuse_doc_lists
 from app.rag.engine_support.standard_stream_state import StandardStreamState
+from app.rag.retriever import hybrid_retriever
+
+logger = get_logger("rag.engine")
 
 
 def _corrective_retry_needed(runtime: StandardStreamState) -> bool:
@@ -35,9 +43,7 @@ def _record_generated_retry_queries(runtime: StandardStreamState) -> None:
 async def _prepare_retry_queries(runtime: StandardStreamState) -> None:
     runtime.data.retry_profile_norm = runtime.data.corrective_second_profile
     runtime.data.retry_score_threshold = (
-        0.0
-        if runtime.module.is_recall_first_profile(runtime.data.retry_profile_norm)
-        else runtime.data.score_threshold_used
+        0.0 if is_recall_first_profile(runtime.data.retry_profile_norm) else runtime.data.score_threshold_used
     )
     runtime.data.retry_multi_queries = list(runtime.data.multi_queries)
     if runtime.data.corrective_second_enable_mq and not runtime.data.retry_multi_queries:
@@ -58,7 +64,7 @@ async def _prepare_retry_queries(runtime: StandardStreamState) -> None:
     runtime.data.retry_retriever_update = dict(runtime.data.retriever_update)
     runtime.data.retry_retriever_update["retrieval_profile"] = runtime.data.retry_profile_norm
     runtime.data.retry_retriever_update["score_threshold"] = runtime.data.retry_score_threshold
-    if runtime.module.is_recall_first_profile(runtime.data.retry_profile_norm):
+    if is_recall_first_profile(runtime.data.retry_profile_norm):
         runtime.data.retry_retriever_update.update(
             {
                 "dedup_enabled": False,
@@ -67,9 +73,7 @@ async def _prepare_retry_queries(runtime: StandardStreamState) -> None:
                 "min_distinct_docs": 0,
             }
         )
-    runtime.data.retry_retriever = runtime.module.hybrid_retriever.model_copy(
-        update=runtime.data.retry_retriever_update
-    )
+    runtime.data.retry_retriever = hybrid_retriever.model_copy(update=runtime.data.retry_retriever_update)
     runtime.data.retry_queries = list(runtime.data.retrieval_queries_base)
     runtime.data.retry_queries.extend(("mq", query) for query in runtime.data.retry_multi_queries)
     runtime.data.retry_queries = runtime.engine._dedup_retrieval_queries(runtime.data.retry_queries)
@@ -107,7 +111,7 @@ def _record_retry_result(
         {
             "kind": kind,
             "query_chars": len(query),
-            "query_tokens": runtime.module.num_tokens_from_string(query),
+            "query_tokens": num_tokens_from_string(query),
             "elapsed_sec": round(elapsed, 3),
             "ok": error is None,
             "retriever_debug": debug,
@@ -159,16 +163,6 @@ def _initialize_retry_fusion(runtime: StandardStreamState) -> None:
     runtime.data.mq_diversify_fill_from_fused = 0
 
 
-def _fuse_retry_doc_lists(runtime: StandardStreamState, doc_lists: list[list[Document]]) -> list[Document]:
-    if len(doc_lists) == 1:
-        return doc_lists[0] or []
-    return runtime.engine.fuse_docs_rrf(
-        doc_lists,
-        rrf_k=settings.RETRIEVAL_RRF_K,
-        meta_prefix="query_expansion",
-    )
-
-
 def _partition_retry_docs(runtime: StandardStreamState) -> None:
     runtime.data.mq_lists = []
     runtime.data.non_mq_lists = []
@@ -186,13 +180,13 @@ def _partition_retry_docs(runtime: StandardStreamState) -> None:
 
 def _select_retry_non_mq_docs(runtime: StandardStreamState) -> None:
     for doc in runtime.data.docs_non_mq:
+        if len(runtime.data.selected) >= runtime.data.want_non_mq:
+            break
         key = runtime.engine._doc_key(doc)
         if key in runtime.data.selected_keys:
             continue
         runtime.data.selected_keys.add(key)
         runtime.data.selected.append(doc)
-        if len(runtime.data.selected) >= runtime.data.want_non_mq:
-            break
     runtime.data.mq_diversify_selected_non_mq = len(runtime.data.selected)
 
 
@@ -224,8 +218,16 @@ def _fill_retry_fused_docs(runtime: StandardStreamState) -> None:
 
 def _diversify_retry_docs(runtime: StandardStreamState) -> None:
     runtime.data.mq_diversify_used = True
-    runtime.data.docs_non_mq = _fuse_retry_doc_lists(runtime, runtime.data.non_mq_lists)
-    runtime.data.docs_mq = _fuse_retry_doc_lists(runtime, runtime.data.mq_lists)
+    runtime.data.docs_non_mq = fuse_doc_lists(
+        runtime.data.non_mq_lists,
+        fuse_docs_rrf=runtime.engine.fuse_docs_rrf,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+    )
+    runtime.data.docs_mq = fuse_doc_lists(
+        runtime.data.mq_lists,
+        fuse_docs_rrf=runtime.engine.fuse_docs_rrf,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+    )
     runtime.data.want_non_mq = max(0, int(runtime.data.top_k or 0) - runtime.data.mq_diversify_budget)
     runtime.data.want_mq = runtime.data.mq_diversify_budget
     runtime.data.selected = []
@@ -240,7 +242,11 @@ def _fuse_retry_docs(runtime: StandardStreamState) -> None:
     if len(runtime.data.retry_docs_by_query) <= 1:
         runtime.data.docs = runtime.data.retry_docs_by_query[0] if runtime.data.retry_docs_by_query else []
         return
-    runtime.data.docs_fused_all = _fuse_retry_doc_lists(runtime, runtime.data.retry_docs_by_query)
+    runtime.data.docs_fused_all = fuse_doc_lists(
+        runtime.data.retry_docs_by_query,
+        fuse_docs_rrf=runtime.engine.fuse_docs_rrf,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+    )
     if not (runtime.data.retry_mq_diversify_enabled and runtime.data.mq_diversify_budget > 0):
         runtime.data.docs = runtime.data.docs_fused_all
         return
@@ -292,7 +298,7 @@ def _apply_corrective_retrieval_rail(runtime: StandardStreamState) -> None:
             "masked_docs": int(meta.get("masked_docs") or 0),
         }
     except Exception as exc:  # noqa: BLE001
-        runtime.module.logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
+        logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
         runtime.data.retrieval_rail_meta = {
             "enabled": True,
             "used": False,
@@ -324,7 +330,7 @@ def _filter_evidence_span_citations(runtime: StandardStreamState) -> None:
 
 
 def _rebuild_retry_citations(runtime: StandardStreamState) -> None:
-    runtime.data.citations = runtime.module.build_citations_from_docs(
+    runtime.data.citations = build_citations_from_docs(
         runtime.data.docs,
         retrieval_elapsed_sec=runtime.data.retrieval_elapsed,
         retrieval_mode=runtime.data.mode_used,
@@ -366,17 +372,6 @@ def _evaluate_retry_abstention(runtime: StandardStreamState) -> None:
     elif min_top_relevance > 0 and runtime.data.top_rel < min_top_relevance:
         runtime.data.abstain_triggered = True
         runtime.data.abstain_reason = "top_relevance_lt_min"
-
-
-def _retry_info_event(runtime: StandardStreamState) -> dict[str, Any] | None:
-    return runtime.engine._build_retrieval_info_event(
-        attempt=runtime.data.corrective_attempt_count,
-        query_count=len(runtime.data.retry_queries),
-        docs_count=len(runtime.data.docs),
-        citations_count=len(runtime.data.citations),
-        abstain_triggered=runtime.data.abstain_triggered,
-        retrieval_profile=runtime.data.profile_norm,
-    )
 
 
 def _record_corrective_attempt(runtime: StandardStreamState) -> None:
@@ -426,7 +421,14 @@ async def stream_corrective_retrieval(
     _rebuild_retry_citations(runtime)
     yield {"type": "citations", "data": runtime.data.citations}
     _evaluate_retry_abstention(runtime)
-    retry_info = _retry_info_event(runtime)
+    retry_info = runtime.engine._build_retrieval_info_event(
+        attempt=runtime.data.corrective_attempt_count,
+        query_count=len(runtime.data.retry_queries),
+        docs_count=len(runtime.data.docs),
+        citations_count=len(runtime.data.citations),
+        abstain_triggered=runtime.data.abstain_triggered,
+        retrieval_profile=runtime.data.profile_norm,
+    )
     if retry_info is not None:
         yield retry_info
     _record_corrective_attempt(runtime)

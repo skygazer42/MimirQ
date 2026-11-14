@@ -105,7 +105,7 @@ def _bucket_row(bucket: _MetricBucket) -> dict[str, Any]:
         "ok_rate": round(float(bucket["ok"]) / float(total), 4) if total else None,
     }
     for key in _ROW_METRIC_KEYS:
-        values = list(bucket[key])
+        values = bucket[key]
         row[f"{key}_mean"] = round(sum(values) / float(len(values)), 4) if values else None
     return row
 

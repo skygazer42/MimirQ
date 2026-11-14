@@ -1,5 +1,5 @@
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from PIL import Image as PILImage
@@ -87,17 +87,6 @@ def _rapidocr_confidence(image: PILImage.Image) -> float:
     return (sum(scores) / len(scores)) if scores else 0.0
 
 
-def _manifest_metadata_path(metadata: Mapping[str, Any] | None, key: str) -> str | None:
-    if not isinstance(metadata, Mapping):
-        return None
-    nested = metadata.get("metadata")
-    if isinstance(nested, Mapping) and nested.get(key) is not None:
-        return str(nested.get(key))
-    if metadata.get(key) is not None:
-        return str(metadata.get(key))
-    return None
-
-
 def _project_rapidocr_kwargs() -> dict[str, str]:
     try:
         from app.parsing.models.runtime import SmallModelRuntime
@@ -112,9 +101,11 @@ def _project_rapidocr_kwargs() -> dict[str, str]:
             "det_model_path": str(det.path),
             "rec_model_path": str(rec.path),
         }
-        rec_keys_path = _manifest_metadata_path({"metadata": dict(rec_spec.metadata or {})}, "rec_keys_path")
-        if rec_keys_path:
-            kwargs["rec_keys_path"] = rec_keys_path
+        rec_keys_path = rec_spec.metadata.get("rec_keys_path")
+        if rec_keys_path is not None:
+            rec_keys_path = str(rec_keys_path)
+            if rec_keys_path:
+                kwargs["rec_keys_path"] = rec_keys_path
         return kwargs
     except Exception:
         return {}
@@ -188,7 +179,7 @@ def _bbox(raw: Mapping[str, Any] | None) -> tuple[float, float, float, float] | 
     bottom = raw.get("bottom", raw.get("y1"))
     try:
         return float(left), float(top), float(right), float(bottom)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -229,7 +220,8 @@ def _bind_ocr_content(
     text_by_cell: dict[tuple[int, int], list[str]] = {}
     confidence_by_cell: dict[tuple[int, int], list[float]] = {}
     for line in ocr_lines:
-        text = str(line.get("text") or "").strip()
+        raw_text = line.get("text")
+        text = "" if raw_text is None else str(raw_text).strip()
         if not text:
             continue
         line_box = _bbox(line.get("bbox") if isinstance(line.get("bbox"), Mapping) else line)
@@ -245,7 +237,7 @@ def _bind_ocr_content(
             if ratio > best_ratio:
                 best_ratio = ratio
                 best_key = key
-        if best_key is None or best_ratio < float(min_overlap):
+        if best_key is None or best_ratio < min_overlap:
             continue
         text_by_cell.setdefault(best_key, []).append(text)
         confidence_by_cell.setdefault(best_key, []).append(_coerce_score(line.get("confidence") or line.get("score")))
@@ -284,41 +276,27 @@ def bind_ocr_lines_to_table_cells(
     bound_cells = 0
     for cell in table.cells:
         key = _cell_key(cell)
-        bound_text = " ".join(text_by_cell.get(key) or []).strip()
+        bound_text = " ".join(text_by_cell.get(key, [])).strip()
         if bound_text and not cell.text.strip():
             bound_cells += 1
-            next_cells.append(
-                TableCell(
-                    row_index=cell.row_index,
-                    col_index=cell.col_index,
-                    text=bound_text,
-                    is_header=cell.is_header,
-                    row_span=cell.row_span,
-                    col_span=cell.col_span,
-                    bbox=cell.bbox,
-                )
-            )
+            next_cells.append(replace(cell, text=bound_text))
         else:
             next_cells.append(cell)
 
     row_count = max(table.row_count, max((cell.row_index for cell in next_cells), default=0))
     next_rows = _rows_from_cells(cells=next_cells, row_count=row_count, col_count=table.col_count)
-    metadata = dict(table.metadata or {})
+    metadata = dict(table.metadata)
     metadata["cell_ocr_binding"] = {
         "applied": bool(bound_cells),
         "bound_cells": bound_cells,
-        "ocr_lines": len(list(ocr_lines)),
+        "ocr_lines": len(ocr_lines),
         "avg_confidence": _average_bound_confidence(confidence_by_cell),
     }
-    next_table = TableExtraction(
+    next_table = replace(
+        table,
         columns=list(table.columns),
         rows=next_rows,
         cells=next_cells,
-        page=table.page,
-        bbox=table.bbox,
-        source_element_id=table.source_element_id,
-        header_rows=table.header_rows,
-        confidence=table.confidence,
         metadata=metadata,
     )
     return CellOcrBindingResult(table=next_table, bound_cells=bound_cells, metadata=metadata["cell_ocr_binding"])
@@ -343,14 +321,13 @@ def _coerce_ocr_line(raw: Any) -> dict[str, Any] | None:
     if not xy:
         return None
 
-    text = ""
-    score = None
     if isinstance(payload, (list, tuple)):
-        text = str(payload[0] or "").strip() if payload else ""
+        value = payload[0] if payload else None
         score = payload[1] if len(payload) >= 2 else None
     else:
-        text = str(payload or "").strip()
+        value = payload
         score = raw[2] if len(raw) >= 3 else None
+    text = "" if value is None else str(value).strip()
     if not text:
         return None
 
@@ -390,7 +367,7 @@ def extract_ocr_lines_from_image(image: PILImage.Image, *, max_lines: int = 300)
 def table_cells_with_uniform_bboxes(table: TableExtraction, *, image_size: tuple[int, int]) -> TableExtraction:
     width, height = image_size
     col_count = max(1, table.col_count)
-    row_count = max(1, table.row_count + int(table.header_rows or 0))
+    row_count = max(1, table.row_count + table.header_rows)
     next_cells: list[TableCell] = []
     for cell in table.cells:
         if cell.bbox is not None:
@@ -401,26 +378,17 @@ def table_cells_with_uniform_bboxes(table: TableExtraction, *, image_size: tuple
         top = (float(cell.row_index) / row_count) * height
         bottom = (float(cell.row_index + max(1, cell.row_span)) / row_count) * height
         next_cells.append(
-            TableCell(
-                row_index=cell.row_index,
-                col_index=cell.col_index,
-                text=cell.text,
-                is_header=cell.is_header,
-                row_span=cell.row_span,
-                col_span=cell.col_span,
+            replace(
+                cell,
                 bbox={"left": left, "top": top, "right": right, "bottom": bottom},
             )
         )
-    return TableExtraction(
+    return replace(
+        table,
         columns=list(table.columns),
         rows=[list(row) for row in table.rows],
         cells=next_cells,
-        page=table.page,
-        bbox=table.bbox,
-        source_element_id=table.source_element_id,
-        header_rows=table.header_rows,
-        confidence=table.confidence,
-        metadata=dict(table.metadata or {}),
+        metadata=dict(table.metadata),
     )
 
 

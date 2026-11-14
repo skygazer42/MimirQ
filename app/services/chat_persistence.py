@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
 from app.rag.core.logging import get_logger
+from app.services.chat_cache_runtime import store_chat_response_cache_if_needed
 from app.services.chat_response_cache import resolve_inflight_chat_response
-from app.services.chat_runtime import store_chat_response_cache_if_needed
 from app.services.chat_turn_persistence import (
     ChatTurnPersistInput,
     persist_chat_turn_sync,
 )
 from app.services.metrics_logger import log_metrics
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 
 logger = get_logger(__name__)
 
@@ -104,7 +105,7 @@ def _extractive_fallback_cost_attribution(
         query_chars = sum(_safe_non_negative_int(item.get("query_chars")) for item in per_query)
         query_tokens = sum(_safe_non_negative_int(item.get("query_tokens")) for item in per_query)
     else:
-        fallback_query = str(metrics.get('query_for_retrieval') or question)
+        fallback_query = str(metrics.get("query_for_retrieval") or question)
         query_count = _safe_non_negative_int(metrics.get("retrieval_query_count")) or int(bool(fallback_query))
         query_chars = len(fallback_query)
         query_tokens = num_tokens_from_string(fallback_query) if fallback_query else 0
@@ -130,7 +131,7 @@ def _extractive_fallback_cost_attribution(
         "retrieval": {
             "elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
             "rerank_elapsed_sec": _fallback_rerank_elapsed_seconds(citations),
-            "vector_backend": str(metrics.get('vector_backend') or settings.VECTOR_BACKEND),
+            "vector_backend": str(metrics.get("vector_backend") or settings.VECTOR_BACKEND),
             "query_count": int(query_count),
         },
     }
@@ -236,7 +237,7 @@ def _log_extractive_fallback_rag_trace(
         "tenant_id": str(tenant_id),
         "request_id": str(request_id),
         "question": question,
-        "query_for_retrieval": str(metrics.get('query_for_retrieval') or question),
+        "query_for_retrieval": str(metrics.get("query_for_retrieval") or question),
         "citations_count": int(len(citations or [])),
         "citations": list(citations or []),
         "retrieval": {
@@ -297,3 +298,18 @@ def finalize_chat_response_sync(
         )
 
     return metrics_out
+
+
+async def finalize_chat_response(*, options: ChatResponseFinalizationInput) -> dict[str, Any]:
+    metrics = await run_blocking_call_with_managed_session(
+        lambda worker_db: finalize_chat_response_sync(
+            options=replace(options, db=worker_db, singleflight_leader=False)
+        ),
+        request_db=options.db,
+    )
+    if options.singleflight_key and options.singleflight_leader:
+        resolve_inflight_chat_response(
+            options.singleflight_key,
+            jsonable_encoder(_resolve_singleflight_payload(options, metrics)),
+        )
+    return metrics

@@ -41,11 +41,7 @@ def profile_markdown_table(text: str) -> MarkdownTableProfile | None:
     if not sep or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in sep):
         return None
 
-    row_count = 0
-    for line in lines[2:]:
-        row = _split_markdown_row(line)
-        if any(row):
-            row_count += 1
+    row_count = sum(1 for line in lines[2:] if any(_split_markdown_row(line)))
     return MarkdownTableProfile(columns=header, row_count=row_count, column_count=len(header))
 
 
@@ -74,7 +70,7 @@ def extract_markdown_table(
     for col_index, col in enumerate(header):
         cells.append(TableCell(row_index=0, col_index=col_index, text=col, is_header=True))
     for row_index, row in enumerate(rows, start=1):
-        for col_index, cell in enumerate(row[: len(header)]):
+        for col_index, cell in enumerate(row):
             cells.append(TableCell(row_index=row_index, col_index=col_index, text=cell, is_header=False))
 
     return TableExtraction(

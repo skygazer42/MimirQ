@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -12,12 +12,13 @@ from app.services.chat_response_cache import (
     acquire_inflight_chat_response,
     acquire_or_wait_for_distributed_inflight_chat_response,
     get_cached_chat_response_async,
+    reject_inflight_chat_response,
     resolve_chat_response_cache_key,
     resolve_inflight_chat_response,
     set_cached_chat_response,
     wait_for_inflight_chat_response,
 )
-from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError, run_blocking_call_with_managed_session
 
 
 def annotate_chat_cache_metrics(
@@ -155,8 +156,9 @@ async def prepare_non_streaming_chat_cache_state(
     *,
     options: ChatCacheLookupInput,
 ) -> PreparedNonStreamingChatCacheState:
-    cache_feature_enabled, cache_key, cache_skip_reason = prepare_chat_cache_lookup(
-        options=options,
+    cache_feature_enabled, cache_key, cache_skip_reason = await run_blocking_call_with_managed_session(
+        lambda worker_db: prepare_chat_cache_lookup(options=replace(options, db=worker_db)),
+        request_db=options.db,
     )
     cache_eligible = bool(cache_key)
     cached = await get_cached_chat_response_async(cache_key) if cache_feature_enabled and cache_key else None
@@ -235,32 +237,42 @@ async def prepare_non_streaming_chat_cache_state(
             singleflight_hit = True
             break
         if singleflight_leader:
-            distributed_leader, shared_payload = await acquire_or_wait_for_distributed_inflight_chat_response(
-                singleflight_key,
-                cache_enabled=cache_feature_enabled,
-                response_cache_ttl_sec=response_cache_ttl_sec,
-            )
-            if not distributed_leader:
-                resolve_inflight_chat_response(singleflight_key, shared_payload)
-                full_response = shared_payload["content"]
-                citations_data = (
-                    shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
+            try:
+                distributed_leader, shared_payload = await acquire_or_wait_for_distributed_inflight_chat_response(
+                    singleflight_key,
+                    cache_enabled=cache_feature_enabled,
+                    response_cache_ttl_sec=response_cache_ttl_sec,
                 )
-                metrics_data = annotate_chat_cache_metrics(
-                    dict(shared_payload.get("metrics") or {}),
-                    enabled=cache_feature_enabled,
-                    hit=False,
-                    skip_reason=cache_skip_reason,
+                if not distributed_leader:
+                    resolve_inflight_chat_response(singleflight_key, shared_payload)
+                    full_response = shared_payload["content"]
+                    citations_data = (
+                        shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
+                    )
+                    metrics_data = annotate_chat_cache_metrics(
+                        dict(shared_payload.get("metrics") or {}),
+                        enabled=cache_feature_enabled,
+                        hit=False,
+                        skip_reason=cache_skip_reason,
+                    )
+                    metrics_data = annotate_chat_singleflight_metrics(
+                        metrics_data,
+                        enabled=singleflight_feature_enabled,
+                        hit=True,
+                        role="follower",
+                    )
+                    structured_data = shared_payload.get("structured_data")
+                    singleflight_hit = True
+                    singleflight_leader = False
+            except asyncio.CancelledError:
+                reject_inflight_chat_response(
+                    singleflight_key,
+                    InflightResponseLeaderCancelledError("singleflight leader cancelled during preparation"),
                 )
-                metrics_data = annotate_chat_singleflight_metrics(
-                    metrics_data,
-                    enabled=singleflight_feature_enabled,
-                    hit=True,
-                    role="follower",
-                )
-                structured_data = shared_payload.get("structured_data")
-                singleflight_hit = True
-                singleflight_leader = False
+                raise
+            except Exception as exc:
+                reject_inflight_chat_response(singleflight_key, exc)
+                raise
 
     return PreparedNonStreamingChatCacheState(
         cache_feature_enabled=cache_feature_enabled,

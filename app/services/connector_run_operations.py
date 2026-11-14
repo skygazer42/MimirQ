@@ -9,10 +9,10 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.schemas.connector import (
+from app.api.schemas.sources import (
     CONNECTOR_CONFIG_MODELS as _CONNECTOR_CONFIG_MODELS,
 )
-from app.api.schemas.connector import (
+from app.api.schemas.sources import (
     ConnectorRunConfig,
     ConnectorRunCreateRequest,
     ConnectorRunOut,
@@ -35,6 +35,8 @@ from app.services.connector_registry import ConnectorDefinition, get_connector_d
 from app.services.connector_run_executor import ConnectorExecutor, _resolve_connector_executor
 from app.services.connector_sync_state import build_persisted_state, get_resume_cursor, normalize_source_manifest
 from app.services.dataset_service import EDIT_ROLES
+from app.services.managed_handoff import prepare_managed_handoff
+from app.services.rag_runtime_limiter import run_blocking_call_with_managed_session
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.security_redaction import redact_connection_info
 from app.tasks.queue import enqueue_connector_run, get_queue
@@ -263,7 +265,7 @@ async def enqueue_or_schedule_run(
     db: Session,
     *,
     background_tasks: BackgroundTasks,
-    run: ConnectorRun,
+    run: ConnectorRunOut,
     tenant_id: UUID,
     requested_by: str,
 ) -> ConnectorRunOut:
@@ -271,7 +273,12 @@ async def enqueue_or_schedule_run(
     try:
         dispatcher = _connector_run_dispatcher(connector_id)
     except HTTPException:
-        _mark_connector_run_failed(db, run=run, error="unsupported_connector_id")
+        await run_blocking_call_with_managed_session(
+            lambda worker_db: _persist_run_failure(
+                worker_db, tenant_id=tenant_id, run_id=run.id, error="unsupported_connector_id"
+            ),
+            request_db=None,
+        )
         raise
 
     queue_required = settings.TASK_QUEUE_ENABLED
@@ -283,12 +290,25 @@ async def enqueue_or_schedule_run(
                 requested_by=requested_by,
             )
         except Exception as exc:
-            _mark_connector_run_failed(db, run=run, error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR)
+            await run_blocking_call_with_managed_session(
+                lambda worker_db: _persist_run_failure(
+                    worker_db, tenant_id=tenant_id, run_id=run.id, error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR
+                ),
+                request_db=None,
+            )
             raise HTTPException(status_code=503, detail=CONNECTOR_QUEUE_UNAVAILABLE_DETAIL) from exc
         if not task_id:
-            _mark_connector_run_failed(db, run=run, error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR)
+            await run_blocking_call_with_managed_session(
+                lambda worker_db: _persist_run_failure(
+                    worker_db, tenant_id=tenant_id, run_id=run.id, error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR
+                ),
+                request_db=None,
+            )
             raise HTTPException(status_code=503, detail=CONNECTOR_QUEUE_UNAVAILABLE_DETAIL)
-        _persist_connector_run_task_id(db, run=run, task_id=task_id)
+        run = await run_blocking_call_with_managed_session(
+            lambda worker_db: _persist_run_handoff(worker_db, tenant_id=tenant_id, run_id=run.id, task_id=task_id),
+            request_db=None,
+        )
     else:
         _schedule_connector_run_dispatch(
             background_tasks=background_tasks,
@@ -297,7 +317,18 @@ async def enqueue_or_schedule_run(
             tenant_id=tenant_id,
             requested_by=requested_by,
         )
+    return run
+
+
+def _persist_run_handoff(db: Session, *, tenant_id: UUID, run_id: UUID, task_id: str) -> ConnectorRunOut:
+    run = _get_connector_run_or_404(db, tenant_id=tenant_id, run_id=run_id)
+    _persist_connector_run_task_id(db, run=run, task_id=task_id)
     return _run_out(run)
+
+
+def _persist_run_failure(db: Session, *, tenant_id: UUID, run_id: UUID, error: str) -> None:
+    run = _get_connector_run_or_404(db, tenant_id=tenant_id, run_id=run_id)
+    _mark_connector_run_failed(db, run=run, error=error)
 
 
 def _schedule_connector_run_dispatch(
@@ -333,7 +364,7 @@ async def _get_queue_or_none() -> ArqRedis | None:
         return None
 
 
-async def _abort_connector_run_task_if_possible(run: ConnectorRun) -> None:
+async def _abort_connector_run_task_if_possible(run: ConnectorRun | ConnectorRunOut) -> None:
     task_id = run.task_id
     if not _connector_run_has_abortable_task(
         task_queue_enabled=settings.TASK_QUEUE_ENABLED,
@@ -431,12 +462,10 @@ def _build_stateful_resume_run_config(
         cursor=cursor,
     ):
         raise HTTPException(status_code=400, detail="No remaining items to resume")
-    if not resume_state:
-        raise HTTPException(status_code=400, detail="No saved resume state found")
 
     new_cfg = dict(base_cfg)
     new_cfg["_state"] = resume_state
-    return new_cfg, {"resume_of": str(run_id), "resume_cursor": int(cursor)}
+    return new_cfg, {"resume_of": str(run_id), "resume_cursor": cursor}
 
 
 def _build_resume_run_config(
@@ -616,44 +645,44 @@ async def create_run(
 
     Requires dataset write permission.
     """
-    connector_id = payload.connector_id.strip()
-    _validate_connector_run_enabled(connector_id)
 
-    if connector_id in _DB_CATALOG_CONNECTOR_IDS:
-        ensure_tenant_permission(
+    def prepare_run(db: Session) -> ConnectorRunOut:
+        connector_id = payload.connector_id.strip()
+        _validate_connector_run_enabled(connector_id)
+        if connector_id in _DB_CATALOG_CONNECTOR_IDS:
+            ensure_tenant_permission(
+                db, tenant_id, account_id, TenantPermissions.SETTINGS_WRITE, detail=_DB_CONNECTOR_PERMISSION_DETAIL
+            )
+        else:
+            dataset_service.ensure_member(db, tenant_id, account_id)
+        dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
+        cfg, cfg_dict = _validate_and_encrypt_run_config(connector_id, payload.config)
+        if connector_id in _DB_CATALOG_CONNECTOR_IDS:
+            try:
+                validate_db_connector_config(cfg)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _assert_connector_run_groups_exist(db, tenant_id=tenant_id, cfg=cfg)
+        run = _create_pending_connector_run(
             db,
-            tenant_id,
-            account_id,
-            TenantPermissions.SETTINGS_WRITE,
-            detail=_DB_CONNECTOR_PERMISSION_DETAIL,
+            values={
+                "tenant_id": tenant_id,
+                "dataset_id": dataset.id,
+                "connector_id": connector_id,
+                "requested_by": account_id,
+                "config": cfg_dict,
+            },
         )
-    else:
-        dataset_service.ensure_member(db, tenant_id, account_id)
-    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
-    cfg, cfg_dict = _validate_and_encrypt_run_config(connector_id, payload.config)
-    if connector_id in _DB_CATALOG_CONNECTOR_IDS:
-        try:
-            validate_db_connector_config(cfg)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _assert_connector_run_groups_exist(db, tenant_id=tenant_id, cfg=cfg)
+        return _run_out(run)
 
-    run = _create_pending_connector_run(
-        db,
-        values={
-            "tenant_id": tenant_id,
-            "dataset_id": dataset.id,
-            "connector_id": connector_id,
-            "requested_by": account_id,
-            "config": cfg_dict,
-        },
+    prepared_run = await prepare_managed_handoff(
+        prepare_run,
+        recover_cancelled=lambda worker_db, result: _persist_run_failure(
+            worker_db, tenant_id=tenant_id, run_id=result.id, error="connector_request_cancelled_before_handoff"
+        ),
     )
     return await enqueue_or_schedule_run(
-        db,
-        background_tasks=background_tasks,
-        run=run,
-        tenant_id=tenant_id,
-        requested_by=account_id,
+        db, background_tasks=background_tasks, run=prepared_run, tenant_id=tenant_id, requested_by=account_id
     )
 
 
@@ -743,49 +772,46 @@ async def retry_failed_run(
     db: Session,
 ) -> ConnectorRunOut:
     """Create a new connector run that retries only the failed URLs (best-effort)."""
-    if not settings.URL_INGEST_ENABLED:
-        raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
 
-    dataset_service.ensure_member(db, tenant_id, account_id)
+    def prepare_run(db: Session) -> ConnectorRunOut:
+        if not settings.URL_INGEST_ENABLED:
+            raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
+        status = run.status.lower()
+        if status in {"pending", "running"}:
+            raise HTTPException(status_code=400, detail="Connector run is still active")
+        _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
+        stats = dict(run.stats or {})
+        failed_urls = _extract_failed_urls(stats)[:500]
+        if not failed_urls:
+            raise HTTPException(status_code=400, detail="No failed URLs to retry")
+        base_cfg = dict(run.config or {})
+        connector_id = run.connector_id.strip()
+        new_connector_id, new_cfg = _build_retry_failed_run_config(
+            connector_id=connector_id, base_cfg=base_cfg, failed_urls=failed_urls
+        )
+        new_run = _create_pending_connector_run(
+            db,
+            values={
+                "tenant_id": tenant_id,
+                "dataset_id": run.dataset_id,
+                "connector_id": new_connector_id,
+                "requested_by": account_id,
+                "config": new_cfg,
+                "stats": {"retry_of": str(run.id), "retry_kind": "failed_only"},
+            },
+        )
+        return _run_out(new_run)
 
-    run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
-
-    status = run.status.lower()
-    if status in {"pending", "running"}:
-        raise HTTPException(status_code=400, detail="Connector run is still active")
-
-    _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
-
-    stats = dict(run.stats or {})
-    failed_urls = _extract_failed_urls(stats)[:500]
-    if not failed_urls:
-        raise HTTPException(status_code=400, detail="No failed URLs to retry")
-
-    base_cfg = dict(run.config or {})
-    connector_id = run.connector_id.strip()
-    new_connector_id, new_cfg = _build_retry_failed_run_config(
-        connector_id=connector_id,
-        base_cfg=base_cfg,
-        failed_urls=failed_urls,
-    )
-
-    new_run = _create_pending_connector_run(
-        db,
-        values={
-            "tenant_id": tenant_id,
-            "dataset_id": run.dataset_id,
-            "connector_id": new_connector_id,
-            "requested_by": account_id,
-            "config": new_cfg,
-            "stats": {"retry_of": str(run.id), "retry_kind": "failed_only"},
-        },
+    prepared_run = await prepare_managed_handoff(
+        prepare_run,
+        recover_cancelled=lambda worker_db, result: _persist_run_failure(
+            worker_db, tenant_id=tenant_id, run_id=result.id, error="connector_request_cancelled_before_handoff"
+        ),
     )
     return await enqueue_or_schedule_run(
-        db,
-        background_tasks=background_tasks,
-        run=new_run,
-        tenant_id=tenant_id,
-        requested_by=account_id,
+        db, background_tasks=background_tasks, run=prepared_run, tenant_id=tenant_id, requested_by=account_id
     )
 
 
@@ -798,44 +824,45 @@ async def resume_run(
     db: Session,
 ) -> ConnectorRunOut:
     """Create a new connector run that resumes from where the previous run stopped (best-effort)."""
-    if not settings.URL_INGEST_ENABLED:
-        raise HTTPException(status_code=400, detail=URL_INGEST_DISABLED_DETAIL)
 
-    dataset_service.ensure_member(db, tenant_id, account_id)
+    def prepare_run(db: Session) -> ConnectorRunOut:
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
+        status = run.status.lower()
+        if status not in {"cancelled", "failed"}:
+            raise HTTPException(status_code=400, detail="Connector run is not resumable")
+        _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
+        connector_id = run.connector_id.strip()
+        _validate_connector_run_enabled(connector_id)
+        if connector_id in _DB_CATALOG_CONNECTOR_IDS:
+            ensure_tenant_permission(
+                db, tenant_id, account_id, TenantPermissions.SETTINGS_WRITE, detail=_DB_CONNECTOR_PERMISSION_DETAIL
+            )
+        connector_definition = _get_resumable_connector_definition(connector_id)
+        new_cfg, resume_stats = _build_resume_run_config(
+            run=run, connector_id=connector_id, connector_definition=connector_definition
+        )
+        new_run = _create_pending_connector_run(
+            db,
+            values={
+                "tenant_id": tenant_id,
+                "dataset_id": run.dataset_id,
+                "connector_id": connector_id,
+                "requested_by": account_id,
+                "config": new_cfg,
+                "stats": resume_stats,
+            },
+        )
+        return _run_out(new_run)
 
-    run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
-
-    status = run.status.lower()
-    if status not in {"cancelled", "failed"}:
-        raise HTTPException(status_code=400, detail="Connector run is not resumable")
-
-    _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
-
-    connector_id = run.connector_id.strip()
-    connector_definition = _get_resumable_connector_definition(connector_id)
-    new_cfg, resume_stats = _build_resume_run_config(
-        run=run,
-        connector_id=connector_id,
-        connector_definition=connector_definition,
-    )
-
-    new_run = _create_pending_connector_run(
-        db,
-        values={
-            "tenant_id": tenant_id,
-            "dataset_id": run.dataset_id,
-            "connector_id": connector_id,
-            "requested_by": account_id,
-            "config": new_cfg,
-            "stats": resume_stats,
-        },
+    prepared_run = await prepare_managed_handoff(
+        prepare_run,
+        recover_cancelled=lambda worker_db, result: _persist_run_failure(
+            worker_db, tenant_id=tenant_id, run_id=result.id, error="connector_request_cancelled_before_handoff"
+        ),
     )
     return await enqueue_or_schedule_run(
-        db,
-        background_tasks=background_tasks,
-        run=new_run,
-        tenant_id=tenant_id,
-        requested_by=account_id,
+        db, background_tasks=background_tasks, run=prepared_run, tenant_id=tenant_id, requested_by=account_id
     )
 
 
@@ -847,19 +874,20 @@ async def cancel_run(
     db: Session,
 ) -> ConnectorRunOut:
     """Cancel a running connector run (best-effort)."""
-    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
-    _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
+    def persist_cancellation(worker_db: Session) -> tuple[ConnectorRunOut, bool]:
+        dataset_service.ensure_member(worker_db, tenant_id, account_id)
+        run = _get_connector_run_or_404(worker_db, run_id=run_id, tenant_id=tenant_id)
+        _assert_connector_run_dataset_writable(worker_db, run=run, tenant_id=tenant_id, account_id=account_id)
+        if run.status.lower() in {"completed", "failed"}:
+            return _run_out(run), False
+        run.status = "cancelled"
+        run.finished_at = _now()
+        worker_db.commit()
+        worker_db.refresh(run)
+        return _run_out(run), True
 
-    status = run.status.lower()
-    if status in {"completed", "failed"}:
-        return _run_out(run)
-
-    run.status = "cancelled"
-    run.finished_at = _now()
-    db.commit()
-    db.refresh(run)
-
-    await _abort_connector_run_task_if_possible(run)
-    return _run_out(run)
+    result, should_abort = await run_blocking_call_with_managed_session(persist_cancellation, request_db=None)
+    if should_abort:
+        await _abort_connector_run_task_if_possible(result)
+    return result

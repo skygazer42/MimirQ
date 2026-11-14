@@ -40,7 +40,7 @@ def summarize_graphrag_bench(rows: list[dict[str, Any]]) -> dict[str, Any]:
             key=lambda item: item[1].get(key, 0.0),
             reverse=reverse,
         )
-        return items[0][0] if items else None
+        return items[0][0]
 
     return {
         "schema": "mimirq.graphrag_bench.v1",

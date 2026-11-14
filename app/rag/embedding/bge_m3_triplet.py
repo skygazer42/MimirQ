@@ -34,11 +34,10 @@ def build_bge_m3_triplet_payload(
     sparse_fn: Callable[[str], dict[str, float]] | None = None,
     colbert_fn: Callable[[str], list[list[float]]] | None = None,
 ) -> BgeM3TripletPayload:
-    raw = text
-    dense = [float(v) for v in dense_fn(raw) or []]
-    sparse_raw = sparse_fn(raw) if sparse_fn is not None else {}
+    dense = [float(v) for v in dense_fn(text) or []]
+    sparse_raw = sparse_fn(text) if sparse_fn is not None else {}
     sparse = {str(k): float(v) for k, v in dict(sparse_raw or {}).items() if k.strip()}
-    colbert_raw = colbert_fn(raw) if colbert_fn is not None else []
+    colbert_raw = colbert_fn(text) if colbert_fn is not None else []
     colbert = [[float(v) for v in row or []] for row in colbert_raw or []]
     return {
         "schema": "mimirq.bge_m3_triplet.v1",
@@ -63,7 +62,7 @@ def build_bge_m3_tri_index_payload(
         content=text,
         meta=dict(metadata or {}),
     )
-    chunk_type = str(subindex["chunk_type"] or "text")
+    chunk_type = subindex["chunk_type"]
 
     payload = build_bge_m3_triplet_payload(
         text=text,
@@ -113,7 +112,7 @@ def build_bge_m3_tri_index_payload(
         "schema": "mimirq.bge_m3_tri_index.v1",
         "chunk_id": resolved_chunk_id,
         "chunk_type": chunk_type,
-        "subindex_key": str(subindex["subindex_key"]),
+        "subindex_key": subindex["subindex_key"],
         "views": views,
     }
 

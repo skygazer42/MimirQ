@@ -29,7 +29,7 @@ def _safe_int(value: Any, *, default: int = 0, minimum: int | None = None, maxim
         out = max(int(minimum), out)
     if maximum is not None:
         out = min(int(maximum), out)
-    return int(out)
+    return out
 
 
 def _safe_float(
@@ -43,7 +43,7 @@ def _safe_float(
         out = max(float(minimum), out)
     if maximum is not None:
         out = min(float(maximum), out)
-    return float(out)
+    return out
 
 
 def _doc_key(doc: Document) -> str:

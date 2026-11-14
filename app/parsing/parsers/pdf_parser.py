@@ -15,7 +15,7 @@ from app.parsing.enrich.image_understanding import decode_image_codes, infer_vis
 from app.rag.core.logging import get_logger
 
 
-def _position_tagged_text(*, page, page_num: int) -> str:  # noqa: ANN001
+def _position_tagged_text(*, page: fitz.Page, page_num: int) -> str:
     blocks: list[str] = []
     for block in page.get_text("blocks") or []:
         try:
@@ -63,7 +63,7 @@ def _classify_text_page(text: str) -> dict[str, Any]:
     return {}
 
 
-def _extract_image_payload(*, pdf_document, xref: int) -> bytes | None:  # noqa: ANN001
+def _extract_image_payload(*, pdf_document: fitz.Document, xref: int) -> bytes | None:
     try:
         extracted = pdf_document.extract_image(xref)
     except Exception:
@@ -75,7 +75,7 @@ def _extract_image_payload(*, pdf_document, xref: int) -> bytes | None:  # noqa:
     return bytes(image_bytes)
 
 
-def _load_rgb_image(image_bytes: bytes):  # noqa: ANN001
+def _load_rgb_image(image_bytes: bytes) -> PILImage.Image | None:
     try:
         with PILImage.open(BytesIO(image_bytes)) as raw_image:
             return raw_image.convert("RGB")
@@ -84,18 +84,14 @@ def _load_rgb_image(image_bytes: bytes):  # noqa: ANN001
         return None
 
 
-def _decode_image_details(image) -> tuple[str, str, list[str]]:  # noqa: ANN001
+def _decode_image_details(image: PILImage.Image) -> tuple[str, str, list[str]]:
     code_info = decode_image_codes(image)
-    visual_kind = code_info.get("visual_kind", "").strip().lower() if isinstance(code_info, dict) else ""
+    visual_kind = code_info.get("visual_kind", "").strip().lower()
     if not visual_kind:
         visual_kind = infer_visual_kind_from_pixels(image).strip().lower()
 
-    code_text = code_info.get("text", "").strip() if isinstance(code_info, dict) else ""
-    code_values: list[str] = []
-    if isinstance(code_info, dict):
-        raw_values = code_info.get("values")
-        if isinstance(raw_values, list):
-            code_values = [str(item).strip() for item in raw_values if str(item).strip()]
+    code_text = code_info.get("text", "").strip()
+    code_values = [item.strip() for item in code_info.get("values", []) if item.strip()]
 
     return visual_kind, code_text, code_values
 
@@ -105,14 +101,14 @@ def _build_image_document(
     file_path: Path,
     page_num: int,
     total_pages: int,
-    image,
+    image: PILImage.Image,
     image_index: int,
     visual_kind: str,
     code_text: str,
     code_values: list[str],
 ) -> Document:
     metadata = {
-        "source": str(file_path.name),
+        "source": file_path.name,
         "page": page_num + 1,
         "total_pages": total_pages,
         "file_type": "pdf",
@@ -132,7 +128,9 @@ def _build_image_document(
     return Document(page_content=page_content, metadata=metadata)
 
 
-def _extract_image_documents(*, pdf_document, page, file_path: Path, page_num: int) -> list[Document]:  # noqa: ANN001
+def _extract_image_documents(
+    *, pdf_document: fitz.Document, page: fitz.Page, file_path: Path, page_num: int
+) -> list[Document]:
     documents: list[Document] = []
     seen_xrefs: set[int] = set()
     total_pages = len(pdf_document)
@@ -178,10 +176,7 @@ class PDFParser:
         documents: list[Document] = []
         previous_table_signature: tuple[str, list[str]] | None = None
 
-        # Open PDF file.
-        pdf_document = fitz.open(str(file_path))
-
-        try:
+        with fitz.open(str(file_path)) as pdf_document:
             for page_num in range(len(pdf_document)):
                 page = pdf_document[page_num]
 
@@ -203,23 +198,22 @@ class PDFParser:
 
                 # Build metadata.
                 metadata = {
-                    "source": str(file_path.name),
+                    "source": file_path.name,
                     "page": page_num + 1,
                     "total_pages": len(pdf_document),
                     "file_type": "pdf",
                 }
                 metadata.update(_classify_text_page(text))
                 current_signature = None
-                if str(metadata.get("doc_type_kwd") or "").strip().lower() == "table":
-                    header_text = str(metadata.get("table_header_text") or "").strip()
-                    table_columns = list(metadata.get("table_columns") or [])
+                if metadata.get("doc_type_kwd") == "table":
+                    header_text = metadata["table_header_text"]
+                    table_columns = list(metadata["table_columns"])
                     current_signature = (header_text, table_columns)
                     if previous_table_signature == current_signature and documents:
                         metadata["table_continued"] = True
-                        prev_meta = documents[-1].metadata if isinstance(documents[-1].metadata, dict) else None
-                        if isinstance(prev_meta, dict):
-                            prev_meta["table_truncated"] = True
-                            prev_meta["truncated"] = True
+                        prev_meta = documents[-1].metadata
+                        prev_meta["table_truncated"] = True
+                        prev_meta["truncated"] = True
                 previous_table_signature = current_signature
 
                 # Create Document object.
@@ -229,8 +223,5 @@ class PDFParser:
                         metadata=metadata,
                     )
                 )
-
-        finally:
-            pdf_document.close()
 
         return documents

@@ -134,9 +134,6 @@ Plan:"""
                 continue
 
             parts = line.split(":", 1)
-            if len(parts) != 2:
-                continue
-
             task_id = parts[0].strip()
             rest = parts[1].strip()
 
@@ -355,7 +352,6 @@ def create_rag_worker(
         contexts = await retrieve_func(subtask)
 
         # Generate answer
-        answer = await generate_func(subtask, contexts)
-        return answer
+        return await generate_func(subtask, contexts)
 
     return worker

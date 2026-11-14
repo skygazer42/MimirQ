@@ -64,20 +64,14 @@ def dispatch_feedback_loop_batch(
         "trigger": trigger_name,
         "realtime_listener_enabled": False,
         "dry_run": bool(dry_run),
-        "candidates": dict(candidate_payload.get("summary") or {}),
-        "eval_case_candidates": candidate_payload.get("eval_case_candidates"),
+        "candidates": dict(candidate_payload["summary"]),
+        "eval_case_candidates": candidate_payload["eval_case_candidates"],
         "hard_negative_export": hard_negative_export,
-        "rules_suggestions": candidate_payload.get("rules_suggestions"),
+        "rules_suggestions": candidate_payload["rules_suggestions"],
     }
-
-
-def dispatch_scheduled_feedback_loop_batch(**kwargs: Any) -> dict[str, Any]:
-    """Convenience wrapper for cron/arq callers; still pull-based, not realtime."""
-    return dispatch_feedback_loop_batch(**{**kwargs, "trigger": "scheduled"})
 
 
 __all__ = [
     "FEEDBACK_LOOP_BATCH_SCHEMA_V1",
     "dispatch_feedback_loop_batch",
-    "dispatch_scheduled_feedback_loop_batch",
 ]

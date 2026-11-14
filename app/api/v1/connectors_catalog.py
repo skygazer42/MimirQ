@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.schemas.connector import ConnectorInfo
+from app.api.dependencies import get_current_account_id
+from app.api.schemas.sources import ConnectorInfo
 from app.services.connector_registry import list_connector_definitions
 
 router = APIRouter(dependencies=[Depends(get_current_account_id)])

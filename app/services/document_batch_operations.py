@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import (
+from app.api.schemas.documents import (
     DocumentBatchAccessUpdateRequest,
     DocumentBatchAccessUpdateResponse,
     DocumentBatchMoveRequest,

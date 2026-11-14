@@ -175,9 +175,9 @@ def build_rag_trace_index_from_records(
     for r in records or []:
         if not isinstance(r, Mapping):
             continue
-        if r.get('event') != "rag_trace":
+        if r.get("event") != "rag_trace":
             continue
-        if tenant_key and r.get('tenant_id') != tenant_key:
+        if tenant_key and r.get("tenant_id") != tenant_key:
             continue
 
         ts_ms = _to_int(r.get("ts_ms"), default=0)
@@ -306,12 +306,12 @@ def _update_feedback_cluster(
 ) -> None:
     cluster["cluster_size"] += 1
 
-    feedback_ids: list[str] = cluster.get("feedback_ids") or []
+    feedback_ids = cluster["feedback_ids"]
     if feedback_id not in feedback_ids and len(feedback_ids) < 50:
         feedback_ids.append(feedback_id)
     cluster["feedback_ids"] = feedback_ids
 
-    request_ids: list[str] = cluster.get("request_ids") or []
+    request_ids = cluster["request_ids"]
     added_new_request = False
     if request_id not in request_ids and len(request_ids) < 50:
         request_ids.append(request_id)
@@ -323,8 +323,8 @@ def _update_feedback_cluster(
 
 
 def _maybe_replace_representative_trace(cluster: _FeedbackCluster, *, trace: Mapping[str, Any]) -> None:
-    representative = cluster.get("representative_trace") or {}
-    representative_ts = _to_int(representative.get("ts_ms"), default=0) if isinstance(representative, Mapping) else 0
+    representative = cluster["representative_trace"]
+    representative_ts = _to_int(representative.get("ts_ms"), default=0)
     trace_ts = _to_int(trace.get("ts_ms"), default=0)
     if trace_ts > representative_ts:
         cluster["representative_trace"] = dict(trace)
@@ -338,21 +338,17 @@ def _maybe_replace_representative_trace(cluster: _FeedbackCluster, *, trace: Map
 
 
 def _cluster_error_counts(cluster: _FeedbackCluster) -> dict[str, int]:
-    raw_counts = cluster.get("retrieval_error_kinds")
-    if not isinstance(raw_counts, Mapping):
-        return {}
-    return {str(key): value for key, value in raw_counts.items() if key is not None}
+    return dict(cluster["retrieval_error_kinds"])
 
 
 def _build_feedback_hardcase_candidate(question_hash: str, cluster: _FeedbackCluster) -> dict[str, Any]:
-    representative = cluster.get("representative_trace") or {}
-    representative_map = representative if isinstance(representative, Mapping) else {}
+    representative_map = cluster["representative_trace"]
     candidate: dict[str, Any] = {
         "question_hash": question_hash,
         "cluster_size": cluster["cluster_size"],
         "in_suite": cluster["in_suite"],
-        "feedback_ids": list(cluster.get("feedback_ids") or []),
-        "request_ids": list(cluster.get("request_ids") or []),
+        "feedback_ids": list(cluster["feedback_ids"]),
+        "request_ids": list(cluster["request_ids"]),
         "retrieval_config_hash": representative_map.get("retrieval_config_hash"),
         "citations_count": representative_map.get("citations_count"),
         "retrieval_error_kinds": _cluster_error_counts(cluster),

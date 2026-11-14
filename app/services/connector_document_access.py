@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
-from app.api.schemas.connector_acl import ConnectorSourceAclConfig, SourceAcl, SourcePrincipal
+from app.api.schemas.sources import ConnectorSourceAclConfig, SourceAcl, SourcePrincipal
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 from app.models.tenant_group import TenantGroup
@@ -147,6 +147,25 @@ def _apply_document_access_from_config(
             )
 
 
+def _active_connector_documents_query(
+    db: Session, *, tenant_id: UUID, dataset_id: UUID, connector_id: str
+) -> Query[DBDocument]:
+    return (
+        db.query(DBDocument)
+        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
+        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRun.dataset_id == dataset_id,
+            ConnectorRun.connector_id == connector_id.strip(),
+        )
+    )
+
+
 def _delta_sync_connector_documents_acl_by_source_url(
     db: Session,
     *,
@@ -167,19 +186,8 @@ def _delta_sync_connector_documents_acl_by_source_url(
         return 0
 
     q = (
-        db.query(DBDocument)
-        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
-        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
-        .filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.archived_at.is_(None),
-            DBDocument.disabled_at.is_(None),
-            ConnectorRun.tenant_id == tenant_id,
-            ConnectorRun.dataset_id == dataset_id,
-            ConnectorRun.connector_id == connector_id.strip(),
-        )
-        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
+        _active_connector_documents_query(db, tenant_id=tenant_id, dataset_id=dataset_id, connector_id=connector_id)
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)
         .distinct()
         .order_by(DBDocument.created_at.desc())
     )
@@ -209,7 +217,7 @@ def _delta_sync_connector_documents_acl_by_source_url(
                 logger.debug("Ignoring connector ACL provenance metadata update failure: %s", exc)
         updated += 1
 
-    return int(updated)
+    return updated
 
 
 def _soft_disable_connector_documents_by_source_url(
@@ -229,19 +237,8 @@ def _soft_disable_connector_documents_by_source_url(
         return 0
 
     q = (
-        db.query(DBDocument)
-        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
-        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
-        .filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.archived_at.is_(None),
-            DBDocument.disabled_at.is_(None),
-            ConnectorRun.tenant_id == tenant_id,
-            ConnectorRun.dataset_id == dataset_id,
-            ConnectorRun.connector_id == connector_id.strip(),
-        )
-        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
+        _active_connector_documents_query(db, tenant_id=tenant_id, dataset_id=dataset_id, connector_id=connector_id)
+        .filter(DBDocument.doc_metadata["source_url"].astext == source_url)
         .distinct()
         .order_by(DBDocument.created_at.desc())
     )
@@ -259,7 +256,7 @@ def _soft_disable_connector_documents_by_source_url(
             doc.disabled_at = now
             disabled += 1
 
-    return int(disabled)
+    return disabled
 
 
 def _soft_disable_connector_documents_by_source_ref(
@@ -280,19 +277,8 @@ def _soft_disable_connector_documents_by_source_ref(
         return 0
 
     q = (
-        db.query(DBDocument)
-        .join(ConnectorRunDocument, ConnectorRunDocument.document_id == DBDocument.id)
-        .join(ConnectorRun, ConnectorRun.id == ConnectorRunDocument.run_id)
-        .filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.archived_at.is_(None),
-            DBDocument.disabled_at.is_(None),
-            ConnectorRun.tenant_id == tenant_id,
-            ConnectorRun.dataset_id == dataset_id,
-            ConnectorRun.connector_id == connector_id.strip(),
-            ConnectorRunDocument.source_ref == source_ref,
-        )
+        _active_connector_documents_query(db, tenant_id=tenant_id, dataset_id=dataset_id, connector_id=connector_id)
+        .filter(ConnectorRunDocument.source_ref == source_ref)
         .distinct()
         .order_by(DBDocument.created_at.desc())
     )
@@ -312,7 +298,7 @@ def _soft_disable_connector_documents_by_source_ref(
             doc.disabled_at = now
             disabled += 1
 
-    return int(disabled)
+    return disabled
 
 
 def _delta_sync_confluence_documents_acl_by_page_id(
@@ -342,8 +328,8 @@ def _delta_sync_confluence_documents_acl_by_page_id(
         DBDocument.archived_at.is_(None),
         DBDocument.disabled_at.is_(None),
     )
-    updated = 0
-    try:
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "postgresql":
         rows = (
             base_query.filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "confluence_space")
             .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == normalized_base_url)
@@ -352,25 +338,13 @@ def _delta_sync_confluence_documents_acl_by_page_id(
             .order_by(DBDocument.created_at.desc())
             .yield_per(200)
         )
-        for document in rows:
-            _apply_document_access_from_config(
-                db,
-                tenant_id=tenant_id,
-                requested_by=requested_by,
-                doc=document,
-                access=access,
-                connector_id="confluence_space",
-            )
-            _apply_acl_provenance(
-                document,
-                acl_provenance=acl_provenance,
-                message="Ignoring Confluence connector ACL provenance metadata update failure: %s",
-            )
-            updated += 1
-    except Exception:
+    else:
         scan_limit = max(0, int(max_docs_scan or 0)) or 5000
-        recent_documents = base_query.order_by(DBDocument.created_at.desc()).limit(scan_limit).all()
-        for document in recent_documents:
+        rows = base_query.order_by(DBDocument.created_at.desc()).limit(scan_limit).all()
+
+    updated = 0
+    for document in rows:
+        if dialect_name != "postgresql":
             metadata = document.doc_metadata if isinstance(document.doc_metadata, dict) else {}
             connector = metadata.get("connector") if isinstance(metadata.get("connector"), dict) else {}
             if (
@@ -380,20 +354,20 @@ def _delta_sync_confluence_documents_acl_by_page_id(
                 or connector.get("page_id") != normalized_page_id
             ):
                 continue
-            _apply_document_access_from_config(
-                db,
-                tenant_id=tenant_id,
-                requested_by=requested_by,
-                doc=document,
-                access=access,
-                connector_id="confluence_space",
-            )
-            _apply_acl_provenance(
-                document,
-                acl_provenance=acl_provenance,
-                message="Ignoring Confluence connector ACL provenance metadata update failure: %s",
-            )
-            updated += 1
+        _apply_document_access_from_config(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=document,
+            access=access,
+            connector_id="confluence_space",
+        )
+        _apply_acl_provenance(
+            document,
+            acl_provenance=acl_provenance,
+            message="Ignoring Confluence connector ACL provenance metadata update failure: %s",
+        )
+        updated += 1
     return updated
 
 
@@ -572,7 +546,7 @@ def _disable_missing_jira_issue_documents(
         if getattr(doc, "disabled_at", None) is None:
             doc.disabled_at = now
             disabled += 1
-    return int(disabled)
+    return disabled
 
 
 def _delta_sync_jira_documents_acl_by_issue_url(
@@ -623,7 +597,7 @@ def _delta_sync_jira_documents_acl_by_issue_url(
             message="Ignoring Jira connector ACL provenance metadata update failure: %s",
         )
         updated += 1
-    return int(updated)
+    return updated
 
 
 def _soft_disable_jira_attachment_documents_missing_from_issue(

@@ -144,8 +144,6 @@ def _is_en_term_token(token: str) -> bool:
         return True
     if any(ch in "-._+/:" for ch in t):
         return True
-    if t.isalpha() and t.isupper():
-        return True
     return False
 
 

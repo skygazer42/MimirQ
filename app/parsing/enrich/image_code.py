@@ -32,7 +32,7 @@ _MINIO_URL_HINT = "/api/v1/documents/image-url/"
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    return list(_MD_IMAGE_RE.findall(line))
+    return _MD_IMAGE_RE.findall(line)
 
 
 def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | None, str | None]:
@@ -100,10 +100,6 @@ class ImageCodeAudit:
         }
 
 
-def _iter_line_images(line: str) -> list[tuple[str, str]]:
-    return _extract_md_images(line) + _extract_html_imgs(line)
-
-
 def _analyze_image_code(
     *,
     alt: str,
@@ -115,7 +111,7 @@ def _analyze_image_code(
     image_bytes, _ = _safe_read_local_image_bytes(
         src=src,
         origin_path=origin_path,
-        max_bytes=int(max_image_bytes or 0),
+        max_bytes=max_image_bytes,
     )
     if image_bytes is None:
         return None, 0, 0
@@ -128,18 +124,16 @@ def _analyze_image_code(
 
     try:
         code_info = decode_image_codes(image)
-        visual_kind = code_info.get("visual_kind", "").strip().lower() if isinstance(code_info, dict) else ""
+        visual_kind = code_info.get("visual_kind", "")
         if not visual_kind:
-            visual_kind = infer_visual_kind_from_pixels(image).strip().lower()
+            visual_kind = infer_visual_kind_from_pixels(image)
     finally:
         try:
             image.close()
         except Exception as exc:
             logger.debug("Ignoring local image code close failure: %s", exc)
 
-    if not isinstance(code_info, dict):
-        code_info = {}
-    code_text = code_info.get("text", "").strip()
+    code_text = code_info.get("text", "")
     if not code_text and not visual_kind:
         return None, 1, 0
     if max_code_chars > 0 and len(code_text) > max_code_chars:
@@ -155,7 +149,7 @@ def _analyze_image_code(
                     "source_content_type": "image_code" if code_text else "image_understanding",
                     "source_doc_type": "image_code" if code_text else "image",
                     "image_code_text": code_text or None,
-                    "image_code_values": list(code_info.get("values") or []),
+                    "image_code_values": list(code_info.get("values", [])),
                     "image_code_src": src,
                     "image_code_alt": alt,
                     "image_visual_kind_source": "pixel",
@@ -183,7 +177,7 @@ def _extract_code_payloads_for_line(
     payloads: list[dict[str, Any]] = []
     attempted = 0
     succeeded = 0
-    for alt, src in _iter_line_images(line):
+    for alt, src in _extract_md_images(line) + _extract_html_imgs(line):
         if len(payloads) >= remaining:
             break
         payload, attempted_inc, succeeded_inc = _analyze_image_code(
@@ -252,15 +246,12 @@ def add_image_code_blocks(
 
     lines = raw.splitlines()
     for index, line in enumerate(lines):
+        out_lines.append(line)
         if _FENCE_RE.match(line):
             in_fence = not in_fence
-            out_lines.append(line)
             continue
         if in_fence:
-            out_lines.append(line)
             continue
-
-        out_lines.append(line)
 
         if codes_added >= max_images_i:
             continue
@@ -277,7 +268,7 @@ def add_image_code_blocks(
         images_attempted += attempted
         images_succeeded += succeeded
         for payload in payloads:
-            code_text = str(payload["code_text"])
+            code_text = payload["code_text"]
             if code_text:
                 codes_added += 1
                 out_lines.append(f"Image code: {code_text}")
@@ -286,13 +277,13 @@ def add_image_code_blocks(
     elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
     return (
         "\n".join(out_lines).rstrip() + "\n",
-        int(codes_added),
+        codes_added,
         ImageCodeAudit(
             applied=True,
-            codes_added=int(codes_added),
-            images_attempted=int(images_attempted),
-            images_succeeded=int(images_succeeded),
-            elapsed_ms=int(elapsed_ms),
+            codes_added=codes_added,
+            images_attempted=images_attempted,
+            images_succeeded=images_succeeded,
+            elapsed_ms=elapsed_ms,
             backend="local_decode",
             code_elements=code_elements,
             error=None,

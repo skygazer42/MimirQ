@@ -100,12 +100,19 @@ def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
         return _shadow_vector_writer
 
     try:
+        shadow_space = _shadow_embedding_space_hash(provider=mapped_provider, model=shadow_model, base_url=base_url)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Shadow embedding-space hash failed; dual-write disabled: %s", type(exc).__name__)
+        return _cache_shadow_vector_writer(sig, None)
+
+    try:
         emb = create_langchain_embeddings_from_config(
             provider=mapped_provider,
             model=shadow_model,
             api_key=api_key,
             base_url=base_url,
             dimension=None,  # Auto-detect
+            cache_space_hash=shadow_space,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Shadow embeddings init failed; dual-write disabled: %s", str(exc)[:200])
@@ -117,11 +124,6 @@ def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
         logger.warning("Shadow Milvus adapter init failed; dual-write disabled: %s", str(exc)[:200])
         return _cache_shadow_vector_writer(sig, None)
 
-    try:
-        shadow_space = _shadow_embedding_space_hash(provider=mapped_provider, model=shadow_model, base_url=base_url)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Shadow embedding-space hash failed; dual-write disabled: %s", type(exc).__name__)
-        return _cache_shadow_vector_writer(sig, None)
     return _cache_shadow_vector_writer(sig, (emb, adapter, shadow_space))
 
 

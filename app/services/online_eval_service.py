@@ -213,12 +213,12 @@ def _quality_buckets(
         faithfulness = _finite_metric(record.get("faithfulness_det"))
         if faithfulness is not None:
             faith_values.append(faithfulness)
-            bucket["faith_sum"] = (bucket["faith_sum"] or 0.0) + faithfulness
+            bucket["faith_sum"] += faithfulness
             bucket["faith_n"] += 1
         utilization = _finite_metric(record.get("chunk_utilization"))
         if utilization is not None:
             utilization_values.append(utilization)
-            bucket["util_sum"] = (bucket["util_sum"] or 0.0) + utilization
+            bucket["util_sum"] += utilization
             bucket["util_n"] += 1
     return buckets, faith_values, utilization_values
 
@@ -234,8 +234,8 @@ def _quality_timeseries(
         bucket = buckets[key]
         faith_count = bucket["faith_n"]
         utilization_count = bucket["util_n"]
-        faithfulness.append(((bucket["faith_sum"] or 0.0) / faith_count) if faith_count else None)
-        utilization.append(((bucket["util_sum"] or 0.0) / utilization_count) if utilization_count else None)
+        faithfulness.append((bucket["faith_sum"] / faith_count) if faith_count else None)
+        utilization.append((bucket["util_sum"] / utilization_count) if utilization_count else None)
     return timestamps, samples, faithfulness, utilization
 
 

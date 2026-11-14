@@ -16,38 +16,18 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    text: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
 class _Cue:
     start: int
     end: int
-    index: int
     start_ts: str
     end_ts: str
 
 
 _TIMECODE_RE = re.compile(r"^\s*(?P<start>\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,\.]\d{3})\b")
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text).splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, text=raw))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), text=text))
-    return out
 
 
 def _iter_cues(text: str) -> list[_Cue]:
@@ -57,12 +37,12 @@ def _iter_cues(text: str) -> list[_Cue]:
 
     cue_starts: list[tuple[int, str, str]] = []
     for i, line in enumerate(lines):
-        m = _TIMECODE_RE.match(line.text.strip())
+        m = _TIMECODE_RE.match(line.plain.strip())
         if not m:
             continue
         cue_start = line.start
         if i > 0:
-            prev = lines[i - 1].text.strip()
+            prev = lines[i - 1].plain.strip()
             if prev.isdigit():
                 cue_start = lines[i - 1].start
         cue_starts.append((cue_start, (m.group("start")).strip(), (m.group("end")).strip()))
@@ -70,15 +50,11 @@ def _iter_cues(text: str) -> list[_Cue]:
     if len(cue_starts) < 2:
         return []
 
-    cue_starts = sorted(cue_starts, key=lambda x: x[0])
-
     cues: list[_Cue] = []
     for idx, (start, start_ts, end_ts) in enumerate(cue_starts):
         end = cue_starts[idx + 1][0] if idx + 1 < len(cue_starts) else len(text)
-        if end <= start:
-            continue
-        cues.append(_Cue(start=start, end=end, index=idx, start_ts=start_ts, end_ts=end_ts))
-    return cues if len(cues) >= 2 else []
+        cues.append(_Cue(start=start, end=end, start_ts=start_ts, end_ts=end_ts))
+    return cues
 
 
 def looks_like_subtitles(text: str) -> bool:
@@ -93,17 +69,15 @@ def _fallback_chunks(
     text: str,
     base_meta: dict[str, Any],
     splitter: RecursiveCharacterTextSplitter,
-    start_offset: int = 0,
     prefix_marker: bool = False,
 ) -> list[Document]:
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     out: list[Document] = []
     for split_doc in split_docs:
-        local_start = split_doc.metadata.pop("start_index", None) or 0
-        abs_start = start_offset + int(local_start)
+        abs_start = split_doc.metadata.pop("start_index")
         abs_end = abs_start + len(split_doc.page_content)
         meta: dict[str, Any] = dict(base_meta)
-        meta.update(split_doc.metadata or {})
+        meta.update(split_doc.metadata)
         meta["chunk_strategy"] = "subtitles"
         meta["start_char"] = abs_start
         meta["end_char"] = abs_end
@@ -127,7 +101,7 @@ def _cue_window_end(*, cues: list[_Cue], start_idx: int, chunk_size: int) -> int
             end_idx += 1
             continue
         break
-    return end_idx if end_idx > start_idx else (start_idx + 1)
+    return end_idx
 
 
 def _next_cue_start(*, cues: list[_Cue], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
@@ -142,7 +116,7 @@ def _next_cue_start(*, cues: list[_Cue], start_idx: int, end_idx: int, chunk_ove
             continue
         break
     next_start = desired if desired > start_idx else (end_idx - 1)
-    return end_idx if next_start <= start_idx else next_start
+    return next_start
 
 
 def _cue_chunk(
@@ -179,7 +153,7 @@ def _split_subtitle_document(
     if not text.strip():
         return []
 
-    base_meta = dict(doc.metadata or {})
+    base_meta = dict(doc.metadata)
     cues = _iter_cues(text)
     if not cues:
         return _fallback_chunks(text=text, base_meta=base_meta, splitter=splitter)
@@ -192,7 +166,6 @@ def _split_subtitle_document(
                 text=prefix,
                 base_meta=base_meta,
                 splitter=splitter,
-                start_offset=0,
                 prefix_marker=True,
             )
         )
@@ -201,6 +174,8 @@ def _split_subtitle_document(
     while start_idx < len(cues):
         end_idx = _cue_window_end(cues=cues, start_idx=start_idx, chunk_size=chunk_size)
         out.append(_cue_chunk(text=text, base_meta=base_meta, cues=cues, start_idx=start_idx, end_idx=end_idx))
+        if end_idx == len(cues):
+            break
         start_idx = _next_cue_start(
             cues=cues,
             start_idx=start_idx,
@@ -237,7 +212,7 @@ class SubtitlesChunker(BaseChunker):
             )
 
         for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
+            meta = dict(chunk.metadata)
             meta["chunk_index"] = idx
             chunk.metadata = meta
 

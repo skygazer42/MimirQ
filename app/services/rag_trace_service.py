@@ -157,7 +157,7 @@ def _safe_int(v: Any, *, lo: int = 0, hi: int = 1_000_000_000) -> int | None:
         n = lo
     if n > hi:
         n = hi
-    return int(n)
+    return n
 
 
 def _safe_float(v: Any, *, lo: float = 0.0, hi: float = 1_000_000.0, digits: int = 3) -> float | None:
@@ -169,7 +169,7 @@ def _safe_float(v: Any, *, lo: float = 0.0, hi: float = 1_000_000.0, digits: int
     if n > hi:
         n = hi
     try:
-        return round(float(n), int(digits))
+        return round(n, digits)
     except Exception:
         return None
 
@@ -672,14 +672,9 @@ def _safe_kg_path(raw: Any) -> list[dict[str, Any]] | None:
     return out or None
 
 
-def _safe_prefixed_str(raw: Any, *, max_len: int) -> str | None:
-    value = str(raw).strip() if raw is not None else ""
-    return value[:max_len] if value else None
-
-
 def _copy_safe_str_fields(out: dict[str, Any], raw: dict[str, Any], keys: Iterable[str], *, max_len: int) -> None:
     for key in keys:
-        value = _safe_prefixed_str(raw.get(key), max_len=max_len)
+        value = _safe_str(raw.get(key), max_len=max_len)
         if value:
             out[key] = value
 
@@ -688,7 +683,7 @@ def _safe_kg_provenance_node(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     node: dict[str, Any] = {}
-    kind = _safe_prefixed_str(raw.get("kind"), max_len=30)
+    kind = _safe_str(raw.get("kind"), max_len=30)
     if kind:
         node["kind"] = kind
     _copy_safe_str_fields(node, raw, ("entity_id", "type", "event_id", "document_id", "chunk_id"), max_len=200)
@@ -699,7 +694,7 @@ def _safe_kg_provenance_edge(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     edge: dict[str, Any] = {}
-    kind = _safe_prefixed_str(raw.get("kind"), max_len=30)
+    kind = _safe_str(raw.get("kind"), max_len=30)
     if kind:
         edge["kind"] = kind
     _copy_safe_str_fields(
@@ -825,13 +820,8 @@ def _max_float(values: Iterable[float | None]) -> float | None:
     for v in values:
         if v is None:
             continue
-        try:
-            fv = float(v)
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
-        if best is None or fv > best:
-            best = fv
+        if best is None or v > best:
+            best = v
     return best
 
 
@@ -912,7 +902,7 @@ def _build_trace_steps(
             meta={
                 "mode": retrieval.mode,
                 "query_count": retrieval.query_count,
-                "errors": len(retrieval.errors or []),
+                "errors": len(retrieval.errors),
             },
         ),
     ]
@@ -957,11 +947,11 @@ def _disabled_trace_response(*, path: str, window_minutes: int) -> RagTraceListR
 
 
 def _matches_trace_record(record: dict[str, Any], *, tenant_key: str, conversation_key: str, cutoff_ms: int) -> bool:
-    if record.get('event') != "rag_trace":
+    if record.get("event") != "rag_trace":
         return False
-    if record.get('tenant_id') != tenant_key:
+    if record.get("tenant_id") != tenant_key:
         return False
-    if record.get('conversation_id') != conversation_key:
+    if record.get("conversation_id") != conversation_key:
         return False
     ts_ms = _to_int(record.get("ts_ms")) or 0
     return not (ts_ms and ts_ms < cutoff_ms)

@@ -8,16 +8,9 @@ dragging in heavier text / HTTP / model dependencies from unrelated helpers.
 
 from importlib import import_module
 
-_MODULE_COMMAND = "app.rag.core.command"
 _MODULE_ERRORS = "app.rag.core.errors"
 
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "Command": (_MODULE_COMMAND, "Command"),
-    "CommandProcessor": (_MODULE_COMMAND, "CommandProcessor"),
-    "Interrupt": (_MODULE_COMMAND, "Interrupt"),
-    "NodeReturn": (_MODULE_COMMAND, "NodeReturn"),
-    "Send": (_MODULE_COMMAND, "Send"),
-    "interrupt": (_MODULE_COMMAND, "interrupt"),
     "AIError": (_MODULE_ERRORS, "AIError"),
     "ConfigError": (_MODULE_ERRORS, "ConfigError"),
     "ExtractError": (_MODULE_ERRORS, "ExtractError"),

@@ -29,7 +29,7 @@ def _policy_block(policy: dict[str, Any] | None, *, case_name: str) -> dict[str,
 def _threshold(cfg: dict[str, Any], key: str, default: float) -> float:
     v = _as_float(cfg.get(key))
     if v is None:
-        return float(default)
+        return default
     return v
 
 
@@ -58,9 +58,7 @@ def _compare_metric(
         ratio = (current_ms / baseline_ms) - 1.0
         out["delta_ratio"] = ratio
 
-    regressed = bool(
-        delta_ms > float(max_abs_increase_ms) and (ratio is not None and ratio > float(max_ratio_increase))
-    )
+    regressed = delta_ms > max_abs_increase_ms and ratio is not None and ratio > max_ratio_increase
     out["regressed"] = regressed
     return out
 
@@ -91,8 +89,8 @@ def diff_perf_suite_reports(
     This is intended for CI/nightly gating. It is PII-safe by construction: only numeric
     aggregates and case names are included in the diff.
     """
-    base_cases = _cases_by_name(baseline or {})
-    curr_cases = _cases_by_name(current or {})
+    base_cases = _cases_by_name(baseline)
+    curr_cases = _cases_by_name(current)
 
     case_names = sorted(set(base_cases.keys()) | set(curr_cases.keys()))
     cases_out: dict[str, Any] = {}
@@ -129,7 +127,7 @@ def diff_perf_suite_reports(
             max_abs_increase_ms=p99_abs,
         )
 
-        regressed = bool(p95.get("regressed") or p99.get("regressed"))
+        regressed = p95["regressed"] or p99["regressed"]
         if regressed:
             regressions += 1
 

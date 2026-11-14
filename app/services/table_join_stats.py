@@ -14,7 +14,7 @@ def build_join_statistics_snapshot(
     max_states: int = 24,
 ) -> dict[str, Any]:
     normalized_tables: list[dict[str, Any]] = []
-    for raw in tables or []:
+    for raw in tables:
         if not isinstance(raw, dict):
             continue
         tname = raw.get("table_name")
@@ -41,14 +41,14 @@ def build_join_statistics_snapshot(
 
     pairwise = score_join_plan_candidates(
         tables=normalized_tables,
-        top_n=max(1, int(top_n or 1)),
-        ambiguity_score_gap=float(ambiguity_score_gap or 0.0),
+        top_n=max(1, top_n),
+        ambiguity_score_gap=ambiguity_score_gap,
     )
     multi = score_multi_join_plan_candidates(
         tables=normalized_tables,
-        top_n=max(1, int(top_n or 1)),
-        ambiguity_score_gap=float(ambiguity_score_gap or 0.0),
-        max_states=max(4, int(max_states or 4)),
+        top_n=max(1, top_n),
+        ambiguity_score_gap=ambiguity_score_gap,
+        max_states=max(4, max_states),
     )
 
     return {

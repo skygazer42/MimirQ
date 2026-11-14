@@ -103,7 +103,7 @@ def _seed_uniform_sample_indices(indices: list[int], k: int) -> tuple[list[int],
     seen: set[int] = set()
     for i in range(k):
         pos = round(i * (n - 1) / (k - 1))
-        pos = max(0, min(n - 1, int(pos)))
+        pos = max(0, min(n - 1, pos))
         _append_unique_index(picked, seen, indices[pos])
     return picked, seen
 
@@ -121,8 +121,6 @@ def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
         return []
     if k >= len(indices):
         return list(indices)
-    if len(indices) == 1:
-        return [indices[0]]
     if k == 1:
         return [indices[len(indices) // 2]]
 
@@ -239,7 +237,7 @@ def _is_chunk_unchanged(
 
     for ev in prior_events:
         refs = ev.references if isinstance(ev.references, dict) else {}
-        prior_hash = (refs.get("content_hash") or "").strip() if isinstance(refs, dict) else ""
+        prior_hash = (refs.get("content_hash") or "").strip()
         if not prior_hash or prior_hash != content_hash:
             return False
 
@@ -805,7 +803,7 @@ def _record_chunk_retry_success(progress: _ExtractProgress, *, chunk_id: object,
     if attempt <= 0:
         return
     progress.retry_chunk_ids.add(chunk_id)
-    progress.retry_attempts_total += int(attempt)
+    progress.retry_attempts_total += attempt
 
 
 def _record_chunk_failure(
@@ -813,7 +811,7 @@ def _record_chunk_failure(
 ) -> None:
     if attempt > 0:
         progress.retry_chunk_ids.add(chunk.id)
-        progress.retry_attempts_total += int(attempt)
+        progress.retry_attempts_total += attempt
     progress.failed_chunks += 1
     progress.failed_chunk_ids.add(chunk.id)
     progress.failure_messages.append(str(last_exc)[:300] if last_exc else "unknown_error")
@@ -1234,7 +1232,7 @@ def _populate_chunk_content_maps(state: _ExtractState) -> None:
             content_len = computed_len
 
         state.chunk_hash_by_id[chunk.id] = content_hash
-        state.chunk_len_by_id[chunk.id] = max(0, int(content_len))
+        state.chunk_len_by_id[chunk.id] = max(0, content_len)
 
         raw_key = meta_dict.get("chunk_key")
         chunk_key = raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else ""
@@ -1617,9 +1615,7 @@ def _add_text_for_embedding(text: str, *, seen_text: set[str], to_embed: list[st
 def _collect_chunk_embed_texts(
     chunk: DocumentChunk, event_payload: dict, *, seen_text: set[str], to_embed: list[str]
 ) -> None:
-    event_text = (
-        event_payload["content"] or event_payload["summary"] or event_payload["title"]
-    ).strip()
+    event_text = (event_payload["content"] or event_payload["summary"] or event_payload["title"]).strip()
     if not event_text:
         event_text = (chunk.content)[:200].strip() or "Event"
     event_payload["_embed_text"] = event_text
@@ -3613,8 +3609,8 @@ def _compose_pair_quote(a_item: dict, b_item: dict, chunk_text: str) -> tuple[st
             and isinstance(b_e, int)
             and chunk_text
         ):
-            start = int(min(a_s, b_s))
-            end = int(max(a_e, b_e))
+            start = min(a_s, b_s)
+            end = max(a_e, b_e)
             if 0 <= start < end <= len(chunk_text):
                 raw_quote = chunk_text[start:end]
                 lstrip_len = len(raw_quote) - len(raw_quote.lstrip())
@@ -3624,7 +3620,7 @@ def _compose_pair_quote(a_item: dict, b_item: dict, chunk_text: str) -> tuple[st
                 if 0 <= start2 < end2 <= len(chunk_text):
                     quote = chunk_text[start2:end2]
                     if quote and len(quote) <= 240:
-                        return quote, int(start2), int(end2)
+                        return quote, start2, end2
     except Exception:
         return None, None, None
     return None, None, None
@@ -3920,12 +3916,12 @@ def _writeback_document_metadata(
         )
         for doc in docs:
             meta = dict(doc.doc_metadata or {})
-            meta["kg_event_count"] = int(counts["events"].get(doc.id, 0))
-            meta["kg_skipped_chunks"] = int(counts["skipped"].get(doc.id, 0))
-            meta["kg_budget_skipped_chunks"] = int(counts["budget_skipped"].get(doc.id, 0))
-            meta["kg_skipped_short_chunks"] = int(counts["short_skipped"].get(doc.id, 0))
-            meta["kg_failed_chunks"] = int(counts["failed"].get(doc.id, 0))
-            meta["kg_retry_chunks"] = int(counts["retry"].get(doc.id, 0))
+            meta["kg_event_count"] = counts["events"].get(doc.id, 0)
+            meta["kg_skipped_chunks"] = counts["skipped"].get(doc.id, 0)
+            meta["kg_budget_skipped_chunks"] = counts["budget_skipped"].get(doc.id, 0)
+            meta["kg_skipped_short_chunks"] = counts["short_skipped"].get(doc.id, 0)
+            meta["kg_failed_chunks"] = counts["failed"].get(doc.id, 0)
+            meta["kg_retry_chunks"] = counts["retry"].get(doc.id, 0)
             meta["kg_extracted_at"] = extracted_at
             budget_stats = budget_stats_by_doc.get(doc.id, {}) if isinstance(budget_stats_by_doc, dict) else {}
             _apply_budget_metadata(meta, budget_stats)

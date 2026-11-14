@@ -18,9 +18,8 @@ def _iso_now() -> str:
 
 def _metric_card_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    payload = dict(metrics or {})
     for key in _CORE_METRIC_KEYS:
-        rows.append({"key": key, "value": payload.get(key)})
+        rows.append({"key": key, "value": metrics.get(key)})
     return rows
 
 
@@ -38,7 +37,7 @@ def _report_meta(payload: "DatasetAnalysisReportPayload") -> dict[str, Any]:
 def _feedback_coverage(metrics: dict[str, Any]) -> dict[str, Any]:
     return {
         "key": "feedback_coverage_rate",
-        "value": dict(metrics or {}).get("feedback_coverage_rate"),
+        "value": metrics.get("feedback_coverage_rate"),
     }
 
 

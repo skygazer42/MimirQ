@@ -33,8 +33,8 @@ class NearDedupMatch:
 
 def _safe_int_hex(value: str) -> int | None:
     try:
-        return int(str(value).strip(), 16)
-    except Exception:
+        return int(value.strip(), 16)
+    except ValueError:
         return None
 
 
@@ -74,27 +74,36 @@ def _file_lock(lock_path: Path) -> Iterator[None]:
     """
     Best-effort advisory file lock (Linux).
 
-    If locking fails for any reason, continue without locking to keep ingestion resilient.
+    Unsupported platforms and OS lock failures continue without locking.
     """
     try:
         import fcntl  # type: ignore
-
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as f:
-            try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            except Exception:
-                yield
-                return
-            try:
-                yield
-            finally:
-                try:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                except Exception as exc:
-                    logger.debug("Ignoring near-dedup file lock release failure: %s", exc)
-    except Exception:
+    except ImportError:
         yield
+        return
+
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_path.open("a+", encoding="utf-8")
+    except OSError as exc:
+        logger.debug("Near-dedup lock file unavailable: %s", type(exc).__name__)
+        yield
+        return
+
+    with lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as exc:
+            logger.debug("Near-dedup advisory lock unavailable: %s", type(exc).__name__)
+            yield
+            return
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except OSError as exc:
+                logger.debug("Ignoring near-dedup file lock release failure: %s", exc)
 
 
 def load_near_dedup_index(path: Path) -> dict[str, list[str]]:
@@ -142,7 +151,7 @@ def find_near_duplicate(
     if target_int is None:
         return None
 
-    threshold = max(0, int(hamming_threshold or 0))
+    threshold = max(0, hamming_threshold)
     best: NearDedupMatch | None = None
     for key in bucket_keys_for_simhash(simhash64_hex):
         candidates = buckets.get(key) or []
@@ -166,16 +175,13 @@ def add_simhashes(
     simhashes: Iterable[str],
     max_bucket_size: int,
 ) -> dict[str, list[str]]:
-    max_bucket_size_eff = max(0, int(max_bucket_size or 0))
+    max_bucket_size_eff = max(0, max_bucket_size)
     for sh in simhashes:
         sh_norm = sh.strip().lower()
         if not sh_norm:
             continue
         for key in bucket_keys_for_simhash(sh_norm):
-            arr = buckets.get(key)
-            if arr is None:
-                arr = []
-                buckets[key] = arr
+            arr = buckets.setdefault(key, [])
             arr.append(sh_norm)
             if max_bucket_size_eff > 0 and len(arr) > max_bucket_size_eff:
                 # Keep most recent items.

@@ -5,9 +5,6 @@ Selects an appropriate chunker per-document based on metadata + lightweight
 content heuristics.
 """
 
-import json
-import re
-
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
@@ -76,20 +73,20 @@ from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, looks_lik
 from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
 from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
 from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
+from app.rag.chunking.utils import looks_like_json, looks_like_markdown
 
 
 def _clamp_int(v: int, lo: int, hi: int) -> int:
     return max(lo, min(v, hi))
 
 
-def _density_metrics(text: str, *, sample_chars: int = 50_000) -> dict[str, float]:
+def _density_metrics(text: str) -> dict[str, float]:
     """
     Compute simple text density metrics (bounded) for adaptive chunk sizing.
 
     These metrics are intentionally lightweight and deterministic.
     """
-    raw = text
-    sample = raw[: max(0, int(sample_chars or 0))] if sample_chars else raw
+    sample = text[:50_000]
     n = len(sample)
     if n <= 0:
         return {"sample_chars": 0.0, "line_count": 0.0, "avg_line_len": 0.0, "non_ws_ratio": 0.0}
@@ -156,7 +153,7 @@ def _adaptive_chunk_params(
     size = _clamp_int(size, 400, 1800)
 
     # Keep overlap ratio stable relative to base settings.
-    ratio = float(bo) / float(bs) if bs > 0 else 0.2
+    ratio = float(bo) / float(bs)
     overlap = round(float(size) * ratio)
     overlap = _clamp_int(overlap, 0, max(0, size - 1))
 
@@ -165,33 +162,6 @@ def _adaptive_chunk_params(
         overlap = 0
 
     return size, overlap, reason, metrics
-
-
-_MD_HINT_RES = (
-    re.compile(r"(?m)^\s*#{1,6}\s+"),
-    re.compile(r"\[[^\]]+\]\([^)]+\)"),
-    re.compile(r"(?m)^\s*```"),
-    re.compile(r"(?m)^\s*[-*+]\s+"),
-)
-
-
-def _looks_like_markdown(text: str) -> bool:
-    if not text or len(text) < 20:
-        return False
-    return any(p.search(text) for p in _MD_HINT_RES)
-
-
-def _looks_like_json(text: str) -> bool:
-    stripped = (text).strip()
-    if not stripped:
-        return False
-    if stripped[0] not in "{[":
-        return False
-    try:
-        json.loads(stripped)
-        return True
-    except Exception:
-        return False
 
 
 class AutoChunker(BaseChunker):
@@ -512,12 +482,12 @@ class AutoChunker(BaseChunker):
         )
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
-        meta = doc.metadata or {}
+        meta = doc.metadata
         file_type = str(meta.get("file_type") or "").strip().lower()
         text = doc.page_content
 
         def _json_case() -> bool:
-            return file_type in {"json"} or _looks_like_json(text)
+            return file_type in {"json"} or looks_like_json(text)
 
         def _build_json_chunker() -> BaseChunker:
             # JSON overlap is usually counterproductive; keep it at 0.
@@ -637,7 +607,7 @@ class AutoChunker(BaseChunker):
                 "markdown_frontmatter",
             ),
             (
-                lambda: file_type in {"md", "markdown"} or _looks_like_markdown(text),
+                lambda: file_type in {"md", "markdown"} or looks_like_markdown(text),
                 lambda: self._markdown,
                 "markdown_aware",
             ),
@@ -659,7 +629,7 @@ class AutoChunker(BaseChunker):
         chunks: list[Document] = []
         for doc in documents:
             chunker, selected = self._select(doc)
-            meta_in = doc.metadata or {}
+            meta_in = doc.metadata
             file_type = str(meta_in.get("file_type") or "").strip().lower()
             text = doc.page_content
 
@@ -689,7 +659,7 @@ class AutoChunker(BaseChunker):
 
             produced = chunker_used.split_documents([doc])
             for item in produced:
-                meta = dict(item.metadata or {})
+                meta = dict(item.metadata)
                 meta["chunk_strategy_auto"] = True
                 meta.setdefault("chunk_strategy_selected", selected)
                 meta["chunk_size_base"] = self.chunk_size

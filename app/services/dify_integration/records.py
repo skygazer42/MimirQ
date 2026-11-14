@@ -16,8 +16,8 @@ def _record_dedupe_key(record: dict[str, Any]) -> tuple[str | None, str | None, 
     metadata = metadata if isinstance(metadata, dict) else {}
     chunk_id = _first_nonempty_str(metadata.get("chunk_id"))
     document_id = _first_nonempty_str(metadata.get("document_id"))
-    content = record['content'].strip()
-    title = record['title'].strip()
+    content = record["content"].strip()
+    title = record["title"].strip()
     return (chunk_id, document_id, content or title)
 
 

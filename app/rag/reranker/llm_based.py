@@ -14,7 +14,6 @@ Note: this module is a reranker implementation; do not confuse it with app.rag.l
 import json
 import time
 from dataclasses import dataclass
-from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 import httpx
@@ -23,6 +22,7 @@ from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.models.chunk import Document
 from app.rag.core.http import httpx_trust_env
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.reranker.base import DocumentReranker
 
 
@@ -122,14 +122,16 @@ def _prepare_llm_candidates(
             continue
         cid = reranker._candidate_id(doc, idx)
         meta = doc.metadata or {}
-        candidates.append(
-            {
-                "id": cid,
-                "text": text,
-                "header_path": meta.get("header_path"),
-                "structure": meta.get("structure"),
-            }
-        )
+        candidate = {
+            "id": cid,
+            "text": text,
+            "header_path": meta.get("header_path"),
+            "structure": meta.get("structure"),
+        }
+        for key in ("vector_score", "score", "distance"):
+            if key in meta:
+                candidate[key] = meta[key]
+        candidates.append(candidate)
         id_to_doc[cid] = doc
     return candidates, id_to_doc
 
@@ -190,15 +192,13 @@ def _append_unreranked_documents(
 def _build_candidate_payload(
     *, cid: str, text: str, meta: dict[str, Any] | None, max_chars: int
 ) -> dict[str, Any] | None:
-    cid_norm = cid.strip()
-    text_norm = text.strip()
-    if not cid_norm or not text_norm:
+    if not cid or not text:
         return None
 
-    if max_chars and len(text_norm) > max_chars:
-        text_norm = text_norm[:max_chars] + "..."
+    if max_chars and len(text) > max_chars:
+        text = text[:max_chars] + "..."
 
-    payload: dict[str, Any] = {"id": cid_norm, "text": text_norm}
+    payload: dict[str, Any] = {"id": cid, "text": text}
 
     header_path = (meta or {}).get("header_path")
     if isinstance(header_path, str) and header_path.strip():
@@ -356,6 +356,12 @@ candidates(JSON): {candidates}
             return f"{doc_id}:{chunk_index}"
         return f"idx:{fallback_idx}"
 
+    def _rerank_run_options(self, options: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "tenant_id": _stringified_metadata_text(options, "tenant_id"),
+            "query_type": options.get("query_type"),
+        }
+
     def run(
         self,
         query: str,
@@ -501,11 +507,12 @@ candidates(JSON): {candidates}
             )
 
         llm_scores: dict[str, float] = {}
-        for item in data if isinstance(data, list) else []:
+        payload_ids = {candidate["id"] for candidate in payload}
+        for item in data:
             if not isinstance(item, dict):
                 continue
             cid = _stringified_metadata_text(item, "id")
-            if not cid:
+            if not cid or cid not in payload_ids:
                 continue
             llm_scores[cid] = _clamp_score(item.get("score", 0.0), default=0.0)
 

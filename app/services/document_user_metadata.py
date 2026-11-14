@@ -3,20 +3,17 @@
 from typing import Any
 
 
-def _merge_user_metadata_patch(*, current: dict[str, Any], patch: dict[str, Any], replace: bool) -> dict[str, Any]:
+def apply_user_metadata_patch(*, current: dict[str, Any], patch: dict[str, Any], replace: bool) -> dict[str, Any]:
     if replace:
-        return dict(patch)
+        next_user = dict(patch)
+    else:
+        next_user = dict(current)
+        for key, value in patch.items():
+            if value is None:
+                next_user.pop(key, None)
+            else:
+                next_user[key] = value
 
-    next_user = dict(current)
-    for key, value in patch.items():
-        if value is None:
-            next_user.pop(key, None)
-        else:
-            next_user[key] = value
-    return next_user
-
-
-def _normalize_user_metadata_tags(next_user: dict[str, Any], *, replace: bool) -> None:
     tags = next_user.get("tags")
     if isinstance(tags, str):
         tags = [tag.strip() for tag in tags.split(",")]
@@ -38,8 +35,6 @@ def _normalize_user_metadata_tags(next_user: dict[str, Any], *, replace: bool) -
     elif tags is None and "tags" in next_user and not replace:
         next_user.pop("tags", None)
 
-
-def _normalize_user_metadata_notes(next_user: dict[str, Any]) -> None:
     notes = next_user.get("notes")
     if isinstance(notes, str):
         value = notes.strip()
@@ -47,10 +42,4 @@ def _normalize_user_metadata_notes(next_user: dict[str, Any]) -> None:
             next_user.pop("notes", None)
         else:
             next_user["notes"] = value[:20_000]
-
-
-def apply_user_metadata_patch(*, current: dict[str, Any], patch: dict[str, Any], replace: bool) -> dict[str, Any]:
-    next_user = _merge_user_metadata_patch(current=current, patch=patch, replace=replace)
-    _normalize_user_metadata_tags(next_user, replace=replace)
-    _normalize_user_metadata_notes(next_user)
     return next_user

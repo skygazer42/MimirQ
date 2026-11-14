@@ -6,12 +6,12 @@ from typing import Any, AsyncIterator, Awaitable, Callable
 
 from app.core.stream_events import StreamEmitter, bind_stream_emitter, reset_stream_emitter
 from app.rag.core.logging import get_logger
-from app.services.chat_execution_runtime import ChatExecutionContext
-from app.services.chat_runtime import (
+from app.services.chat_cache_runtime import (
     annotate_chat_cache_metrics,
-    apply_chat_runtime_metrics_context,
     store_chat_response_cache_if_needed,
 )
+from app.services.chat_execution_runtime import ChatExecutionContext
+from app.services.chat_runtime import apply_chat_runtime_metrics_context
 from app.services.chat_stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 
 logger = get_logger(__name__)

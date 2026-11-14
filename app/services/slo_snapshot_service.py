@@ -49,7 +49,7 @@ def _safe_float(v: object) -> float | None:
 def _extract_prometheus_values(data: object) -> list[float]:
     if not isinstance(data, dict) or str(data.get("status") or "") != "success":
         return []
-    result = ((data.get("data") or {}) if isinstance(data.get("data"), dict) else {}).get("result")
+    result = (data.get("data") if isinstance(data.get("data"), dict) else {}).get("result")
     if not isinstance(result, list) or not result:
         return []
 
@@ -135,7 +135,7 @@ async def _build_window_from_prometheus(*, window_minutes: int) -> SloWindowSnap
 def _build_window_from_metrics_jsonl(*, tenant_id: str | None, window_minutes: int) -> SloWindowSnapshot:
     summary = summarize_rag_query_analytics(tenant_id=tenant_id, window_minutes=window_minutes)
 
-    errors = summary.timeseries.get("errors") if isinstance(summary.timeseries, dict) else None
+    errors = summary.timeseries.get("errors")
     error_count = 0
     if isinstance(errors, list):
         for v in errors:

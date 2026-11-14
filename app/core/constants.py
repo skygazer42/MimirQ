@@ -62,20 +62,16 @@ class FileTypes:
     JSON = ".json"
 
     # Supported extension sets
-    DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX})
+    DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({PDF, TXT, MD, DOC, DOCX, PPT, PPTX})
 
-    SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({".xls", XLSX, ".csv"})
+    SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({XLS, XLSX, CSV})
 
-    WEB_EXTENSIONS: frozenset[str] = frozenset({HTML, ".htm", JSON})
+    WEB_EXTENSIONS: frozenset[str] = frozenset({HTML, HTM, JSON})
 
-    ALL_SUPPORTED: frozenset[str] = frozenset(
-        {".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON}
-    )
+    ALL_SUPPORTED: frozenset[str] = DOCUMENT_EXTENSIONS | SPREADSHEET_EXTENSIONS | WEB_EXTENSIONS
 
     # MarkItDown special support
-    MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset(
-        {".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON}
-    )
+    MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset({DOC, DOCX, PPT, PPTX, XLS, XLSX, CSV, HTML, HTM, JSON})
 
 
 # =============================================================================
@@ -94,10 +90,10 @@ class DocumentStatus:
     CANCELLED = "cancelled"
 
     # Terminal states
-    TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "quarantined", "cancelled"})
+    TERMINAL_STATES: frozenset[str] = frozenset({COMPLETED, FAILED, QUARANTINED, CANCELLED})
 
     # Active states
-    ACTIVE_STATES: frozenset[str] = frozenset({"pending", "processing"})
+    ACTIVE_STATES: frozenset[str] = frozenset({PENDING, PROCESSING})
 
 
 # =============================================================================
@@ -151,15 +147,15 @@ class EmbeddingProviders:
     OLLAMA = "ollama"
     DETERMINISTIC_TEST = "deterministic_test"
 
-    ALL: frozenset[str] = frozenset({"openai", "openai_compatible", "dashscope", "ollama", "deterministic_test"})
+    ALL: frozenset[str] = frozenset({OPENAI, OPENAI_COMPATIBLE, DASHSCOPE, OLLAMA, DETERMINISTIC_TEST})
 
     # Provider map (alias -> canonical name)
     PROVIDER_MAP = {
-        "openai": "openai_compatible",
-        "openai_compatible": "openai_compatible",
-        "dashscope": "dashscope",
-        "ollama": "ollama",
-        "deterministic_test": "deterministic_test",
+        OPENAI: OPENAI_COMPATIBLE,
+        OPENAI_COMPATIBLE: OPENAI_COMPATIBLE,
+        DASHSCOPE: DASHSCOPE,
+        OLLAMA: OLLAMA,
+        DETERMINISTIC_TEST: DETERMINISTIC_TEST,
     }
 
 
@@ -183,15 +179,15 @@ class PDFBackends:
 
     ALL: frozenset[str] = frozenset(
         {
-            "auto",
-            "basic",
-            "mineru",
-            "deepdoc",
-            "deepseek_ocr",
-            "qianfan_ocr",
-            "textin",
-            "markitdown",
-            "docling",
+            AUTO,
+            BASIC,
+            MINERU,
+            DEEPDOC,
+            DEEPSEEK_OCR,
+            QIANFAN_OCR,
+            TEXTIN,
+            MARKITDOWN,
+            DOCLING,
         }
     )
 
@@ -210,7 +206,7 @@ class RetrievalModes:
     MMR = "mmr"
     AUTO = "auto"
 
-    ALL: frozenset[str] = frozenset({"vector", "keyword", "hybrid", "mmr", "auto"})
+    ALL: frozenset[str] = frozenset({VECTOR, KEYWORD, HYBRID, MMR, AUTO})
 
 
 # =============================================================================
@@ -229,10 +225,10 @@ class UserRoles:
     VIEWER = "viewer"
 
     # Editable roles
-    EDIT_ROLES: frozenset[str] = frozenset({"owner", "admin", "editor", "dataset_operator"})
+    EDIT_ROLES: frozenset[str] = frozenset({OWNER, ADMIN, EDITOR, DATASET_OPERATOR})
 
     # Admin roles
-    ADMIN_ROLES: frozenset[str] = frozenset({"owner", "admin"})
+    ADMIN_ROLES: frozenset[str] = frozenset({OWNER, ADMIN})
 
 
 # =============================================================================
